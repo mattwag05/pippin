@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Built in Xcode with Claude Code assistance.
 
-**Current status:** `pippin mail list` and `pippin mail read` (PR #1) and `pippin memos list/info/export` (PR #2) implemented. Spec: `macos-cli-automation-plan.md`.
+**Current status:** All `pippin mail` subcommands implemented (PR #1–#4 merged). `pippin memos list/info/export` (PR #2) implemented. Spec: `macos-cli-automation-plan.md`.
 
 **Xcode project:** `pippin.xcodeproj` — single target `pippin`. Entry point: `pippin/Pippin.swift` (`@main`; renamed from `main.swift` for SPM compatibility). `Package.swift` added (ArgumentParser 1.7.0).
 
@@ -91,7 +91,7 @@ Gotchas: `macnotesapp` brew tap is dead — use `pipx install macnotesapp` (comm
 ## Implementation Order (per spec)
 
 1. ✅ **Foundation toolset** — installed
-2. ✅ **`pippin mail`** — `list` and `read` implemented (PR #1 on Forgejo)
+2. ✅ **`pippin mail`** — all subcommands implemented: `list`, `read` (PR #1), `accounts`, `search` (PR #3), `mark`, `move`, `send` (PR #4) on Forgejo
 3. ✅ **`pippin memos`** — `list`, `info`, `export` implemented (PR #2 on Forgejo)
 
 ## Non-Goals (per spec)
