@@ -1,20 +1,24 @@
 import ArgumentParser
 import Foundation
 
-struct MailCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+public struct MailCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
         subcommands: [Accounts.self, Search.self, List.self, Read.self, Mark.self, Move.self, Send.self]
     )
 
-    struct Accounts: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public init() {}
+
+    public struct Accounts: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "accounts",
             abstract: "List configured Mail accounts."
         )
 
-        mutating func run() async throws {
+        public init() {}
+
+        public mutating func run() async throws {
             let accounts = try MailBridge.listAccounts()
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -23,22 +27,24 @@ struct MailCommand: AsyncParsableCommand {
         }
     }
 
-    struct Search: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public struct Search: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "search",
             abstract: "Search messages by subject, sender, or body."
         )
 
         @Argument(help: "Search query (case-insensitive, matches subject/sender/body).")
-        var query: String
+        public var query: String
 
         @Option(name: .long, help: "Filter by account name.")
-        var account: String?
+        public var account: String?
 
         @Option(name: .long, help: "Maximum number of results to return (default: 10).")
-        var limit: Int = 10
+        public var limit: Int = 10
 
-        mutating func run() async throws {
+        public init() {}
+
+        public mutating func run() async throws {
             let messages = try MailBridge.searchMessages(
                 query: query,
                 account: account,
@@ -51,31 +57,33 @@ struct MailCommand: AsyncParsableCommand {
         }
     }
 
-    struct Mark: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public struct Mark: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "mark",
             abstract: "Mark a message as read or unread."
         )
 
         @Argument(help: "Message id from `pippin mail list` output.")
-        var messageId: String
+        public var messageId: String
 
         @Flag(name: .long, help: "Mark as read.")
-        var read: Bool = false
+        public var read: Bool = false
 
         @Flag(name: .long, help: "Mark as unread.")
-        var unread: Bool = false
+        public var unread: Bool = false
 
         @Flag(name: .long, help: "Print what would happen without making changes.")
-        var dryRun: Bool = false
+        public var dryRun: Bool = false
 
-        mutating func validate() throws {
+        public init() {}
+
+        public mutating func validate() throws {
             guard read != unread else {
                 throw ValidationError("Specify exactly one of --read or --unread.")
             }
         }
 
-        mutating func run() async throws {
+        public mutating func run() async throws {
             let result = try MailBridge.markMessage(
                 compoundId: messageId,
                 read: read,
@@ -88,22 +96,24 @@ struct MailCommand: AsyncParsableCommand {
         }
     }
 
-    struct Move: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public struct Move: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "move",
             abstract: "Move a message to another mailbox."
         )
 
         @Argument(help: "Message id from `pippin mail list` output.")
-        var messageId: String
+        public var messageId: String
 
         @Option(name: .long, help: "Destination mailbox name.")
-        var to: String
+        public var to: String
 
         @Flag(name: .long, help: "Print what would happen without making changes.")
-        var dryRun: Bool = false
+        public var dryRun: Bool = false
 
-        mutating func run() async throws {
+        public init() {}
+
+        public mutating func run() async throws {
             let result = try MailBridge.moveMessage(
                 compoundId: messageId,
                 toMailbox: to,
@@ -116,25 +126,27 @@ struct MailCommand: AsyncParsableCommand {
         }
     }
 
-    struct List: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public struct List: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List messages. Defaults to INBOX, all messages, limit 50."
         )
 
         @Option(name: .long, help: "Filter by account name.")
-        var account: String?
+        public var account: String?
 
         @Option(name: .long, help: "Mailbox name (default: INBOX).")
-        var mailbox: String = "INBOX"
+        public var mailbox: String = "INBOX"
 
         @Flag(name: .long, help: "Only show unread messages.")
-        var unread: Bool = false
+        public var unread: Bool = false
 
         @Option(name: .long, help: "Maximum number of messages to return.")
-        var limit: Int = 50
+        public var limit: Int = 50
 
-        mutating func run() async throws {
+        public init() {}
+
+        public mutating func run() async throws {
             let messages = try MailBridge.listMessages(
                 account: account,
                 mailbox: mailbox,
@@ -148,34 +160,36 @@ struct MailCommand: AsyncParsableCommand {
         }
     }
 
-    struct Send: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public struct Send: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "send",
             abstract: "Send an email message."
         )
 
         @Option(name: .long, help: "Recipient email address.")
-        var to: String
+        public var to: String
 
         @Option(name: .long, help: "Message subject.")
-        var subject: String
+        public var subject: String
 
         @Option(name: .long, help: "Message body text.")
-        var body: String
+        public var body: String
 
         @Option(name: .long, help: "CC recipient email address.")
-        var cc: String?
+        public var cc: String?
 
         @Option(name: .long, help: "Sending account name.")
-        var from: String?
+        public var from: String?
 
         @Option(name: .long, help: "Path to file to attach.")
-        var attach: String?
+        public var attach: String?
 
         @Flag(name: .long, help: "Print what would happen without sending.")
-        var dryRun: Bool = false
+        public var dryRun: Bool = false
 
-        mutating func validate() throws {
+        public init() {}
+
+        public mutating func validate() throws {
             let emailPattern = #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#
             guard to.range(of: emailPattern, options: .regularExpression) != nil else {
                 throw ValidationError("--to does not look like a valid email address.")
@@ -193,7 +207,7 @@ struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        mutating func run() async throws {
+        public mutating func run() async throws {
             let result = try MailBridge.sendMessage(
                 to: to,
                 subject: subject,
@@ -210,16 +224,18 @@ struct MailCommand: AsyncParsableCommand {
         }
     }
 
-    struct Read: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public struct Read: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "read",
             abstract: "Read a message by its compound id (from `mail list` output)."
         )
 
         @Argument(help: "Message id from `pippin mail list` output.")
-        var messageId: String
+        public var messageId: String
 
-        mutating func run() async throws {
+        public init() {}
+
+        public mutating func run() async throws {
             let message = try MailBridge.readMessage(compoundId: messageId)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
