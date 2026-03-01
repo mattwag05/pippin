@@ -24,3 +24,14 @@ struct MailMessage: Codable {
         try container.encode(body, forKey: .body)   // encodes nil as JSON null
     }
 }
+
+struct MailAccount: Codable {
+    let name: String
+    let email: String
+}
+
+struct MailActionResult: Codable {
+    let success: Bool
+    let action: String
+    let details: [String: String]
+}
