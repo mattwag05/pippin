@@ -138,8 +138,8 @@ struct MailBridge {
                 var mb = mailboxes[m];
                 if (mb.name() !== mbFilter) continue;
 
-                var filter = unreadOnly ? {readStatus: false} : {};
-                var msgs = mb.messages.whose(filter)();
+                // whose({}) is invalid JXA — use messages() directly for all-messages case
+                var msgs = unreadOnly ? mb.messages.whose({readStatus: false})() : mb.messages();
                 var count = Math.min(msgs.length, limit - results.length);
                 var slice = msgs.slice(0, count);
 
