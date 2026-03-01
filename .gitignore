@@ -26,5 +26,11 @@ DerivedData/
 *.swp
 *~
 
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+
 # Worktrees
 .worktrees/
