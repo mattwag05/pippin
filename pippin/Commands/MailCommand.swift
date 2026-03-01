@@ -5,7 +5,7 @@ struct MailCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Search.self, List.self, Read.self, Mark.self]
+        subcommands: [Accounts.self, Search.self, List.self, Read.self, Mark.self, Move.self]
     )
 
     struct Accounts: AsyncParsableCommand {
@@ -79,6 +79,34 @@ struct MailCommand: AsyncParsableCommand {
             let result = try MailBridge.markMessage(
                 compoundId: messageId,
                 read: read,
+                dryRun: dryRun
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(result)
+            print(String(data: data, encoding: .utf8)!)
+        }
+    }
+
+    struct Move: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "move",
+            abstract: "Move a message to another mailbox."
+        )
+
+        @Argument(help: "Message id from `pippin mail list` output.")
+        var messageId: String
+
+        @Option(name: .long, help: "Destination mailbox name.")
+        var to: String
+
+        @Flag(name: .long, help: "Print what would happen without making changes.")
+        var dryRun: Bool = false
+
+        mutating func run() async throws {
+            let result = try MailBridge.moveMessage(
+                compoundId: messageId,
+                toMailbox: to,
                 dryRun: dryRun
             )
             let encoder = JSONEncoder()
