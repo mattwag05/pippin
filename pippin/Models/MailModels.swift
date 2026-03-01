@@ -1,17 +1,17 @@
 import Foundation
 
-struct MailMessage: Codable {
-    let id: String       // compound: "account||mailbox||messageId"
-    let account: String
-    let mailbox: String
-    let subject: String
-    let from: String
-    let to: [String]
-    let date: String     // ISO 8601
-    let read: Bool
-    let body: String?    // only populated by `read` command
+public struct MailMessage: Codable {
+    public let id: String       // compound: "account||mailbox||messageId"
+    public let account: String
+    public let mailbox: String
+    public let subject: String
+    public let from: String
+    public let to: [String]
+    public let date: String     // ISO 8601
+    public let read: Bool
+    public let body: String?    // only populated by `read` command
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(account, forKey: .account)
@@ -25,13 +25,13 @@ struct MailMessage: Codable {
     }
 }
 
-struct MailAccount: Codable {
-    let name: String
-    let email: String
+public struct MailAccount: Codable {
+    public let name: String
+    public let email: String
 }
 
-struct MailActionResult: Codable {
-    let success: Bool
-    let action: String
-    let details: [String: String]
+public struct MailActionResult: Codable {
+    public let success: Bool
+    public let action: String
+    public let details: [String: String]
 }

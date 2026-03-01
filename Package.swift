@@ -11,12 +11,25 @@ let package = Package(
         ),
     ],
     targets: [
-        .executableTarget(
-            name: "pippin",
+        // Library target — all application logic (importable by tests)
+        .target(
+            name: "PippinLib",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "pippin"
+        ),
+        // Executable entry point — just the @main struct
+        .executableTarget(
+            name: "pippin",
+            dependencies: ["PippinLib"],
+            path: "pippin-entry"
+        ),
+        // Test target
+        .testTarget(
+            name: "PippinTests",
+            dependencies: ["PippinLib"],
+            path: "Tests/PippinTests"
         ),
     ]
 )
