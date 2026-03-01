@@ -468,7 +468,7 @@ struct MailBridge {
 
             var attachPath = \(safeAttach);
             if (attachPath !== null) {
-                var att = mail.Attachment({fileName: attachPath});
+                var att = mail.Attachment({fileName: Path(attachPath)});
                 msg.attachments.push(att);
                 // Verify attachment was accepted (guard against silent drop on bad path)
                 if (msg.attachments().length === 0) {
@@ -477,38 +477,30 @@ struct MailBridge {
             }
 
             if (!isDryRun) {
+                // Capture queue length before send to detect whether message was consumed
+                var queueLenBefore = mail.outgoingMessages().length;
                 msg.send();
                 // Verify message left the outgoing queue (guard against silent SMTP queue)
-                var outgoing = mail.outgoingMessages();
-                for (var r = 0; r < outgoing.length; r++) {
-                    try {
-                        if (outgoing[r].subject() === '\(safeSubject)') {
-                            throw new Error('MAILBRIDGE_ERR_MSG_QUEUED_NOT_SENT');
+                var outgoingAfter = mail.outgoingMessages();
+                if (outgoingAfter.length >= queueLenBefore) {
+                    // Queue didn't shrink — confirm the specific message is still queued
+                    for (var r = 0; r < outgoingAfter.length; r++) {
+                        try {
+                            if (outgoingAfter[r].subject() === '\(safeSubject)') {
+                                throw new Error('MAILBRIDGE_ERR_MSG_QUEUED_NOT_SENT');
+                            }
+                        } catch(checkErr) {
+                            if (String(checkErr).indexOf('MAILBRIDGE_ERR') !== -1) throw checkErr;
                         }
-                    } catch(checkErr) {
-                        if (String(checkErr).indexOf('MAILBRIDGE_ERR') !== -1) throw checkErr;
                     }
                 }
             } else {
-                // Dry-run: remove the staged OutgoingMessage to avoid leaving an artifact in Mail.app
-                try {
-                    var idx = mail.outgoingMessages().length - 1;
-                    if (idx >= 0) { mail.outgoingMessages[idx].delete(); }
-                } catch(e) {}
+                // Dry-run: delete by object reference (not positional index) to avoid deleting wrong draft
+                try { msg.delete(); } catch(e) {}
             }
         } catch(err) {
-            // Cleanup: remove orphaned OutgoingMessage on any failure path
-            try {
-                var outgoing = mail.outgoingMessages();
-                for (var c = outgoing.length - 1; c >= 0; c--) {
-                    try {
-                        if (outgoing[c].subject() === '\(safeSubject)') {
-                            outgoing[c].delete();
-                            break;
-                        }
-                    } catch(e) {}
-                }
-            } catch(e) {}
+            // Cleanup: remove orphaned OutgoingMessage on any failure path (by object reference)
+            try { msg.delete(); } catch(e) {}
             throw err;
         }
 

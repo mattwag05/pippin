@@ -176,9 +176,19 @@ struct MailCommand: AsyncParsableCommand {
         var dryRun: Bool = false
 
         mutating func validate() throws {
+            let emailPattern = #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#
+            guard to.range(of: emailPattern, options: .regularExpression) != nil else {
+                throw ValidationError("--to does not look like a valid email address.")
+            }
+            if let ccAddr = cc {
+                guard ccAddr.range(of: emailPattern, options: .regularExpression) != nil else {
+                    throw ValidationError("--cc does not look like a valid email address.")
+                }
+            }
             if let attachPath = attach {
                 guard FileManager.default.fileExists(atPath: attachPath) else {
-                    throw ValidationError("Attachment file not found: \(attachPath)")
+                    let filename = URL(fileURLWithPath: attachPath).lastPathComponent
+                    throw ValidationError("Attachment file not found: \(filename)")
                 }
             }
         }
