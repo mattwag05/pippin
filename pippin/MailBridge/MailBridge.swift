@@ -37,7 +37,7 @@ struct MailBridge {
         let account = parts[0]
         let mailboxName = parts[1]
         let msgId = parts[2]
-        let script = buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
+        let script = try buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
         let json = try runScript(script)
         return try decodeMessage(from: json)
     }
@@ -110,11 +110,14 @@ struct MailBridge {
         """
     }
 
-    private static func buildReadScript(account: String, mailbox: String, messageId: String) -> String {
+    private static func buildReadScript(account: String, mailbox: String, messageId: String) throws -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
-        // messageId should be an integer string — validate before embedding
-        let safeMsgId = messageId.allSatisfy({ $0.isNumber }) ? messageId : "0"
+        // messageId must be an integer string — throw rather than substitute a fallback
+        guard messageId.allSatisfy({ $0.isNumber }) else {
+            throw MailBridgeError.invalidMessageId(messageId)
+        }
+        let safeMsgId = messageId
 
         return """
         var mail = Application('Mail');
@@ -140,7 +143,7 @@ struct MailBridge {
                     mailbox: '\(safeMailbox)',
                     subject: msg.subject(),
                     from: msg.sender(),
-                    to: [],
+                    to: msg.toRecipients().map(function(r) { return r.address(); }),
                     date: msg.dateSent().toISOString(),
                     read: msg.readStatus(),
                     body: msg.content()
