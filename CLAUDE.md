@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Built in Xcode with Claude Code assistance.
 
-**Current status:** Design phase — skeleton Xcode project created, implementation not started. Spec: `macos-cli-automation-plan.md`.
+**Current status:** `pippin mail list` and `pippin mail read` implemented (PR #1). `pippin memos` not started. Spec: `macos-cli-automation-plan.md`.
 
-**Xcode project:** `pippin.xcodeproj` — single target `pippin` (command-line tool, macOS). Entry point: `pippin/main.swift`. No `Package.swift` yet — build via Xcode GUI (Cmd+B) or `xcodebuild`.
+**Xcode project:** `pippin.xcodeproj` — single target `pippin`. Entry point: `pippin/Pippin.swift` (`@main`; renamed from `main.swift` for SPM compatibility). `Package.swift` added (ArgumentParser 1.7.0).
 
 ## What This Builds
 
@@ -19,38 +19,36 @@ Two native CLI tools with JSON stdout output, headless-safe (cron/launchd/N8N co
 
 ## Build Workflow
 
-**Current (Xcode project, no SPM):**
-```bash
-open pippin.xcodeproj              # open in Xcode
-# Cmd+B to build, Cmd+R to run
-xcodebuild -scheme pippin build    # headless build
-# Find and smoke-test the binary:
-$(xcodebuild -scheme pippin -showBuildSettings 2>/dev/null | awk '/BUILT_PRODUCTS_DIR/{print $3}')/pippin --help
-```
-
-**Once Package.swift is added (future):**
 ```bash
 swift build                        # CLI build
+swift build --show-bin-path        # → .build/arm64-apple-macosx/debug/
 swift run pippin mail list         # run subcommand
 swift test                         # run tests
 brew install swiftformat           # auto-format hook (install once)
 ```
 
+> **SourceKit false positives:** Xcode's SourceKit can't see SPM dependencies (ArgumentParser, cross-file types). Ignore red squiggles in the IDE — `swift build` is the authoritative check.
+
 ## macOS Permissions Prerequisites
 
 Before any implementation can be tested, grant these in **System Settings → Privacy & Security**:
 - **Full Disk Access** → Terminal.app (Voice Memos SQLite + osascript in launchd)
-- **Automation → Mail** → Terminal.app (required for any `pippin mail` osascript calls)
+- **Automation → Mail** → Terminal.app (for `swift run` / interactive testing)
+- **Automation → Mail** → the built `pippin` binary (for cron/launchd — re-grant after each new build path)
 
 Run each subcommand once interactively after granting — macOS requires a live approval prompt before launchd/cron calls work.
+
+> **TCC note:** Permission is per binary path. `swift run` wrapper and installed binary are separate — each needs its own grant.
 
 ## Architecture
 
 ### mail-cli (Swift)
-- **`MailBridge` module** — all osascript calls isolated here; zero AppleScript outside this module
-- Uses `Process` to shell out to `osascript` (not `NSAppleScript` — headless-safe)
+- **`MailBridge` module** — all JXA calls isolated here; uses `osascript -l JavaScript` (not AppleScript, not NSAppleScript)
+- Uses `Process` to shell out to `osascript` (headless-safe; concurrent pipe draining prevents deadlock on large output)
 - Uses Swift ArgumentParser for subcommand dispatch
 - Output schema: `{id, account, mailbox, subject, from, to[], date (ISO8601), read, body?}`
+- Message ID format: `account||mailbox||messageId` (compound, round-trip safe)
+- `jsEscape()` escapes: `\`, `"`, `'`, `` ` ``, `\n`, `\r`, `\u2028`, `\u2029` — in that order (backslash first)
 - `--dry-run` flag required on all write operations
 - Performance target: `<3 sec` per call
 
@@ -64,9 +62,9 @@ Run each subcommand once interactively after granting — macOS requires a live 
 - Performance target: `<2 sec` list
 
 ### Foundation toolset (install first, per plan)
-`icalpal`, `reminders-cli`, `contacts-cli`, `imsg`, `imessage-exporter`, `macnotesapp`, `tag`, `osxmetadata`, `trash`, `duti`, `blueutil`, `mas`, `terminal-notifier` — all require Full Disk Access + relevant permissions granted to Terminal.
+✅ **Installed.** `icalpal`, `reminders-cli`, `contacts-cli`, `imsg`, `imessage-exporter`, `macnotesapp`, `tag`, `osxmetadata`, `trash`, `duti`, `blueutil`, `mas`, `terminal-notifier` — all require Full Disk Access + relevant permissions granted to Terminal.
 
-Install commands: **`macos-cli-automation-plan.md` → Part 1** (all brew/gem/pipx one-liners in order).
+Gotchas: `macnotesapp` brew tap is dead — use `pipx install macnotesapp` (command is `notes`). `icalPal` gem binary at `~/.gem/ruby/2.6.0/bin/icalPal` (not on default PATH).
 
 ## Automations Configured
 
@@ -81,7 +79,7 @@ Install commands: **`macos-cli-automation-plan.md` → Part 1** (all brew/gem/pi
 ### Hooks (active — `.claude/settings.json` configured)
 - **PreToolUse** (`Bash|Edit|Write`): blocks any operation targeting `com.apple.voicememos` path — Voice Memos DB is read-only
 - **PostToolUse** (`Edit|Write`): runs `swiftformat` on `.swift` files (no-ops if not installed; `brew install swiftformat`)
-- **PostToolUse** (`Edit|Write`): runs `xcodebuild -scheme pippin build -quiet` after any `.swift` edit — reports failures inline
+- **PostToolUse** (`Edit|Write`): runs `swift build` after any `.swift` edit — reports failures inline
 
 ### Agents
 - **`applescript-security-reviewer`** — reviews `MailBridge` methods for injection, privilege creep, error leakage, and headless safety; invoke after adding/modifying any MailBridge method
@@ -89,8 +87,8 @@ Install commands: **`macos-cli-automation-plan.md` → Part 1** (all brew/gem/pi
 
 ## Implementation Order (per spec)
 
-1. **Foundation toolset** — install all brew/gem/pipx tools from `macos-cli-automation-plan.md` Part 1
-2. **`pippin mail`** — Swift CLI; start with `MailBridge` scaffold, then ArgumentParser subcommands
+1. ✅ **Foundation toolset** — installed
+2. ✅ **`pippin mail`** — `list` and `read` implemented (PR #1 on Forgejo)
 3. **`pippin memos`** — Python single-file script; start with `VoiceMemosDB` class + schema guard
 
 ## Non-Goals (per spec)
