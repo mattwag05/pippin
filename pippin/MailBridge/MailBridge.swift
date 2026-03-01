@@ -38,6 +38,12 @@ struct MailBridge {
         return try decodeMessages(from: json)
     }
 
+    static func listAccounts() throws -> [MailAccount] {
+        let script = buildAccountsScript()
+        let json = try runScript(script)
+        return try decodeAccounts(from: json)
+    }
+
     static func readMessage(compoundId: String) throws -> MailMessage {
         let parts = compoundId.components(separatedBy: "||")
         guard parts.count == 3 else {
@@ -130,6 +136,32 @@ struct MailBridge {
         """
     }
 
+    private static func buildAccountsScript() -> String {
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        for (var attempt = 0; attempt < 8; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
+
+        var accounts = mail.accounts();
+        var results = [];
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            var emails = [];
+            try { emails = acct.emailAddresses(); } catch(e) {}
+            var emailStr = (Array.isArray(emails) && emails.length > 0) ? emails[0] : '';
+            results.push({
+                name: acct.name(),
+                email: emailStr
+            });
+        }
+        JSON.stringify(results);
+        """
+    }
+
     private static func buildReadScript(account: String, mailbox: String, messageId: String) throws -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
@@ -218,8 +250,10 @@ struct MailBridge {
 
         // Set up timeout: terminate after 10 seconds
         let timeoutItem = DispatchWorkItem {
-            if process.isRunning {
-                process.terminate()
+            guard process.isRunning else { return }
+            process.terminate()  // SIGTERM — give osascript 2 seconds to clean up
+            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             }
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(10), execute: timeoutItem)
@@ -233,19 +267,41 @@ struct MailBridge {
             throw MailBridgeError.timeout
         }
 
-        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-        let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+        let stdoutStr = (String(data: stdoutData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let stderrStr = (String(data: stderrData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard process.terminationStatus == 0 else {
-            throw MailBridgeError.scriptFailed(stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+            throw MailBridgeError.scriptFailed(stderrStr)
         }
 
-        return stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        // osascript can exit 0 and still write an error to stderr (e.g. TCC denial)
+        if !stderrStr.isEmpty {
+            throw MailBridgeError.scriptFailed(stderrStr)
+        }
+
+        return stdoutStr
     }
 
     // MARK: - Decoders
 
+    private static func decodeAccounts(from json: String) throws -> [MailAccount] {
+        guard !json.isEmpty else {
+            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
+        }
+        guard let data = json.data(using: .utf8) else {
+            throw MailBridgeError.decodingFailed("Non-UTF8 output")
+        }
+        do {
+            return try JSONDecoder().decode([MailAccount].self, from: data)
+        } catch {
+            throw MailBridgeError.decodingFailed(error.localizedDescription)
+        }
+    }
+
     private static func decodeMessages(from json: String) throws -> [MailMessage] {
+        guard !json.isEmpty else {
+            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
+        }
         guard let data = json.data(using: .utf8) else {
             throw MailBridgeError.decodingFailed("Non-UTF8 output")
         }
@@ -257,6 +313,9 @@ struct MailBridge {
     }
 
     private static func decodeMessage(from json: String) throws -> MailMessage {
+        guard !json.isEmpty else {
+            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
+        }
         guard let data = json.data(using: .utf8) else {
             throw MailBridgeError.decodingFailed("Non-UTF8 output")
         }
