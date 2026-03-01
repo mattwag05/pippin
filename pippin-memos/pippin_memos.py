@@ -60,6 +60,11 @@ def _die(message: str) -> None:
     sys.exit(1)
 
 
+def _json_print(obj) -> None:
+    """Write obj as indented JSON to stdout."""
+    print(json.dumps(obj, ensure_ascii=False, indent=2))
+
+
 def _core_data_to_iso(timestamp: float) -> str:
     """Convert Core Data timestamp to ISO 8601 UTC string."""
     unix = timestamp + CORE_DATA_EPOCH
@@ -77,7 +82,7 @@ class VoiceMemosDB:
             self._db_path = Path(_DB_PATH).expanduser()
 
         if not self._db_path.exists():
-            _die(
+            raise ValueError(
                 f"Voice Memos database not found at {self._db_path}. "
                 "Open Voice Memos, create at least one recording, and grant "
                 "Terminal Full Disk Access in System Settings → Privacy & Security."
@@ -102,6 +107,12 @@ class VoiceMemosDB:
             finally:
                 con.close()
         except sqlite3.OperationalError as exc:
+            err_str = str(exc).lower()
+            if "unable to open" in err_str or "permission" in err_str:
+                raise RuntimeError(
+                    f"Cannot open Voice Memos database at {self._db_path}. "
+                    "Grant Terminal Full Disk Access in System Settings → Privacy & Security."
+                ) from exc
             raise RuntimeError(
                 f"Could not read Z_METADATA from {self._db_path}: {exc}. "
                 "The database schema may have changed."
@@ -147,7 +158,7 @@ class VoiceMemosDB:
                 dt = datetime.fromisoformat(since).replace(tzinfo=timezone.utc)
                 since_ts = dt.timestamp() - CORE_DATA_EPOCH
             except ValueError:
-                _die(f"Invalid --since date {since!r}. Use YYYY-MM-DD.")
+                raise ValueError(f"Invalid --since date {since!r}. Use YYYY-MM-DD.")
 
         query = (
             "SELECT Z_PK, ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH "
@@ -180,7 +191,7 @@ class VoiceMemosDB:
             con.close()
 
         if row is None:
-            _die(f"No memo found with id {memo_id!r}.")
+            raise ValueError(f"No memo found with id {memo_id!r}.")
 
         return self._row_to_memo(row)  # type: ignore[arg-type]
 
@@ -201,16 +212,16 @@ class VoiceMemosDB:
         memo = self.get_memo(memo_id)
 
         if not memo.file_path:
-            _die(f"Memo {memo_id!r} has no file path recorded in the database.")
+            raise ValueError(f"Memo {memo_id!r} has no file path recorded in the database.")
 
         src = Path(memo.file_path)
         if not src.exists():
             if self.is_evicted(memo_id):
-                _die(
+                raise ValueError(
                     f"Recording '{memo.title}' has been evicted to iCloud. "
                     "Open Voice Memos and download it before exporting."
                 )
-            _die(f"Recording file not found: {src}")
+            raise ValueError(f"Recording file not found: {src}")
 
         out = Path(output_dir).expanduser().resolve()
         out.mkdir(parents=True, exist_ok=True)
@@ -220,6 +231,8 @@ class VoiceMemosDB:
         date_prefix = memo.created_at[:10]  # YYYY-MM-DD
         safe_title = "".join(c if c.isalnum() or c in " -_." else "_" for c in memo.title)
         safe_title = safe_title.strip().replace(" ", "-")
+        if not safe_title:
+            safe_title = f"Recording_{memo.id[:8]}"
         dest_name = f"{date_prefix}_{safe_title}{ext}"
         dest = out / dest_name
 
@@ -231,7 +244,10 @@ class VoiceMemosDB:
                 dest = out / f"{stem}_{i}{ext}"
                 i += 1
 
-        shutil.copy2(str(src), str(dest))
+        try:
+            shutil.copy2(str(src), str(dest))
+        except OSError as exc:
+            raise ValueError(f"Failed to copy recording to {dest}: {exc}") from exc
         return str(dest)
 
 
@@ -244,43 +260,59 @@ def _memo_to_dict(memo: VoiceMemo) -> dict:
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-    db = VoiceMemosDB(db_path=getattr(args, "db", None))
-    memos = db.list_memos(since=getattr(args, "since", None))
+    try:
+        db = VoiceMemosDB(db_path=args.db)
+        memos = db.list_memos(since=args.since)
+    except ValueError as exc:
+        _die(str(exc))
+        return
     dicts = [_memo_to_dict(m) for m in memos]
-    if getattr(args, "format", "json") == "text":
+    if args.format == "text":
         for m in memos:
             print(f"{m.id}\t{m.created_at}\t{m.duration_seconds:.1f}s\t{m.title}")
     else:
-        print(json.dumps(dicts, ensure_ascii=False, indent=2))
+        _json_print(dicts)
 
 
 def cmd_info(args: argparse.Namespace) -> None:
-    db = VoiceMemosDB(db_path=getattr(args, "db", None))
-    memo = db.get_memo(args.id)
-    print(json.dumps(_memo_to_dict(memo), ensure_ascii=False, indent=2))
+    try:
+        db = VoiceMemosDB(db_path=args.db)
+        memo = db.get_memo(args.id)
+    except ValueError as exc:
+        _die(str(exc))
+        return
+    _json_print(_memo_to_dict(memo))
 
 
 def cmd_export(args: argparse.Namespace) -> None:
-    db = VoiceMemosDB(db_path=getattr(args, "db", None))
+    try:
+        db = VoiceMemosDB(db_path=args.db)
+    except ValueError as exc:
+        _die(str(exc))
+        return
     output_dir = args.output
-    transcribe = getattr(args, "transcribe", False)
+    transcribe = args.transcribe
 
-    if getattr(args, "all", False):
+    if args.all:
         memos = db.list_memos()
         if not memos:
-            print(json.dumps([], ensure_ascii=False, indent=2))
+            _json_print([])
             return
         results = []
         for memo in memos:
             try:
                 result = _export_and_maybe_transcribe(db, memo.id, output_dir, transcribe)
                 results.append(result)
-            except SystemExit:
-                results.append({"id": memo.id, "title": memo.title, "error": "export failed"})
-        print(json.dumps(results, ensure_ascii=False, indent=2))
+            except ValueError as exc:
+                results.append({"id": memo.id, "title": memo.title, "error": str(exc)})
+        _json_print(results)
     else:
-        result = _export_and_maybe_transcribe(db, args.id, output_dir, transcribe)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        try:
+            result = _export_and_maybe_transcribe(db, args.id, output_dir, transcribe)
+        except ValueError as exc:
+            _die(str(exc))
+            return
+        _json_print(result)
 
 
 def _transcribe_file(audio_path: str) -> str:
@@ -292,12 +324,15 @@ def _transcribe_file(audio_path: str) -> str:
         )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        result = subprocess.run(
-            [binary, audio_path, "--output-format", "txt", "--output-dir", tmp_dir],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
+        try:
+            result = subprocess.run(
+                [binary, audio_path, "--output-format", "txt", "--output-dir", tmp_dir],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            _die("Transcription timed out after 300s")
         if result.returncode != 0:
             _die(f"parakeet-mlx failed: {result.stderr.strip()}")
 
@@ -334,8 +369,12 @@ def _export_and_maybe_transcribe(
 
 
 def cmd_delete(args: argparse.Namespace) -> None:
-    db = VoiceMemosDB(db_path=getattr(args, "db", None))
-    memo = db.get_memo(args.id)  # exits if not found
+    try:
+        db = VoiceMemosDB(db_path=args.db)
+        memo = db.get_memo(args.id)
+    except ValueError as exc:
+        _die(str(exc))
+        return
 
     if not memo.file_path:
         _die(f"Memo {args.id!r} has no file path recorded in the database.")
@@ -356,19 +395,15 @@ def cmd_delete(args: argparse.Namespace) -> None:
             "Install it with: brew install trash"
         )
 
-    if getattr(args, "dry_run", False):
-        print(
-            json.dumps(
-                {
-                    "id": memo.id,
-                    "title": memo.title,
-                    "file_path": memo.file_path,
-                    "deleted": False,
-                    "dry_run": True,
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
+    if args.dry_run:
+        _json_print(
+            {
+                "id": memo.id,
+                "title": memo.title,
+                "file_path": memo.file_path,
+                "deleted": False,
+                "dry_run": True,
+            }
         )
         return
 
@@ -376,17 +411,13 @@ def cmd_delete(args: argparse.Namespace) -> None:
     if result.returncode != 0:
         _die(f"trash failed (exit {result.returncode}): {result.stderr.strip()}")
 
-    print(
-        json.dumps(
-            {
-                "id": memo.id,
-                "title": memo.title,
-                "file_path": memo.file_path,
-                "deleted": True,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
+    _json_print(
+        {
+            "id": memo.id,
+            "title": memo.title,
+            "file_path": memo.file_path,
+            "deleted": True,
+        }
     )
 
 
@@ -472,6 +503,8 @@ def main() -> None:
             cmd_delete(args)
     except RuntimeError as exc:
         _die(str(exc))
+    except sqlite3.Error as exc:
+        _die(f"Database error: {exc}")
     except KeyboardInterrupt:
         sys.exit(1)
 
