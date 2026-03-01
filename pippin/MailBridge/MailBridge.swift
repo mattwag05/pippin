@@ -138,7 +138,7 @@ struct MailBridge {
 
     // MARK: - Script Builders
 
-    private static func jsEscape(_ s: String) -> String {
+    static func jsEscape(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\")
          .replacingOccurrences(of: "\0", with: "\\0")
          .replacingOccurrences(of: "\"", with: "\\\"")
