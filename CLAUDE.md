@@ -76,13 +76,16 @@ Install commands: **`macos-cli-automation-plan.md` → Part 1** (all brew/gem/pi
 ### Skills (invoke with `/skill-name`)
 - **`/mail-bridge-scaffold`** — scaffolds a new MailBridge method + ArgumentParser subcommand + JSON output struct for a new `pippin mail` subcommand
 - **`/voicememos-schema`** — inspects the live Voice Memos SQLite schema and maps columns to the `VoiceMemosDB` output types; run when starting memos development or after an OS update
+- **`/pippin-output-validator`** — builds the binary and validates a subcommand's JSON output matches its documented schema; run after implementation changes
 
-### Hooks (planned — `.claude/settings.json` not yet created)
-- **PreToolUse**: Will block any `Bash`/`Write` targeting `com.apple.voicememos` path — Voice Memos DB is read-only
-- **PostToolUse**: Will run `swiftformat` on `.swift` files after edit/write (no-ops if not installed; `brew install swiftformat`)
+### Hooks (active — `.claude/settings.json` configured)
+- **PreToolUse** (`Bash|Edit|Write`): blocks any operation targeting `com.apple.voicememos` path — Voice Memos DB is read-only
+- **PostToolUse** (`Edit|Write`): runs `swiftformat` on `.swift` files (no-ops if not installed; `brew install swiftformat`)
+- **PostToolUse** (`Edit|Write`): runs `xcodebuild -scheme pippin build -quiet` after any `.swift` edit — reports failures inline
 
-### Subagent
+### Agents
 - **`applescript-security-reviewer`** — reviews `MailBridge` methods for injection, privilege creep, error leakage, and headless safety; invoke after adding/modifying any MailBridge method
+- **`headless-compatibility-checker`** — checks osascript calls for launchd/cron failure modes (TCC assumptions, blocking ops, missing timeouts); invoke after any new MailBridge method
 
 ## Implementation Order (per spec)
 
