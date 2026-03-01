@@ -477,23 +477,10 @@ struct MailBridge {
             }
 
             if (!isDryRun) {
-                // Capture queue length before send to detect whether message was consumed
-                var queueLenBefore = mail.outgoingMessages().length;
+                // msg.send() throws on SMTP rejection; success means accepted for delivery.
+                // A send delay keeps the message in outgoingMessages until the delay expires —
+                // checking queue length would produce a false failure in that case.
                 msg.send();
-                // Verify message left the outgoing queue (guard against silent SMTP queue)
-                var outgoingAfter = mail.outgoingMessages();
-                if (outgoingAfter.length >= queueLenBefore) {
-                    // Queue didn't shrink — confirm the specific message is still queued
-                    for (var r = 0; r < outgoingAfter.length; r++) {
-                        try {
-                            if (outgoingAfter[r].subject() === '\(safeSubject)') {
-                                throw new Error('MAILBRIDGE_ERR_MSG_QUEUED_NOT_SENT');
-                            }
-                        } catch(checkErr) {
-                            if (String(checkErr).indexOf('MAILBRIDGE_ERR') !== -1) throw checkErr;
-                        }
-                    }
-                }
             } else {
                 // Dry-run: delete by object reference (not positional index) to avoid deleting wrong draft
                 try { msg.delete(); } catch(e) {}
