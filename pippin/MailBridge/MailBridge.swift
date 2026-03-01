@@ -49,6 +49,74 @@ struct MailBridge {
         return try decodeMessages(from: json)
     }
 
+    static func markMessage(
+        compoundId: String,
+        read: Bool,
+        dryRun: Bool = false
+    ) throws -> MailActionResult {
+        let parts = compoundId.components(separatedBy: "||")
+        guard parts.count == 3 else {
+            throw MailBridgeError.invalidMessageId(compoundId)
+        }
+        let account = parts[0]
+        let mailboxName = parts[1]
+        let msgId = parts[2]
+        guard !msgId.isEmpty, msgId.allSatisfy({ $0.isNumber }) else {
+            throw MailBridgeError.invalidMessageId(compoundId)
+        }
+        let script = buildMarkScript(account: account, mailbox: mailboxName, messageId: msgId, read: read, dryRun: dryRun)
+        // Write operation: use 20s timeout to accommodate cold Mail launch + IMAP round-trip
+        let json = try runScript(script, timeoutSeconds: 20)
+        return try decodeActionResult(from: json)
+    }
+
+    static func moveMessage(
+        compoundId: String,
+        toMailbox: String,
+        dryRun: Bool = false
+    ) throws -> MailActionResult {
+        let parts = compoundId.components(separatedBy: "||")
+        guard parts.count == 3 else {
+            throw MailBridgeError.invalidMessageId(compoundId)
+        }
+        let account = parts[0]
+        let mailboxName = parts[1]
+        let msgId = parts[2]
+        guard !msgId.isEmpty, msgId.allSatisfy({ $0.isNumber }) else {
+            throw MailBridgeError.invalidMessageId(compoundId)
+        }
+        guard toMailbox.count <= 256, toMailbox.unicodeScalars.allSatisfy({ $0.value >= 0x20 }) else {
+            throw MailBridgeError.invalidMessageId("toMailbox name invalid")
+        }
+        let script = buildMoveScript(account: account, mailbox: mailboxName, messageId: msgId, toMailbox: toMailbox, dryRun: dryRun)
+        // Move triggers IMAP MOVE server-side — use 45s timeout for slow servers
+        let json = try runScript(script, timeoutSeconds: 45)
+        return try decodeActionResult(from: json)
+    }
+
+    static func sendMessage(
+        to: String,
+        subject: String,
+        body: String,
+        cc: String? = nil,
+        from accountName: String? = nil,
+        attachmentPath: String? = nil,
+        dryRun: Bool = false
+    ) throws -> MailActionResult {
+        let script = buildSendScript(
+            to: to,
+            subject: subject,
+            body: body,
+            cc: cc,
+            from: accountName,
+            attachmentPath: attachmentPath,
+            dryRun: dryRun
+        )
+        // Send triggers SMTP handshake — use 45s timeout
+        let json = try runScript(script, timeoutSeconds: 45)
+        return try decodeActionResult(from: json)
+    }
+
     static func listAccounts() throws -> [MailAccount] {
         let script = buildAccountsScript()
         let json = try runScript(script)
@@ -72,6 +140,7 @@ struct MailBridge {
 
     private static func jsEscape(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\")
+         .replacingOccurrences(of: "\0", with: "\\0")
          .replacingOccurrences(of: "\"", with: "\\\"")
          .replacingOccurrences(of: "'", with: "\\'")
          .replacingOccurrences(of: "`", with: "\\`")
@@ -116,8 +185,8 @@ struct MailBridge {
                 var mb = mailboxes[m];
                 if (mb.name() !== mbFilter) continue;
 
-                var filter = unreadOnly ? {readStatus: false} : {};
-                var msgs = mb.messages.whose(filter)();
+                // whose({}) is invalid JXA — use messages() directly for all-messages case
+                var msgs = unreadOnly ? mb.messages.whose({readStatus: false})() : mb.messages();
                 var count = Math.min(msgs.length, limit - results.length);
                 var slice = msgs.slice(0, count);
 
@@ -248,6 +317,268 @@ struct MailBridge {
         }
 
         JSON.stringify(results);
+        """
+    }
+
+    private static func buildMoveScript(
+        account: String,
+        mailbox: String,
+        messageId: String,
+        toMailbox: String,
+        dryRun: Bool
+    ) -> String {
+        let safeAccount = jsEscape(account)
+        let safeMailbox = jsEscape(mailbox)
+        let safeTarget = jsEscape(toMailbox)
+        let safeMsgId = jsEscape(messageId)
+
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        for (var attempt = 0; attempt < 20; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('MAILBRIDGE_ERR_NOT_READY'); }
+
+        // Recursive mailbox finder — handles nested IMAP folders (e.g. Archive/2025)
+        function findMailboxByName(mailboxes, name) {
+            for (var i = 0; i < mailboxes.length; i++) {
+                if (mailboxes[i].name() === name) return mailboxes[i];
+                try {
+                    var sub = mailboxes[i].mailboxes();
+                    var found = findMailboxByName(sub, name);
+                    if (found !== null) return found;
+                } catch(e) {}
+            }
+            return null;
+        }
+
+        var isDryRun = \(dryRun ? "true" : "false");
+        var sourceMsg = null;
+        var targetMb = null;
+        var fromName = '\(safeMailbox)';
+
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            if (acct.name() !== '\(safeAccount)') continue;
+
+            var mailboxes = acct.mailboxes();
+
+            // Find source message in the specified source mailbox
+            for (var m = 0; m < mailboxes.length; m++) {
+                var mb = mailboxes[m];
+                if (mb.name() === '\(safeMailbox)') {
+                    var msgs = mb.messages.whose({id: \(safeMsgId)})();
+                    if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
+                    sourceMsg = msgs[0];
+                    break;
+                }
+            }
+
+            // Find target mailbox recursively (supports nested folders)
+            targetMb = findMailboxByName(mailboxes, '\(safeTarget)');
+            break;
+        }
+
+        if (sourceMsg === null) { throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND'); }
+        if (targetMb === null) { throw new Error('MAILBRIDGE_ERR_TARGET_NOT_FOUND'); }
+
+        if (!isDryRun) {
+            mail.move(sourceMsg, {to: targetMb});
+        }
+
+        JSON.stringify({
+            success: true,
+            action: 'move',
+            details: {
+                messageId: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
+                from: fromName,
+                to: '\(safeTarget)',
+                dryRun: String(isDryRun)
+            }
+        });
+        """
+    }
+
+    private static func buildSendScript(
+        to: String,
+        subject: String,
+        body: String,
+        cc: String?,
+        from accountName: String?,
+        attachmentPath: String?,
+        dryRun: Bool
+    ) -> String {
+        let safeTo = jsEscape(to)
+        let safeSubject = jsEscape(subject)
+        let safeBody = jsEscape(body)
+        let safeCc = cc.map { "'\(jsEscape($0))'" } ?? "null"
+        let safeFrom = accountName.map { "'\(jsEscape($0))'" } ?? "null"
+        let safeAttach = attachmentPath.map { "'\(jsEscape($0))'" } ?? "null"
+
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        for (var attempt = 0; attempt < 20; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('MAILBRIDGE_ERR_NOT_READY'); }
+
+        var isDryRun = \(dryRun ? "true" : "false");
+
+        var msg = mail.OutgoingMessage({
+            subject: '\(safeSubject)',
+            content: '\(safeBody)',
+            visible: false
+        });
+        mail.outgoingMessages.push(msg);
+
+        try {
+            var toRecip = mail.Recipient({address: '\(safeTo)'});
+            msg.toRecipients.push(toRecip);
+
+            var ccAddr = \(safeCc);
+            if (ccAddr !== null) {
+                var ccRecip = mail.CcRecipient({address: ccAddr});
+                msg.ccRecipients.push(ccRecip);
+            }
+
+            var fromAcct = \(safeFrom);
+            if (fromAcct !== null) {
+                var acctFound = false;
+                var accounts = mail.accounts();
+                for (var a = 0; a < accounts.length; a++) {
+                    if (accounts[a].name() === fromAcct) {
+                        acctFound = true;
+                        var emails = [];
+                        try { emails = accounts[a].emailAddresses(); } catch(e) {}
+                        if (Array.isArray(emails) && emails.length > 0) {
+                            msg.sender = emails[0];
+                        } else {
+                            throw new Error('MAILBRIDGE_ERR_ACCT_NO_EMAIL');
+                        }
+                        break;
+                    }
+                }
+                if (!acctFound) { throw new Error('MAILBRIDGE_ERR_ACCT_NOT_FOUND'); }
+            }
+
+            var attachPath = \(safeAttach);
+            if (attachPath !== null) {
+                var att = mail.Attachment({fileName: Path(attachPath)});
+                msg.attachments.push(att);
+                // Verify attachment was accepted (guard against silent drop on bad path)
+                if (msg.attachments().length === 0) {
+                    throw new Error('MAILBRIDGE_ERR_ATTACH_FAILED');
+                }
+            }
+
+            if (!isDryRun) {
+                // Capture queue length before send to detect whether message was consumed
+                var queueLenBefore = mail.outgoingMessages().length;
+                msg.send();
+                // Verify message left the outgoing queue (guard against silent SMTP queue)
+                var outgoingAfter = mail.outgoingMessages();
+                if (outgoingAfter.length >= queueLenBefore) {
+                    // Queue didn't shrink — confirm the specific message is still queued
+                    for (var r = 0; r < outgoingAfter.length; r++) {
+                        try {
+                            if (outgoingAfter[r].subject() === '\(safeSubject)') {
+                                throw new Error('MAILBRIDGE_ERR_MSG_QUEUED_NOT_SENT');
+                            }
+                        } catch(checkErr) {
+                            if (String(checkErr).indexOf('MAILBRIDGE_ERR') !== -1) throw checkErr;
+                        }
+                    }
+                }
+            } else {
+                // Dry-run: delete by object reference (not positional index) to avoid deleting wrong draft
+                try { msg.delete(); } catch(e) {}
+            }
+        } catch(err) {
+            // Cleanup: remove orphaned OutgoingMessage on any failure path (by object reference)
+            try { msg.delete(); } catch(e) {}
+            throw err;
+        }
+
+        JSON.stringify({
+            success: true,
+            action: 'send',
+            details: {
+                to: '\(safeTo)',
+                subject: '\(safeSubject)',
+                dryRun: String(isDryRun)
+            }
+        });
+        """
+    }
+
+    private static func buildMarkScript(
+        account: String,
+        mailbox: String,
+        messageId: String,
+        read: Bool,
+        dryRun: Bool
+    ) -> String {
+        let safeAccount = jsEscape(account)
+        let safeMailbox = jsEscape(mailbox)
+        // messageId validated as numeric by caller; jsEscape is defense-in-depth
+        let safeMsgId = jsEscape(messageId)
+
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        // 20 attempts × 0.5s = 10s max cold-launch poll
+        for (var attempt = 0; attempt < 20; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('MAILBRIDGE_ERR_NOT_READY'); }
+
+        var targetRead = \(read ? "true" : "false");
+        var isDryRun = \(dryRun ? "true" : "false");
+        var found = false;
+
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            if (acct.name() !== '\(safeAccount)') continue;
+
+            var mailboxes = acct.mailboxes();
+            for (var m = 0; m < mailboxes.length; m++) {
+                var mb = mailboxes[m];
+                if (mb.name() !== '\(safeMailbox)') continue;
+
+                var msgs = mb.messages.whose({id: \(safeMsgId)})();
+                if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
+
+                if (!isDryRun) {
+                    msgs[0].readStatus = targetRead;
+                    // Verify setter took effect (silent no-op on evicted/server-only messages)
+                    if (msgs[0].readStatus() !== targetRead) {
+                        throw new Error('MAILBRIDGE_ERR_SETTER_FAILED');
+                    }
+                }
+                found = true;
+                break;
+            }
+            if (found) break;
+        }
+
+        if (!found) { throw new Error('MAILBRIDGE_ERR_NOT_FOUND'); }
+
+        JSON.stringify({
+            success: true,
+            action: 'mark',
+            details: {
+                messageId: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
+                readStatus: String(targetRead),
+                dryRun: String(isDryRun)
+            }
+        });
         """
     }
 
@@ -382,6 +713,20 @@ struct MailBridge {
     }
 
     // MARK: - Decoders
+
+    private static func decodeActionResult(from json: String) throws -> MailActionResult {
+        guard !json.isEmpty else {
+            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
+        }
+        guard let data = json.data(using: .utf8) else {
+            throw MailBridgeError.decodingFailed("Non-UTF8 output")
+        }
+        do {
+            return try JSONDecoder().decode(MailActionResult.self, from: data)
+        } catch {
+            throw MailBridgeError.decodingFailed(error.localizedDescription)
+        }
+    }
 
     private static func decodeAccounts(from json: String) throws -> [MailAccount] {
         guard !json.isEmpty else {

@@ -5,7 +5,7 @@ struct MailCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Search.self, List.self, Read.self]
+        subcommands: [Accounts.self, Search.self, List.self, Read.self, Mark.self, Move.self, Send.self]
     )
 
     struct Accounts: AsyncParsableCommand {
@@ -51,6 +51,71 @@ struct MailCommand: AsyncParsableCommand {
         }
     }
 
+    struct Mark: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "mark",
+            abstract: "Mark a message as read or unread."
+        )
+
+        @Argument(help: "Message id from `pippin mail list` output.")
+        var messageId: String
+
+        @Flag(name: .long, help: "Mark as read.")
+        var read: Bool = false
+
+        @Flag(name: .long, help: "Mark as unread.")
+        var unread: Bool = false
+
+        @Flag(name: .long, help: "Print what would happen without making changes.")
+        var dryRun: Bool = false
+
+        mutating func validate() throws {
+            guard read != unread else {
+                throw ValidationError("Specify exactly one of --read or --unread.")
+            }
+        }
+
+        mutating func run() async throws {
+            let result = try MailBridge.markMessage(
+                compoundId: messageId,
+                read: read,
+                dryRun: dryRun
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(result)
+            print(String(data: data, encoding: .utf8)!)
+        }
+    }
+
+    struct Move: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "move",
+            abstract: "Move a message to another mailbox."
+        )
+
+        @Argument(help: "Message id from `pippin mail list` output.")
+        var messageId: String
+
+        @Option(name: .long, help: "Destination mailbox name.")
+        var to: String
+
+        @Flag(name: .long, help: "Print what would happen without making changes.")
+        var dryRun: Bool = false
+
+        mutating func run() async throws {
+            let result = try MailBridge.moveMessage(
+                compoundId: messageId,
+                toMailbox: to,
+                dryRun: dryRun
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(result)
+            print(String(data: data, encoding: .utf8)!)
+        }
+    }
+
     struct List: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "list",
@@ -79,6 +144,68 @@ struct MailCommand: AsyncParsableCommand {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(messages)
+            print(String(data: data, encoding: .utf8)!)
+        }
+    }
+
+    struct Send: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "send",
+            abstract: "Send an email message."
+        )
+
+        @Option(name: .long, help: "Recipient email address.")
+        var to: String
+
+        @Option(name: .long, help: "Message subject.")
+        var subject: String
+
+        @Option(name: .long, help: "Message body text.")
+        var body: String
+
+        @Option(name: .long, help: "CC recipient email address.")
+        var cc: String?
+
+        @Option(name: .long, help: "Sending account name.")
+        var from: String?
+
+        @Option(name: .long, help: "Path to file to attach.")
+        var attach: String?
+
+        @Flag(name: .long, help: "Print what would happen without sending.")
+        var dryRun: Bool = false
+
+        mutating func validate() throws {
+            let emailPattern = #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#
+            guard to.range(of: emailPattern, options: .regularExpression) != nil else {
+                throw ValidationError("--to does not look like a valid email address.")
+            }
+            if let ccAddr = cc {
+                guard ccAddr.range(of: emailPattern, options: .regularExpression) != nil else {
+                    throw ValidationError("--cc does not look like a valid email address.")
+                }
+            }
+            if let attachPath = attach {
+                guard FileManager.default.fileExists(atPath: attachPath) else {
+                    let filename = URL(fileURLWithPath: attachPath).lastPathComponent
+                    throw ValidationError("Attachment file not found: \(filename)")
+                }
+            }
+        }
+
+        mutating func run() async throws {
+            let result = try MailBridge.sendMessage(
+                to: to,
+                subject: subject,
+                body: body,
+                cc: cc,
+                from: from,
+                attachmentPath: attach,
+                dryRun: dryRun
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(result)
             print(String(data: data, encoding: .utf8)!)
         }
     }
