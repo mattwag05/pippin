@@ -5,7 +5,7 @@ struct MailCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Search.self, List.self, Read.self, Mark.self, Move.self]
+        subcommands: [Accounts.self, Search.self, List.self, Read.self, Mark.self, Move.self, Send.self]
     )
 
     struct Accounts: AsyncParsableCommand {
@@ -144,6 +144,58 @@ struct MailCommand: AsyncParsableCommand {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(messages)
+            print(String(data: data, encoding: .utf8)!)
+        }
+    }
+
+    struct Send: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "send",
+            abstract: "Send an email message."
+        )
+
+        @Option(name: .long, help: "Recipient email address.")
+        var to: String
+
+        @Option(name: .long, help: "Message subject.")
+        var subject: String
+
+        @Option(name: .long, help: "Message body text.")
+        var body: String
+
+        @Option(name: .long, help: "CC recipient email address.")
+        var cc: String?
+
+        @Option(name: .long, help: "Sending account name.")
+        var from: String?
+
+        @Option(name: .long, help: "Path to file to attach.")
+        var attach: String?
+
+        @Flag(name: .long, help: "Print what would happen without sending.")
+        var dryRun: Bool = false
+
+        mutating func validate() throws {
+            if let attachPath = attach {
+                guard FileManager.default.fileExists(atPath: attachPath) else {
+                    throw ValidationError("Attachment file not found: \(attachPath)")
+                }
+            }
+        }
+
+        mutating func run() async throws {
+            let result = try MailBridge.sendMessage(
+                to: to,
+                subject: subject,
+                body: body,
+                cc: cc,
+                from: from,
+                attachmentPath: attach,
+                dryRun: dryRun
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(result)
             print(String(data: data, encoding: .utf8)!)
         }
     }
