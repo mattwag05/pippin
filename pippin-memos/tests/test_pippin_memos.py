@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -114,9 +115,9 @@ class TestSinceFiltering:
         memos = db.list_memos()
         assert len(memos) == 4
 
-    def test_invalid_since_exits(self, db_path):
+    def test_invalid_since_raises(self, db_path):
         db = pm.VoiceMemosDB(db_path=str(db_path))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ValueError, match="Invalid --since date"):
             db.list_memos(since="not-a-date")
 
 
@@ -141,9 +142,9 @@ class TestSchemaVersionGuard:
 
 
 class TestGetMemo:
-    def test_missing_memo_exits(self, db_path):
+    def test_missing_memo_raises(self, db_path):
         db = pm.VoiceMemosDB(db_path=str(db_path))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ValueError, match="No memo found"):
             db.get_memo("NONEXISTENT-UUID")
 
     def test_existing_memo_ok(self, db_path):
@@ -167,9 +168,9 @@ class TestEvictedMemo:
         db = pm.VoiceMemosDB(db_path=str(db_path))
         assert db.is_evicted("AAA00000-0000-0000-0000-000000000001") is False
 
-    def test_export_evicted_exits(self, db_path, tmp_path):
+    def test_export_evicted_raises(self, db_path, tmp_path):
         db = pm.VoiceMemosDB(db_path=str(db_path))
-        with pytest.raises(SystemExit):
+        with pytest.raises(ValueError, match="evicted to iCloud"):
             db.export_memo("DDD00000-0000-0000-0000-000000000004", str(tmp_path))
 
 
@@ -339,3 +340,169 @@ class TestTranscribeFile:
         assert "transcription_file" in out
         assert out["transcription"] == "Test transcription."
         assert Path(out["transcription_file"]).exists()
+
+
+# ---------------------------------------------------------------------------
+# _die()
+# ---------------------------------------------------------------------------
+
+
+class TestDie:
+    def test_writes_json_to_stderr(self, capsys):
+        with pytest.raises(SystemExit):
+            pm._die("something went wrong")
+        err = json.loads(capsys.readouterr().err)
+        assert err == {"error": "something went wrong"}
+
+    def test_exits_code_1(self):
+        with pytest.raises(SystemExit) as exc_info:
+            pm._die("test error")
+        assert exc_info.value.code == 1
+
+
+# ---------------------------------------------------------------------------
+# cmd_list
+# ---------------------------------------------------------------------------
+
+
+class TestCmdList:
+    def _make_args(self, db_path, since=None, fmt="json"):
+        ns = argparse.Namespace()
+        ns.db = str(db_path)
+        ns.since = since
+        ns.format = fmt
+        return ns
+
+    def test_json_output_schema(self, db_path, capsys):
+        pm.cmd_list(self._make_args(db_path))
+        out = json.loads(capsys.readouterr().out)
+        assert isinstance(out, list)
+        assert len(out) == 4
+        required_keys = {"id", "title", "duration_seconds", "created_at", "file_path", "transcription"}
+        assert required_keys == set(out[0].keys())
+
+    def test_since_filtering_excludes_old(self, db_path, capsys):
+        pm.cmd_list(self._make_args(db_path, since="2025-01-01"))
+        out = json.loads(capsys.readouterr().out)
+        ids = {m["id"] for m in out}
+        assert "AAA00000-0000-0000-0000-000000000001" not in ids
+        assert "DDD00000-0000-0000-0000-000000000004" not in ids
+
+    def test_since_filtering_includes_new(self, db_path, capsys):
+        pm.cmd_list(self._make_args(db_path, since="2025-01-01"))
+        out = json.loads(capsys.readouterr().out)
+        ids = {m["id"] for m in out}
+        assert "BBB00000-0000-0000-0000-000000000002" in ids
+        assert "CCC00000-0000-0000-0000-000000000003" in ids
+
+    def test_format_text_tab_separated(self, db_path, capsys):
+        pm.cmd_list(self._make_args(db_path, fmt="text"))
+        out = capsys.readouterr().out
+        lines = [l for l in out.strip().split("\n") if l]
+        assert len(lines) == 4
+        # Each line: id TAB created_at TAB duration TAB title
+        parts = lines[0].split("\t")
+        assert len(parts) == 4
+
+    def test_invalid_since_exits_with_json_error(self, db_path, capsys):
+        with pytest.raises(SystemExit):
+            pm.cmd_list(self._make_args(db_path, since="not-a-date"))
+        err = json.loads(capsys.readouterr().err)
+        assert "error" in err
+        assert "Invalid --since" in err["error"]
+
+
+# ---------------------------------------------------------------------------
+# cmd_info
+# ---------------------------------------------------------------------------
+
+
+class TestCmdInfo:
+    def _make_args(self, db_path, memo_id):
+        ns = argparse.Namespace()
+        ns.db = str(db_path)
+        ns.id = memo_id
+        return ns
+
+    def test_json_output(self, db_path, capsys):
+        pm.cmd_info(self._make_args(db_path, "AAA00000-0000-0000-0000-000000000001"))
+        out = json.loads(capsys.readouterr().out)
+        assert out["id"] == "AAA00000-0000-0000-0000-000000000001"
+        assert out["title"] == "Old Recording"
+        required_keys = {"id", "title", "duration_seconds", "created_at", "file_path", "transcription"}
+        assert required_keys == set(out.keys())
+
+    def test_nonexistent_id_exits_with_json_error(self, db_path, capsys):
+        with pytest.raises(SystemExit):
+            pm.cmd_info(self._make_args(db_path, "NONEXISTENT-UUID"))
+        err = json.loads(capsys.readouterr().err)
+        assert "error" in err
+        assert "No memo found" in err["error"]
+
+
+# ---------------------------------------------------------------------------
+# cmd_export --all (batch)
+# ---------------------------------------------------------------------------
+
+
+class TestCmdExportAll:
+    def _make_args(self, db_path, output_dir, all_memos=True, memo_id=None, transcribe=False):
+        ns = argparse.Namespace()
+        ns.db = str(db_path)
+        ns.output = str(output_dir)
+        ns.all = all_memos
+        ns.id = memo_id
+        ns.transcribe = transcribe
+        return ns
+
+    def test_batch_exports_non_evicted(self, db_path, audio_files, tmp_path, capsys):
+        pm.cmd_export(self._make_args(db_path, tmp_path))
+        out = json.loads(capsys.readouterr().out)
+        assert isinstance(out, list)
+        assert len(out) == 4  # all 4 memos processed (1 evicted → error entry)
+        exported = [r for r in out if "exported_to" in r]
+        assert len(exported) == 3
+
+    def test_batch_continues_on_individual_failure(self, db_path, audio_files, tmp_path, capsys):
+        """Evicted memo produces an error entry; batch does not abort."""
+        pm.cmd_export(self._make_args(db_path, tmp_path))
+        out = json.loads(capsys.readouterr().out)
+        error_entries = [r for r in out if "error" in r]
+        assert len(error_entries) >= 1
+        # Successful entries must include id and exported_to
+        success_entries = [r for r in out if "exported_to" in r]
+        for entry in success_entries:
+            assert "id" in entry
+            assert Path(entry["exported_to"]).exists()
+
+    def test_empty_db_returns_empty_list(self, empty_db_path, tmp_path, capsys):
+        pm.cmd_export(self._make_args(empty_db_path, tmp_path))
+        out = json.loads(capsys.readouterr().out)
+        assert out == []
+
+
+# ---------------------------------------------------------------------------
+# main() dispatch — error catching
+# ---------------------------------------------------------------------------
+
+
+class TestMainDispatch:
+    def test_runtime_error_caught_as_json(self, bad_schema_db_path, capsys):
+        """RuntimeError (schema version guard) is caught in main() → JSON error on stderr."""
+        with patch("sys.argv", ["pippin-memos", "--db", str(bad_schema_db_path), "list"]):
+            with pytest.raises(SystemExit):
+                pm.main()
+        err = json.loads(capsys.readouterr().err)
+        assert "error" in err
+        assert "Unknown Voice Memos schema version" in err["error"]
+
+    def test_sqlite3_error_caught_as_json(self, db_path, capsys):
+        """sqlite3.Error that escapes cmd_* is caught in main() → JSON error on stderr."""
+        import sqlite3 as _sqlite3
+        with patch("sys.argv", ["pippin-memos", "--db", str(db_path), "list"]):
+            with patch.object(pm.VoiceMemosDB, "list_memos", side_effect=_sqlite3.Error("disk I/O error")):
+                with pytest.raises(SystemExit):
+                    pm.main()
+        err = json.loads(capsys.readouterr().err)
+        assert "error" in err
+        assert "disk I/O error" in err["error"]

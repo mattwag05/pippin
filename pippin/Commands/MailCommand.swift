@@ -1,6 +1,14 @@
 import ArgumentParser
 import Foundation
 
+/// Encode and print a JSON value to stdout with pretty-printing and sorted keys.
+private func printJSON<T: Encodable>(_ value: T) throws {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let data = try encoder.encode(value)
+    print(String(data: data, encoding: .utf8)!)
+}
+
 public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
@@ -20,10 +28,7 @@ public struct MailCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let accounts = try MailBridge.listAccounts()
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(accounts)
-            print(String(data: data, encoding: .utf8)!)
+            try printJSON(accounts)
         }
     }
 
@@ -50,10 +55,7 @@ public struct MailCommand: AsyncParsableCommand {
                 account: account,
                 limit: limit
             )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(messages)
-            print(String(data: data, encoding: .utf8)!)
+            try printJSON(messages)
         }
     }
 
@@ -89,10 +91,7 @@ public struct MailCommand: AsyncParsableCommand {
                 read: read,
                 dryRun: dryRun
             )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(result)
-            print(String(data: data, encoding: .utf8)!)
+            try printJSON(result)
         }
     }
 
@@ -119,10 +118,7 @@ public struct MailCommand: AsyncParsableCommand {
                 toMailbox: to,
                 dryRun: dryRun
             )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(result)
-            print(String(data: data, encoding: .utf8)!)
+            try printJSON(result)
         }
     }
 
@@ -153,10 +149,7 @@ public struct MailCommand: AsyncParsableCommand {
                 unread: unread,
                 limit: limit
             )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(messages)
-            print(String(data: data, encoding: .utf8)!)
+            try printJSON(messages)
         }
     }
 
@@ -217,10 +210,7 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPath: attach,
                 dryRun: dryRun
             )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(result)
-            print(String(data: data, encoding: .utf8)!)
+            try printJSON(result)
         }
     }
 
@@ -237,10 +227,7 @@ public struct MailCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let message = try MailBridge.readMessage(compoundId: messageId)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(message)
-            print(String(data: data, encoding: .utf8)!)
+            try printJSON(message)
         }
     }
 }
