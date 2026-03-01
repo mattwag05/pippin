@@ -94,6 +94,29 @@ struct MailBridge {
         return try decodeActionResult(from: json)
     }
 
+    static func sendMessage(
+        to: String,
+        subject: String,
+        body: String,
+        cc: String? = nil,
+        from accountName: String? = nil,
+        attachmentPath: String? = nil,
+        dryRun: Bool = false
+    ) throws -> MailActionResult {
+        let script = buildSendScript(
+            to: to,
+            subject: subject,
+            body: body,
+            cc: cc,
+            from: accountName,
+            attachmentPath: attachmentPath,
+            dryRun: dryRun
+        )
+        // Send triggers SMTP handshake — use 45s timeout
+        let json = try runScript(script, timeoutSeconds: 45)
+        return try decodeActionResult(from: json)
+    }
+
     static func listAccounts() throws -> [MailAccount] {
         let script = buildAccountsScript()
         let json = try runScript(script)
@@ -373,6 +396,128 @@ struct MailBridge {
                 messageId: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
                 from: fromName,
                 to: '\(safeTarget)',
+                dryRun: String(isDryRun)
+            }
+        });
+        """
+    }
+
+    private static func buildSendScript(
+        to: String,
+        subject: String,
+        body: String,
+        cc: String?,
+        from accountName: String?,
+        attachmentPath: String?,
+        dryRun: Bool
+    ) -> String {
+        let safeTo = jsEscape(to)
+        let safeSubject = jsEscape(subject)
+        let safeBody = jsEscape(body)
+        let safeCc = cc.map { "'\(jsEscape($0))'" } ?? "null"
+        let safeFrom = accountName.map { "'\(jsEscape($0))'" } ?? "null"
+        let safeAttach = attachmentPath.map { "'\(jsEscape($0))'" } ?? "null"
+
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        for (var attempt = 0; attempt < 20; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('MAILBRIDGE_ERR_NOT_READY'); }
+
+        var isDryRun = \(dryRun ? "true" : "false");
+
+        var msg = mail.OutgoingMessage({
+            subject: '\(safeSubject)',
+            content: '\(safeBody)',
+            visible: false
+        });
+        mail.outgoingMessages.push(msg);
+
+        try {
+            var toRecip = mail.Recipient({address: '\(safeTo)'});
+            msg.toRecipients.push(toRecip);
+
+            var ccAddr = \(safeCc);
+            if (ccAddr !== null) {
+                var ccRecip = mail.CcRecipient({address: ccAddr});
+                msg.ccRecipients.push(ccRecip);
+            }
+
+            var fromAcct = \(safeFrom);
+            if (fromAcct !== null) {
+                var acctFound = false;
+                var accounts = mail.accounts();
+                for (var a = 0; a < accounts.length; a++) {
+                    if (accounts[a].name() === fromAcct) {
+                        acctFound = true;
+                        var emails = [];
+                        try { emails = accounts[a].emailAddresses(); } catch(e) {}
+                        if (Array.isArray(emails) && emails.length > 0) {
+                            msg.sender = emails[0];
+                        } else {
+                            throw new Error('MAILBRIDGE_ERR_ACCT_NO_EMAIL');
+                        }
+                        break;
+                    }
+                }
+                if (!acctFound) { throw new Error('MAILBRIDGE_ERR_ACCT_NOT_FOUND'); }
+            }
+
+            var attachPath = \(safeAttach);
+            if (attachPath !== null) {
+                var att = mail.Attachment({fileName: attachPath});
+                msg.attachments.push(att);
+                // Verify attachment was accepted (guard against silent drop on bad path)
+                if (msg.attachments().length === 0) {
+                    throw new Error('MAILBRIDGE_ERR_ATTACH_FAILED');
+                }
+            }
+
+            if (!isDryRun) {
+                msg.send();
+                // Verify message left the outgoing queue (guard against silent SMTP queue)
+                var outgoing = mail.outgoingMessages();
+                for (var r = 0; r < outgoing.length; r++) {
+                    try {
+                        if (outgoing[r].subject() === '\(safeSubject)') {
+                            throw new Error('MAILBRIDGE_ERR_MSG_QUEUED_NOT_SENT');
+                        }
+                    } catch(checkErr) {
+                        if (String(checkErr).indexOf('MAILBRIDGE_ERR') !== -1) throw checkErr;
+                    }
+                }
+            } else {
+                // Dry-run: remove the staged OutgoingMessage to avoid leaving an artifact in Mail.app
+                try {
+                    var idx = mail.outgoingMessages().length - 1;
+                    if (idx >= 0) { mail.outgoingMessages[idx].delete(); }
+                } catch(e) {}
+            }
+        } catch(err) {
+            // Cleanup: remove orphaned OutgoingMessage on any failure path
+            try {
+                var outgoing = mail.outgoingMessages();
+                for (var c = outgoing.length - 1; c >= 0; c--) {
+                    try {
+                        if (outgoing[c].subject() === '\(safeSubject)') {
+                            outgoing[c].delete();
+                            break;
+                        }
+                    } catch(e) {}
+                }
+            } catch(e) {}
+            throw err;
+        }
+
+        JSON.stringify({
+            success: true,
+            action: 'send',
+            details: {
+                to: '\(safeTo)',
+                subject: '\(safeSubject)',
                 dryRun: String(isDryRun)
             }
         });
