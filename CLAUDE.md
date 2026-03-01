@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Built in Xcode with Claude Code assistance.
 
-**Current status:** `pippin mail list` and `pippin mail read` implemented (PR #1). `pippin memos` not started. Spec: `macos-cli-automation-plan.md`.
+**Current status:** `pippin mail list` and `pippin mail read` (PR #1) and `pippin memos list/info/export` (PR #2) implemented. Spec: `macos-cli-automation-plan.md`.
 
 **Xcode project:** `pippin.xcodeproj` — single target `pippin`. Entry point: `pippin/Pippin.swift` (`@main`; renamed from `main.swift` for SPM compatibility). `Package.swift` added (ArgumentParser 1.7.0).
 
@@ -53,12 +53,15 @@ Run each subcommand once interactively after granting — macOS requires a live 
 - Performance target: `<3 sec` per call
 
 ### voicememos-cli (Python)
-- Single-file script, installed via `pipx`
-- `VoiceMemosDB` class reads `~/Library/Application Support/com.apple.voicememos/*.sqlite` directly
-- **Schema version guard on init** — raises `RuntimeError` if schema version is unknown (see `voicememos-schema` skill)
+- Single-file `pippin-memos/pippin_memos.py`, installed via `pipx install pippin-memos/`; binary at `~/.local/bin/pippin-memos`
+- **DB path (macOS 14+):** `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/CloudRecordings.db` (`.db` extension, not `.sqlite`; NOT the `Application Support` path)
+- **Table:** `ZCLOUDRECORDING` — key columns: `ZUNIQUEID` (UUID string ID), `ZCUSTOMLABELFORSORTING` (title), `ZDATE` (Core Data epoch), `ZPATH` (filename relative to Recordings dir), `ZEVICTIONDATE` (non-null = iCloud-evicted)
+- **`Z_VERSION`:** 1 (macOS 26 Tahoe). Update `KNOWN_SCHEMA_VERSIONS` in `pippin_memos.py` after OS updates.
+- **File formats:** `.m4a` (older recordings) and `.qta` (newer, macOS 14+) — export preserves original extension
+- **Schema version guard on init** — raises `RuntimeError` if version unknown (see `voicememos-schema` skill, but note: skill assumes old path — search Group Container manually)
+- **`pyproject.toml`:** use `build-backend = "setuptools.build_meta"` — `setuptools.backends.legacy:build` fails on Python 3.14
 - Core Data epoch: seconds since 2001-01-01 UTC (not Unix epoch)
-- Optional transcription: `whisper` → `SFSpeechRecognizer` fallback
-- Export naming: `YYYY-MM-DD_title.m4a`
+- Export naming: `YYYY-MM-DD_title.<ext>`
 - Performance target: `<2 sec` list
 
 ### Foundation toolset (install first, per plan)
@@ -89,7 +92,7 @@ Gotchas: `macnotesapp` brew tap is dead — use `pipx install macnotesapp` (comm
 
 1. ✅ **Foundation toolset** — installed
 2. ✅ **`pippin mail`** — `list` and `read` implemented (PR #1 on Forgejo)
-3. **`pippin memos`** — Python single-file script; start with `VoiceMemosDB` class + schema guard
+3. ✅ **`pippin memos`** — `list`, `info`, `export` implemented (PR #2 on Forgejo)
 
 ## Non-Goals (per spec)
 - No TUI or interactive UI
