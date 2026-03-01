@@ -38,7 +38,7 @@ Before any implementation can be tested, grant these in **System Settings → Pr
 
 Run each subcommand once interactively after granting — macOS requires a live approval prompt before launchd/cron calls work.
 
-> **TCC note:** Permission is per binary path. `swift run` wrapper and installed binary are separate — each needs its own grant.
+> **TCC note:** Permission is per binary path. `swift run` wrapper and installed binary are separate — each needs its own grant. Run `pippin mail list` once interactively (not under launchd) after building at a new path.
 
 ## Architecture
 
