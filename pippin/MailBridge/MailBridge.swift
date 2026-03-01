@@ -49,6 +49,27 @@ struct MailBridge {
         return try decodeMessages(from: json)
     }
 
+    static func markMessage(
+        compoundId: String,
+        read: Bool,
+        dryRun: Bool = false
+    ) throws -> MailActionResult {
+        let parts = compoundId.components(separatedBy: "||")
+        guard parts.count == 3 else {
+            throw MailBridgeError.invalidMessageId(compoundId)
+        }
+        let account = parts[0]
+        let mailboxName = parts[1]
+        let msgId = parts[2]
+        guard !msgId.isEmpty, msgId.allSatisfy({ $0.isNumber }) else {
+            throw MailBridgeError.invalidMessageId(compoundId)
+        }
+        let script = buildMarkScript(account: account, mailbox: mailboxName, messageId: msgId, read: read, dryRun: dryRun)
+        // Write operation: use 20s timeout to accommodate cold Mail launch + IMAP round-trip
+        let json = try runScript(script, timeoutSeconds: 20)
+        return try decodeActionResult(from: json)
+    }
+
     static func listAccounts() throws -> [MailAccount] {
         let script = buildAccountsScript()
         let json = try runScript(script)
@@ -72,6 +93,7 @@ struct MailBridge {
 
     private static func jsEscape(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\")
+         .replacingOccurrences(of: "\0", with: "\\0")
          .replacingOccurrences(of: "\"", with: "\\\"")
          .replacingOccurrences(of: "'", with: "\\'")
          .replacingOccurrences(of: "`", with: "\\`")
@@ -251,6 +273,72 @@ struct MailBridge {
         """
     }
 
+    private static func buildMarkScript(
+        account: String,
+        mailbox: String,
+        messageId: String,
+        read: Bool,
+        dryRun: Bool
+    ) -> String {
+        let safeAccount = jsEscape(account)
+        let safeMailbox = jsEscape(mailbox)
+        // messageId validated as numeric by caller; jsEscape is defense-in-depth
+        let safeMsgId = jsEscape(messageId)
+
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        // 20 attempts × 0.5s = 10s max cold-launch poll
+        for (var attempt = 0; attempt < 20; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('MAILBRIDGE_ERR_NOT_READY'); }
+
+        var targetRead = \(read ? "true" : "false");
+        var isDryRun = \(dryRun ? "true" : "false");
+        var found = false;
+
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            if (acct.name() !== '\(safeAccount)') continue;
+
+            var mailboxes = acct.mailboxes();
+            for (var m = 0; m < mailboxes.length; m++) {
+                var mb = mailboxes[m];
+                if (mb.name() !== '\(safeMailbox)') continue;
+
+                var msgs = mb.messages.whose({id: \(safeMsgId)})();
+                if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
+
+                if (!isDryRun) {
+                    msgs[0].readStatus = targetRead;
+                    // Verify setter took effect (silent no-op on evicted/server-only messages)
+                    if (msgs[0].readStatus() !== targetRead) {
+                        throw new Error('MAILBRIDGE_ERR_SETTER_FAILED');
+                    }
+                }
+                found = true;
+                break;
+            }
+            if (found) break;
+        }
+
+        if (!found) { throw new Error('MAILBRIDGE_ERR_NOT_FOUND'); }
+
+        JSON.stringify({
+            success: true,
+            action: 'mark',
+            details: {
+                messageId: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
+                readStatus: String(targetRead),
+                dryRun: String(isDryRun)
+            }
+        });
+        """
+    }
+
     private static func buildReadScript(account: String, mailbox: String, messageId: String) throws -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
@@ -382,6 +470,20 @@ struct MailBridge {
     }
 
     // MARK: - Decoders
+
+    private static func decodeActionResult(from json: String) throws -> MailActionResult {
+        guard !json.isEmpty else {
+            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
+        }
+        guard let data = json.data(using: .utf8) else {
+            throw MailBridgeError.decodingFailed("Non-UTF8 output")
+        }
+        do {
+            return try JSONDecoder().decode(MailActionResult.self, from: data)
+        } catch {
+            throw MailBridgeError.decodingFailed(error.localizedDescription)
+        }
+    }
 
     private static func decodeAccounts(from json: String) throws -> [MailAccount] {
         guard !json.isEmpty else {
