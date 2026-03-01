@@ -116,6 +116,31 @@ def bad_schema_db_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def empty_db_path(tmp_path: Path) -> Path:
+    """Temp SQLite DB with zero recordings (valid schema, empty table)."""
+    p = tmp_path / "CloudRecordings_empty.db"
+    con = sqlite3.connect(str(p))
+    try:
+        con.execute("CREATE TABLE Z_METADATA (Z_VERSION INTEGER)")
+        con.execute("INSERT INTO Z_METADATA (Z_VERSION) VALUES (1)")
+        con.execute("""
+            CREATE TABLE ZCLOUDRECORDING (
+                Z_PK           INTEGER PRIMARY KEY,
+                ZUNIQUEID      VARCHAR,
+                ZCUSTOMLABELFORSORTING VARCHAR,
+                ZDURATION      FLOAT,
+                ZDATE          FLOAT,
+                ZPATH          VARCHAR,
+                ZEVICTIONDATE  FLOAT
+            )
+        """)
+        con.commit()
+    finally:
+        con.close()
+    return p
+
+
+@pytest.fixture
 def audio_files(db_path: Path) -> dict[str, Path]:
     """Create dummy audio files alongside the DB so export can copy them."""
     recordings_dir = db_path.parent
