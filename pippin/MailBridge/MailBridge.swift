@@ -8,10 +8,19 @@ enum MailBridgeError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .scriptFailed(let msg): return "osascript error: \(msg)"
-        case .timeout: return "osascript timed out (>10s)"
-        case .decodingFailed(let msg): return "JSON decode failed: \(msg)"
-        case .invalidMessageId(let id): return "Invalid message id format: \(id)"
+        case .scriptFailed: return "Mail automation script failed"
+        case .timeout: return "Mail automation script timed out"
+        case .decodingFailed: return "Failed to decode Mail response"
+        case .invalidMessageId(let id): return "Invalid message id: \(id)"
+        }
+    }
+
+    /// Raw technical detail for debugging — do not write to stdout
+    var debugDetail: String? {
+        switch self {
+        case .scriptFailed(let msg): return msg
+        case .decodingFailed(let msg): return msg
+        default: return nil
         }
     }
 }
@@ -46,6 +55,7 @@ struct MailBridge {
 
     private static func jsEscape(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\")
+         .replacingOccurrences(of: "\"", with: "\\\"")
          .replacingOccurrences(of: "'", with: "\\'")
          .replacingOccurrences(of: "`", with: "\\`")
          .replacingOccurrences(of: "\n", with: "\\n")
@@ -65,6 +75,13 @@ struct MailBridge {
 
         return """
         var mail = Application('Mail');
+        // Poll until Mail.app has loaded accounts (guards against post-launch account-sync race)
+        var ready = false;
+        for (var attempt = 0; attempt < 8; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
         var acctFilter = \(acctFilter);
         var mbFilter = '\(mbName)';
         var unreadOnly = \(unread ? "true" : "false");
@@ -124,6 +141,13 @@ struct MailBridge {
 
         return """
         var mail = Application('Mail');
+        // Poll until Mail.app has loaded accounts (guards against post-launch account-sync race)
+        var ready = false;
+        for (var attempt = 0; attempt < 8; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
         var result = null;
 
         var accounts = mail.accounts();
@@ -141,9 +165,9 @@ struct MailBridge {
 
                 var msg = msgs[0];
                 result = {
-                    id: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
-                    account: '\(safeAccount)',
-                    mailbox: '\(safeMailbox)',
+                    id: acct.name() + '||' + mb.name() + '||' + String(msg.id()),
+                    account: acct.name(),
+                    mailbox: mb.name(),
                     subject: msg.subject(),
                     from: msg.sender(),
                     to: msg.toRecipients().map(function(r) { return r.address(); }),
