@@ -38,6 +38,23 @@ struct MailBridge {
         return try decodeMessages(from: json)
     }
 
+    static func searchMessages(
+        query: String,
+        account: String? = nil,
+        limit: Int = 10
+    ) throws -> [MailMessage] {
+        let script = buildSearchScript(query: query, account: account, limit: limit)
+        // Search scans all mailboxes including body content — use 30s timeout
+        let json = try runScript(script, timeoutSeconds: 30)
+        return try decodeMessages(from: json)
+    }
+
+    static func listAccounts() throws -> [MailAccount] {
+        let script = buildAccountsScript()
+        let json = try runScript(script)
+        return try decodeAccounts(from: json)
+    }
+
     static func readMessage(compoundId: String) throws -> MailMessage {
         let parts = compoundId.components(separatedBy: "||")
         guard parts.count == 3 else {
@@ -130,6 +147,110 @@ struct MailBridge {
         """
     }
 
+    private static func buildAccountsScript() -> String {
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        for (var attempt = 0; attempt < 8; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
+
+        var accounts = mail.accounts();
+        var results = [];
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            var emails = [];
+            try { emails = acct.emailAddresses(); } catch(e) {}
+            var emailStr = (Array.isArray(emails) && emails.length > 0) ? emails[0] : '';
+            results.push({
+                name: acct.name(),
+                email: emailStr
+            });
+        }
+        JSON.stringify(results);
+        """
+    }
+
+    private static func buildSearchScript(
+        query: String,
+        account: String?,
+        limit: Int
+    ) -> String {
+        let safeQuery = jsEscape(query)
+        let acctFilter = account.map { "'\(jsEscape($0))'" } ?? "null"
+        // Clamp limit to prevent runaway scans; per-mailbox cap bounds body-fetch time
+        let safeLimitVal = max(1, min(limit, 500))
+        let perMailboxLimit = 200
+
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        // 20 attempts × 0.5s = 10s max cold-launch poll (accommodates IMAP sync on first run)
+        for (var attempt = 0; attempt < 20; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
+
+        var query = '\(safeQuery)'.toLowerCase();
+        var acctFilter = \(acctFilter);
+        var limit = \(safeLimitVal);
+        var perMailboxLimit = \(perMailboxLimit);
+        var results = [];
+
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length && results.length < limit; a++) {
+            var acct = accounts[a];
+            var acctName = acct.name();
+            if (acctFilter !== null && acctName !== acctFilter) continue;
+
+            var mailboxes = acct.mailboxes();
+            for (var m = 0; m < mailboxes.length && results.length < limit; m++) {
+                var mb = mailboxes[m];
+                // Cap messages scanned per mailbox to bound body-fetch time on large inboxes
+                var allMsgs = mb.messages();
+                var scanCount = Math.min(allMsgs.length, perMailboxLimit);
+                var msgs = allMsgs.slice(0, scanCount);
+
+                for (var i = 0; i < msgs.length && results.length < limit; i++) {
+                    var msg = msgs[i];
+                    var subject = msg.subject() || '';
+                    var sender = msg.sender() || '';
+
+                    // Check subject and sender first (fast, no body fetch needed)
+                    var matchedFast = subject.toLowerCase().indexOf(query) !== -1
+                                   || sender.toLowerCase().indexOf(query) !== -1;
+
+                    // Only fetch body if subject/sender didn't match
+                    var matched = matchedFast;
+                    if (!matched) {
+                        var body = msg.content() || '';
+                        matched = body.toLowerCase().indexOf(query) !== -1;
+                    }
+
+                    if (matched) {
+                        results.push({
+                            id: acctName + '||' + mb.name() + '||' + msg.id(),
+                            account: acctName,
+                            mailbox: mb.name(),
+                            subject: subject,
+                            from: sender,
+                            to: [],
+                            date: msg.dateSent().toISOString(),
+                            read: msg.readStatus(),
+                            body: null
+                        });
+                    }
+                }
+            }
+        }
+
+        JSON.stringify(results);
+        """
+    }
+
     private static func buildReadScript(account: String, mailbox: String, messageId: String) throws -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
@@ -187,7 +308,7 @@ struct MailBridge {
 
     // MARK: - Process Runner
 
-    private static func runScript(_ script: String) throws -> String {
+    private static func runScript(_ script: String, timeoutSeconds: Int = 10) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-l", "JavaScript", "-e", script]
@@ -216,13 +337,15 @@ struct MailBridge {
             group.leave()
         }
 
-        // Set up timeout: terminate after 10 seconds
+        // Set up timeout: terminate after timeoutSeconds
         let timeoutItem = DispatchWorkItem {
-            if process.isRunning {
-                process.terminate()
+            guard process.isRunning else { return }
+            process.terminate()  // SIGTERM — give osascript 2 seconds to clean up
+            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             }
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(10), execute: timeoutItem)
+        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds), execute: timeoutItem)
 
         process.waitUntilExit()
         timeoutItem.cancel()
@@ -233,19 +356,51 @@ struct MailBridge {
             throw MailBridgeError.timeout
         }
 
-        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-        let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+        let stdoutStr = (String(data: stdoutData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawStderr = (String(data: stderrData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard process.terminationStatus == 0 else {
-            throw MailBridgeError.scriptFailed(stderr.trimmingCharacters(in: .whitespacesAndNewlines))
+            throw MailBridgeError.scriptFailed(rawStderr)
         }
 
-        return stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        // osascript can exit 0 and still write errors to stderr (e.g. TCC denial).
+        // Filter benign framework log lines (timestamp-prefixed CoreData/NSDateFormatter noise)
+        // before treating stderr as a script failure.
+        let errorLines = rawStderr
+            .components(separatedBy: .newlines)
+            .filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { return false }
+                let looksLikeLogLine = trimmed.first?.isNumber == true && trimmed.contains("osascript[")
+                return !looksLikeLogLine
+            }
+        if !errorLines.isEmpty {
+            throw MailBridgeError.scriptFailed(errorLines.joined(separator: "\n"))
+        }
+
+        return stdoutStr
     }
 
     // MARK: - Decoders
 
+    private static func decodeAccounts(from json: String) throws -> [MailAccount] {
+        guard !json.isEmpty else {
+            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
+        }
+        guard let data = json.data(using: .utf8) else {
+            throw MailBridgeError.decodingFailed("Non-UTF8 output")
+        }
+        do {
+            return try JSONDecoder().decode([MailAccount].self, from: data)
+        } catch {
+            throw MailBridgeError.decodingFailed(error.localizedDescription)
+        }
+    }
+
     private static func decodeMessages(from json: String) throws -> [MailMessage] {
+        guard !json.isEmpty else {
+            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
+        }
         guard let data = json.data(using: .utf8) else {
             throw MailBridgeError.decodingFailed("Non-UTF8 output")
         }
@@ -257,6 +412,9 @@ struct MailBridge {
     }
 
     private static func decodeMessage(from json: String) throws -> MailMessage {
+        guard !json.isEmpty else {
+            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
+        }
         guard let data = json.data(using: .utf8) else {
             throw MailBridgeError.decodingFailed("Non-UTF8 output")
         }

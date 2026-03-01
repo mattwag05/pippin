@@ -5,8 +5,51 @@ struct MailCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [List.self, Read.self]
+        subcommands: [Accounts.self, Search.self, List.self, Read.self]
     )
+
+    struct Accounts: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "accounts",
+            abstract: "List configured Mail accounts."
+        )
+
+        mutating func run() async throws {
+            let accounts = try MailBridge.listAccounts()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(accounts)
+            print(String(data: data, encoding: .utf8)!)
+        }
+    }
+
+    struct Search: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "search",
+            abstract: "Search messages by subject, sender, or body."
+        )
+
+        @Argument(help: "Search query (case-insensitive, matches subject/sender/body).")
+        var query: String
+
+        @Option(name: .long, help: "Filter by account name.")
+        var account: String?
+
+        @Option(name: .long, help: "Maximum number of results to return (default: 10).")
+        var limit: Int = 10
+
+        mutating func run() async throws {
+            let messages = try MailBridge.searchMessages(
+                query: query,
+                account: account,
+                limit: limit
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(messages)
+            print(String(data: data, encoding: .utf8)!)
+        }
+    }
 
     struct List: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
