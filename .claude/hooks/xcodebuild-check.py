@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PostToolUse hook: run xcodebuild after any .swift edit to catch syntax errors immediately."""
+"""PostToolUse hook: run swift build after any .swift edit to catch syntax errors immediately."""
 import sys
 import json
 import os
@@ -13,7 +13,7 @@ if not file_path.endswith(".swift"):
 
 project_dir = "/Users/matthewwagner/Projects/pippin"
 result = subprocess.run(
-    ["xcodebuild", "-scheme", "pippin", "build", "-quiet"],
+    ["swift", "build"],
     cwd=project_dir,
     capture_output=True,
     text=True,
