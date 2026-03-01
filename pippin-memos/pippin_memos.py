@@ -21,7 +21,9 @@ import json
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
+import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -261,6 +263,7 @@ def cmd_info(args: argparse.Namespace) -> None:
 def cmd_export(args: argparse.Namespace) -> None:
     db = VoiceMemosDB(db_path=getattr(args, "db", None))
     output_dir = args.output
+    transcribe = getattr(args, "transcribe", False)
 
     if getattr(args, "all", False):
         memos = db.list_memos()
@@ -270,16 +273,121 @@ def cmd_export(args: argparse.Namespace) -> None:
         results = []
         for memo in memos:
             try:
-                dest = db.export_memo(memo.id, output_dir)
-                results.append({"id": memo.id, "title": memo.title, "exported_to": dest})
+                result = _export_and_maybe_transcribe(db, memo.id, output_dir, transcribe)
+                results.append(result)
             except SystemExit:
                 results.append({"id": memo.id, "title": memo.title, "error": "export failed"})
         print(json.dumps(results, ensure_ascii=False, indent=2))
     else:
-        dest = db.export_memo(args.id, output_dir)
-        memo = db.get_memo(args.id)
-        print(json.dumps({"id": memo.id, "title": memo.title, "exported_to": dest},
-                         ensure_ascii=False, indent=2))
+        result = _export_and_maybe_transcribe(db, args.id, output_dir, transcribe)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _transcribe_file(audio_path: str) -> str:
+    """Run parakeet-mlx on audio_path and return plain-text transcription."""
+    binary = shutil.which("parakeet-mlx")
+    if not binary:
+        _die(
+            "parakeet-mlx not found. Install it with: pipx install parakeet-mlx"
+        )
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        result = subprocess.run(
+            [binary, audio_path, "--output-format", "txt", "--output-dir", tmp_dir],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode != 0:
+            _die(f"parakeet-mlx failed: {result.stderr.strip()}")
+
+        txt_files = list(Path(tmp_dir).glob("*.txt"))
+        if not txt_files:
+            _die("parakeet-mlx produced no .txt output")
+
+        return txt_files[0].read_text(encoding="utf-8")
+
+
+def _export_and_maybe_transcribe(
+    db: "VoiceMemosDB", memo_id: str, output_dir: str, transcribe: bool
+) -> dict:
+    """Export a single memo and optionally transcribe it. Returns result dict."""
+    dest = db.export_memo(memo_id, output_dir)
+    memo = db.get_memo(memo_id)
+    result: dict = {"id": memo.id, "title": memo.title, "exported_to": dest}
+
+    if transcribe:
+        txt_path = str(Path(dest).with_suffix(".txt"))
+        ext = Path(dest).suffix.lower()
+        if ext not in (".m4a", ".qta"):
+            result["transcription_warning"] = f"Unknown audio format {ext!r}; skipped."
+        else:
+            try:
+                text = _transcribe_file(dest)
+                Path(txt_path).write_text(text, encoding="utf-8")
+                result["transcription_file"] = txt_path
+                result["transcription"] = text
+            except SystemExit:
+                result["transcription_warning"] = "Transcription failed (see stderr)."
+
+    return result
+
+
+def cmd_delete(args: argparse.Namespace) -> None:
+    db = VoiceMemosDB(db_path=getattr(args, "db", None))
+    memo = db.get_memo(args.id)  # exits if not found
+
+    if not memo.file_path:
+        _die(f"Memo {args.id!r} has no file path recorded in the database.")
+
+    if db.is_evicted(args.id):
+        _die(
+            f"Recording '{memo.title}' has been evicted to iCloud and is not "
+            "stored locally. Cannot delete."
+        )
+
+    src = Path(memo.file_path)
+    if not src.exists():
+        _die(f"Recording file not found locally: {src}")
+
+    if not shutil.which("trash"):
+        _die(
+            "The `trash` CLI is required for safe deletion. "
+            "Install it with: brew install trash"
+        )
+
+    if getattr(args, "dry_run", False):
+        print(
+            json.dumps(
+                {
+                    "id": memo.id,
+                    "title": memo.title,
+                    "file_path": memo.file_path,
+                    "deleted": False,
+                    "dry_run": True,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+
+    result = subprocess.run(["trash", memo.file_path], capture_output=True, text=True)
+    if result.returncode != 0:
+        _die(f"trash failed (exit {result.returncode}): {result.stderr.strip()}")
+
+    print(
+        json.dumps(
+            {
+                "id": memo.id,
+                "title": memo.title,
+                "file_path": memo.file_path,
+                "deleted": True,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -326,6 +434,25 @@ def build_parser() -> argparse.ArgumentParser:
     id_group = p_export.add_mutually_exclusive_group(required=True)
     id_group.add_argument("id", nargs="?", help="Memo UUID to export.")
     id_group.add_argument("--all", action="store_true", help="Export every recording.")
+    p_export.add_argument(
+        "--transcribe",
+        action="store_true",
+        default=False,
+        help="Transcribe audio with parakeet-mlx and write a .txt sidecar alongside the export.",
+    )
+
+    # delete
+    p_delete = sub.add_parser(
+        "delete",
+        help="Move recording file to Trash. DB row lingers until Voice Memos.app cleans up.",
+    )
+    p_delete.add_argument("id", help="Memo UUID from `pippin-memos list` output.")
+    p_delete.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Print what would happen without moving to Trash.",
+    )
 
     return parser
 
@@ -341,6 +468,8 @@ def main() -> None:
             cmd_info(args)
         elif args.command == "export":
             cmd_export(args)
+        elif args.command == "delete":
+            cmd_delete(args)
     except RuntimeError as exc:
         _die(str(exc))
     except KeyboardInterrupt:

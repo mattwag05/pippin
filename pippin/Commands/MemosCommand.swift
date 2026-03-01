@@ -1,12 +1,12 @@
 import ArgumentParser
 import Foundation
 
-enum MemosError: LocalizedError {
+public enum MemosError: LocalizedError {
     case binaryNotFound
     case failed(Int32, String)
     case timeout
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .binaryNotFound:
             return """
@@ -21,64 +21,75 @@ enum MemosError: LocalizedError {
     }
 }
 
-struct MemosCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+public struct MemosCommand: AsyncParsableCommand {
+    public static let configuration = CommandConfiguration(
         commandName: "memos",
         abstract: "Interact with Voice Memos.",
-        subcommands: [List.self, Info.self, Export.self]
+        subcommands: [List.self, Info.self, Export.self, Delete.self]
     )
+
+    public init() {}
 
     // MARK: - Subcommands
 
-    struct List: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public struct List: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List all recordings as JSON."
         )
 
         @Option(name: .long, help: "Only return recordings on or after YYYY-MM-DD.")
-        var since: String?
+        public var since: String?
 
         @Option(name: .long, help: "Output format: json (default) or text.")
-        var format: String = "json"
+        public var format: String = "json"
 
-        mutating func run() async throws {
+        public init() {}
+
+        public mutating func run() async throws {
             var args = ["list", "--format", format]
             if let s = since { args += ["--since", s] }
             try runPippinMemos(args)
         }
     }
 
-    struct Info: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public struct Info: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "info",
             abstract: "Show full metadata for a single recording."
         )
 
         @Argument(help: "Memo UUID from `pippin memos list` output.")
-        var id: String
+        public var id: String
 
-        mutating func run() async throws {
+        public init() {}
+
+        public mutating func run() async throws {
             try runPippinMemos(["info", id])
         }
     }
 
-    struct Export: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
+    public struct Export: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
             commandName: "export",
             abstract: "Copy recording(s) to a directory."
         )
 
         @Argument(help: "Memo UUID to export (omit with --all).")
-        var id: String?
+        public var id: String?
 
         @Flag(name: .long, help: "Export every recording.")
-        var all: Bool = false
+        public var all: Bool = false
 
         @Option(name: .long, help: "Destination directory (created if absent).")
-        var output: String
+        public var output: String
 
-        mutating func run() async throws {
+        @Flag(name: .long, help: "Transcribe audio using parakeet-mlx and write .txt sidecar.")
+        public var transcribe: Bool = false
+
+        public init() {}
+
+        public mutating func run() async throws {
             var args = ["export", "--output", output]
             if all {
                 args.append("--all")
@@ -87,6 +98,30 @@ struct MemosCommand: AsyncParsableCommand {
             } else {
                 throw ValidationError("Provide a memo UUID or --all.")
             }
+            if transcribe { args.append("--transcribe") }
+            // Transcription can take several minutes; use a generous timeout
+            let timeout = transcribe ? 600 : 10
+            try runPippinMemos(args, timeoutSeconds: timeout)
+        }
+    }
+
+    public struct Delete: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "delete",
+            abstract: "Move recording file to Trash. The DB row lingers until Voice Memos.app cleans up."
+        )
+
+        @Argument(help: "Memo UUID from `pippin memos list` output.")
+        public var id: String
+
+        @Flag(name: .long, help: "Print what would happen without moving to Trash.")
+        public var dryRun: Bool = false
+
+        public init() {}
+
+        public mutating func run() async throws {
+            var args = ["delete", id]
+            if dryRun { args.append("--dry-run") }
             try runPippinMemos(args)
         }
     }
@@ -118,7 +153,7 @@ private func findPippinMemos() -> String? {
 }
 
 /// Run `pippin-memos <arguments>`, streaming stdout/stderr to our own handles.
-private func runPippinMemos(_ arguments: [String]) throws {
+func runPippinMemos(_ arguments: [String], timeoutSeconds: Int = 10) throws {
     guard let binary = findPippinMemos() else {
         throw MemosError.binaryNotFound
     }
@@ -154,7 +189,7 @@ private func runPippinMemos(_ arguments: [String]) throws {
     let timeoutItem = DispatchWorkItem {
         if process.isRunning { process.terminate() }
     }
-    DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(10), execute: timeoutItem)
+    DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds), execute: timeoutItem)
 
     process.waitUntilExit()
     timeoutItem.cancel()
