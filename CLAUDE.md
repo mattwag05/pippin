@@ -40,6 +40,8 @@ Run each subcommand once interactively after granting — macOS requires a live 
 
 > **TCC note:** Permission is per binary path. `swift run` wrapper and installed binary are separate — each needs its own grant. Run `pippin mail list` once interactively (not under launchd) after building at a new path.
 
+> **TCC note for `mail send`:** Send requires Automation → Mail **write** access. If TCC is denied, `toRecipients.push()` silently no-ops and `msg.send()` throws a cryptic JXA error rather than a clear TCC message. Run `pippin mail send --dry-run ...` once interactively after each new build path to confirm the grant is active before scheduling.
+
 ## Architecture
 
 ### mail-cli (Swift)
@@ -48,7 +50,13 @@ Run each subcommand once interactively after granting — macOS requires a live 
 - Uses Swift ArgumentParser for subcommand dispatch
 - Output schema: `{id, account, mailbox, subject, from, to[], date (ISO8601), read, body?}`
 - Message ID format: `account||mailbox||messageId` (compound, round-trip safe)
-- `jsEscape()` escapes: `\`, `"`, `'`, `` ` ``, `\n`, `\r`, `\u2028`, `\u2029` — in that order (backslash first)
+- `jsEscape()` escapes: `\`, `\0`, `"`, `'`, `` ` ``, `\n`, `\r`, `\u2028`, `\u2029` — in that order (backslash first, null byte second)
+- `mb.messages.whose({})()` is **invalid JXA** (exits 0, error on stderr) — use `mb.messages()` for unfiltered fetch; `mb.messages.whose({readStatus: false})()` for unread-only
+- `runScript()` timeout is per-operation: default 10s (list/read/accounts), 30s (search), 20s (mark), 45s (move/send) — pass `timeoutSeconds:` explicitly for new write ops
+- JXA file attachment paths: use `Path(absolutePath)` in `mail.Attachment({fileName: Path(...)})` — plain string `fileName` fails to resolve POSIX paths under launchd
+- `msg.send()` throws on SMTP rejection; that is sufficient for success detection — do NOT check `outgoingMessages` queue length post-send (Mail.app send-delay keeps message in queue until delay expires, causing false failures)
+- Cold-launch poll: 8 attempts for read-only ops, 20 attempts (10s) for write ops
+- Cleanup staged `OutgoingMessage` by object reference (`msg.delete()`), not by positional index or subject match
 - `--dry-run` flag required on all write operations
 - Performance target: `<3 sec` per call
 
