@@ -5,8 +5,23 @@ struct MailCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [List.self, Read.self]
+        subcommands: [Accounts.self, List.self, Read.self]
     )
+
+    struct Accounts: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "accounts",
+            abstract: "List configured Mail accounts."
+        )
+
+        mutating func run() async throws {
+            let accounts = try MailBridge.listAccounts()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(accounts)
+            print(String(data: data, encoding: .utf8)!)
+        }
+    }
 
     struct List: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
