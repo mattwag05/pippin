@@ -5,6 +5,7 @@ enum MailBridgeError: LocalizedError {
     case timeout
     case decodingFailed(String)
     case invalidMessageId(String)
+    case invalidMailbox(String)
 
     var errorDescription: String? {
         switch self {
@@ -12,6 +13,7 @@ enum MailBridgeError: LocalizedError {
         case .timeout: return "Mail automation script timed out"
         case .decodingFailed: return "Failed to decode Mail response"
         case .invalidMessageId(let id): return "Invalid message id: \(id)"
+        case .invalidMailbox(let name): return "Invalid mailbox name: \(name)"
         }
     }
 
@@ -33,9 +35,10 @@ struct MailBridge {
         unread: Bool = false,
         limit: Int = 50
     ) throws -> [MailMessage] {
-        let script = buildListScript(account: account, mailbox: mailbox, unread: unread, limit: limit)
+        let clampedLimit = max(1, min(limit, 500))
+        let script = buildListScript(account: account, mailbox: mailbox, unread: unread, limit: clampedLimit)
         let json = try runScript(script)
-        return try decodeMessages(from: json)
+        return try decode([MailMessage].self, from: json)
     }
 
     static func searchMessages(
@@ -46,7 +49,7 @@ struct MailBridge {
         let script = buildSearchScript(query: query, account: account, limit: limit)
         // Search scans all mailboxes including body content — use 30s timeout
         let json = try runScript(script, timeoutSeconds: 30)
-        return try decodeMessages(from: json)
+        return try decode([MailMessage].self, from: json)
     }
 
     static func markMessage(
@@ -54,20 +57,11 @@ struct MailBridge {
         read: Bool,
         dryRun: Bool = false
     ) throws -> MailActionResult {
-        let parts = compoundId.components(separatedBy: "||")
-        guard parts.count == 3 else {
-            throw MailBridgeError.invalidMessageId(compoundId)
-        }
-        let account = parts[0]
-        let mailboxName = parts[1]
-        let msgId = parts[2]
-        guard !msgId.isEmpty, msgId.allSatisfy({ $0.isNumber }) else {
-            throw MailBridgeError.invalidMessageId(compoundId)
-        }
+        let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         let script = buildMarkScript(account: account, mailbox: mailboxName, messageId: msgId, read: read, dryRun: dryRun)
         // Write operation: use 20s timeout to accommodate cold Mail launch + IMAP round-trip
         let json = try runScript(script, timeoutSeconds: 20)
-        return try decodeActionResult(from: json)
+        return try decode(MailActionResult.self, from: json)
     }
 
     static func moveMessage(
@@ -75,23 +69,14 @@ struct MailBridge {
         toMailbox: String,
         dryRun: Bool = false
     ) throws -> MailActionResult {
-        let parts = compoundId.components(separatedBy: "||")
-        guard parts.count == 3 else {
-            throw MailBridgeError.invalidMessageId(compoundId)
-        }
-        let account = parts[0]
-        let mailboxName = parts[1]
-        let msgId = parts[2]
-        guard !msgId.isEmpty, msgId.allSatisfy({ $0.isNumber }) else {
-            throw MailBridgeError.invalidMessageId(compoundId)
-        }
+        let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         guard toMailbox.count <= 256, toMailbox.unicodeScalars.allSatisfy({ $0.value >= 0x20 }) else {
-            throw MailBridgeError.invalidMessageId("toMailbox name invalid")
+            throw MailBridgeError.invalidMailbox(toMailbox)
         }
         let script = buildMoveScript(account: account, mailbox: mailboxName, messageId: msgId, toMailbox: toMailbox, dryRun: dryRun)
         // Move triggers IMAP MOVE server-side — use 45s timeout for slow servers
         let json = try runScript(script, timeoutSeconds: 45)
-        return try decodeActionResult(from: json)
+        return try decode(MailActionResult.self, from: json)
     }
 
     static func sendMessage(
@@ -114,26 +99,35 @@ struct MailBridge {
         )
         // Send triggers SMTP handshake — use 45s timeout
         let json = try runScript(script, timeoutSeconds: 45)
-        return try decodeActionResult(from: json)
+        return try decode(MailActionResult.self, from: json)
     }
 
     static func listAccounts() throws -> [MailAccount] {
         let script = buildAccountsScript()
         let json = try runScript(script)
-        return try decodeAccounts(from: json)
+        return try decode([MailAccount].self, from: json)
     }
 
     static func readMessage(compoundId: String) throws -> MailMessage {
-        let parts = compoundId.components(separatedBy: "||")
-        guard parts.count == 3 else {
-            throw MailBridgeError.invalidMessageId(compoundId)
-        }
-        let account = parts[0]
-        let mailboxName = parts[1]
-        let msgId = parts[2]
-        let script = try buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
+        let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
+        let script = buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
         let json = try runScript(script)
-        return try decodeMessage(from: json)
+        return try decode(MailMessage.self, from: json)
+    }
+
+    // MARK: - Helpers
+
+    /// Parse and validate a compound message ID ("account||mailbox||numericId").
+    static func parseCompoundId(_ id: String) throws -> (account: String, mailbox: String, messageId: String) {
+        let parts = id.components(separatedBy: "||")
+        guard parts.count == 3 else {
+            throw MailBridgeError.invalidMessageId(id)
+        }
+        let msgId = parts[2]
+        guard !msgId.isEmpty, msgId.allSatisfy({ $0.isNumber }) else {
+            throw MailBridgeError.invalidMessageId(id)
+        }
+        return (parts[0], parts[1], msgId)
     }
 
     // MARK: - Script Builders
@@ -569,13 +563,10 @@ struct MailBridge {
         """
     }
 
-    private static func buildReadScript(account: String, mailbox: String, messageId: String) throws -> String {
+    private static func buildReadScript(account: String, mailbox: String, messageId: String) -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
-        // messageId must be an integer string — throw rather than substitute a fallback
-        guard !messageId.isEmpty, messageId.allSatisfy({ $0.isNumber }) else {
-            throw MailBridgeError.invalidMessageId(messageId)
-        }
+        // messageId is pre-validated numeric by parseCompoundId — jsEscape is defense-in-depth
         let safeMsgId = messageId
 
         return """
@@ -701,7 +692,7 @@ struct MailBridge {
 
     // MARK: - Decoders
 
-    private static func decodeActionResult(from json: String) throws -> MailActionResult {
+    static func decode<T: Decodable>(_ type: T.Type, from json: String) throws -> T {
         guard !json.isEmpty else {
             throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
         }
@@ -709,49 +700,7 @@ struct MailBridge {
             throw MailBridgeError.decodingFailed("Non-UTF8 output")
         }
         do {
-            return try JSONDecoder().decode(MailActionResult.self, from: data)
-        } catch {
-            throw MailBridgeError.decodingFailed(error.localizedDescription)
-        }
-    }
-
-    private static func decodeAccounts(from json: String) throws -> [MailAccount] {
-        guard !json.isEmpty else {
-            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
-        }
-        guard let data = json.data(using: .utf8) else {
-            throw MailBridgeError.decodingFailed("Non-UTF8 output")
-        }
-        do {
-            return try JSONDecoder().decode([MailAccount].self, from: data)
-        } catch {
-            throw MailBridgeError.decodingFailed(error.localizedDescription)
-        }
-    }
-
-    private static func decodeMessages(from json: String) throws -> [MailMessage] {
-        guard !json.isEmpty else {
-            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
-        }
-        guard let data = json.data(using: .utf8) else {
-            throw MailBridgeError.decodingFailed("Non-UTF8 output")
-        }
-        do {
-            return try JSONDecoder().decode([MailMessage].self, from: data)
-        } catch {
-            throw MailBridgeError.decodingFailed(error.localizedDescription)
-        }
-    }
-
-    private static func decodeMessage(from json: String) throws -> MailMessage {
-        guard !json.isEmpty else {
-            throw MailBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
-        }
-        guard let data = json.data(using: .utf8) else {
-            throw MailBridgeError.decodingFailed("Non-UTF8 output")
-        }
-        do {
-            return try JSONDecoder().decode(MailMessage.self, from: data)
+            return try JSONDecoder().decode(type, from: data)
         } catch {
             throw MailBridgeError.decodingFailed(error.localizedDescription)
         }
