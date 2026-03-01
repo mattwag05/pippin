@@ -47,8 +47,11 @@ struct MailBridge {
     private static func jsEscape(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\")
          .replacingOccurrences(of: "'", with: "\\'")
+         .replacingOccurrences(of: "`", with: "\\`")
          .replacingOccurrences(of: "\n", with: "\\n")
          .replacingOccurrences(of: "\r", with: "\\r")
+         .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+         .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 
     private static func buildListScript(
@@ -114,7 +117,7 @@ struct MailBridge {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
         // messageId must be an integer string — throw rather than substitute a fallback
-        guard messageId.allSatisfy({ $0.isNumber }) else {
+        guard !messageId.isEmpty, messageId.allSatisfy({ $0.isNumber }) else {
             throw MailBridgeError.invalidMessageId(messageId)
         }
         let safeMsgId = messageId
@@ -172,20 +175,42 @@ struct MailBridge {
 
         try process.run()
 
-        var timedOut = false
-        let deadline = DispatchTime.now() + .seconds(10)
-        DispatchQueue.global().asyncAfter(deadline: deadline) {
+        // Drain both pipes concurrently to avoid deadlock on large output (>64KB pipe buffer)
+        var stdoutData = Data()
+        var stderrData = Data()
+        let group = DispatchGroup()
+
+        group.enter()
+        DispatchQueue.global().async {
+            stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+
+        group.enter()
+        DispatchQueue.global().async {
+            stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+
+        // Set up timeout: terminate after 10 seconds
+        let timeoutItem = DispatchWorkItem {
             if process.isRunning {
-                timedOut = true
                 process.terminate()
             }
         }
+        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(10), execute: timeoutItem)
+
         process.waitUntilExit()
+        timeoutItem.cancel()
+        group.wait()
 
-        if timedOut { throw MailBridgeError.timeout }
+        // Detect timeout via termination reason (SIGTERM from our terminate() call)
+        if process.terminationReason == .uncaughtSignal {
+            throw MailBridgeError.timeout
+        }
 
-        let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+        let stderr = String(data: stderrData, encoding: .utf8) ?? ""
 
         guard process.terminationStatus == 0 else {
             throw MailBridgeError.scriptFailed(stderr.trimmingCharacters(in: .whitespacesAndNewlines))
