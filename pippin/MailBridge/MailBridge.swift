@@ -70,6 +70,30 @@ struct MailBridge {
         return try decodeActionResult(from: json)
     }
 
+    static func moveMessage(
+        compoundId: String,
+        toMailbox: String,
+        dryRun: Bool = false
+    ) throws -> MailActionResult {
+        let parts = compoundId.components(separatedBy: "||")
+        guard parts.count == 3 else {
+            throw MailBridgeError.invalidMessageId(compoundId)
+        }
+        let account = parts[0]
+        let mailboxName = parts[1]
+        let msgId = parts[2]
+        guard !msgId.isEmpty, msgId.allSatisfy({ $0.isNumber }) else {
+            throw MailBridgeError.invalidMessageId(compoundId)
+        }
+        guard toMailbox.count <= 256, toMailbox.unicodeScalars.allSatisfy({ $0.value >= 0x20 }) else {
+            throw MailBridgeError.invalidMessageId("toMailbox name invalid")
+        }
+        let script = buildMoveScript(account: account, mailbox: mailboxName, messageId: msgId, toMailbox: toMailbox, dryRun: dryRun)
+        // Move triggers IMAP MOVE server-side — use 45s timeout for slow servers
+        let json = try runScript(script, timeoutSeconds: 45)
+        return try decodeActionResult(from: json)
+    }
+
     static func listAccounts() throws -> [MailAccount] {
         let script = buildAccountsScript()
         let json = try runScript(script)
@@ -270,6 +294,88 @@ struct MailBridge {
         }
 
         JSON.stringify(results);
+        """
+    }
+
+    private static func buildMoveScript(
+        account: String,
+        mailbox: String,
+        messageId: String,
+        toMailbox: String,
+        dryRun: Bool
+    ) -> String {
+        let safeAccount = jsEscape(account)
+        let safeMailbox = jsEscape(mailbox)
+        let safeTarget = jsEscape(toMailbox)
+        let safeMsgId = jsEscape(messageId)
+
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        for (var attempt = 0; attempt < 20; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('MAILBRIDGE_ERR_NOT_READY'); }
+
+        // Recursive mailbox finder — handles nested IMAP folders (e.g. Archive/2025)
+        function findMailboxByName(mailboxes, name) {
+            for (var i = 0; i < mailboxes.length; i++) {
+                if (mailboxes[i].name() === name) return mailboxes[i];
+                try {
+                    var sub = mailboxes[i].mailboxes();
+                    var found = findMailboxByName(sub, name);
+                    if (found !== null) return found;
+                } catch(e) {}
+            }
+            return null;
+        }
+
+        var isDryRun = \(dryRun ? "true" : "false");
+        var sourceMsg = null;
+        var targetMb = null;
+        var fromName = '\(safeMailbox)';
+
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            if (acct.name() !== '\(safeAccount)') continue;
+
+            var mailboxes = acct.mailboxes();
+
+            // Find source message in the specified source mailbox
+            for (var m = 0; m < mailboxes.length; m++) {
+                var mb = mailboxes[m];
+                if (mb.name() === '\(safeMailbox)') {
+                    var msgs = mb.messages.whose({id: \(safeMsgId)})();
+                    if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
+                    sourceMsg = msgs[0];
+                    break;
+                }
+            }
+
+            // Find target mailbox recursively (supports nested folders)
+            targetMb = findMailboxByName(mailboxes, '\(safeTarget)');
+            break;
+        }
+
+        if (sourceMsg === null) { throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND'); }
+        if (targetMb === null) { throw new Error('MAILBRIDGE_ERR_TARGET_NOT_FOUND'); }
+
+        if (!isDryRun) {
+            mail.move(sourceMsg, {to: targetMb});
+        }
+
+        JSON.stringify({
+            success: true,
+            action: 'move',
+            details: {
+                messageId: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
+                from: fromName,
+                to: '\(safeTarget)',
+                dryRun: String(isDryRun)
+            }
+        });
         """
     }
 
