@@ -40,9 +40,12 @@ brew install swiftformat           # auto-format hook (install once)
 
 Before any implementation can be tested, grant these in **System Settings → Privacy & Security**:
 - **Full Disk Access** → Terminal.app (Voice Memos SQLite + osascript in launchd)
-- **Automation → Mail** → Terminal.app (required for any `pippin mail` osascript calls)
+- **Automation → Mail** → Terminal.app (for interactive testing via `swift run`)
+- **Automation → Mail** → the built `pippin` binary (for cron/launchd — grant after first build; must be re-granted if the binary path changes)
 
 Run each subcommand once interactively after granting — macOS requires a live approval prompt before launchd/cron calls work.
+
+> **TCC note:** macOS grants Automation permission per binary path. The `swift run` wrapper and the final installed binary are different executables — each needs its own grant. Run `pippin mail list` once interactively (not under launchd) after building at a new path.
 
 ## Architecture
 
