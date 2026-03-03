@@ -120,8 +120,30 @@ Format: `MAJOR.MINOR.PATCH[-prerelease]`
 - No iOS/cross-platform support
 - `memos delete` — deferred to v0.2 (sandboxing concerns)
 
-## Development Tooling (`.claude/`)
+> **Note:** Project-level `.claude/` skills, hooks, and agents were removed in PR #6. No local hooks are active — `swiftformat` and `swift build` must be run manually.
 
-- **`agents/`** — `applescript-security-reviewer` (JXA injection/safety), `headless-compatibility-checker` (launchd failure modes)
-- **`hooks/`** — PostToolUse: swiftformat on `.swift` edits, `swift build` after edits, blocks Voice Memos DB writes
-- **`skills/`** — `mail-bridge-scaffold` (new subcommand scaffolding), `voicememos-schema` (live schema inspection), `pippin-output-validator` (JSON schema validation)
+## Workflow Gotchas
+
+### Creating PRs on Forgejo
+`gh pr create` fails with `HTTP 405` (Forgejo doesn't support GitHub's GraphQL API). Use curl + Forgejo REST API with Basic auth:
+```bash
+curl -s -X POST "https://forgejo.tail6e035b.ts.net/api/v1/repos/matthewwagner/pippin/pulls" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic $(echo -n 'matthewwagner:<token>' | base64)" \
+  -d '{"title":"...","head":"branch","base":"main","body":"..."}'
+```
+Token: Vaultwarden "Forgejo Admin Credentials" (password field). Bearer token auth ("token <tok>") fails with "user does not exist" — Basic auth only.
+
+### Test Assertions on Temp Paths
+`result.contains("-2")` on export paths will fail intermittently — UUID-based tmpDir names can contain "-2" (e.g. `F6-2789`). Always assert on `lastPathComponent`:
+```swift
+XCTAssertEqual((result as NSString).lastPathComponent, "expected.m4a")
+```
+
+### GRDB Nullable Columns
+`fetchOne` on a nullable column returns `Optional<Optional<T>>` — ambiguous for null vs missing row. Use `COUNT(*) WHERE col IS NOT NULL` instead:
+```swift
+// See VoiceMemosDB.isEvicted() for the pattern
+let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM ... WHERE ZEVICTIONDATE IS NOT NULL AND ZUNIQUEID = ?", arguments: [id])!
+return count > 0
+```
