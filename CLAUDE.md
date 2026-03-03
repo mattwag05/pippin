@@ -4,30 +4,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project: Pippin
 
-macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Built in Xcode with Claude Code assistance.
+macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Single arm64 binary, headless-safe (cron/launchd/N8N compatible).
 
-**Current status:** All `pippin mail` subcommands implemented (PR #1–#4 merged). `pippin memos list/info/export` (PR #2) implemented. Spec: `macos-cli-automation-plan.md`.
-
-**Xcode project:** `pippin.xcodeproj` — single target `pippin`. Entry point: `pippin/Pippin.swift` (`@main`; renamed from `main.swift` for SPM compatibility). `Package.swift` added (ArgumentParser 1.7.0).
+**Current status:** v0.1.0-beta — all mail and memos subcommands implemented. Python dependency eliminated; memos rewritten in Swift with GRDB.
 
 ## What This Builds
 
-Two native CLI tools with JSON stdout output, headless-safe (cron/launchd/N8N compatible):
-
-- **`pippin mail`** — Swift CLI subcommands for Apple Mail via osascript (`list`, `search`, `read`, `send`, `move`, `mark`)
-- **`pippin memos`** — Python CLI for Voice Memos via direct SQLite read (`list`, `export`, `delete`, `info`)
+- **`pippin mail`** — Swift CLI for Apple Mail via osascript JXA (`list`, `search`, `show`, `send`, `move`, `mark`, `accounts`)
+- **`pippin memos`** — Swift CLI for Voice Memos via GRDB read-only SQLite (`list`, `info`, `export`)
+- **`pippin doctor`** / **`pippin init`** — Permission diagnostics and guided setup
 
 ## Build Workflow
 
 ```bash
-swift build                        # CLI build
-swift build --show-bin-path        # → .build/arm64-apple-macosx/debug/
-swift run pippin mail list         # run subcommand
-swift test                         # run tests
-brew install swiftformat           # auto-format hook (install once)
+swift build                        # Debug build
+swift build -c release             # Release build
+swift run pippin mail list         # Run subcommand (debug)
+swift test                         # Run 126 tests
+
+# Makefile targets
+make build     # swift build -c release
+make test      # swift test
+make lint      # swiftformat --lint (requires brew install swiftformat)
+make install   # Release build + install to ~/.local/bin/pippin
+make release   # Release binary → .build/release-artifacts/
+make version   # Print version from Version.swift
+make clean     # Clean build artifacts
 ```
 
-> **SourceKit false positives:** Xcode's SourceKit can't see SPM dependencies (ArgumentParser, cross-file types). Ignore red squiggles in the IDE — `swift build` is the authoritative check.
+> **SourceKit false positives:** Xcode's SourceKit can't see SPM dependencies (GRDB, ArgumentParser, cross-file types). Ignore red squiggles in the IDE — `swift build` is authoritative.
 
 ## macOS Permissions Prerequisites
 
@@ -38,69 +43,74 @@ Before any implementation can be tested, grant these in **System Settings → Pr
 
 Run each subcommand once interactively after granting — macOS requires a live approval prompt before launchd/cron calls work.
 
-> **TCC note:** Permission is per binary path. `swift run` wrapper and installed binary are separate — each needs its own grant. Run `pippin mail list` once interactively (not under launchd) after building at a new path.
+> **TCC note:** Permission is per binary path. `swift run` wrapper and installed binary are separate — each needs its own grant.
 
-> **TCC note for `mail send`:** Send requires Automation → Mail **write** access. If TCC is denied, `toRecipients.push()` silently no-ops and `msg.send()` throws a cryptic JXA error rather than a clear TCC message. Run `pippin mail send --dry-run ...` once interactively after each new build path to confirm the grant is active before scheduling.
+## Package Structure
+
+```
+pippin/                     # PippinLib target (all application logic)
+  Commands/                 # ArgumentParser subcommand structs
+    MailCommand.swift       # mail subcommands
+    MemosCommand.swift      # memos subcommands
+    DoctorCommand.swift     # doctor + shared runAllChecks()
+    InitCommand.swift       # init (guided setup)
+    OutputOptions.swift     # shared --format text|json
+  Formatting/
+    TextFormatter.swift     # table/card/truncate/duration/compactDate
+    JSONOutput.swift        # shared printJSON<T>()
+  MailBridge/
+    MailBridge.swift        # JXA process runner, all script builders
+  MemosBridge/
+    VoiceMemosDB.swift      # GRDB read-only DB access
+    Transcriber.swift       # parakeet-mlx + SFSpeechRecognizer strategy
+  Models/
+    MailModels.swift        # MailMessage, MailAccount, MailActionResult
+    MemosModels.swift       # VoiceMemo, ExportResult (GRDB FetchableRecord)
+  Version.swift             # PippinVersion.version = "0.1.0-beta"
+pippin-entry/
+  Pippin.swift              # @main entry point
+Tests/PippinTests/          # 126 tests
+archive/pippin-memos/       # Archived Python implementation
+docs/archive/               # Archived planning documents
+```
 
 ## Architecture
 
-### mail-cli (Swift)
-- **`MailBridge` module** — all JXA calls isolated here; uses `osascript -l JavaScript` (not AppleScript, not NSAppleScript)
-- Uses `Process` to shell out to `osascript` (headless-safe; concurrent pipe draining prevents deadlock on large output)
-- Uses Swift ArgumentParser for subcommand dispatch
+### mail (Swift + JXA)
+- **`MailBridge`** — all JXA calls isolated here; uses `osascript -l JavaScript` (not AppleScript)
+- Uses `Process` to shell out to `osascript` (headless-safe; concurrent pipe draining prevents deadlock)
 - Output schema: `{id, account, mailbox, subject, from, to[], date (ISO8601), read, body?}`
 - Message ID format: `account||mailbox||messageId` (compound, round-trip safe)
-- `jsEscape()` escapes: `\`, `\0`, `"`, `'`, `` ` ``, `\n`, `\r`, `\u2028`, `\u2029` — in that order (backslash first, null byte second)
-- `mb.messages.whose({})()` is **invalid JXA** (exits 0, error on stderr) — use `mb.messages()` for unfiltered fetch; `mb.messages.whose({readStatus: false})()` for unread-only
-- `runScript()` timeout is per-operation: default 10s (list/read/accounts), 30s (search), 20s (mark), 45s (move/send) — pass `timeoutSeconds:` explicitly for new write ops
-- JXA file attachment paths: use `Path(absolutePath)` in `mail.Attachment({fileName: Path(...)})` — plain string `fileName` fails to resolve POSIX paths under launchd
-- `msg.send()` throws on SMTP rejection; that is sufficient for success detection — do NOT check `outgoingMessages` queue length post-send (Mail.app send-delay keeps message in queue until delay expires, causing false failures)
-- Cold-launch poll: 8 attempts for read-only ops, 20 attempts (10s) for write ops
-- Cleanup staged `OutgoingMessage` by object reference (`msg.delete()`), not by positional index or subject match
+- `jsEscape()` escapes in order: `\`, `\0`, `"`, `'`, `` ` ``, `\n`, `\r`, `\u2028`, `\u2029`
+- `mb.messages.whose({})()` is **invalid JXA** — use `mb.messages()` for unfiltered fetch
+- Timeouts: 10s (list/show/accounts), 30s (search), 20s (mark), 45s (move/send)
 - `--dry-run` flag required on all write operations
 - Performance target: `<3 sec` per call
 
-### voicememos-cli (Python)
-- Single-file `pippin-memos/pippin_memos.py`, installed via `pipx install pippin-memos/`; binary at `~/.local/bin/pippin-memos`
-- **DB path (macOS 14+):** `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/CloudRecordings.db` (`.db` extension, not `.sqlite`; NOT the `Application Support` path)
-- **Table:** `ZCLOUDRECORDING` — key columns: `ZUNIQUEID` (UUID string ID), `ZCUSTOMLABELFORSORTING` (title), `ZDATE` (Core Data epoch), `ZPATH` (filename relative to Recordings dir), `ZEVICTIONDATE` (non-null = iCloud-evicted)
-- **`Z_VERSION`:** 1 (macOS 26 Tahoe). Update `KNOWN_SCHEMA_VERSIONS` in `pippin_memos.py` after OS updates.
-- **File formats:** `.m4a` (older recordings) and `.qta` (newer, macOS 14+) — export preserves original extension
-- **Schema version guard on init** — raises `RuntimeError` if version unknown (see `voicememos-schema` skill, but note: skill assumes old path — search Group Container manually)
-- **`pyproject.toml`:** use `build-backend = "setuptools.build_meta"` — `setuptools.backends.legacy:build` fails on Python 3.14
-- Core Data epoch: seconds since 2001-01-01 UTC (not Unix epoch)
-- Export naming: `YYYY-MM-DD_title.<ext>`
+### memos (Swift + GRDB)
+- **`VoiceMemosDB`** — read-only `DatabaseQueue` (`configuration.readonly = true`)
+- **DB path (macOS 14+):** `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/CloudRecordings.db`
+- **Table:** `ZCLOUDRECORDING` — key columns: `ZUNIQUEID`, `ZCUSTOMLABELFORSORTING`, `ZDURATION`, `ZDATE`, `ZPATH`, `ZEVICTIONDATE`
+- **`Z_VERSION`:** 1 (macOS 26 Tahoe). Update `knownSchemaVersions` in `VoiceMemosDB.swift` after OS updates.
+- **File formats:** `.m4a` (older) and `.qta` (newer, macOS 14+)
+- Core Data epoch: `Date(timeIntervalSinceReferenceDate:)` handles 2001-01-01 offset automatically
+- Export naming: `YYYY-MM-DD_sanitized-title.<ext>` with collision suffix (-2, -3…)
 - Performance target: `<2 sec` list
 
-### Foundation toolset (install first, per plan)
-✅ **Installed.** `icalpal`, `reminders-cli`, `contacts-cli`, `imsg`, `imessage-exporter`, `macnotesapp`, `tag`, `osxmetadata`, `trash`, `duti`, `blueutil`, `mas`, `terminal-notifier` — all require Full Disk Access + relevant permissions granted to Terminal.
+### Concurrency
+- `swift-tools-version: 6.0` with `.swiftLanguageMode(.v5)` — strict concurrency not enforced yet
+- Existing GCD patterns in `MailBridge.runScript()` work under Swift 5 language mode
+- Migration path: adopt `@concurrent` and `withCheckedContinuation` in a future PR when ready for Swift 6 strict concurrency
 
-Gotchas: `macnotesapp` brew tap is dead — use `pipx install macnotesapp` (command is `notes`). `icalPal` gem binary at `~/.gem/ruby/2.6.0/bin/icalPal` (not on default PATH).
+## Versioning
 
-## Automations Configured
+`pippin/Version.swift` holds the canonical version string. Update it before any release commit.
 
-### MCP Servers
-- **context7** (global) — live Swift ArgumentParser + Python sqlite3 docs. Use via `use context7` in prompts.
+Format: `MAJOR.MINOR.PATCH[-prerelease]`
 
-### Skills (invoke with `/skill-name`)
-- **`/mail-bridge-scaffold`** — scaffolds a new MailBridge method + ArgumentParser subcommand + JSON output struct for a new `pippin mail` subcommand
-- **`/voicememos-schema`** — inspects the live Voice Memos SQLite schema and maps columns to the `VoiceMemosDB` output types; run when starting memos development or after an OS update
-- **`/pippin-output-validator`** — builds the binary and validates a subcommand's JSON output matches its documented schema; run after implementation changes
-
-### Hooks (active — `.claude/settings.json` configured)
-- **PreToolUse** (`Bash|Edit|Write`): blocks any operation targeting `com.apple.voicememos` path — Voice Memos DB is read-only
-- **PostToolUse** (`Edit|Write`): runs `swiftformat` on `.swift` files (no-ops if not installed; `brew install swiftformat`)
-- **PostToolUse** (`Edit|Write`): runs `swift build` after any `.swift` edit — reports failures inline
-
-### Agents
-- **`applescript-security-reviewer`** — reviews `MailBridge` methods for injection, privilege creep, error leakage, and headless safety; invoke after adding/modifying any MailBridge method
-- **`headless-compatibility-checker`** — checks osascript calls for launchd/cron failure modes (TCC assumptions, blocking ops, missing timeouts); invoke after any new MailBridge method
-
-## Implementation Order (per spec)
-
-1. ✅ **Foundation toolset** — installed
-2. ✅ **`pippin mail`** — all subcommands implemented: `list`, `read` (PR #1), `accounts`, `search` (PR #3), `mark`, `move`, `send` (PR #4) on Forgejo
-3. ✅ **`pippin memos`** — `list`, `info`, `export` implemented (PR #2 on Forgejo)
+- `0.1.0-beta` → `0.1.0` when beta testing complete
+- `0.1.x` → bug fixes; `0.2.0` → new features or breaking changes
+- `1.0.0` → CLI interface frozen, output schemas stable
 
 ## Non-Goals (per spec)
 - No TUI or interactive UI
@@ -108,3 +118,10 @@ Gotchas: `macnotesapp` brew tap is dead — use `pipx install macnotesapp` (comm
 - No Voice Memos recording or iCloud sync management
 - No real-time watch mode (post-MVP)
 - No iOS/cross-platform support
+- `memos delete` — deferred to v0.2 (sandboxing concerns)
+
+## Development Tooling (`.claude/`)
+
+- **`agents/`** — `applescript-security-reviewer` (JXA injection/safety), `headless-compatibility-checker` (launchd failure modes)
+- **`hooks/`** — PostToolUse: swiftformat on `.swift` edits, `swift build` after edits, blocks Voice Memos DB writes
+- **`skills/`** — `mail-bridge-scaffold` (new subcommand scaffolding), `voicememos-schema` (live schema inspection), `pippin-output-validator` (JSON schema validation)

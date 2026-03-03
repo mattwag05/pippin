@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: macos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Build (release)
+        run: swift build -c release
+
+      - name: Lint (swiftformat)
+        run: |
+          if command -v swiftformat &>/dev/null; then
+            swiftformat --lint pippin/ pippin-entry/ Tests/
+          else
+            echo "swiftformat not installed on runner — skipping lint"
+          fi
