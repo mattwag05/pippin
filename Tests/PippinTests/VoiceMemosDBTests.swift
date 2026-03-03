@@ -270,8 +270,7 @@ final class VoiceMemosDBTests: XCTestCase {
         defer { try? FileManager.default.removeItem(atPath: tmpDir) }
 
         let result = VoiceMemosDB.resolveCollision(dir: tmpDir, baseName: "test", ext: "m4a")
-        XCTAssertTrue(result.hasSuffix("test.m4a"))
-        XCTAssertFalse(result.contains("-2"))
+        XCTAssertEqual((result as NSString).lastPathComponent, "test.m4a")
     }
 
     func testResolveCollisionWithConflict() throws {
