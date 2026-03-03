@@ -1,13 +1,17 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "pippin",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v15)],
     dependencies: [
         .package(
             url: "https://github.com/apple/swift-argument-parser.git",
             from: "1.5.0"
+        ),
+        .package(
+            url: "https://github.com/groue/GRDB.swift.git",
+            from: "7.0.0"
         ),
     ],
     targets: [
@@ -16,20 +20,24 @@ let package = Package(
             name: "PippinLib",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "GRDB", package: "GRDB.swift"),
             ],
-            path: "pippin"
+            path: "pippin",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         // Executable entry point — just the @main struct
         .executableTarget(
             name: "pippin",
             dependencies: ["PippinLib"],
-            path: "pippin-entry"
+            path: "pippin-entry",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         // Test target
         .testTarget(
             name: "PippinTests",
-            dependencies: ["PippinLib"],
-            path: "Tests/PippinTests"
+            dependencies: ["PippinLib", .product(name: "GRDB", package: "GRDB.swift")],
+            path: "Tests/PippinTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]
 )

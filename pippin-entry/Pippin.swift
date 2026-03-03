@@ -5,7 +5,8 @@ import PippinLib
 struct Pippin: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "pippin",
-        abstract: "macOS CLI toolkit for Apple app automation.",
-        subcommands: [MailCommand.self, MemosCommand.self]
+        abstract: PippinVersion.tagline,
+        version: "pippin \(PippinVersion.version)",
+        subcommands: [MailCommand.self, MemosCommand.self, DoctorCommand.self, InitCommand.self]
     )
 }

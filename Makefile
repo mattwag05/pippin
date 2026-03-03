@@ -1,22 +1,31 @@
 INSTALL_DIR := $(HOME)/.local/bin
+VERSION := $(shell grep 'static let version' pippin/Version.swift | sed 's/.*"\(.*\)"/\1/')
 
-.PHONY: build install install-memos install-all clean
+.PHONY: build test lint install version release clean
 
 build:
 	swift build -c release
 
+test:
+	swift test
+
+lint:
+	swiftformat --lint pippin/ pippin-entry/ Tests/ 2>/dev/null || echo "swiftformat not installed — skipping lint"
+
 install: build
+	@mkdir -p "$(INSTALL_DIR)"
 	cp "$$(swift build -c release --show-bin-path)/pippin" "$(INSTALL_DIR)/pippin"
-	@echo "Installed: $(INSTALL_DIR)/pippin"
-	@echo "Run each subcommand once interactively to grant TCC permissions:"
-	@echo "  $(INSTALL_DIR)/pippin mail list"
-	@echo "  $(INSTALL_DIR)/pippin memos list"
+	@echo "Installed: $(INSTALL_DIR)/pippin ($(VERSION))"
+	@echo "Run 'pippin init' to check permissions."
 
-install-memos:
-	cd pippin-memos && pipx install --force .
-	@echo "Installed: $(INSTALL_DIR)/pippin-memos"
+version:
+	@echo $(VERSION)
 
-install-all: install install-memos
+release: build
+	@mkdir -p .build/release-artifacts
+	cp "$$(swift build -c release --show-bin-path)/pippin" ".build/release-artifacts/pippin-$(VERSION)-arm64-macos"
+	@echo "Release binary: .build/release-artifacts/pippin-$(VERSION)-arm64-macos"
 
 clean:
 	swift package clean
+	rm -rf .build/release-artifacts
