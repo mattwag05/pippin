@@ -147,3 +147,22 @@ XCTAssertEqual((result as NSString).lastPathComponent, "expected.m4a")
 let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM ... WHERE ZEVICTIONDATE IS NOT NULL AND ZUNIQUEID = ?", arguments: [id])!
 return count > 0
 ```
+
+## Git Remotes
+
+- `origin` → `https://github.com/mattwag05/pippin.git` (public, default push)
+- `forgejo` → `https://forgejo.tail6e035b.ts.net/matthewwagner/pippin.git` (private mirror)
+- Push to both after releases: `git push origin main && git push forgejo main`
+
+### Releasing
+
+- `make release` → `.build/release-artifacts/pippin-VERSION-arm64-macos`
+- `gh release create` requires **absolute paths** for artifact upload (relative paths fail — zsh cwd reset)
+- Tag format: `v0.1.0-beta` (with `v` prefix)
+
+## Homebrew Tap
+
+- Tap repo: `https://github.com/mattwag05/homebrew-tap` (Formula/pippin.rb)
+- Install: `brew install mattwag05/tap/pippin` (builds from source via SPM, ~30s)
+- Formula uses `--disable-sandbox` — required for SPM network access during `swift build`
+- Update formula `revision:` field after each new tag: `git rev-parse <tag>`
