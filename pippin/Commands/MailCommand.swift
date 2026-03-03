@@ -1,22 +1,16 @@
 import ArgumentParser
 import Foundation
 
-/// Encode and print a JSON value to stdout with pretty-printing and sorted keys.
-private func printJSON<T: Encodable>(_ value: T) throws {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    let data = try encoder.encode(value)
-    print(String(data: data, encoding: .utf8)!)
-}
-
 public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Search.self, List.self, Read.self, Mark.self, Move.self, Send.self]
+        subcommands: [Accounts.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self]
     )
 
     public init() {}
+
+    // MARK: - Accounts
 
     public struct Accounts: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
@@ -24,13 +18,22 @@ public struct MailCommand: AsyncParsableCommand {
             abstract: "List configured Mail accounts."
         )
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
             let accounts = try MailBridge.listAccounts()
-            try printJSON(accounts)
+            if output.isJSON {
+                try printJSON(accounts)
+            } else {
+                let rows = accounts.map { [$0.name, $0.email] }
+                print(TextFormatter.table(headers: ["NAME", "EMAIL"], rows: rows, columnWidths: [25, 50]))
+            }
         }
     }
+
+    // MARK: - Search
 
     public struct Search: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
@@ -47,6 +50,8 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum number of results to return (default: 10).")
         public var limit: Int = 10
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
@@ -55,9 +60,134 @@ public struct MailCommand: AsyncParsableCommand {
                 account: account,
                 limit: limit
             )
-            try printJSON(messages)
+            if output.isJSON {
+                try printJSON(messages)
+            } else {
+                printMessageTable(messages)
+            }
         }
     }
+
+    // MARK: - List
+
+    public struct List: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "list",
+            abstract: "List messages. Defaults to INBOX, all messages, limit 20."
+        )
+
+        @Option(name: .long, help: "Filter by account name.")
+        public var account: String?
+
+        @Option(name: .long, help: "Mailbox name (default: INBOX).")
+        public var mailbox: String = "INBOX"
+
+        @Flag(name: .long, help: "Only show unread messages.")
+        public var unread: Bool = false
+
+        @Option(name: .long, help: "Maximum number of messages to return.")
+        public var limit: Int = 20
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let messages = try MailBridge.listMessages(
+                account: account,
+                mailbox: mailbox,
+                unread: unread,
+                limit: limit
+            )
+            if output.isJSON {
+                try printJSON(messages)
+            } else {
+                printMessageTable(messages)
+            }
+        }
+    }
+
+    // MARK: - Show (formerly Read)
+
+    public struct Show: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "show",
+            abstract: "Show a message by its compound id or subject search."
+        )
+
+        @Argument(help: "Message id from `pippin mail list` output.")
+        public var messageId: String?
+
+        @Option(name: .long, help: "Find first message matching this subject and show it.")
+        public var subject: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func validate() throws {
+            if messageId != nil, subject != nil {
+                throw ValidationError("Provide either a message ID or --subject, not both.")
+            }
+            if messageId == nil, subject == nil {
+                throw ValidationError("Provide a message ID or --subject.")
+            }
+        }
+
+        public mutating func run() async throws {
+            let compoundId: String
+            if let subject = subject {
+                let results = try MailBridge.searchMessages(query: subject, limit: 1)
+                guard let first = results.first else {
+                    throw ValidationError("No message found matching subject: \(subject)")
+                }
+                compoundId = first.id
+            } else {
+                compoundId = messageId!
+            }
+
+            let message = try MailBridge.readMessage(compoundId: compoundId)
+            if output.isJSON {
+                try printJSON(message)
+            } else {
+                let fields: [(String, String)] = [
+                    ("From", message.from),
+                    ("To", message.to.joined(separator: ", ")),
+                    ("Date", TextFormatter.compactDate(message.date)),
+                    ("Subject", message.subject),
+                    ("Mailbox", "\(message.account) / \(message.mailbox)"),
+                    ("Body", message.body ?? "(no body)"),
+                ]
+                print(TextFormatter.card(fields: fields))
+            }
+        }
+    }
+
+    // MARK: - Read (hidden alias for backward compat)
+
+    public struct Read: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "read",
+            abstract: "Read a message (use 'show' instead).",
+            shouldDisplay: false
+        )
+
+        @Argument(help: "Message id from `pippin mail list` output.")
+        public var messageId: String
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            var show = Show()
+            show.messageId = messageId
+            show.output = output
+            try await show.run()
+        }
+    }
+
+    // MARK: - Mark
 
     public struct Mark: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
@@ -77,6 +207,8 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Print what would happen without making changes.")
         public var dryRun: Bool = false
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func validate() throws {
@@ -91,9 +223,16 @@ public struct MailCommand: AsyncParsableCommand {
                 read: read,
                 dryRun: dryRun
             )
-            try printJSON(result)
+            if output.isJSON {
+                try printJSON(result)
+            } else {
+                let detail = result.details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: detail))
+            }
         }
     }
+
+    // MARK: - Move
 
     public struct Move: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
@@ -110,6 +249,8 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Print what would happen without making changes.")
         public var dryRun: Bool = false
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
@@ -118,40 +259,16 @@ public struct MailCommand: AsyncParsableCommand {
                 toMailbox: to,
                 dryRun: dryRun
             )
-            try printJSON(result)
+            if output.isJSON {
+                try printJSON(result)
+            } else {
+                let detail = result.details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: detail))
+            }
         }
     }
 
-    public struct List: AsyncParsableCommand {
-        public static let configuration = CommandConfiguration(
-            commandName: "list",
-            abstract: "List messages. Defaults to INBOX, all messages, limit 50."
-        )
-
-        @Option(name: .long, help: "Filter by account name.")
-        public var account: String?
-
-        @Option(name: .long, help: "Mailbox name (default: INBOX).")
-        public var mailbox: String = "INBOX"
-
-        @Flag(name: .long, help: "Only show unread messages.")
-        public var unread: Bool = false
-
-        @Option(name: .long, help: "Maximum number of messages to return.")
-        public var limit: Int = 50
-
-        public init() {}
-
-        public mutating func run() async throws {
-            let messages = try MailBridge.listMessages(
-                account: account,
-                mailbox: mailbox,
-                unread: unread,
-                limit: limit
-            )
-            try printJSON(messages)
-        }
-    }
+    // MARK: - Send
 
     public struct Send: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
@@ -179,6 +296,8 @@ public struct MailCommand: AsyncParsableCommand {
 
         @Flag(name: .long, help: "Print what would happen without sending.")
         public var dryRun: Bool = false
+
+        @OptionGroup public var output: OutputOptions
 
         public init() {}
 
@@ -210,24 +329,32 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPath: attach,
                 dryRun: dryRun
             )
-            try printJSON(result)
+            if output.isJSON {
+                try printJSON(result)
+            } else {
+                let detail = result.details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: detail))
+            }
         }
     }
+}
 
-    public struct Read: AsyncParsableCommand {
-        public static let configuration = CommandConfiguration(
-            commandName: "read",
-            abstract: "Read a message by its compound id (from `mail list` output)."
-        )
+// MARK: - Shared Helpers
 
-        @Argument(help: "Message id from `pippin mail list` output.")
-        public var messageId: String
-
-        public init() {}
-
-        public mutating func run() async throws {
-            let message = try MailBridge.readMessage(compoundId: messageId)
-            try printJSON(message)
-        }
+/// Print a table of messages in text format (used by List and Search).
+private func printMessageTable(_ messages: [MailMessage]) {
+    let rows = messages.map { msg in
+        [
+            TextFormatter.truncate(msg.id, to: 8),
+            TextFormatter.compactDate(msg.date),
+            TextFormatter.truncate(msg.from, to: 18),
+            TextFormatter.truncate(msg.subject, to: 30),
+            msg.read ? "Y" : "N",
+        ]
     }
+    print(TextFormatter.table(
+        headers: ["ID", "DATE", "FROM", "SUBJECT", "READ"],
+        rows: rows,
+        columnWidths: [10, 18, 20, 32, 4]
+    ))
 }
