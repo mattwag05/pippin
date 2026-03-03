@@ -11,12 +11,19 @@ pippin memos list
 
 ## Install
 
-### Pre-built binary (arm64, macOS 15+)
-
-Download `pippin-0.1.0-beta-arm64-macos` from the [Releases](../../releases) page:
+### Homebrew (recommended)
 
 ```bash
-curl -L <release-url>/pippin-0.1.0-beta-arm64-macos -o ~/.local/bin/pippin
+brew install mattwag05/tap/pippin
+```
+
+### Pre-built binary (arm64, macOS 15+)
+
+Download from the [Releases](https://github.com/mattwag05/pippin/releases) page:
+
+```bash
+curl -L https://github.com/mattwag05/pippin/releases/download/v0.1.0-beta/pippin-0.1.0-beta-arm64-macos.tar.gz -o pippin.tar.gz
+tar xzf pippin.tar.gz && mv pippin-0.1.0-beta-arm64-macos ~/.local/bin/pippin
 chmod +x ~/.local/bin/pippin
 ```
 
@@ -25,7 +32,7 @@ chmod +x ~/.local/bin/pippin
 Requires Xcode 16+ / Swift 6.2+:
 
 ```bash
-git clone https://forgejo.tail6e035b.ts.net/matthewwagner/pippin.git
+git clone https://github.com/mattwag05/pippin.git
 cd pippin
 make install
 ```
@@ -180,15 +187,6 @@ make lint            # swiftformat lint
 make install         # Build release + install to ~/.local/bin/pippin
 make release         # Build release binary in .build/release-artifacts/
 ```
-
-### `.claude/` tooling
-
-The `.claude/` directory contains development tooling for Claude Code sessions:
-- **`agents/`** — custom agents for code review and compatibility checks
-- **`hooks/`** — PostToolUse hooks (swiftformat, build verification)
-- **`skills/`** — project-specific skills (mail bridge scaffold, output validator, schema inspector)
-
-This tooling is part of the repo and documented here so contributors know it exists.
 
 ---
 

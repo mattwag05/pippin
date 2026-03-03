@@ -61,5 +61,5 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://forgejo.tail6e035b.ts.net/matthewwagner/pippin/compare/v0.1.0-beta...HEAD
-[0.1.0-beta]: https://forgejo.tail6e035b.ts.net/matthewwagner/pippin/releases/tag/v0.1.0-beta
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.1.0-beta...HEAD
+[0.1.0-beta]: https://github.com/mattwag05/pippin/releases/tag/v0.1.0-beta
