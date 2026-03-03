@@ -1,57 +1,58 @@
 import ArgumentParser
 import Foundation
 
-public enum MemosError: LocalizedError {
-    case binaryNotFound
-    case failed(Int32, String)
-    case timeout
-
-    public var errorDescription: String? {
-        switch self {
-        case .binaryNotFound:
-            return """
-                pippin-memos not found. Install it with:
-                  cd pippin-memos && pipx install .
-                """
-        case .failed(let code, let detail):
-            return "pippin-memos exited \(code): \(detail)"
-        case .timeout:
-            return "pippin-memos timed out"
-        }
-    }
-}
-
 public struct MemosCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "memos",
         abstract: "Interact with Voice Memos.",
-        subcommands: [List.self, Info.self, Export.self, Delete.self]
+        subcommands: [List.self, Info.self, Export.self]
     )
 
     public init() {}
 
-    // MARK: - Subcommands
+    // MARK: - List
 
     public struct List: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
-            abstract: "List all recordings as JSON."
+            abstract: "List voice memo recordings."
         )
 
         @Option(name: .long, help: "Only return recordings on or after YYYY-MM-DD.")
         public var since: String?
 
-        @Option(name: .long, help: "Output format: json (default) or text.")
-        public var format: String = "json"
+        @Option(name: .long, help: "Maximum number of results (default: 20).")
+        public var limit: Int = 20
+
+        @OptionGroup public var output: OutputOptions
 
         public init() {}
 
+        public mutating func validate() throws {
+            if let since {
+                guard parseDateString(since) != nil else {
+                    throw ValidationError("--since must be in YYYY-MM-DD format.")
+                }
+            }
+            guard limit > 0 else {
+                throw ValidationError("--limit must be positive.")
+            }
+        }
+
         public mutating func run() async throws {
-            var args = ["list", "--format", format]
-            if let s = since { args += ["--since", s] }
-            try runPippinMemos(args)
+            let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
+            let sinceDate = since.flatMap { parseDateString($0) }
+            let memos = try db.listMemos(since: sinceDate, limit: limit)
+
+            if output.isJSON {
+                try printJSON(memos)
+            } else {
+                printMemosTable(memos)
+            }
         }
     }
+
+    // MARK: - Info
 
     public struct Info: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
@@ -62,12 +63,25 @@ public struct MemosCommand: AsyncParsableCommand {
         @Argument(help: "Memo UUID from `pippin memos list` output.")
         public var id: String
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
-            try runPippinMemos(["info", id])
+            let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
+            guard let memo = try db.getMemo(id: id) else {
+                throw VoiceMemosError.memoNotFound(id)
+            }
+
+            if output.isJSON {
+                try printJSON(memo)
+            } else {
+                printMemoCard(memo)
+            }
         }
     }
+
+    // MARK: - Export
 
     public struct Export: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
@@ -84,129 +98,113 @@ public struct MemosCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Destination directory (created if absent).")
         public var output: String
 
-        @Flag(name: .long, help: "Transcribe audio using parakeet-mlx and write .txt sidecar.")
+        @Flag(name: .long, help: "Transcribe audio and write .txt sidecar.")
         public var transcribe: Bool = false
 
+        @OptionGroup public var outputOptions: OutputOptions
+
         public init() {}
 
-        public mutating func run() async throws {
-            var args = ["export", "--output", output]
-            if all {
-                args.append("--all")
-            } else if let id {
-                args.append(id)
-            } else {
+        public mutating func validate() throws {
+            guard id != nil || all else {
                 throw ValidationError("Provide a memo UUID or --all.")
             }
-            if transcribe { args.append("--transcribe") }
-            // Transcription can take several minutes; use a generous timeout
-            let timeout = transcribe ? 600 : 10
-            try runPippinMemos(args, timeoutSeconds: timeout)
         }
-    }
-
-    public struct Delete: AsyncParsableCommand {
-        public static let configuration = CommandConfiguration(
-            commandName: "delete",
-            abstract: "Move recording file to Trash. The DB row lingers until Voice Memos.app cleans up."
-        )
-
-        @Argument(help: "Memo UUID from `pippin memos list` output.")
-        public var id: String
-
-        @Flag(name: .long, help: "Print what would happen without moving to Trash.")
-        public var dryRun: Bool = false
-
-        public init() {}
 
         public mutating func run() async throws {
-            var args = ["delete", id]
-            if dryRun { args.append("--dry-run") }
-            try runPippinMemos(args)
+            let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
+            let transcriber: Transcriber? = transcribe ? TranscriberFactory.makeDefault() : nil
+
+            var results: [ExportResult] = []
+
+            if all {
+                let memos = try db.listMemos(limit: 10000)
+                for memo in memos {
+                    if !outputOptions.isJSON {
+                        print("Exporting: \(memo.title)...", terminator: " ")
+                        fflush(stdout)
+                    }
+                    do {
+                        let result = try db.exportMemo(
+                            id: memo.id,
+                            outputDir: output,
+                            transcriber: transcriber
+                        )
+                        results.append(result)
+                        if !outputOptions.isJSON {
+                            print("done")
+                        }
+                    } catch {
+                        if !outputOptions.isJSON {
+                            print("FAILED: \(error.localizedDescription)")
+                        }
+                    }
+                }
+            } else if let id {
+                if !outputOptions.isJSON {
+                    print("Exporting...", terminator: " ")
+                    fflush(stdout)
+                }
+                let result = try db.exportMemo(
+                    id: id,
+                    outputDir: output,
+                    transcriber: transcriber
+                )
+                results.append(result)
+                if !outputOptions.isJSON {
+                    print("done")
+                }
+            }
+
+            if outputOptions.isJSON {
+                try printJSON(results)
+            } else {
+                let noun = results.count == 1 ? "recording" : "recordings"
+                print("\nExported \(results.count) \(noun) to \(output)")
+            }
         }
     }
 }
 
-// MARK: - Runner
+// MARK: - Text output helpers
 
-/// Find the pippin-memos binary: check known pipx path first, then PATH.
-private func findPippinMemos() -> String? {
-    let known = (ProcessInfo.processInfo.environment["HOME"] ?? "") + "/.local/bin/pippin-memos"
-    if FileManager.default.isExecutableFile(atPath: known) {
-        return known
+private func printMemosTable(_ memos: [VoiceMemo]) {
+    if memos.isEmpty {
+        print("No recordings found.")
+        return
     }
-    // Fallback: search PATH via `which`
-    let which = Process()
-    which.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-    which.arguments = ["pippin-memos"]
-    let pipe = Pipe()
-    which.standardOutput = pipe
-    which.standardError = Pipe()
-    try? which.run()
-    which.waitUntilExit()
-    if which.terminationStatus == 0 {
-        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !out.isEmpty { return out }
+    // Column widths: ID(10), DATE(18), DURATION(10), TITLE(remaining)
+    let rows = memos.map { memo -> [String] in
+        let shortId = String(memo.id.prefix(8))
+        let date = TextFormatter.compactDate(memo.createdAt)
+        let dur = TextFormatter.duration(memo.durationSeconds)
+        return [shortId, date, dur, memo.title]
     }
-    return nil
+    let table = TextFormatter.table(
+        headers: ["ID", "DATE", "DURATION", "TITLE"],
+        rows: rows,
+        columnWidths: [10, 18, 10, 42]
+    )
+    print(table)
 }
 
-/// Run `pippin-memos <arguments>`, streaming stdout/stderr to our own handles.
-func runPippinMemos(_ arguments: [String], timeoutSeconds: Int = 10) throws {
-    guard let binary = findPippinMemos() else {
-        throw MemosError.binaryNotFound
-    }
+private func printMemoCard(_ memo: VoiceMemo) {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    let card = TextFormatter.card(fields: [
+        ("ID", memo.id),
+        ("Title", memo.title),
+        ("Duration", TextFormatter.duration(memo.durationSeconds)),
+        ("Created", TextFormatter.compactDate(memo.createdAt)),
+        ("File", memo.filePath),
+    ])
+    print(card)
+}
 
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: binary)
-    process.arguments = arguments
-
-    let stdoutPipe = Pipe()
-    let stderrPipe = Pipe()
-    process.standardOutput = stdoutPipe
-    process.standardError = stderrPipe
-
-    try process.run()
-
-    // Drain both pipes concurrently to avoid deadlock on large output (>64KB pipe buffer)
-    var stdoutData = Data()
-    var stderrData = Data()
-    let group = DispatchGroup()
-
-    group.enter()
-    DispatchQueue.global().async {
-        stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        group.leave()
-    }
-
-    group.enter()
-    DispatchQueue.global().async {
-        stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-        group.leave()
-    }
-
-    let timeoutItem = DispatchWorkItem {
-        if process.isRunning { process.terminate() }
-    }
-    DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds), execute: timeoutItem)
-
-    process.waitUntilExit()
-    timeoutItem.cancel()
-    group.wait()
-
-    if process.terminationReason == .uncaughtSignal {
-        throw MemosError.timeout
-    }
-
-    // Forward stdout to our stdout
-    if !stdoutData.isEmpty, let text = String(data: stdoutData, encoding: .utf8) {
-        print(text, terminator: "")
-    }
-
-    guard process.terminationStatus == 0 else {
-        let detail = String(data: stderrData, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        throw MemosError.failed(process.terminationStatus, detail)
-    }
+/// Parse a YYYY-MM-DD string into a Date at midnight UTC.
+private func parseDateString(_ s: String) -> Date? {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.timeZone = TimeZone(identifier: "UTC")
+    return formatter.date(from: s)
 }
