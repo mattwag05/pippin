@@ -1,14 +1,6 @@
 import ArgumentParser
 import Foundation
 
-/// Encode and print a JSON value to stdout with pretty-printing and sorted keys.
-private func printJSON<T: Encodable>(_ value: T) throws {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    let data = try encoder.encode(value)
-    print(String(data: data, encoding: .utf8)!)
-}
-
 public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
