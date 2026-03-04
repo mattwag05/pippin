@@ -69,7 +69,7 @@ public struct MemosCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
-            guard let memo = try db.getMemo(id: id) else {
+            guard let memo = try db.getMemoByPrefix(id: id) else {
                 throw VoiceMemosError.memoNotFound(id)
             }
 
@@ -145,8 +145,11 @@ public struct MemosCommand: AsyncParsableCommand {
                     print("Exporting...", terminator: " ")
                     fflush(stdout)
                 }
+                guard let memo = try db.getMemoByPrefix(id: id) else {
+                    throw VoiceMemosError.memoNotFound(id)
+                }
                 let result = try db.exportMemo(
-                    id: id,
+                    id: memo.id,
                     outputDir: output,
                     transcriber: transcriber
                 )
@@ -219,8 +222,11 @@ public struct MemosCommand: AsyncParsableCommand {
                     }
                 }
             } else if let id {
+                guard let memo = try db.getMemoByPrefix(id: id) else {
+                    throw VoiceMemosError.memoNotFound(id)
+                }
                 let result = try db.transcribeMemo(
-                    id: id, transcriber: transcriber, outputDir: output
+                    id: memo.id, transcriber: transcriber, outputDir: output
                 )
                 results.append(result)
             }

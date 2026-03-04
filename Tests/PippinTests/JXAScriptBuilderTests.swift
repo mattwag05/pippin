@@ -82,6 +82,36 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertFalse(script.contains("line1\nline2"))
     }
 
+    func testSearchScriptMbFilterNilIsNull() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: nil, limit: 10)
+        XCTAssertTrue(script.contains("var mbFilter = null;"))
+    }
+
+    func testSearchScriptMbFilterInterpolated() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: "INBOX", limit: 10)
+        XCTAssertTrue(script.contains("var mbFilter = 'INBOX';"))
+    }
+
+    func testSearchScriptMbFilterEscapesQuote() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: "O'Brien", limit: 10)
+        XCTAssertTrue(script.contains("mbFilter = 'O\\'Brien'"))
+    }
+
+    func testSearchScriptSearchBodyDefaultFalse() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("var searchBody = false;"))
+    }
+
+    func testSearchScriptSearchBodyTrue() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, searchBody: true, limit: 10)
+        XCTAssertTrue(script.contains("var searchBody = true;"))
+    }
+
+    func testSearchScriptPerMailboxLimitIs50() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("var perMailboxLimit = 50;"))
+    }
+
     // MARK: - buildListScript (offset/pagination)
 
     func testListScriptDefaultOffsetZero() {

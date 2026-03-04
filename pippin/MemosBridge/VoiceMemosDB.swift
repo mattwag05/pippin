@@ -8,6 +8,7 @@ public enum VoiceMemosError: LocalizedError, Sendable {
     case memoEvicted(String)
     case fileNotFound(String)
     case exportFailed(String)
+    case ambiguousId(String, [String])
 
     public var errorDescription: String? {
         switch self {
@@ -23,6 +24,8 @@ public enum VoiceMemosError: LocalizedError, Sendable {
             return "Recording file not found: \(path)"
         case let .exportFailed(detail):
             return "Export failed: \(detail)"
+        case let .ambiguousId(prefix, matches):
+            return "Ambiguous ID prefix '\(prefix)' matches \(matches.count) recordings: \(matches.joined(separator: ", "))"
         }
     }
 }
@@ -123,6 +126,29 @@ public final class VoiceMemosDB: Sendable {
                 """,
                 arguments: [id]
             )
+        }
+    }
+
+    /// Get a single memo by ID prefix (case-insensitive). Returns nil if no match.
+    /// Throws `VoiceMemosError.ambiguousId` if the prefix matches more than one recording.
+    public func getMemoByPrefix(id: String) throws -> VoiceMemo? {
+        // Try exact match first
+        if let memo = try getMemo(id: id) { return memo }
+        // Fall back to prefix scan using SQLite LIKE (case-insensitive for ASCII/hex)
+        let matches = try dbQueue.read { db in
+            try VoiceMemo.fetchAll(
+                db,
+                sql: """
+                SELECT ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH
+                FROM ZCLOUDRECORDING WHERE ZUNIQUEID LIKE ? || '%'
+                """,
+                arguments: [id]
+            )
+        }
+        switch matches.count {
+        case 0: return nil
+        case 1: return matches[0]
+        default: throw VoiceMemosError.ambiguousId(id, matches.map(\.id))
         }
     }
 
