@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Single arm64 binary, headless-safe (cron/launchd/N8N compatible).
 
-**Current status:** v0.1.0-beta — all mail and memos subcommands implemented. Python dependency eliminated; memos rewritten in Swift with GRDB.
+**Current status:** v0.1.3-beta — all mail and memos subcommands implemented. Python dependency eliminated; memos rewritten in Swift with GRDB.
 
 ## What This Builds
 
@@ -20,7 +20,7 @@ macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Singl
 swift build                        # Debug build
 swift build -c release             # Release build
 swift run pippin mail list         # Run subcommand (debug)
-swift test                         # Run 126 tests
+swift test                         # Run 178 tests
 
 # Makefile targets
 make build     # swift build -c release
@@ -66,10 +66,10 @@ pippin/                     # PippinLib target (all application logic)
   Models/
     MailModels.swift        # MailMessage, MailAccount, MailActionResult
     MemosModels.swift       # VoiceMemo, ExportResult (GRDB FetchableRecord)
-  Version.swift             # PippinVersion.version = "0.1.0-beta"
+  Version.swift             # PippinVersion.version = "0.1.3-beta"
 pippin-entry/
   Pippin.swift              # @main entry point
-Tests/PippinTests/          # 126 tests
+Tests/PippinTests/          # 178 tests (8 unit + JXAScriptBuilderTests + CLIIntegrationTests)
 archive/pippin-memos/       # Archived Python implementation
 docs/archive/               # Archived planning documents
 ```
@@ -102,6 +102,7 @@ docs/archive/               # Archived planning documents
 - All model structs and error enums conform to `Sendable`; `VoiceMemosDB` is `final class: Sendable` (all-`let` stored properties)
 - GCD pipe-draining pattern in `MailBridge.runScript()` and `ParakeetTranscriber.transcribe()` uses `nonisolated(unsafe) var` for the output `Data` buffers — safe because each var is written exactly once by one GCD block, and `group.wait()` provides a happens-before guarantee before the values are read
 - `Process` is `Sendable` in Foundation; no `nonisolated(unsafe)` needed for the timeout `DispatchWorkItem` capture
+- Mutable `static var` in XCTestCase requires `nonisolated(unsafe)` under Swift 6; use `#filePath` (not `#file`) for `XCTFail` file parameter
 
 ## Versioning
 
@@ -124,6 +125,12 @@ Format: `MAJOR.MINOR.PATCH[-prerelease]`
 > **Note:** Project-level `.claude/` skills, hooks, and agents were removed in PR #6. No local hooks are active — `swiftformat` and `swift build` must be run manually.
 
 ## Workflow Gotchas
+
+### swiftformat Enforcement
+CI now enforces `swiftformat --lint` on both GitHub Actions and Forgejo. Run `swiftformat pippin/ pippin-entry/ Tests/` (no `--lint`) to auto-fix before pushing. The `swiftformat` warning about missing Swift version is harmless — no `.swift-version` file is needed.
+
+### CLI Integration Tests Require a Prior Build
+`CLIIntegrationTests` calls `swift build --show-bin-path` in `class setUp()` to locate the binary. In CI the build step precedes `swift test` so this is a no-op. Locally, run `swift build` before `swift test` if you want CLI tests to run (they skip gracefully if binary is absent).
 
 ### Batch Branch Deletion on Forgejo
 `git push forgejo --delete branch1 branch2 ...` aborts entirely if any one branch doesn't exist — it won't delete the rest. Remove the missing branch from the list and re-run.
@@ -163,6 +170,7 @@ return count > 0
 - `make release` → `.build/release-artifacts/pippin-VERSION-arm64-macos`
 - `gh release create` requires **absolute paths** for artifact upload (relative paths fail — zsh cwd reset)
 - Tag format: `v0.1.0-beta` (with `v` prefix)
+- After tagging, update `revision:` in Homebrew formula with exact `git rev-parse <tag>` output — verify hash character-for-character before committing formula
 
 ## Homebrew Tap
 
@@ -170,3 +178,5 @@ return count > 0
 - Install: `brew install mattwag05/tap/pippin` (builds from source via SPM, ~30s)
 - Formula uses `--disable-sandbox` — required for SPM network access during `swift build`
 - Update formula `revision:` field after each new tag: `git rev-parse <tag>`
+- Also update the version string in the formula's `test do` block to match.
+- Tap local path: `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap`
