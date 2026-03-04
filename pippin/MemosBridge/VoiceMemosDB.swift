@@ -209,6 +209,53 @@ public final class VoiceMemosDB: Sendable {
         )
     }
 
+    /// Transcribe a memo's audio to text without copying the audio file.
+    /// - Parameters:
+    ///   - id: The memo UUID.
+    ///   - transcriber: The transcription backend to use.
+    ///   - outputDir: If provided, write a `.txt` file here and return the path in the result.
+    public func transcribeMemo(
+        id: String,
+        transcriber: Transcriber,
+        outputDir: String? = nil
+    ) throws -> TranscribeResult {
+        guard let memo = try getMemo(id: id) else {
+            throw VoiceMemosError.memoNotFound(id)
+        }
+
+        if try isEvicted(id: id) {
+            throw VoiceMemosError.memoEvicted(id)
+        }
+
+        let sourcePath = (recordingsDir as NSString).appendingPathComponent(memo.filePath)
+        guard FileManager.default.fileExists(atPath: sourcePath) else {
+            throw VoiceMemosError.fileNotFound(sourcePath)
+        }
+
+        let text = try transcriber.transcribe(audioPath: sourcePath)
+
+        var outputFile: String?
+        if let outputDir {
+            try FileManager.default.createDirectory(
+                atPath: outputDir,
+                withIntermediateDirectories: true
+            )
+            let datePrefix = Self.exportDatePrefix(memo.createdAt)
+            let sanitizedTitle = Self.sanitizeFilename(memo.title)
+            let baseName = "\(datePrefix)_\(sanitizedTitle)"
+            let txtPath = Self.resolveCollision(dir: outputDir, baseName: baseName, ext: "txt")
+            try text.write(toFile: txtPath, atomically: true, encoding: .utf8)
+            outputFile = txtPath
+        }
+
+        return TranscribeResult(
+            id: memo.id,
+            title: memo.title,
+            transcription: text,
+            outputFile: outputFile
+        )
+    }
+
     // MARK: - Filename helpers
 
     /// Format a date as YYYY-MM-DD for export filenames.

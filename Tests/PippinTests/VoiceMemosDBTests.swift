@@ -421,4 +421,134 @@ final class VoiceMemosDBTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - transcribeMemo
+
+    func testTranscribeMemoReturnsText() throws {
+        let tmpDir = NSTemporaryDirectory() + "pippin-transcribe-\(UUID().uuidString)"
+        let recordingsDir = tmpDir + "/recordings"
+        try FileManager.default.createDirectory(atPath: recordingsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tmpDir) }
+
+        let audioPath = (recordingsDir as NSString).appendingPathComponent("memo.m4a")
+        FileManager.default.createFile(atPath: audioPath, contents: Data())
+
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "transcribe-test", title: "My Memo", path: "memo.m4a")
+        let db = try VoiceMemosDB(dbQueue: dbQueue, recordingsDir: recordingsDir)
+
+        let result = try db.transcribeMemo(
+            id: "transcribe-test",
+            transcriber: MockTranscriber(text: "Hello world"),
+            outputDir: nil
+        )
+        XCTAssertEqual(result.id, "transcribe-test")
+        XCTAssertEqual(result.title, "My Memo")
+        XCTAssertEqual(result.transcription, "Hello world")
+        XCTAssertNil(result.outputFile)
+    }
+
+    func testTranscribeMemoNotFound() throws {
+        let dbQueue = try makeTestDB()
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        XCTAssertThrowsError(
+            try db.transcribeMemo(id: "missing", transcriber: MockTranscriber(text: "x"))
+        ) { error in
+            guard let vmError = error as? VoiceMemosError,
+                  case .memoNotFound = vmError else {
+                XCTFail("Expected memoNotFound, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testTranscribeMemoEvicted() throws {
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "evicted-t", evictionDate: 725_846_400.0)
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        XCTAssertThrowsError(
+            try db.transcribeMemo(id: "evicted-t", transcriber: MockTranscriber(text: "x"))
+        ) { error in
+            guard let vmError = error as? VoiceMemosError,
+                  case .memoEvicted = vmError else {
+                XCTFail("Expected memoEvicted, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testTranscribeMemoFileNotFound() throws {
+        let dbQueue = try makeTestDB()
+        // Insert memo with a path that doesn't exist on disk
+        try insertMemo(db: dbQueue, id: "no-file", path: "nonexistent.m4a")
+        let db = try VoiceMemosDB(dbQueue: dbQueue, recordingsDir: "/tmp/pippin-empty-\(UUID().uuidString)")
+
+        XCTAssertThrowsError(
+            try db.transcribeMemo(id: "no-file", transcriber: MockTranscriber(text: "x"))
+        ) { error in
+            guard let vmError = error as? VoiceMemosError,
+                  case .fileNotFound = vmError else {
+                XCTFail("Expected fileNotFound, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testTranscribeMemoWritesFile() throws {
+        let tmpDir = NSTemporaryDirectory() + "pippin-transcribe-\(UUID().uuidString)"
+        let recordingsDir = tmpDir + "/recordings"
+        let outputDir = tmpDir + "/output"
+        try FileManager.default.createDirectory(atPath: recordingsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tmpDir) }
+
+        let audioPath = (recordingsDir as NSString).appendingPathComponent("memo.m4a")
+        FileManager.default.createFile(atPath: audioPath, contents: Data())
+
+        let dbQueue = try makeTestDB()
+        try insertMemo(
+            db: dbQueue,
+            id: "write-file",
+            title: "Note",
+            coreDataDate: 725_846_400.0,
+            path: "memo.m4a"
+        )
+        let db = try VoiceMemosDB(dbQueue: dbQueue, recordingsDir: recordingsDir)
+
+        let result = try db.transcribeMemo(
+            id: "write-file",
+            transcriber: MockTranscriber(text: "Test text"),
+            outputDir: outputDir
+        )
+        XCTAssertNotNil(result.outputFile)
+        let written = try XCTUnwrap(result.outputFile)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: written))
+        XCTAssertEqual((written as NSString).lastPathComponent.hasSuffix(".txt"), true)
+        let contents = try String(contentsOfFile: written, encoding: .utf8)
+        XCTAssertEqual(contents, "Test text")
+    }
+
+    func testTranscribeResultJSONEncoding() throws {
+        let result = TranscribeResult(
+            id: "enc-test",
+            title: "My Memo",
+            transcription: "Hello",
+            outputFile: "/tmp/output.txt"
+        )
+        let data = try JSONEncoder().encode(result)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(json["id"] as? String, "enc-test")
+        XCTAssertEqual(json["title"] as? String, "My Memo")
+        XCTAssertEqual(json["transcription"] as? String, "Hello")
+        XCTAssertEqual(json["outputFile"] as? String, "/tmp/output.txt")
+    }
+}
+
+// MARK: - Test helpers
+
+private struct MockTranscriber: Transcriber {
+    let text: String
+    func transcribe(audioPath _: String) throws -> String { text }
 }

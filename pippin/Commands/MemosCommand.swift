@@ -5,7 +5,7 @@ public struct MemosCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "memos",
         abstract: "Interact with Voice Memos.",
-        subcommands: [List.self, Info.self, Export.self]
+        subcommands: [List.self, Info.self, Export.self, Transcribe.self]
     )
 
     public init() {}
@@ -161,6 +161,78 @@ public struct MemosCommand: AsyncParsableCommand {
             } else {
                 let noun = results.count == 1 ? "recording" : "recordings"
                 print("\nExported \(results.count) \(noun) to \(output)")
+            }
+        }
+    }
+
+    // MARK: - Transcribe
+
+    public struct Transcribe: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "transcribe",
+            abstract: "Transcribe voice memo audio to text."
+        )
+
+        @Argument(help: "Memo UUID to transcribe (omit with --all).")
+        public var id: String?
+
+        @Flag(name: .long, help: "Transcribe every recording.")
+        public var all: Bool = false
+
+        @Option(name: .long, help: "Directory to write .txt files (default: print to stdout).")
+        public var output: String?
+
+        @OptionGroup public var outputOptions: OutputOptions
+
+        public init() {}
+
+        public mutating func validate() throws {
+            guard id != nil || all else {
+                throw ValidationError("Provide a memo UUID or --all.")
+            }
+        }
+
+        public mutating func run() async throws {
+            let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
+            let transcriber = TranscriberFactory.makeDefault()
+            var results: [TranscribeResult] = []
+
+            if all {
+                let memos = try db.listMemos(limit: 10000)
+                for memo in memos {
+                    if !outputOptions.isJSON {
+                        print("Transcribing: \(memo.title)...", terminator: " ")
+                        fflush(stdout)
+                    }
+                    do {
+                        let result = try db.transcribeMemo(
+                            id: memo.id, transcriber: transcriber, outputDir: output
+                        )
+                        results.append(result)
+                        if !outputOptions.isJSON {
+                            print("done")
+                        }
+                    } catch {
+                        if !outputOptions.isJSON {
+                            print("FAILED: \(error.localizedDescription)")
+                        }
+                    }
+                }
+            } else if let id {
+                let result = try db.transcribeMemo(
+                    id: id, transcriber: transcriber, outputDir: output
+                )
+                results.append(result)
+            }
+
+            if outputOptions.isJSON {
+                try printJSON(results)
+            } else if !all {
+                if let result = results.first {
+                    print(result.transcription)
+                }
+            } else {
+                print("\nTranscribed \(results.count) recording(s)")
             }
         }
     }

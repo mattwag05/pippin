@@ -110,7 +110,7 @@ docs/archive/               # Archived planning documents
 Format: `MAJOR.MINOR.PATCH[-prerelease]`
 
 - `0.1.0-beta` → `0.1.0` when beta testing complete
-- `0.1.x` → bug fixes; `0.2.0` → new features or breaking changes
+- `0.1.x` → bug fixes or non-behavioral improvements (tooling, build quality); `0.2.0` → new features or breaking changes
 - `1.0.0` → CLI interface frozen, output schemas stable
 
 ## Non-Goals (per spec)
