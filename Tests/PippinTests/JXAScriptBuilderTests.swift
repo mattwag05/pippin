@@ -82,6 +82,100 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertFalse(script.contains("line1\nline2"))
     }
 
+    // MARK: - buildListScript (offset/pagination)
+
+    func testListScriptDefaultOffsetZero() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 20)
+        XCTAssertTrue(script.contains("var offset = 0;"))
+    }
+
+    func testListScriptWithOffset() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 20, offset: 40)
+        XCTAssertTrue(script.contains("var offset = 40;"))
+    }
+
+    func testListScriptContainsMessageSize() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("msg.messageSize()"))
+    }
+
+    func testListScriptContainsHasAttachment() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("mailAttachments()"))
+    }
+
+    // MARK: - buildSearchScript (offset/pagination + metadata)
+
+    func testSearchScriptDefaultOffsetZero() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("var offset = 0;"))
+    }
+
+    func testSearchScriptWithOffset() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, offset: 20)
+        XCTAssertTrue(script.contains("var offset = 20;"))
+    }
+
+    func testSearchScriptContainsMessageSize() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("msg.messageSize()"))
+    }
+
+    func testSearchScriptContainsHasAttachment() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("mailAttachments()"))
+    }
+
+    // MARK: - buildMailboxesScript
+
+    func testMailboxesScriptAccountNilIsNull() {
+        let script = MailBridge.buildMailboxesScript(account: nil)
+        XCTAssertTrue(script.contains("var acctFilter = null;"))
+    }
+
+    func testMailboxesScriptAccountFiltered() {
+        let script = MailBridge.buildMailboxesScript(account: "Work")
+        XCTAssertTrue(script.contains("var acctFilter = 'Work';"))
+    }
+
+    func testMailboxesScriptContainsUnreadCount() {
+        let script = MailBridge.buildMailboxesScript(account: nil)
+        XCTAssertTrue(script.contains("mb.unreadCount()"))
+    }
+
+    func testMailboxesScriptOutputsJSONStringify() {
+        let script = MailBridge.buildMailboxesScript(account: nil)
+        XCTAssertTrue(script.contains("JSON.stringify(results)"))
+    }
+
+    func testMailboxesScriptEscapesQuoteInAccount() {
+        let script = MailBridge.buildMailboxesScript(account: "O'Brien")
+        XCTAssertTrue(script.contains("acctFilter = 'O\\'Brien'"))
+    }
+
+    // MARK: - buildReadScript (rich metadata)
+
+    func testReadScriptContainsHtmlContent() {
+        let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
+        XCTAssertTrue(script.contains("msg.htmlContent()"))
+    }
+
+    func testReadScriptContainsAllHeaders() {
+        let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
+        XCTAssertTrue(script.contains("msg.allHeaders()"))
+    }
+
+    func testReadScriptContainsAttachmentFields() {
+        let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
+        XCTAssertTrue(script.contains("att.name()"))
+        XCTAssertTrue(script.contains("att.mimeType()"))
+    }
+
+    func testReadScriptContainsMessageSize() {
+        let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
+        XCTAssertTrue(script.contains("msg.messageSize()"))
+    }
+
     // MARK: - buildAccountsScript
 
     func testAccountsScriptContainsMailAccountsCall() {

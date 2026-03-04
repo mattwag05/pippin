@@ -137,6 +137,53 @@ final class MailCommandValidationTests: XCTestCase {
         ]))
     }
 
+    // MARK: - Mailboxes subcommand
+
+    func testMailboxesParsesWithNoArgs() {
+        XCTAssertNoThrow(try MailCommand.Mailboxes.parse([]))
+    }
+
+    func testMailboxesParsesWithAccount() throws {
+        let cmd = try MailCommand.Mailboxes.parse(["--account", "Work"])
+        XCTAssertEqual(cmd.account, "Work")
+    }
+
+    func testMailboxesAcceptsFormat() {
+        XCTAssertNoThrow(try MailCommand.Mailboxes.parse(["--format", "json"]))
+    }
+
+    // MARK: - List --page
+
+    func testListPageDefault() throws {
+        let cmd = try MailCommand.List.parse([])
+        XCTAssertEqual(cmd.page, 1)
+    }
+
+    func testListPageCustom() throws {
+        let cmd = try MailCommand.List.parse(["--page", "3"])
+        XCTAssertEqual(cmd.page, 3)
+    }
+
+    func testListPageZeroFails() {
+        XCTAssertThrowsError(try MailCommand.List.parse(["--page", "0"]))
+    }
+
+    // MARK: - Search --page
+
+    func testSearchPageDefault() throws {
+        let cmd = try MailCommand.Search.parse(["invoice"])
+        XCTAssertEqual(cmd.page, 1)
+    }
+
+    func testSearchPageCustom() throws {
+        let cmd = try MailCommand.Search.parse(["invoice", "--page", "2"])
+        XCTAssertEqual(cmd.page, 2)
+    }
+
+    func testSearchPageZeroFails() {
+        XCTAssertThrowsError(try MailCommand.Search.parse(["invoice", "--page", "0"]))
+    }
+
     // MARK: - Output format on all subcommands
 
     func testAccountsAcceptsFormat() {

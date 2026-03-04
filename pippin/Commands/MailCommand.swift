@@ -5,7 +5,7 @@ public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self]
     )
 
     public init() {}
@@ -33,6 +33,36 @@ public struct MailCommand: AsyncParsableCommand {
         }
     }
 
+    // MARK: - Mailboxes
+
+    public struct Mailboxes: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "mailboxes",
+            abstract: "List mailboxes per account."
+        )
+
+        @Option(name: .long, help: "Filter by account name.")
+        public var account: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let mailboxes = try MailBridge.listMailboxes(account: account)
+            if output.isJSON {
+                try printJSON(mailboxes)
+            } else {
+                let rows = mailboxes.map { [$0.account, $0.name, "\($0.messageCount)", "\($0.unreadCount)"] }
+                print(TextFormatter.table(
+                    headers: ["ACCOUNT", "MAILBOX", "MESSAGES", "UNREAD"],
+                    rows: rows,
+                    columnWidths: [20, 25, 10, 8]
+                ))
+            }
+        }
+    }
+
     // MARK: - Search
 
     public struct Search: AsyncParsableCommand {
@@ -50,15 +80,25 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum number of results to return (default: 10).")
         public var limit: Int = 10
 
+        @Option(name: .long, help: "Page number (1-based, with --limit as page size).")
+        public var page: Int = 1
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
+
+        public mutating func validate() throws {
+            guard page >= 1 else {
+                throw ValidationError("--page must be 1 or greater.")
+            }
+        }
 
         public mutating func run() async throws {
             let messages = try MailBridge.searchMessages(
                 query: query,
                 account: account,
-                limit: limit
+                limit: limit,
+                offset: (page - 1) * limit
             )
             if output.isJSON {
                 try printJSON(messages)
@@ -88,16 +128,26 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum number of messages to return.")
         public var limit: Int = 20
 
+        @Option(name: .long, help: "Page number (1-based, with --limit as page size).")
+        public var page: Int = 1
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
+
+        public mutating func validate() throws {
+            guard page >= 1 else {
+                throw ValidationError("--page must be 1 or greater.")
+            }
+        }
 
         public mutating func run() async throws {
             let messages = try MailBridge.listMessages(
                 account: account,
                 mailbox: mailbox,
                 unread: unread,
-                limit: limit
+                limit: limit,
+                offset: (page - 1) * limit
             )
             if output.isJSON {
                 try printJSON(messages)
@@ -150,14 +200,22 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(message)
             } else {
-                let fields: [(String, String)] = [
+                var fields: [(String, String)] = [
                     ("From", message.from),
                     ("To", message.to.joined(separator: ", ")),
                     ("Date", TextFormatter.compactDate(message.date)),
                     ("Subject", message.subject),
                     ("Mailbox", "\(message.account) / \(message.mailbox)"),
-                    ("Body", message.body ?? "(no body)"),
                 ]
+                if let size = message.size {
+                    fields.append(("Size", TextFormatter.fileSize(size)))
+                }
+                if let atts = message.attachments, !atts.isEmpty {
+                    let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
+                        .joined(separator: "\n")
+                    fields.append(("Attachments", attStr))
+                }
+                fields.append(("Body", message.body ?? "(no body)"))
                 print(TextFormatter.card(fields: fields))
             }
         }
@@ -348,13 +406,15 @@ private func printMessageTable(_ messages: [MailMessage]) {
             TextFormatter.truncate(msg.id, to: 8),
             TextFormatter.compactDate(msg.date),
             TextFormatter.truncate(msg.from, to: 18),
-            TextFormatter.truncate(msg.subject, to: 30),
+            TextFormatter.truncate(msg.subject, to: 24),
             msg.read ? "Y" : "N",
+            msg.hasAttachment == true ? "A" : " ",
+            msg.size.map { TextFormatter.fileSize($0) } ?? "",
         ]
     }
     print(TextFormatter.table(
-        headers: ["ID", "DATE", "FROM", "SUBJECT", "READ"],
+        headers: ["ID", "DATE", "FROM", "SUBJECT", "READ", "ATT", "SIZE"],
         rows: rows,
-        columnWidths: [10, 18, 20, 32, 4]
+        columnWidths: [10, 18, 20, 26, 4, 3, 8]
     ))
 }
