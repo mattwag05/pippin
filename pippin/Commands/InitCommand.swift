@@ -11,7 +11,7 @@ public struct InitCommand: AsyncParsableCommand {
 
     public mutating func run() async throws {
         print("pippin init — First-run setup guide")
-        print("=" .padding(toLength: 40, withPad: "=", startingAt: 0))
+        print("=".padding(toLength: 40, withPad: "=", startingAt: 0))
         print()
 
         let checks = runAllChecks()

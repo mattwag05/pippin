@@ -1,15 +1,15 @@
 import Foundation
 
 public struct MailMessage: Codable, Sendable {
-    public let id: String       // compound: "account||mailbox||messageId"
+    public let id: String // compound: "account||mailbox||messageId"
     public let account: String
     public let mailbox: String
     public let subject: String
     public let from: String
     public let to: [String]
-    public let date: String     // ISO 8601
+    public let date: String // ISO 8601
     public let read: Bool
-    public let body: String?    // only populated by `read` command
+    public let body: String? // only populated by `read` command
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -21,7 +21,7 @@ public struct MailMessage: Codable, Sendable {
         try container.encode(to, forKey: .to)
         try container.encode(date, forKey: .date)
         try container.encode(read, forKey: .read)
-        try container.encode(body, forKey: .body)   // encodes nil as JSON null
+        try container.encode(body, forKey: .body) // encodes nil as JSON null
     }
 }
 

@@ -12,23 +12,22 @@ enum MailBridgeError: LocalizedError, Sendable {
         case .scriptFailed: return "Mail automation script failed"
         case .timeout: return "Mail automation script timed out"
         case .decodingFailed: return "Failed to decode Mail response"
-        case .invalidMessageId(let id): return "Invalid message id: \(id)"
-        case .invalidMailbox(let name): return "Invalid mailbox name: \(name)"
+        case let .invalidMessageId(id): return "Invalid message id: \(id)"
+        case let .invalidMailbox(name): return "Invalid mailbox name: \(name)"
         }
     }
 
     /// Raw technical detail for debugging — do not write to stdout
     var debugDetail: String? {
         switch self {
-        case .scriptFailed(let msg): return msg
-        case .decodingFailed(let msg): return msg
+        case let .scriptFailed(msg): return msg
+        case let .decodingFailed(msg): return msg
         default: return nil
         }
     }
 }
 
-struct MailBridge {
-
+enum MailBridge {
     static func listMessages(
         account: String? = nil,
         mailbox: String = "INBOX",
@@ -134,17 +133,17 @@ struct MailBridge {
 
     static func jsEscape(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\")
-         .replacingOccurrences(of: "\0", with: "\\0")
-         .replacingOccurrences(of: "\"", with: "\\\"")
-         .replacingOccurrences(of: "'", with: "\\'")
-         .replacingOccurrences(of: "`", with: "\\`")
-         .replacingOccurrences(of: "\n", with: "\\n")
-         .replacingOccurrences(of: "\r", with: "\\r")
-         .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
-         .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+            .replacingOccurrences(of: "\0", with: "\\0")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "`", with: "\\`")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 
-    private static func buildListScript(
+    static func buildListScript(
         account: String?,
         mailbox: String,
         unread: Bool,
@@ -210,7 +209,7 @@ struct MailBridge {
         """
     }
 
-    private static func buildAccountsScript() -> String {
+    static func buildAccountsScript() -> String {
         return """
         var mail = Application('Mail');
         var ready = false;
@@ -236,7 +235,7 @@ struct MailBridge {
         """
     }
 
-    private static func buildSearchScript(
+    static func buildSearchScript(
         query: String,
         account: String?,
         limit: Int
@@ -314,7 +313,7 @@ struct MailBridge {
         """
     }
 
-    private static func buildMoveScript(
+    static func buildMoveScript(
         account: String,
         mailbox: String,
         messageId: String,
@@ -396,7 +395,7 @@ struct MailBridge {
         """
     }
 
-    private static func buildSendScript(
+    static func buildSendScript(
         to: String,
         subject: String,
         body: String,
@@ -497,7 +496,7 @@ struct MailBridge {
         """
     }
 
-    private static func buildMarkScript(
+    static func buildMarkScript(
         account: String,
         mailbox: String,
         messageId: String,
@@ -563,7 +562,7 @@ struct MailBridge {
         """
     }
 
-    private static func buildReadScript(account: String, mailbox: String, messageId: String) -> String {
+    static func buildReadScript(account: String, mailbox: String, messageId: String) -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
         // messageId is pre-validated numeric by parseCompoundId — jsEscape is defense-in-depth
@@ -650,7 +649,7 @@ struct MailBridge {
         // Set up timeout: terminate after timeoutSeconds
         let timeoutItem = DispatchWorkItem {
             guard process.isRunning else { return }
-            process.terminate()  // SIGTERM — give osascript 2 seconds to clean up
+            process.terminate() // SIGTERM — give osascript 2 seconds to clean up
             DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
                 if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             }

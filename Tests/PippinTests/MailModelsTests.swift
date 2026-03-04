@@ -1,8 +1,7 @@
-import XCTest
 @testable import PippinLib
+import XCTest
 
 final class MailModelsTests: XCTestCase {
-
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -28,7 +27,7 @@ final class MailModelsTests: XCTestCase {
             body: "Message body"
         )
         let data = try encoder.encode(msg)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         XCTAssertEqual(json["id"] as? String, "acct||INBOX||42")
         XCTAssertEqual(json["account"] as? String, "Work")
@@ -54,7 +53,7 @@ final class MailModelsTests: XCTestCase {
             body: nil
         )
         let data = try encoder.encode(msg)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         // body key must be present with null value (NSNull in JSONSerialization)
         XCTAssertTrue(json.keys.contains("body"), "body key must be present even when nil")
@@ -89,7 +88,7 @@ final class MailModelsTests: XCTestCase {
             details: ["account": "Work", "mailbox": "INBOX", "messageId": "42"]
         )
         let data = try encoder.encode(result)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         XCTAssertEqual(json["success"] as? Bool, true)
         XCTAssertEqual(json["action"] as? String, "mark_read")
@@ -104,7 +103,7 @@ final class MailModelsTests: XCTestCase {
             details: ["error": "SMTP authentication failed"]
         )
         let data = try encoder.encode(result)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(json["success"] as? Bool, false)
     }
 
@@ -113,7 +112,7 @@ final class MailModelsTests: XCTestCase {
     func testMailAccountEncoding() throws {
         let account = MailAccount(name: "Work", email: "work@example.com")
         let data = try encoder.encode(account)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(json["name"] as? String, "Work")
         XCTAssertEqual(json["email"] as? String, "work@example.com")
     }
