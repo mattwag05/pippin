@@ -1,8 +1,7 @@
-import XCTest
 @testable import PippinLib
+import XCTest
 
 final class DecoderTests: XCTestCase {
-
     // MARK: - Generic decode<T>
 
     func testDecodeMessagesFromValidJSON() throws {
@@ -38,7 +37,7 @@ final class DecoderTests: XCTestCase {
 
     func testDecodeEmptyStringThrows() {
         XCTAssertThrowsError(try MailBridge.decode([MailMessage].self, from: "")) { error in
-            guard case MailBridgeError.decodingFailed(let msg) = error else {
+            guard case let MailBridgeError.decodingFailed(msg) = error else {
                 XCTFail("Expected decodingFailed, got \(error)"); return
             }
             XCTAssertTrue(msg.contains("empty output"), "Expected 'empty output' in: \(msg)")

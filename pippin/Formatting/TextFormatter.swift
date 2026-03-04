@@ -3,7 +3,6 @@ import Foundation
 /// Fixed-width text formatting for CLI output.
 /// Uses 80-column layout — no terminal width detection (reliable under launchd/cron).
 public enum TextFormatter {
-
     /// Print a column-aligned table with headers.
     /// `columnWidths` specifies the width for each column; the last column expands to fill.
     public static func table(headers: [String], rows: [[String]], columnWidths: [Int]) -> String {
