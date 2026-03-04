@@ -1,7 +1,7 @@
 import Foundation
 
 /// Protocol for audio transcription backends.
-public protocol Transcriber {
+public protocol Transcriber: Sendable {
     func transcribe(audioPath: String) throws -> String
 }
 
@@ -27,8 +27,9 @@ public struct ParakeetTranscriber: Transcriber {
         try process.run()
 
         // Drain both pipes concurrently to avoid deadlock on large output
-        var stdoutData = Data()
-        var stderrData = Data()
+        // nonisolated(unsafe): each var is written once by one GCD block; group.wait() provides happens-before
+        nonisolated(unsafe) var stdoutData = Data()
+        nonisolated(unsafe) var stderrData = Data()
         let group = DispatchGroup()
 
         group.enter()
@@ -107,7 +108,7 @@ public struct SpeechFrameworkTranscriber: Transcriber {
     }
 }
 
-public enum TranscriberError: LocalizedError {
+public enum TranscriberError: LocalizedError, Sendable {
     case binaryNotFound(String)
     case timeout
     case failed(Int, String)

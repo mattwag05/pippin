@@ -1,6 +1,6 @@
 import Foundation
 
-enum MailBridgeError: LocalizedError {
+enum MailBridgeError: LocalizedError, Sendable {
     case scriptFailed(String)
     case timeout
     case decodingFailed(String)
@@ -630,8 +630,9 @@ struct MailBridge {
         try process.run()
 
         // Drain both pipes concurrently to avoid deadlock on large output (>64KB pipe buffer)
-        var stdoutData = Data()
-        var stderrData = Data()
+        // nonisolated(unsafe): each var is written once by one GCD block; group.wait() provides happens-before
+        nonisolated(unsafe) var stdoutData = Data()
+        nonisolated(unsafe) var stderrData = Data()
         let group = DispatchGroup()
 
         group.enter()
