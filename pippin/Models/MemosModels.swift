@@ -63,3 +63,10 @@ public struct ExportResult: Codable, Sendable {
     public let transcription: String?
     public let transcriptionFile: String?
 }
+
+public struct TranscribeResult: Codable, Sendable {
+    public let id: String
+    public let title: String
+    public let transcription: String
+    public let outputFile: String?
+}
