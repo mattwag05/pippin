@@ -79,6 +79,13 @@ public enum TextFormatter {
         formatDate(date)
     }
 
+    /// Format a byte count as a human-readable size: "512B", "2KB", "1.4MB".
+    public static func fileSize(_ bytes: Int) -> String {
+        if bytes < 1024 { return "\(bytes)B" }
+        if bytes < 1024 * 1024 { return "\(bytes / 1024)KB" }
+        return String(format: "%.1fMB", Double(bytes) / 1_048_576.0)
+    }
+
     /// Single success/failure line for action results.
     public static func actionResult(success: Bool, action: String, details: String) -> String {
         let icon = success ? "ok" : "FAIL"
