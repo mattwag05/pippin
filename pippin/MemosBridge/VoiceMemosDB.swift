@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public enum VoiceMemosError: LocalizedError {
+public enum VoiceMemosError: LocalizedError, Sendable {
     case databaseNotFound(String)
     case unsupportedSchemaVersion(Int)
     case memoNotFound(String)
@@ -27,7 +27,7 @@ public enum VoiceMemosError: LocalizedError {
     }
 }
 
-public final class VoiceMemosDB {
+public final class VoiceMemosDB: Sendable {
     /// Schema versions confirmed to work with this code.
     /// Update after macOS upgrades if Z_VERSION changes.
     static let knownSchemaVersions: Set<Int> = [1]

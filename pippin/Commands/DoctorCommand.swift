@@ -2,8 +2,8 @@ import ArgumentParser
 import Foundation
 
 /// A single diagnostic check result.
-public struct DiagnosticCheck: Codable {
-    public enum Status: String, Codable {
+public struct DiagnosticCheck: Codable, Sendable {
+    public enum Status: String, Codable, Sendable {
         case ok
         case fail
         case skip // optional check not available

@@ -23,21 +23,21 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
             ],
             path: "pippin",
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         // Executable entry point — just the @main struct
         .executableTarget(
             name: "pippin",
             dependencies: ["PippinLib"],
             path: "pippin-entry",
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         // Test target
         .testTarget(
             name: "PippinTests",
             dependencies: ["PippinLib", .product(name: "GRDB", package: "GRDB.swift")],
             path: "Tests/PippinTests",
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]
 )

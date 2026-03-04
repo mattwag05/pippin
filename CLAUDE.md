@@ -98,9 +98,10 @@ docs/archive/               # Archived planning documents
 - Performance target: `<2 sec` list
 
 ### Concurrency
-- `swift-tools-version: 6.0` with `.swiftLanguageMode(.v5)` — strict concurrency not enforced yet
-- Existing GCD patterns in `MailBridge.runScript()` work under Swift 5 language mode
-- Migration path: adopt `@concurrent` and `withCheckedContinuation` in a future PR when ready for Swift 6 strict concurrency
+- `swift-tools-version: 6.0` with `.swiftLanguageMode(.v6)` — strict concurrency fully enforced
+- All model structs and error enums conform to `Sendable`; `VoiceMemosDB` is `final class: Sendable` (all-`let` stored properties)
+- GCD pipe-draining pattern in `MailBridge.runScript()` and `ParakeetTranscriber.transcribe()` uses `nonisolated(unsafe) var` for the output `Data` buffers — safe because each var is written exactly once by one GCD block, and `group.wait()` provides a happens-before guarantee before the values are read
+- `Process` is `Sendable` in Foundation; no `nonisolated(unsafe)` needed for the timeout `DispatchWorkItem` capture
 
 ## Versioning
 
@@ -123,6 +124,9 @@ Format: `MAJOR.MINOR.PATCH[-prerelease]`
 > **Note:** Project-level `.claude/` skills, hooks, and agents were removed in PR #6. No local hooks are active — `swiftformat` and `swift build` must be run manually.
 
 ## Workflow Gotchas
+
+### Batch Branch Deletion on Forgejo
+`git push forgejo --delete branch1 branch2 ...` aborts entirely if any one branch doesn't exist — it won't delete the rest. Remove the missing branch from the list and re-run.
 
 ### Creating PRs on Forgejo
 `gh pr create` fails with `HTTP 405` (Forgejo doesn't support GitHub's GraphQL API). Use curl + Forgejo REST API with Basic auth:

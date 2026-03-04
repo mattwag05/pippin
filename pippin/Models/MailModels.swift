@@ -1,6 +1,6 @@
 import Foundation
 
-public struct MailMessage: Codable {
+public struct MailMessage: Codable, Sendable {
     public let id: String       // compound: "account||mailbox||messageId"
     public let account: String
     public let mailbox: String
@@ -25,12 +25,12 @@ public struct MailMessage: Codable {
     }
 }
 
-public struct MailAccount: Codable {
+public struct MailAccount: Codable, Sendable {
     public let name: String
     public let email: String
 }
 
-public struct MailActionResult: Codable {
+public struct MailActionResult: Codable, Sendable {
     public let success: Bool
     public let action: String
     public let details: [String: String]

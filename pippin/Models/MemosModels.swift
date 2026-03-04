@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public struct VoiceMemo: Codable, FetchableRecord {
+public struct VoiceMemo: Codable, FetchableRecord, Sendable {
     public let id: String
     public let title: String
     public let durationSeconds: Double
@@ -56,7 +56,7 @@ public struct VoiceMemo: Codable, FetchableRecord {
     }
 }
 
-public struct ExportResult: Codable {
+public struct ExportResult: Codable, Sendable {
     public let id: String
     public let title: String
     public let exportedTo: String
