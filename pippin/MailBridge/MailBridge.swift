@@ -32,10 +32,12 @@ enum MailBridge {
         account: String? = nil,
         mailbox: String = "INBOX",
         unread: Bool = false,
-        limit: Int = 50
+        limit: Int = 50,
+        offset: Int = 0
     ) throws -> [MailMessage] {
         let clampedLimit = max(1, min(limit, 500))
-        let script = buildListScript(account: account, mailbox: mailbox, unread: unread, limit: clampedLimit)
+        let clampedOffset = max(0, offset)
+        let script = buildListScript(account: account, mailbox: mailbox, unread: unread, limit: clampedLimit, offset: clampedOffset)
         let json = try runScript(script)
         return try decode([MailMessage].self, from: json)
     }
@@ -43,9 +45,11 @@ enum MailBridge {
     static func searchMessages(
         query: String,
         account: String? = nil,
-        limit: Int = 10
+        limit: Int = 10,
+        offset: Int = 0
     ) throws -> [MailMessage] {
-        let script = buildSearchScript(query: query, account: account, limit: limit)
+        let clampedOffset = max(0, offset)
+        let script = buildSearchScript(query: query, account: account, limit: limit, offset: clampedOffset)
         // Search scans all mailboxes including body content — use 30s timeout
         let json = try runScript(script, timeoutSeconds: 30)
         return try decode([MailMessage].self, from: json)
@@ -107,6 +111,12 @@ enum MailBridge {
         return try decode([MailAccount].self, from: json)
     }
 
+    static func listMailboxes(account: String? = nil) throws -> [Mailbox] {
+        let script = buildMailboxesScript(account: account)
+        let json = try runScript(script)
+        return try decode([Mailbox].self, from: json)
+    }
+
     static func readMessage(compoundId: String) throws -> MailMessage {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         let script = buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
@@ -147,7 +157,8 @@ enum MailBridge {
         account: String?,
         mailbox: String,
         unread: Bool,
-        limit: Int
+        limit: Int,
+        offset: Int = 0
     ) -> String {
         let acctFilter = account.map { "'\(jsEscape($0))'" } ?? "null"
         let mbName = jsEscape(mailbox)
@@ -165,6 +176,7 @@ enum MailBridge {
         var mbFilter = '\(mbName)';
         var unreadOnly = \(unread ? "true" : "false");
         var limit = \(limit);
+        var offset = \(offset);
         var results = [];
 
         var accounts = mail.accounts();
@@ -180,14 +192,18 @@ enum MailBridge {
 
                 // whose({}) is invalid JXA — use messages() directly for all-messages case
                 var msgs = unreadOnly ? mb.messages.whose({readStatus: false})() : mb.messages();
-                var count = Math.min(msgs.length, limit - results.length);
-                var slice = msgs.slice(0, count);
+                var startIdx = Math.min(offset, msgs.length);
+                var endIdx = Math.min(startIdx + limit, msgs.length);
+                var slice = msgs.slice(startIdx, endIdx);
+                var count = slice.length;
 
                 var ids       = slice.map(function(msg) { return msg.id(); });
                 var subjects  = slice.map(function(msg) { return msg.subject(); });
                 var senders   = slice.map(function(msg) { return msg.sender(); });
                 var dates     = slice.map(function(msg) { return msg.dateSent().toISOString(); });
                 var readFlags = slice.map(function(msg) { return msg.readStatus(); });
+                var sizes     = slice.map(function(msg) { try { return msg.messageSize(); } catch(e) { return null; } });
+                var hasAtts   = slice.map(function(msg) { try { return msg.mailAttachments().length > 0; } catch(e) { return false; } });
 
                 for (var i = 0; i < count; i++) {
                     results.push({
@@ -199,7 +215,9 @@ enum MailBridge {
                         to: [],
                         date: dates[i],
                         read: readFlags[i],
-                        body: null
+                        body: null,
+                        size: sizes[i],
+                        hasAttachment: hasAtts[i]
                     });
                 }
             }
@@ -235,10 +253,49 @@ enum MailBridge {
         """
     }
 
+    static func buildMailboxesScript(account: String?) -> String {
+        let acctFilter = account.map { "'\(jsEscape($0))'" } ?? "null"
+
+        return """
+        var mail = Application('Mail');
+        var ready = false;
+        for (var attempt = 0; attempt < 8; attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
+
+        var acctFilter = \(acctFilter);
+        var results = [];
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            var acctName = acct.name();
+            if (acctFilter !== null && acctName !== acctFilter) continue;
+            var mailboxes = acct.mailboxes();
+            for (var m = 0; m < mailboxes.length; m++) {
+                var mb = mailboxes[m];
+                var msgCount = 0;
+                var unreadCount = 0;
+                try { msgCount = mb.messages().length; } catch(e) {}
+                try { unreadCount = mb.unreadCount(); } catch(e) {}
+                results.push({
+                    name: mb.name(),
+                    account: acctName,
+                    messageCount: msgCount,
+                    unreadCount: unreadCount
+                });
+            }
+        }
+        JSON.stringify(results);
+        """
+    }
+
     static func buildSearchScript(
         query: String,
         account: String?,
-        limit: Int
+        limit: Int,
+        offset: Int = 0
     ) -> String {
         let safeQuery = jsEscape(query)
         let acctFilter = account.map { "'\(jsEscape($0))'" } ?? "null"
@@ -259,8 +316,10 @@ enum MailBridge {
         var query = '\(safeQuery)'.toLowerCase();
         var acctFilter = \(acctFilter);
         var limit = \(safeLimitVal);
+        var offset = \(offset);
         var perMailboxLimit = \(perMailboxLimit);
         var results = [];
+        var skipped = 0;
 
         var accounts = mail.accounts();
         for (var a = 0; a < accounts.length && results.length < limit; a++) {
@@ -293,6 +352,11 @@ enum MailBridge {
                     }
 
                     if (matched) {
+                        if (skipped < offset) { skipped++; continue; }
+                        var msgSize = null;
+                        try { msgSize = msg.messageSize(); } catch(e) {}
+                        var msgHasAtt = false;
+                        try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {}
                         results.push({
                             id: acctName + '||' + mb.name() + '||' + msg.id(),
                             account: acctName,
@@ -302,7 +366,9 @@ enum MailBridge {
                             to: [],
                             date: msg.dateSent().toISOString(),
                             read: msg.readStatus(),
-                            body: null
+                            body: null,
+                            size: msgSize,
+                            hasAttachment: msgHasAtt
                         });
                     }
                 }
@@ -593,6 +659,49 @@ enum MailBridge {
                 if (msgs.length === 0) break;
 
                 var msg = msgs[0];
+
+                var htmlBody = null;
+                try { htmlBody = msg.htmlContent(); } catch(e) {}
+
+                var headerDict = {};
+                try {
+                    var allHeaders = msg.allHeaders() || '';
+                    var lines = allHeaders.split('\\n');
+                    var currentKey = '';
+                    for (var h = 0; h < lines.length; h++) {
+                        var line = lines[h];
+                        if (/^[A-Za-z0-9-]+:/.test(line)) {
+                            var colonIdx = line.indexOf(':');
+                            currentKey = line.substring(0, colonIdx);
+                            headerDict[currentKey] = line.substring(colonIdx + 1).trim();
+                        } else if (currentKey && /^[ \\t]/.test(line)) {
+                            headerDict[currentKey] += ' ' + line.trim();
+                        }
+                    }
+                } catch(e) {}
+
+                var attachList = [];
+                var msgHasAtt = false;
+                try {
+                    var atts = msg.mailAttachments();
+                    msgHasAtt = atts.length > 0;
+                    for (var ai = 0; ai < atts.length; ai++) {
+                        var att = atts[ai];
+                        var attSize = 0;
+                        try { attSize = att.fileSize(); } catch(e) {
+                            try { attSize = att.downloadedSize(); } catch(e2) {}
+                        }
+                        attachList.push({
+                            name: att.name(),
+                            mimeType: att.mimeType(),
+                            size: attSize
+                        });
+                    }
+                } catch(e) {}
+
+                var msgSize = null;
+                try { msgSize = msg.messageSize(); } catch(e) {}
+
                 result = {
                     id: acct.name() + '||' + mb.name() + '||' + String(msg.id()),
                     account: acct.name(),
@@ -602,7 +711,12 @@ enum MailBridge {
                     to: msg.toRecipients().map(function(r) { return r.address(); }),
                     date: msg.dateSent().toISOString(),
                     read: msg.readStatus(),
-                    body: msg.content()
+                    body: msg.content(),
+                    size: msgSize,
+                    hasAttachment: msgHasAtt,
+                    htmlBody: htmlBody,
+                    headers: headerDict,
+                    attachments: attachList
                 };
                 break;
             }

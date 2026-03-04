@@ -156,6 +156,30 @@ final class TextFormatterTests: XCTestCase {
         XCTAssertEqual(TextFormatter.card(fields: []), "")
     }
 
+    // MARK: - File size formatting
+
+    func testFileSizeBytes() {
+        XCTAssertEqual(TextFormatter.fileSize(512), "512B")
+    }
+
+    func testFileSizeKB() {
+        XCTAssertEqual(TextFormatter.fileSize(2048), "2KB")
+    }
+
+    func testFileSizeMB() {
+        let result = TextFormatter.fileSize(1_500_000)
+        XCTAssertTrue(result.hasSuffix("MB"), "Expected MB suffix, got: \(result)")
+        XCTAssertTrue(result.hasPrefix("1."), "Expected ~1.4MB, got: \(result)")
+    }
+
+    func testFileSizeZero() {
+        XCTAssertEqual(TextFormatter.fileSize(0), "0B")
+    }
+
+    func testFileSizeExactlyOneKB() {
+        XCTAssertEqual(TextFormatter.fileSize(1024), "1KB")
+    }
+
     // MARK: - Action result
 
     func testActionResultSuccess() {
