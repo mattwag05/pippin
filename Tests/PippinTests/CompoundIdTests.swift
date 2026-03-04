@@ -1,8 +1,7 @@
-import XCTest
 @testable import PippinLib
+import XCTest
 
 final class CompoundIdTests: XCTestCase {
-
     // MARK: - Valid IDs
 
     func testValidIdParsed() throws {

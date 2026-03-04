@@ -11,5 +11,7 @@ public struct OutputOptions: ParsableArguments {
 
     public init() {}
 
-    public var isJSON: Bool { format == .json }
+    public var isJSON: Bool {
+        format == .json
+    }
 }

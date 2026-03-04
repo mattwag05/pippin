@@ -118,10 +118,10 @@ private func checkMailAutomation() -> DiagnosticCheck {
                 status: .fail,
                 detail: "permission denied",
                 remediation: """
-                    → Open System Settings > Privacy & Security > Automation
-                      Grant Terminal.app (or pippin binary) access to Mail.
-                      Then run: pippin mail list
-                    """
+                → Open System Settings > Privacy & Security > Automation
+                  Grant Terminal.app (or pippin binary) access to Mail.
+                  Then run: pippin mail list
+                """
             )
         }
         // Could be Mail not running or other issue
@@ -130,9 +130,9 @@ private func checkMailAutomation() -> DiagnosticCheck {
             status: .fail,
             detail: detail,
             remediation: """
-                → Ensure Mail.app is installed and has at least one account configured.
-                  Then run: pippin mail list
-                """
+            → Ensure Mail.app is installed and has at least one account configured.
+              Then run: pippin mail list
+            """
         )
     }
 }
@@ -154,19 +154,19 @@ private func checkVoiceMemosDB() -> DiagnosticCheck {
                 status: .fail,
                 detail: "database not found",
                 remediation: """
-                    → Voice Memos database not found at expected path.
-                      Ensure Voice Memos.app has been opened at least once.
-                    """
+                → Voice Memos database not found at expected path.
+                  Ensure Voice Memos.app has been opened at least once.
+                """
             )
-        case .unsupportedSchemaVersion(let v):
+        case let .unsupportedSchemaVersion(v):
             return DiagnosticCheck(
                 name: "Voice Memos access",
                 status: .fail,
                 detail: "unsupported schema version \(v)",
                 remediation: """
-                    → The Voice Memos database schema has changed (version \(v)).
-                      This version of pippin may need updating.
-                    """
+                → The Voice Memos database schema has changed (version \(v)).
+                  This version of pippin may need updating.
+                """
             )
         default:
             return DiagnosticCheck(
@@ -174,9 +174,9 @@ private func checkVoiceMemosDB() -> DiagnosticCheck {
                 status: .fail,
                 detail: error.localizedDescription,
                 remediation: """
-                    → Open System Settings > Privacy & Security > Full Disk Access
-                      Add Terminal.app, then restart your terminal.
-                    """
+                → Open System Settings > Privacy & Security > Full Disk Access
+                  Add Terminal.app, then restart your terminal.
+                """
             )
         }
     } catch {
@@ -185,9 +185,9 @@ private func checkVoiceMemosDB() -> DiagnosticCheck {
             status: .fail,
             detail: "permission denied",
             remediation: """
-                → Open System Settings > Privacy & Security > Full Disk Access
-                  Add Terminal.app, then restart your terminal.
-                """
+            → Open System Settings > Privacy & Security > Full Disk Access
+              Add Terminal.app, then restart your terminal.
+            """
         )
     }
 }

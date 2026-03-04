@@ -456,7 +456,8 @@ final class VoiceMemosDBTests: XCTestCase {
             try db.transcribeMemo(id: "missing", transcriber: MockTranscriber(text: "x"))
         ) { error in
             guard let vmError = error as? VoiceMemosError,
-                  case .memoNotFound = vmError else {
+                  case .memoNotFound = vmError
+            else {
                 XCTFail("Expected memoNotFound, got \(error)")
                 return
             }
@@ -472,7 +473,8 @@ final class VoiceMemosDBTests: XCTestCase {
             try db.transcribeMemo(id: "evicted-t", transcriber: MockTranscriber(text: "x"))
         ) { error in
             guard let vmError = error as? VoiceMemosError,
-                  case .memoEvicted = vmError else {
+                  case .memoEvicted = vmError
+            else {
                 XCTFail("Expected memoEvicted, got \(error)")
                 return
             }
@@ -489,7 +491,8 @@ final class VoiceMemosDBTests: XCTestCase {
             try db.transcribeMemo(id: "no-file", transcriber: MockTranscriber(text: "x"))
         ) { error in
             guard let vmError = error as? VoiceMemosError,
-                  case .fileNotFound = vmError else {
+                  case .fileNotFound = vmError
+            else {
                 XCTFail("Expected fileNotFound, got \(error)")
                 return
             }
@@ -550,5 +553,7 @@ final class VoiceMemosDBTests: XCTestCase {
 
 private struct MockTranscriber: Transcriber {
     let text: String
-    func transcribe(audioPath _: String) throws -> String { text }
+    func transcribe(audioPath _: String) throws -> String {
+        text
+    }
 }
