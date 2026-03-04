@@ -10,7 +10,7 @@ macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Singl
 
 ## What This Builds
 
-- **`pippin mail`** — Swift CLI for Apple Mail via osascript JXA (`list`, `search`, `show`, `send`, `move`, `mark`, `accounts`)
+- **`pippin mail`** — Swift CLI for Apple Mail via osascript JXA (`accounts`, `mailboxes`, `list`, `search`, `show`, `send`, `move`, `mark`)
 - **`pippin memos`** — Swift CLI for Voice Memos via GRDB read-only SQLite (`list`, `info`, `export`)
 - **`pippin doctor`** / **`pippin init`** — Permission diagnostics and guided setup
 
@@ -20,7 +20,7 @@ macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Singl
 swift build                        # Debug build
 swift build -c release             # Release build
 swift run pippin mail list         # Run subcommand (debug)
-swift test                         # Run 178 tests
+swift test                         # Run 216 tests
 
 # Makefile targets
 make build     # swift build -c release
@@ -69,7 +69,7 @@ pippin/                     # PippinLib target (all application logic)
   Version.swift             # PippinVersion.version = "0.1.3-beta"
 pippin-entry/
   Pippin.swift              # @main entry point
-Tests/PippinTests/          # 178 tests (8 unit + JXAScriptBuilderTests + CLIIntegrationTests)
+Tests/PippinTests/          # 216 tests (models + JXAScriptBuilderTests + CLIIntegrationTests)
 archive/pippin-memos/       # Archived Python implementation
 docs/archive/               # Archived planning documents
 ```
@@ -79,7 +79,7 @@ docs/archive/               # Archived planning documents
 ### mail (Swift + JXA)
 - **`MailBridge`** — all JXA calls isolated here; uses `osascript -l JavaScript` (not AppleScript)
 - Uses `Process` to shell out to `osascript` (headless-safe; concurrent pipe draining prevents deadlock)
-- Output schema: `{id, account, mailbox, subject, from, to[], date (ISO8601), read, body?}`
+- Output schema: envelope `{id, account, mailbox, subject, from, to[], date (ISO8601), read, body?, size?, hasAttachment?}`; detail (`show`) adds `{htmlBody?, headers?, attachments?[{name, mimeType, size}]}`
 - Message ID format: `account||mailbox||messageId` (compound, round-trip safe)
 - `jsEscape()` escapes in order: `\`, `\0`, `"`, `'`, `` ` ``, `\n`, `\r`, `\u2028`, `\u2029`
 - `mb.messages.whose({})()` is **invalid JXA** — use `mb.messages()` for unfiltered fetch
@@ -150,6 +150,12 @@ Token: Vaultwarden "Forgejo Admin Credentials" (password field). Bearer token au
 ```swift
 XCTAssertEqual((result as NSString).lastPathComponent, "expected.m4a")
 ```
+
+### MailMessage Optional Fields
+New optional fields on `MailMessage` require an explicit `public init(...)` with `= nil` defaults — Swift's synthesized memberwise init does NOT provide default `nil` for `Optional` properties. Use `encodeIfPresent` for new fields (omits key when nil, keeps envelope JSON compact); only `body` uses `encode` to force an explicit JSON `null`.
+
+### JXA Mail Metadata APIs
+Reliable JXA accessors for enriched output: `msg.messageSize()`, `msg.mailAttachments()` (array), `mb.unreadCount()`, `msg.htmlContent()` (null on plain-text), `msg.allHeaders()` (raw RFC 2822 string). All require try/catch — they throw on some IMAP server types.
 
 ### GRDB Nullable Columns
 `fetchOne` on a nullable column returns `Optional<Optional<T>>` — ambiguous for null vs missing row. Use `COUNT(*) WHERE col IS NOT NULL` instead:
