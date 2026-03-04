@@ -1,8 +1,7 @@
-import XCTest
 @testable import PippinLib
+import XCTest
 
 final class JsEscapeTests: XCTestCase {
-
     // MARK: - Backslash (must be escaped first)
 
     func testBackslash() {
@@ -75,7 +74,7 @@ final class JsEscapeTests: XCTestCase {
         // If we have a literal backslash followed by n, it should become \\n (backslash + n),
         // NOT \\n interpreted as newline escape.
         // Input: "\" + "n" (two chars) → "\\n" (two chars, escaped backslash + n)
-        let input = "\\n"   // Swift string: one backslash + n
+        let input = "\\n" // Swift string: one backslash + n
         let result = MailBridge.jsEscape(input)
         // Should be "\\" + "n" = escaped backslash followed by n
         XCTAssertEqual(result, "\\\\n")
