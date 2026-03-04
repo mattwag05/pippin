@@ -68,14 +68,20 @@ public struct MailCommand: AsyncParsableCommand {
     public struct Search: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
-            abstract: "Search messages by subject, sender, or body."
+            abstract: "Search messages by subject or sender. Use --body for body content."
         )
 
-        @Argument(help: "Search query (case-insensitive, matches subject/sender/body).")
+        @Argument(help: "Search query (case-insensitive, matches subject/sender).")
         public var query: String
 
         @Option(name: .long, help: "Filter by account name.")
         public var account: String?
+
+        @Option(name: .long, help: "Restrict search to a single mailbox.")
+        public var mailbox: String?
+
+        @Flag(name: .long, help: "Include message body in search (slower).")
+        public var body: Bool = false
 
         @Option(name: .long, help: "Maximum number of results to return (default: 10).")
         public var limit: Int = 10
@@ -97,6 +103,8 @@ public struct MailCommand: AsyncParsableCommand {
             let messages = try MailBridge.searchMessages(
                 query: query,
                 account: account,
+                mailbox: mailbox,
+                searchBody: body,
                 limit: limit,
                 offset: (page - 1) * limit
             )

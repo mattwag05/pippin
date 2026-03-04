@@ -1,6 +1,6 @@
 import Foundation
 
-enum MailBridgeError: LocalizedError, Sendable {
+enum MailBridgeError: LocalizedError {
     case scriptFailed(String)
     case timeout
     case decodingFailed(String)
@@ -45,13 +45,15 @@ enum MailBridge {
     static func searchMessages(
         query: String,
         account: String? = nil,
+        mailbox: String? = nil,
+        searchBody: Bool = false,
         limit: Int = 10,
         offset: Int = 0
     ) throws -> [MailMessage] {
         let clampedOffset = max(0, offset)
-        let script = buildSearchScript(query: query, account: account, limit: limit, offset: clampedOffset)
-        // Search scans all mailboxes including body content — use 30s timeout
-        let json = try runScript(script, timeoutSeconds: 30)
+        let script = buildSearchScript(query: query, account: account, mailbox: mailbox, searchBody: searchBody, limit: limit, offset: clampedOffset)
+        // Search scans all mailboxes — use 60s timeout to accommodate large inboxes
+        let json = try runScript(script, timeoutSeconds: 60)
         return try decode([MailMessage].self, from: json)
     }
 
@@ -294,14 +296,17 @@ enum MailBridge {
     static func buildSearchScript(
         query: String,
         account: String?,
+        mailbox: String? = nil,
+        searchBody: Bool = false,
         limit: Int,
         offset: Int = 0
     ) -> String {
         let safeQuery = jsEscape(query)
         let acctFilter = account.map { "'\(jsEscape($0))'" } ?? "null"
-        // Clamp limit to prevent runaway scans; per-mailbox cap bounds body-fetch time
+        let mbFilter = mailbox.map { "'\(jsEscape($0))'" } ?? "null"
+        // Clamp limit to prevent runaway scans; per-mailbox cap bounds scan time
         let safeLimitVal = max(1, min(limit, 500))
-        let perMailboxLimit = 200
+        let perMailboxLimit = 50
 
         return """
         var mail = Application('Mail');
@@ -315,6 +320,8 @@ enum MailBridge {
 
         var query = '\(safeQuery)'.toLowerCase();
         var acctFilter = \(acctFilter);
+        var mbFilter = \(mbFilter);
+        var searchBody = \(searchBody ? "true" : "false");
         var limit = \(safeLimitVal);
         var offset = \(offset);
         var perMailboxLimit = \(perMailboxLimit);
@@ -330,7 +337,8 @@ enum MailBridge {
             var mailboxes = acct.mailboxes();
             for (var m = 0; m < mailboxes.length && results.length < limit; m++) {
                 var mb = mailboxes[m];
-                // Cap messages scanned per mailbox to bound body-fetch time on large inboxes
+                if (mbFilter !== null && mb.name() !== mbFilter) continue;
+                // Cap messages scanned per mailbox to bound scan time on large inboxes
                 var allMsgs = mb.messages();
                 var scanCount = Math.min(allMsgs.length, perMailboxLimit);
                 var msgs = allMsgs.slice(0, scanCount);
@@ -341,12 +349,11 @@ enum MailBridge {
                     var sender = msg.sender() || '';
 
                     // Check subject and sender first (fast, no body fetch needed)
-                    var matchedFast = subject.toLowerCase().indexOf(query) !== -1
-                                   || sender.toLowerCase().indexOf(query) !== -1;
+                    var matched = subject.toLowerCase().indexOf(query) !== -1
+                               || sender.toLowerCase().indexOf(query) !== -1;
 
-                    // Only fetch body if subject/sender didn't match
-                    var matched = matchedFast;
-                    if (!matched) {
+                    // Only fetch body if explicitly requested and subject/sender didn't match
+                    if (!matched && searchBody) {
                         var body = msg.content() || '';
                         matched = body.toLowerCase().indexOf(query) !== -1;
                     }

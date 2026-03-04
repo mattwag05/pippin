@@ -547,6 +547,74 @@ final class VoiceMemosDBTests: XCTestCase {
         XCTAssertEqual(json["transcription"] as? String, "Hello")
         XCTAssertEqual(json["outputFile"] as? String, "/tmp/output.txt")
     }
+
+    // MARK: - getMemoByPrefix
+
+    func testGetMemoByPrefixExactMatch() throws {
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "ABCD1234-5678-90EF-ABCD-1234567890EF", title: "Exact Match")
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        let memo = try db.getMemoByPrefix(id: "ABCD1234-5678-90EF-ABCD-1234567890EF")
+        XCTAssertNotNil(memo)
+        XCTAssertEqual(memo?.title, "Exact Match")
+    }
+
+    func testGetMemoByPrefixEightChars() throws {
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "ABCD1234-5678-90EF-ABCD-1234567890EF", title: "Short Prefix")
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        let memo = try db.getMemoByPrefix(id: "ABCD1234")
+        XCTAssertNotNil(memo)
+        XCTAssertEqual(memo?.title, "Short Prefix")
+    }
+
+    func testGetMemoByPrefixCaseInsensitive() throws {
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "abcd1234-5678-90ef-abcd-1234567890ef", title: "Lower Case")
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        // SQLite LIKE is case-insensitive for ASCII — uppercase prefix matches lowercase ID
+        let memo = try db.getMemoByPrefix(id: "ABCD1234")
+        XCTAssertNotNil(memo)
+    }
+
+    func testGetMemoByPrefixNoMatchReturnsNil() throws {
+        let dbQueue = try makeTestDB()
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        let memo = try db.getMemoByPrefix(id: "NOTFOUND")
+        XCTAssertNil(memo)
+    }
+
+    func testGetMemoByPrefixAmbiguousThrows() throws {
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "AAAA1111-0000-0000-0000-000000000001", title: "First")
+        try insertMemo(db: dbQueue, id: "AAAA1111-0000-0000-0000-000000000002", title: "Second")
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        XCTAssertThrowsError(try db.getMemoByPrefix(id: "AAAA1111")) { error in
+            guard let vmError = error as? VoiceMemosError,
+                  case let .ambiguousId(prefix, matches) = vmError
+            else {
+                XCTFail("Expected ambiguousId, got \(error)")
+                return
+            }
+            XCTAssertEqual(prefix, "AAAA1111")
+            XCTAssertEqual(matches.count, 2)
+        }
+    }
+
+    func testGetMemoByPrefixSingleCharUnambiguous() throws {
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "ZZZZ1234-0000-0000-0000-000000000001", title: "Only One")
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        let memo = try db.getMemoByPrefix(id: "Z")
+        XCTAssertNotNil(memo)
+        XCTAssertEqual(memo?.title, "Only One")
+    }
 }
 
 // MARK: - Test helpers
