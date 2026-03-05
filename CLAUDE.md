@@ -25,8 +25,9 @@ swift test                         # Run 216 tests
 # Makefile targets
 make build     # swift build -c release
 make test      # swift test
-make lint      # swiftformat --lint (requires brew install swiftformat)
-make install   # Release build + install to ~/.local/bin/pippin
+make lint        # swiftformat --lint (requires brew install swiftformat)
+make completions # Generate zsh completion script → ~/.zfunc/_pippin
+make install     # Release build + completions + install to ~/.local/bin/pippin
 make release   # Release binary → .build/release-artifacts/
 make version   # Print version from Version.swift
 make clean     # Clean build artifacts

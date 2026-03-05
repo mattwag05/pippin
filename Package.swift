@@ -28,7 +28,7 @@ let package = Package(
         // Executable entry point — just the @main struct
         .executableTarget(
             name: "pippin",
-            dependencies: ["PippinLib"],
+            dependencies: ["PippinLib", .product(name: "ArgumentParser", package: "swift-argument-parser")],
             path: "pippin-entry",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),

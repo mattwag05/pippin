@@ -1,7 +1,7 @@
 INSTALL_DIR := $(HOME)/.local/bin
 VERSION := $(shell grep 'static let version' pippin/Version.swift | sed 's/.*"\(.*\)"/\1/')
 
-.PHONY: build test lint install version release clean
+.PHONY: build test lint install completions version release clean
 
 build:
 	swift build -c release
@@ -12,7 +12,13 @@ test:
 lint:
 	swiftformat --lint pippin/ pippin-entry/ Tests/ 2>/dev/null || echo "swiftformat not installed — skipping lint"
 
-install: build
+completions: build
+	@mkdir -p "$(HOME)/.zfunc"
+	"$$(swift build -c release --show-bin-path)/pippin" completions zsh > "$(HOME)/.zfunc/_pippin"
+	@echo "Installed: ~/.zfunc/_pippin"
+	@echo "Add 'fpath=(~/.zfunc \$$fpath)' to ~/.zshrc, then 'autoload -Uz compinit && compinit'"
+
+install: build completions
 	@mkdir -p "$(INSTALL_DIR)"
 	cp "$$(swift build -c release --show-bin-path)/pippin" "$(INSTALL_DIR)/pippin"
 	@echo "Installed: $(INSTALL_DIR)/pippin ($(VERSION))"
