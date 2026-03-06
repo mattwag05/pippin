@@ -1,6 +1,24 @@
 import Foundation
 import GRDB
 
+// MARK: - Sidecar format
+
+public enum ExportSidecarFormat: String, Sendable, CaseIterable {
+    case txt
+    case srt
+    case markdown
+    case rtf
+
+    public var fileExtension: String {
+        switch self {
+        case .txt: return "txt"
+        case .srt: return "srt"
+        case .markdown: return "md"
+        case .rtf: return "rtf"
+        }
+    }
+}
+
 public enum VoiceMemosError: LocalizedError, Sendable {
     case databaseNotFound(String)
     case unsupportedSchemaVersion(Int)
@@ -175,7 +193,8 @@ public final class VoiceMemosDB: Sendable {
     public func exportMemo(
         id: String,
         outputDir: String,
-        transcriber: Transcriber? = nil
+        transcriber: Transcriber? = nil,
+        sidecarFormat: ExportSidecarFormat = .txt
     ) throws -> ExportResult {
         guard let memo = try getMemo(id: id) else {
             throw VoiceMemosError.memoNotFound(id)
@@ -220,10 +239,15 @@ public final class VoiceMemosDB: Sendable {
             let text = try transcriber.transcribe(audioPath: sourcePath)
             transcriptionText = text
 
-            // Write .txt sidecar next to the exported audio
-            let txtPath = (destPath as NSString).deletingPathExtension + ".txt"
-            try text.write(toFile: txtPath, atomically: true, encoding: .utf8)
-            transcriptionFilePath = txtPath
+            // Write sidecar next to the exported audio in the requested format
+            let sidecarPath = (destPath as NSString).deletingPathExtension + ".\(sidecarFormat.fileExtension)"
+            try Self.writeSidecar(
+                text: text,
+                format: sidecarFormat,
+                path: sidecarPath,
+                memo: memo
+            )
+            transcriptionFilePath = sidecarPath
         }
 
         return ExportResult(
@@ -233,6 +257,55 @@ public final class VoiceMemosDB: Sendable {
             transcription: transcriptionText,
             transcriptionFile: transcriptionFilePath
         )
+    }
+
+    /// Delete a memo's DB row, audio file, and optionally its cached transcript.
+    /// Uses a separate writable connection (not the read-only queue).
+    /// - Parameters:
+    ///   - id: Full UUID of the memo to delete.
+    ///   - dbPath: Path to CloudRecordings.db (defaults to system path).
+    /// - Returns: The audio file path that was deleted.
+    @discardableResult
+    public static func deleteMemo(id: String, dbPath: String? = nil) throws -> String {
+        let path = dbPath ?? defaultDBPath()
+        let dbURL = URL(fileURLWithPath: path)
+        let dir = dbURL.deletingLastPathComponent().path
+
+        // Ensure the database exists before opening a writable connection,
+        // to avoid creating a new empty database at an incorrect path.
+        guard FileManager.default.fileExists(atPath: path) else {
+            throw VoiceMemosError.databaseNotFound(path)
+        }
+        // Open a writable connection
+        let writableQueue = try DatabaseQueue(path: path)
+
+        // Fetch the file path before deleting
+        let filePath: String = try writableQueue.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: "SELECT ZPATH FROM ZCLOUDRECORDING WHERE ZUNIQUEID = ?",
+                arguments: [id]
+            ) else {
+                throw VoiceMemosError.memoNotFound(id)
+            }
+            return row["ZPATH"] as String
+        }
+
+        // Delete DB row
+        try writableQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM ZCLOUDRECORDING WHERE ZUNIQUEID = ?",
+                arguments: [id]
+            )
+        }
+
+        // Delete audio file
+        let audioPath = (dir as NSString).appendingPathComponent(filePath)
+        if FileManager.default.fileExists(atPath: audioPath) {
+            try FileManager.default.removeItem(atPath: audioPath)
+        }
+
+        return audioPath
     }
 
     /// Transcribe a memo's audio to text without copying the audio file.
@@ -332,6 +405,58 @@ public final class VoiceMemosDB: Sendable {
                 return candidate
             }
             counter += 1
+        }
+    }
+
+    // MARK: - Sidecar format writers
+
+    static func writeSidecar(text: String, format: ExportSidecarFormat, path: String, memo: VoiceMemo) throws {
+        switch format {
+        case .txt:
+            try text.write(toFile: path, atomically: true, encoding: .utf8)
+
+        case .markdown:
+            let dateStr = exportDatePrefix(memo.createdAt)
+            let duration = TextFormatter.duration(memo.durationSeconds)
+            let md = """
+            # \(memo.title)
+
+            **Date:** \(dateStr)
+            **Duration:** \(duration)
+            **ID:** \(memo.id)
+
+            ---
+
+            \(text)
+            """
+            try md.write(toFile: path, atomically: true, encoding: .utf8)
+
+        case .srt:
+            // Generate a best-effort SRT with the full transcript as one block.
+            // True per-word timestamps require parakeet-mlx --timestamps output.
+            let durationInt = Int(memo.durationSeconds)
+            let endH = durationInt / 3600
+            let endM = (durationInt % 3600) / 60
+            let endS = durationInt % 60
+            let srt = """
+            1
+            00:00:00,000 --> \(String(format: "%02d:%02d:%02d,000", endH, endM, endS))
+            \(text)
+            """
+            try srt.write(toFile: path, atomically: true, encoding: .utf8)
+
+        case .rtf:
+            // Minimal RTF: plain text wrapped in basic RTF envelope (no AppKit dependency)
+            let escaped = text
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "{", with: "\\{")
+                .replacingOccurrences(of: "}", with: "\\}")
+                .replacingOccurrences(of: "\n", with: " \\par\n")
+            let rtf = "{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Helvetica;}} \\f0\\fs24 \(escaped)}"
+            guard let rtfData = rtf.data(using: .ascii, allowLossyConversion: true) else {
+                throw VoiceMemosError.exportFailed("Failed to encode RTF output")
+            }
+            try rtfData.write(to: URL(fileURLWithPath: path))
         }
     }
 }

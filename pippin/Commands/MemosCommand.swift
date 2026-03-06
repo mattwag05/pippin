@@ -5,7 +5,7 @@ public struct MemosCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "memos",
         abstract: "Interact with Voice Memos.",
-        subcommands: [List.self, Info.self, Export.self, Transcribe.self]
+        subcommands: [List.self, Info.self, Export.self, Transcribe.self, Delete.self, TemplatesCommand.self, SummarizeCommand.self]
     )
 
     public init() {}
@@ -98,8 +98,11 @@ public struct MemosCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Destination directory (created if absent).")
         public var output: String
 
-        @Flag(name: .long, help: "Transcribe audio and write .txt sidecar.")
+        @Flag(name: .long, help: "Transcribe audio and write transcript sidecar.")
         public var transcribe: Bool = false
+
+        @Option(name: .long, help: "Transcript sidecar format: txt, srt, markdown, rtf (default: txt).")
+        public var format: String = "txt"
 
         @OptionGroup public var outputOptions: OutputOptions
 
@@ -109,10 +112,15 @@ public struct MemosCommand: AsyncParsableCommand {
             guard id != nil || all else {
                 throw ValidationError("Provide a memo UUID or --all.")
             }
+            let valid = ExportSidecarFormat.allCases.map(\.rawValue)
+            guard valid.contains(format) else {
+                throw ValidationError("--format must be one of: \(valid.joined(separator: ", "))")
+            }
         }
 
         public mutating func run() async throws {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
+            let sidecarFormat = ExportSidecarFormat(rawValue: format) ?? .txt
             let transcriber: Transcriber? = transcribe ? TranscriberFactory.makeDefault() : nil
 
             var results: [ExportResult] = []
@@ -128,7 +136,8 @@ public struct MemosCommand: AsyncParsableCommand {
                         let result = try db.exportMemo(
                             id: memo.id,
                             outputDir: output,
-                            transcriber: transcriber
+                            transcriber: transcriber,
+                            sidecarFormat: sidecarFormat
                         )
                         results.append(result)
                         if !outputOptions.isJSON {
@@ -151,7 +160,8 @@ public struct MemosCommand: AsyncParsableCommand {
                 let result = try db.exportMemo(
                     id: memo.id,
                     outputDir: output,
-                    transcriber: transcriber
+                    transcriber: transcriber,
+                    sidecarFormat: sidecarFormat
                 )
                 results.append(result)
                 if !outputOptions.isJSON {
@@ -240,6 +250,52 @@ public struct MemosCommand: AsyncParsableCommand {
             } else {
                 print("\nTranscribed \(results.count) recording(s)")
             }
+        }
+    }
+
+    // MARK: - Delete
+
+    public struct Delete: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "delete",
+            abstract: "Delete a voice memo (DB row + audio file)."
+        )
+
+        @Argument(help: "Memo UUID or prefix to delete.")
+        public var id: String
+
+        @Flag(name: .long, help: "Required: confirm deletion without a prompt.")
+        public var force: Bool = false
+
+        public init() {}
+
+        public mutating func validate() throws {
+            guard force else {
+                throw ValidationError("--force is required. This operation cannot be undone.")
+            }
+        }
+
+        public mutating func run() async throws {
+            let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
+
+            guard let memo = try db.getMemoByPrefix(id: id) else {
+                throw VoiceMemosError.memoNotFound(id)
+            }
+
+            // Warn if iCloud-synced
+            if try db.isEvicted(id: memo.id) {
+                fputs("Warning: '\(memo.title)' has been evicted to iCloud. Deleting the DB row only.\n", stderr)
+            }
+
+            let audioPath = try VoiceMemosDB.deleteMemo(id: memo.id)
+
+            // Clear cached transcript
+            if let cache = try? TranscriptCache() {
+                try? cache.delete(memoId: memo.id)
+            }
+
+            print("Deleted: \(memo.title)")
+            print("  Audio: \(audioPath)")
         }
     }
 }
