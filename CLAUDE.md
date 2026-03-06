@@ -6,12 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Single arm64 binary, headless-safe (cron/launchd/N8N compatible).
 
-**Current status:** v0.1.0 — first stable release. All subcommands implemented including shell completions. Python dependency eliminated; memos rewritten in Swift with GRDB.
+**Current status:** v0.2.0 — AI-powered memos. Added `summarize`, `templates`, `delete`, AI providers (Ollama/Claude), transcript cache, export format flag (txt/srt/markdown/rtf).
 
 ## What This Builds
 
 - **`pippin mail`** — Swift CLI for Apple Mail via osascript JXA (`accounts`, `mailboxes`, `list`, `search`, `show`, `send`, `move`, `mark`)
-- **`pippin memos`** — Swift CLI for Voice Memos via GRDB read-only SQLite (`list`, `info`, `export`)
+- **`pippin memos`** — Swift CLI for Voice Memos via GRDB (`list`, `info`, `export`, `transcribe`, `summarize`, `templates`, `delete`)
 - **`pippin completions <shell>`** — generate zsh/bash/fish completion scripts
 - **`pippin doctor`** / **`pippin init`** — Permission diagnostics and guided setup
 
@@ -122,7 +122,7 @@ Format: `MAJOR.MINOR.PATCH[-prerelease]`
 - No Voice Memos recording or iCloud sync management
 - No real-time watch mode (post-MVP)
 - No iOS/cross-platform support
-- `memos delete` — deferred to v0.2 (sandboxing concerns)
+- `memos delete` — implemented in v0.2 (writable DB connection, deletes audio file + clears transcript cache)
 
 > **Note:** Project-level `.claude/` skills, hooks, and agents were removed in PR #6. No local hooks are active — `swiftformat` and `swift build` must be run manually.
 
@@ -163,6 +163,12 @@ New optional fields on `MailMessage` require an explicit `public init(...)` with
 ### JXA Mail Metadata APIs
 Reliable JXA accessors for enriched output: `msg.messageSize()`, `msg.mailAttachments()` (array), `mb.unreadCount()`, `msg.htmlContent()` (null on plain-text), `msg.allHeaders()` (raw RFC 2822 string). All require try/catch — they throw on some IMAP server types.
 
+### NSAttributedString RTF not available in CLI targets
+`NSAttributedString.data(from:documentAttributes:)` (AppKit) is unavailable in SPM CLI targets. Generate RTF manually as a string: `{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Helvetica;}} \\f0\\fs24 <text>}` written as ASCII data. See `VoiceMemosDB.writeSidecar()`.
+
+### GRDB CodingKeys for snake_case columns
+`DatabaseColumnDecodingStrategy.useDefaultDecoding` does not exist in GRDB 7. Use `CodingKeys` with snake_case rawValues instead (e.g. `case memoId = "memo_id"`). GRDB maps column names directly to `CodingKeys` rawValues — no extra config needed.
+
 ### GRDB Nullable Columns
 `fetchOne` on a nullable column returns `Optional<Optional<T>>` — ambiguous for null vs missing row. Use `COUNT(*) WHERE col IS NOT NULL` instead:
 ```swift
@@ -177,12 +183,16 @@ return count > 0
 - `forgejo` → `https://forgejo.tail6e035b.ts.net/matthewwagner/pippin.git` (private mirror)
 - Push to both after releases: `git push origin main && git push forgejo main`
 
+### Keeping remotes in sync
+GitHub is the source of truth. GitHub uses squash-merge while Forgejo uses regular merge — PRs merged on both will produce diverged histories. Fix with `git push forgejo main --force` to bring Forgejo in line with GitHub. Safe because Forgejo is a private mirror only.
+
 ### Releasing
 
 - `make release` → `.build/release-artifacts/pippin-VERSION-arm64-macos`
 - `gh release create` requires **absolute paths** for artifact upload (relative paths fail — zsh cwd reset)
 - Tag format: `v0.1.0` (with `v` prefix)
 - After tagging, update `revision:` in Homebrew formula with exact `git rev-parse <tag>` output — verify hash character-for-character before committing formula
+- **Full release checklist:** (1) bump `Version.swift`, (2) commit+push, (3) `git tag vX.Y.Z <commit>`, (4) `git push origin vX.Y.Z && git push forgejo vX.Y.Z`, (5) update Homebrew tap (`tag:`, `revision:`, test assertion), (6) push tap
 
 ## Homebrew Tap
 
