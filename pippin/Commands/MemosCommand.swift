@@ -126,7 +126,7 @@ public struct MemosCommand: AsyncParsableCommand {
             var results: [ExportResult] = []
 
             if all {
-                let memos = try db.listMemos(limit: 10000)
+                let memos = try db.listMemos(limit: allMemosLimit)
                 for memo in memos {
                     if !outputOptions.isJSON {
                         print("Exporting: \(memo.title)...", terminator: " ")
@@ -211,7 +211,7 @@ public struct MemosCommand: AsyncParsableCommand {
             var results: [TranscribeResult] = []
 
             if all {
-                let memos = try db.listMemos(limit: 10000)
+                let memos = try db.listMemos(limit: allMemosLimit)
                 for memo in memos {
                     if !outputOptions.isJSON {
                         print("Transcribing: \(memo.title)...", terminator: " ")
@@ -335,8 +335,10 @@ private func printMemoCard(_ memo: VoiceMemo) {
     print(card)
 }
 
+let allMemosLimit = 10000
+
 /// Parse a YYYY-MM-DD string into a Date at midnight UTC.
-private func parseDateString(_ s: String) -> Date? {
+func parseDateString(_ s: String) -> Date? {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd"
     formatter.timeZone = TimeZone(identifier: "UTC")

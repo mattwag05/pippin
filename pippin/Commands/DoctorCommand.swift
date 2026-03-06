@@ -193,45 +193,13 @@ private func checkVoiceMemosDB() -> DiagnosticCheck {
 }
 
 private func checkParakeetMLX() -> DiagnosticCheck {
-    // Check common locations
-    let commonPaths = [
-        "/opt/homebrew/bin/parakeet-mlx",
-        "/usr/local/bin/parakeet-mlx",
-    ]
-
-    for path in commonPaths {
-        if FileManager.default.isExecutableFile(atPath: path) {
-            return DiagnosticCheck(
-                name: "parakeet-mlx",
-                status: .ok,
-                detail: "found at \(path)"
-            )
-        }
+    if let path = ParakeetTranscriber.findBinary() {
+        return DiagnosticCheck(
+            name: "parakeet-mlx",
+            status: .ok,
+            detail: "found at \(path)"
+        )
     }
-
-    // Try `which`
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-    process.arguments = ["parakeet-mlx"]
-    let pipe = Pipe()
-    process.standardOutput = pipe
-    process.standardError = Pipe()
-    do {
-        try process.run()
-        process.waitUntilExit()
-        if process.terminationStatus == 0 {
-            let out = (String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !out.isEmpty {
-                return DiagnosticCheck(
-                    name: "parakeet-mlx",
-                    status: .ok,
-                    detail: "found at \(out)"
-                )
-            }
-        }
-    } catch {}
-
     return DiagnosticCheck(
         name: "parakeet-mlx",
         status: .skip,
