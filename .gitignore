@@ -17,3 +17,7 @@ archive/**/.build/
 
 # Worktrees
 .worktrees/
+
+# Claude Code
+CLAUDE.md
+.claude/
