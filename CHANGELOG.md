@@ -7,7 +7,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.1.0] - 2026-03-05
+
+### Added
+
+- `pippin completions <shell>` — generate shell completion scripts (`zsh`, `bash`, `fish`); `make completions` installs to `~/.zfunc/_pippin`
+- `pippin mail mailboxes` — list all mailboxes for an account; `--account` filter
+- `pippin mail list` — `--page` flag for paginated browsing, `--has-attachment` filter
+- `pippin mail show` — enriched output with `htmlBody`, `headers`, and `attachments[]` (name, mimeType, size)
+- `pippin memos info` — prefix ID matching (first 8 chars of UUID)
+- GitHub Actions CI (`.github/workflows/ci.yaml`) — build, test, lint on GitHub push and PR
+- Forgejo Actions CI enforces `swiftformat --lint` across all three source dirs
+
+### Changed
+
+- `pippin mail search` — timeout increased from 10 s to 30 s; fixes timeouts on large IMAP mailboxes
+- All source migrated to Swift 6 strict concurrency (`swiftLanguageMode(.v6)`); all `Sendable` conformances and `nonisolated(unsafe)` patterns applied
+- macOS platform minimum set to macOS 15+
+
+### Fixed
+
+- `pippin memos` prefix ID matching now resolves correctly against GRDB UUID column
 
 ---
 
@@ -61,5 +81,6 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.1.0-beta...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mattwag05/pippin/compare/v0.1.0-beta...v0.1.0
 [0.1.0-beta]: https://github.com/mattwag05/pippin/releases/tag/v0.1.0-beta

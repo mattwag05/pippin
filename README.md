@@ -22,8 +22,8 @@ brew install mattwag05/tap/pippin
 Download from the [Releases](https://github.com/mattwag05/pippin/releases) page:
 
 ```bash
-curl -L https://github.com/mattwag05/pippin/releases/download/v0.1.0-beta/pippin-0.1.0-beta-arm64-macos.tar.gz -o pippin.tar.gz
-tar xzf pippin.tar.gz && mv pippin-0.1.0-beta-arm64-macos ~/.local/bin/pippin
+curl -L https://github.com/mattwag05/pippin/releases/download/v0.1.0/pippin-0.1.0-arm64-macos.tar.gz -o pippin.tar.gz
+tar xzf pippin.tar.gz && mv pippin-0.1.0-arm64-macos ~/.local/bin/pippin
 chmod +x ~/.local/bin/pippin
 ```
 
