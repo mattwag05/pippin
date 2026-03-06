@@ -170,6 +170,51 @@ enum MailBridge {
         """
     }
 
+    static func jsFindMailboxByName() -> String {
+        """
+        function findMailboxByName(mailboxes, name) {
+            for (var i = 0; i < mailboxes.length; i++) {
+                if (mailboxes[i].name() === name) return mailboxes[i];
+                try {
+                    var sub = mailboxes[i].mailboxes();
+                    var found = findMailboxByName(sub, name);
+                    if (found !== null) return found;
+                } catch(e) {}
+            }
+            return null;
+        }
+        """
+    }
+
+    static func jsResolveMailbox() -> String {
+        """
+        function resolveMailbox(acct, name) {
+            var lc = name.toLowerCase();
+            try {
+                if (lc === 'trash' || lc === 'deleted' || lc === 'deleted messages' || lc === 'deleted items' || lc === 'bin') {
+                    return acct.trash();
+                }
+            } catch(e) {}
+            try {
+                if (lc === 'junk' || lc === 'spam') { return acct.junk(); }
+            } catch(e) {}
+            try {
+                if (lc === 'sent' || lc === 'sent messages' || lc === 'sent mail' || lc === 'sent items') { return acct.sent(); }
+            } catch(e) {}
+            try {
+                if (lc === 'drafts' || lc === 'draft') { return acct.drafts(); }
+            } catch(e) {}
+            if (lc === 'inbox') {
+                var mbs = acct.mailboxes();
+                for (var i = 0; i < mbs.length; i++) {
+                    if (mbs[i].name().toLowerCase() === 'inbox') return mbs[i];
+                }
+            }
+            return findMailboxByName(acct.mailboxes(), name);
+        }
+        """
+    }
+
     static func buildListScript(
         account: String?,
         mailbox: String,
@@ -183,6 +228,8 @@ enum MailBridge {
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 8))
+        \(jsFindMailboxByName())
+        \(jsResolveMailbox())
         var acctFilter = \(acctFilter);
         var mbFilter = '\(mbName)';
         var unreadOnly = \(unread ? "true" : "false");
@@ -196,41 +243,39 @@ enum MailBridge {
             var acctName = acct.name();
             if (acctFilter !== null && acctName !== acctFilter) continue;
 
-            var mailboxes = acct.mailboxes();
-            for (var m = 0; m < mailboxes.length && results.length < limit; m++) {
-                var mb = mailboxes[m];
-                if (mb.name() !== mbFilter) continue;
+            var mb = resolveMailbox(acct, mbFilter);
+            if (mb === null || results.length >= limit) continue;
+            var resolvedMbName = mb.name();
 
-                // whose({}) is invalid JXA — use messages() directly for all-messages case
-                var msgs = unreadOnly ? mb.messages.whose({readStatus: false})() : mb.messages();
-                var startIdx = Math.min(offset, msgs.length);
-                var endIdx = Math.min(startIdx + limit, msgs.length);
-                var slice = msgs.slice(startIdx, endIdx);
-                var count = slice.length;
+            // whose({}) is invalid JXA — use messages() directly for all-messages case
+            var msgs = unreadOnly ? mb.messages.whose({readStatus: false})() : mb.messages();
+            var startIdx = Math.min(offset, msgs.length);
+            var endIdx = Math.min(startIdx + limit, msgs.length);
+            var slice = msgs.slice(startIdx, endIdx);
+            var count = slice.length;
 
-                var ids       = slice.map(function(msg) { return msg.id(); });
-                var subjects  = slice.map(function(msg) { return msg.subject(); });
-                var senders   = slice.map(function(msg) { return msg.sender(); });
-                var dates     = slice.map(function(msg) { return msg.dateSent().toISOString(); });
-                var readFlags = slice.map(function(msg) { return msg.readStatus(); });
-                var sizes     = slice.map(function(msg) { try { return msg.messageSize(); } catch(e) { return null; } });
-                var hasAtts   = slice.map(function(msg) { try { return msg.mailAttachments().length > 0; } catch(e) { return false; } });
+            var ids       = slice.map(function(msg) { return msg.id(); });
+            var subjects  = slice.map(function(msg) { return msg.subject(); });
+            var senders   = slice.map(function(msg) { return msg.sender(); });
+            var dates     = slice.map(function(msg) { return msg.dateSent().toISOString(); });
+            var readFlags = slice.map(function(msg) { return msg.readStatus(); });
+            var sizes     = slice.map(function(msg) { try { return msg.messageSize(); } catch(e) { return null; } });
+            var hasAtts   = slice.map(function(msg) { try { return msg.mailAttachments().length > 0; } catch(e) { return false; } });
 
-                for (var i = 0; i < count; i++) {
-                    results.push({
-                        id: acctName + '||' + mbFilter + '||' + ids[i],
-                        account: acctName,
-                        mailbox: mbFilter,
-                        subject: subjects[i],
-                        from: senders[i],
-                        to: [],
-                        date: dates[i],
-                        read: readFlags[i],
-                        body: null,
-                        size: sizes[i],
-                        hasAttachment: hasAtts[i]
-                    });
-                }
+            for (var i = 0; i < count; i++) {
+                results.push({
+                    id: acctName + '||' + resolvedMbName + '||' + ids[i],
+                    account: acctName,
+                    mailbox: resolvedMbName,
+                    subject: subjects[i],
+                    from: senders[i],
+                    to: [],
+                    date: dates[i],
+                    read: readFlags[i],
+                    body: null,
+                    size: sizes[i],
+                    hasAttachment: hasAtts[i]
+                });
             }
         }
 
@@ -308,6 +353,8 @@ enum MailBridge {
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 20))
+        \(jsFindMailboxByName())
+        \(jsResolveMailbox())
         var query = '\(safeQuery)'.toLowerCase();
         var acctFilter = \(acctFilter);
         var mbFilter = \(mbFilter);
@@ -324,10 +371,13 @@ enum MailBridge {
             var acctName = acct.name();
             if (acctFilter !== null && acctName !== acctFilter) continue;
 
-            var mailboxes = acct.mailboxes();
-            for (var m = 0; m < mailboxes.length && results.length < limit; m++) {
-                var mb = mailboxes[m];
-                if (mbFilter !== null && mb.name() !== mbFilter) continue;
+            var mbList = acct.mailboxes();
+            if (mbFilter !== null) {
+                var resolvedMb = resolveMailbox(acct, mbFilter);
+                mbList = resolvedMb !== null ? [resolvedMb] : [];
+            }
+            for (var m = 0; m < mbList.length && results.length < limit; m++) {
+                var mb = mbList[m];
                 // Cap messages scanned per mailbox to bound scan time on large inboxes
                 var allMsgs = mb.messages();
                 var scanCount = Math.min(allMsgs.length, perMailboxLimit);
@@ -391,19 +441,8 @@ enum MailBridge {
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 20, errorMessage: "MAILBRIDGE_ERR_NOT_READY"))
-        // Recursive mailbox finder — handles nested IMAP folders (e.g. Archive/2025)
-        function findMailboxByName(mailboxes, name) {
-            for (var i = 0; i < mailboxes.length; i++) {
-                if (mailboxes[i].name() === name) return mailboxes[i];
-                try {
-                    var sub = mailboxes[i].mailboxes();
-                    var found = findMailboxByName(sub, name);
-                    if (found !== null) return found;
-                } catch(e) {}
-            }
-            return null;
-        }
-
+        \(jsFindMailboxByName())
+        \(jsResolveMailbox())
         var isDryRun = \(dryRun ? "true" : "false");
         var sourceMsg = null;
         var targetMb = null;
@@ -427,8 +466,8 @@ enum MailBridge {
                 }
             }
 
-            // Find target mailbox recursively (supports nested folders)
-            targetMb = findMailboxByName(mailboxes, '\(safeTarget)');
+            // Find target mailbox — resolves provider aliases (Trash, Sent, etc.) and nested folders
+            targetMb = resolveMailbox(acct, '\(safeTarget)');
             break;
         }
 
@@ -632,8 +671,18 @@ enum MailBridge {
 
                 var msg = msgs[0];
 
+                // Trigger IMAP download by accessing plain-text content first
+                var bodyText = null;
+                try { bodyText = msg.content(); } catch(e) {}
+
+                // Attempt htmlContent (IMAP body should now be available)
                 var htmlBody = null;
                 try { htmlBody = msg.htmlContent(); } catch(e) {}
+                // Retry once after short delay if still null
+                if (htmlBody === null) {
+                    delay(0.5);
+                    try { htmlBody = msg.htmlContent(); } catch(e) {}
+                }
 
                 var headerDict = {};
                 try {
@@ -683,7 +732,7 @@ enum MailBridge {
                     to: msg.toRecipients().map(function(r) { return r.address(); }),
                     date: msg.dateSent().toISOString(),
                     read: msg.readStatus(),
-                    body: msg.content(),
+                    body: bodyText,
                     size: msgSize,
                     hasAttachment: msgHasAtt,
                     htmlBody: htmlBody,

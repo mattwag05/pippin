@@ -7,6 +7,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.1] - 2026-03-06
+
+### Fixed
+
+- `mail move --to Trash` (and `Deleted`, `Junk`, `Spam`, `Sent`, `Drafts`, `Bin`) now resolves the correct provider mailbox via JXA special accessors (`acct.trash()`, `acct.junk()`, `acct.sent()`, `acct.drafts()`), fixing failures on Gmail, iCloud, and Exchange accounts where the folder name varies by provider (fixes #4)
+- `mail list --mailbox <alias>` and `mail search --mailbox <alias>` use the same alias resolver, so `--mailbox Trash` works regardless of provider naming
+- `mail show` now fetches plain-text content first to trigger the IMAP body download before attempting `htmlContent()`, and retries once after 500 ms if `htmlBody` is still null — fixes `htmlBody: null` on undownloaded IMAP messages (fixes #3)
+
+---
+
 ## [0.2.0] - 2026-03-05
 
 ### Added

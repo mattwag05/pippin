@@ -237,7 +237,20 @@ final class JXAScriptBuilderTests: XCTestCase {
 
     func testReadScriptIncludesBodyField() {
         let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
-        XCTAssertTrue(script.contains("body: msg.content()"))
+        XCTAssertTrue(script.contains("body: bodyText"))
+    }
+
+    func testReadScriptContentBeforeHtmlContent() {
+        let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
+        let contentIdx = script.range(of: "msg.content()")!.lowerBound
+        let htmlIdx = script.range(of: "msg.htmlContent()")!.lowerBound
+        XCTAssertLessThan(contentIdx, htmlIdx)
+    }
+
+    func testReadScriptHtmlContentRetry() {
+        let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
+        let occurrences = script.components(separatedBy: "msg.htmlContent()").count - 1
+        XCTAssertEqual(occurrences, 2, "Expected two htmlContent() calls (initial + retry)")
     }
 
     // MARK: - buildMarkScript
@@ -277,6 +290,74 @@ final class JXAScriptBuilderTests: XCTestCase {
     func testMoveScriptEscapesBackslashInMailbox() {
         let script = MailBridge.buildMoveScript(account: "Work", mailbox: "INBOX", messageId: "1", toMailbox: "Folder\\Sub", dryRun: false)
         XCTAssertTrue(script.contains("Folder\\\\Sub"))
+    }
+
+    // MARK: - Alias resolution helpers
+
+    func testJsFindMailboxByNameOutput() {
+        let js = MailBridge.jsFindMailboxByName()
+        XCTAssertTrue(js.contains("function findMailboxByName"))
+        XCTAssertTrue(js.contains("mailboxes[i].mailboxes()"))
+    }
+
+    func testJsResolveMailboxContainsTrashAliases() {
+        let js = MailBridge.jsResolveMailbox()
+        XCTAssertTrue(js.contains("acct.trash()"))
+        XCTAssertTrue(js.contains("deleted messages"))
+        XCTAssertTrue(js.contains("deleted items"))
+        XCTAssertTrue(js.contains("'bin'"))
+    }
+
+    func testJsResolveMailboxContainsJunkAndSentAndDrafts() {
+        let js = MailBridge.jsResolveMailbox()
+        XCTAssertTrue(js.contains("acct.junk()"))
+        XCTAssertTrue(js.contains("acct.sent()"))
+        XCTAssertTrue(js.contains("acct.drafts()"))
+    }
+
+    func testJsResolveMailboxFallsBackToFindMailboxByName() {
+        let js = MailBridge.jsResolveMailbox()
+        XCTAssertTrue(js.contains("findMailboxByName(acct.mailboxes(), name)"))
+    }
+
+    // MARK: - buildMoveScript (alias resolution)
+
+    func testMoveScriptContainsResolveMailbox() {
+        let script = MailBridge.buildMoveScript(account: "Work", mailbox: "INBOX", messageId: "1", toMailbox: "Trash", dryRun: false)
+        XCTAssertTrue(script.contains("resolveMailbox(acct,"))
+        XCTAssertTrue(script.contains("acct.trash()"))
+    }
+
+    func testMoveScriptContainsFindMailboxByName() {
+        let script = MailBridge.buildMoveScript(account: "Work", mailbox: "INBOX", messageId: "1", toMailbox: "Archive", dryRun: false)
+        XCTAssertTrue(script.contains("function findMailboxByName"))
+    }
+
+    // MARK: - buildListScript (alias resolution)
+
+    func testListScriptContainsResolveMailbox() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "Trash", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("resolveMailbox(acct,"))
+        XCTAssertTrue(script.contains("function resolveMailbox"))
+    }
+
+    func testListScriptUsesResolvedMbName() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("resolvedMbName"))
+    }
+
+    // MARK: - buildSearchScript (alias resolution)
+
+    func testSearchScriptContainsResolveMailbox() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: "Junk", limit: 10)
+        XCTAssertTrue(script.contains("resolveMailbox(acct,"))
+        XCTAssertTrue(script.contains("function resolveMailbox"))
+    }
+
+    func testSearchScriptBuildsmbListFromResolveMailbox() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: "Sent", limit: 10)
+        XCTAssertTrue(script.contains("var mbList ="))
+        XCTAssertTrue(script.contains("resolveMailbox(acct, mbFilter)"))
     }
 
     // MARK: - buildSendScript
