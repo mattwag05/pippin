@@ -12,6 +12,7 @@ macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Singl
 
 - **`pippin mail`** — Swift CLI for Apple Mail via osascript JXA (`accounts`, `mailboxes`, `list`, `search`, `show`, `send`, `move`, `mark`)
 - **`pippin memos`** — Swift CLI for Voice Memos via GRDB read-only SQLite (`list`, `info`, `export`)
+- **`pippin completions <shell>`** — generate zsh/bash/fish completion scripts
 - **`pippin doctor`** / **`pippin init`** — Permission diagnostics and guided setup
 
 ## Build Workflow
@@ -20,7 +21,7 @@ macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Singl
 swift build                        # Debug build
 swift build -c release             # Release build
 swift run pippin mail list         # Run subcommand (debug)
-swift test                         # Run 216 tests
+swift test                         # Run 228 tests
 
 # Makefile targets
 make build     # swift build -c release
@@ -67,10 +68,10 @@ pippin/                     # PippinLib target (all application logic)
   Models/
     MailModels.swift        # MailMessage, MailAccount, MailActionResult
     MemosModels.swift       # VoiceMemo, ExportResult (GRDB FetchableRecord)
-  Version.swift             # PippinVersion.version = "0.1.3-beta"
+  Version.swift             # PippinVersion.version = "0.1.0"
 pippin-entry/
   Pippin.swift              # @main entry point
-Tests/PippinTests/          # 216 tests (models + JXAScriptBuilderTests + CLIIntegrationTests)
+Tests/PippinTests/          # 228 tests (models + JXAScriptBuilderTests + CLIIntegrationTests)
 archive/pippin-memos/       # Archived Python implementation
 docs/archive/               # Archived planning documents
 ```
@@ -111,7 +112,7 @@ docs/archive/               # Archived planning documents
 
 Format: `MAJOR.MINOR.PATCH[-prerelease]`
 
-- `0.1.0-beta` → `0.1.0` when beta testing complete
+- `0.1.x` is now stable; `0.2.0` → next feature milestone
 - `0.1.x` → bug fixes or non-behavioral improvements (tooling, build quality); `0.2.0` → new features or breaking changes
 - `1.0.0` → CLI interface frozen, output schemas stable
 
@@ -129,6 +130,10 @@ Format: `MAJOR.MINOR.PATCH[-prerelease]`
 
 ### swiftformat Enforcement
 CI now enforces `swiftformat --lint` on both GitHub Actions and Forgejo. Run `swiftformat pippin/ pippin-entry/ Tests/` (no `--lint`) to auto-fix before pushing. The `swiftformat` warning about missing Swift version is harmless — no `.swift-version` file is needed.
+
+**Scope:** Always lint all three dirs together — `swiftformat --lint pippin/ pippin-entry/ Tests/`. Linting only the changed dir may miss cross-dir issues and doesn't match CI.
+
+**Triple-quoted strings:** swiftformat's `indent` rule reformats content inside `"""..."""` literals. Auto-fix with `swiftformat <dirs>` (no `--lint`) to normalize indentation automatically.
 
 ### CLI Integration Tests Require a Prior Build
 `CLIIntegrationTests` calls `swift build --show-bin-path` in `class setUp()` to locate the binary. In CI the build step precedes `swift test` so this is a no-op. Locally, run `swift build` before `swift test` if you want CLI tests to run (they skip gracefully if binary is absent).
@@ -176,7 +181,7 @@ return count > 0
 
 - `make release` → `.build/release-artifacts/pippin-VERSION-arm64-macos`
 - `gh release create` requires **absolute paths** for artifact upload (relative paths fail — zsh cwd reset)
-- Tag format: `v0.1.0-beta` (with `v` prefix)
+- Tag format: `v0.1.0` (with `v` prefix)
 - After tagging, update `revision:` in Homebrew formula with exact `git rev-parse <tag>` output — verify hash character-for-character before committing formula
 
 ## Homebrew Tap
