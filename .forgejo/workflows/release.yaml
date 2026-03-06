@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build release tarball
+        run: make tarball
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog section
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md > release-notes.md
+
+      - name: Determine pre-release
+        id: prerelease
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *"-alpha"* || "$GITHUB_REF_NAME" == *"-beta"* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Forgejo release
+        id: create_release
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          IS_PRERELEASE: ${{ steps.prerelease.outputs.is_prerelease }}
+        run: |
+          NOTES=$(cat release-notes.md)
+          RESPONSE=$(curl -s -X POST \
+            "https://forgejo.tail6e035b.ts.net/api/v1/repos/matthewwagner/pippin/releases" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -d "{
+              \"tag_name\": \"$TAG_NAME\",
+              \"name\": \"$TAG_NAME — pippin\",
+              \"body\": $(echo "$NOTES" | jq -Rs .),
+              \"prerelease\": $IS_PRERELEASE
+            }")
+          echo "release_id=$(echo "$RESPONSE" | jq -r '.id')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload tarball to Forgejo release
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          RELEASE_ID: ${{ steps.create_release.outputs.release_id }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          TARBALL=".build/release-artifacts/pippin-${VERSION}-arm64-macos.tar.gz"
+          curl -s -X POST \
+            "https://forgejo.tail6e035b.ts.net/api/v1/repos/matthewwagner/pippin/releases/${RELEASE_ID}/assets" \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -F "attachment=@$TARBALL"
