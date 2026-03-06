@@ -46,7 +46,7 @@ public struct SummarizeCommand: AsyncParsableCommand {
             throw ValidationError("Use either --template or --prompt, not both.")
         }
         if let since {
-            guard parseSinceDateString(since) != nil else {
+            guard parseDateString(since) != nil else {
                 throw ValidationError("--since must be in YYYY-MM-DD format.")
             }
         }
@@ -64,8 +64,8 @@ public struct SummarizeCommand: AsyncParsableCommand {
         let systemPrompt = try resolveSystemPrompt()
 
         if all {
-            let sinceDate = since.flatMap { parseSinceDateString($0) }
-            let memos = try db.listMemos(since: sinceDate, limit: 10000)
+            let sinceDate = since.flatMap { parseDateString($0) }
+            let memos = try db.listMemos(since: sinceDate, limit: allMemosLimit)
             var results: [SummarizeResult] = []
 
             for memo in memos {
@@ -163,10 +163,12 @@ public struct SummarizeCommand: AsyncParsableCommand {
         }
 
         // 2. Build user prompt
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime]
         let userPrompt = """
         Title: \(memo.title)
-        Duration: \(formatDuration(memo.durationSeconds))
-        Date: \(formatDate(memo.createdAt))
+        Duration: \(TextFormatter.duration(memo.durationSeconds))
+        Date: \(isoFormatter.string(from: memo.createdAt))
 
         Transcript:
         \(transcriptText)
@@ -187,13 +189,9 @@ public struct SummarizeCommand: AsyncParsableCommand {
             title: memo.title,
             createdAt: memo.createdAt,
             summary: summary,
-            template: template ?? (promptIsSet ? nil : "summary"),
+            template: template ?? (prompt != nil ? nil : "summary"),
             provider: resolvedProviderName
         )
-    }
-
-    private var promptIsSet: Bool {
-        prompt != nil
     }
 
     @discardableResult
@@ -236,23 +234,4 @@ public struct SummarizeResult: Codable, Sendable {
     public let summary: String
     public let template: String?
     public let provider: String
-}
-
-// MARK: - Helpers
-
-private func formatDuration(_ seconds: Double) -> String {
-    TextFormatter.duration(seconds)
-}
-
-private func formatDate(_ date: Date) -> String {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    return formatter.string(from: date)
-}
-
-private func parseSinceDateString(_ s: String) -> Date? {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd"
-    formatter.timeZone = TimeZone(identifier: "UTC")
-    return formatter.date(from: s)
 }

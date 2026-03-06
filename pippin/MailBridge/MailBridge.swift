@@ -155,6 +155,21 @@ enum MailBridge {
             .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 
+    static func jsEscapeOptional(_ s: String?) -> String {
+        s.map { "'\(jsEscape($0))'" } ?? "null"
+    }
+
+    static func jsMailReadyPoll(maxAttempts: Int, errorMessage: String = "Mail not ready: no accounts visible after startup") -> String {
+        """
+        var ready = false;
+        for (var attempt = 0; attempt < \(maxAttempts); attempt++) {
+            if (mail.accounts().length > 0) { ready = true; break; }
+            delay(0.5);
+        }
+        if (!ready) { throw new Error('\(errorMessage)'); }
+        """
+    }
+
     static func buildListScript(
         account: String?,
         mailbox: String,
@@ -162,18 +177,12 @@ enum MailBridge {
         limit: Int,
         offset: Int = 0
     ) -> String {
-        let acctFilter = account.map { "'\(jsEscape($0))'" } ?? "null"
+        let acctFilter = jsEscapeOptional(account)
         let mbName = jsEscape(mailbox)
 
         return """
         var mail = Application('Mail');
-        // Poll until Mail.app has loaded accounts (guards against post-launch account-sync race)
-        var ready = false;
-        for (var attempt = 0; attempt < 8; attempt++) {
-            if (mail.accounts().length > 0) { ready = true; break; }
-            delay(0.5);
-        }
-        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
+        \(jsMailReadyPoll(maxAttempts: 8))
         var acctFilter = \(acctFilter);
         var mbFilter = '\(mbName)';
         var unreadOnly = \(unread ? "true" : "false");
@@ -232,13 +241,7 @@ enum MailBridge {
     static func buildAccountsScript() -> String {
         return """
         var mail = Application('Mail');
-        var ready = false;
-        for (var attempt = 0; attempt < 8; attempt++) {
-            if (mail.accounts().length > 0) { ready = true; break; }
-            delay(0.5);
-        }
-        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
-
+        \(jsMailReadyPoll(maxAttempts: 8))
         var accounts = mail.accounts();
         var results = [];
         for (var a = 0; a < accounts.length; a++) {
@@ -256,17 +259,11 @@ enum MailBridge {
     }
 
     static func buildMailboxesScript(account: String?) -> String {
-        let acctFilter = account.map { "'\(jsEscape($0))'" } ?? "null"
+        let acctFilter = jsEscapeOptional(account)
 
         return """
         var mail = Application('Mail');
-        var ready = false;
-        for (var attempt = 0; attempt < 8; attempt++) {
-            if (mail.accounts().length > 0) { ready = true; break; }
-            delay(0.5);
-        }
-        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
-
+        \(jsMailReadyPoll(maxAttempts: 8))
         var acctFilter = \(acctFilter);
         var results = [];
         var accounts = mail.accounts();
@@ -302,22 +299,15 @@ enum MailBridge {
         offset: Int = 0
     ) -> String {
         let safeQuery = jsEscape(query)
-        let acctFilter = account.map { "'\(jsEscape($0))'" } ?? "null"
-        let mbFilter = mailbox.map { "'\(jsEscape($0))'" } ?? "null"
+        let acctFilter = jsEscapeOptional(account)
+        let mbFilter = jsEscapeOptional(mailbox)
         // Clamp limit to prevent runaway scans; per-mailbox cap bounds scan time
         let safeLimitVal = max(1, min(limit, 500))
         let perMailboxLimit = 50
 
         return """
         var mail = Application('Mail');
-        var ready = false;
-        // 20 attempts × 0.5s = 10s max cold-launch poll (accommodates IMAP sync on first run)
-        for (var attempt = 0; attempt < 20; attempt++) {
-            if (mail.accounts().length > 0) { ready = true; break; }
-            delay(0.5);
-        }
-        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
-
+        \(jsMailReadyPoll(maxAttempts: 20))
         var query = '\(safeQuery)'.toLowerCase();
         var acctFilter = \(acctFilter);
         var mbFilter = \(mbFilter);
@@ -400,13 +390,7 @@ enum MailBridge {
 
         return """
         var mail = Application('Mail');
-        var ready = false;
-        for (var attempt = 0; attempt < 20; attempt++) {
-            if (mail.accounts().length > 0) { ready = true; break; }
-            delay(0.5);
-        }
-        if (!ready) { throw new Error('MAILBRIDGE_ERR_NOT_READY'); }
-
+        \(jsMailReadyPoll(maxAttempts: 20, errorMessage: "MAILBRIDGE_ERR_NOT_READY"))
         // Recursive mailbox finder — handles nested IMAP folders (e.g. Archive/2025)
         function findMailboxByName(mailboxes, name) {
             for (var i = 0; i < mailboxes.length; i++) {
@@ -480,19 +464,13 @@ enum MailBridge {
         let safeTo = jsEscape(to)
         let safeSubject = jsEscape(subject)
         let safeBody = jsEscape(body)
-        let safeCc = cc.map { "'\(jsEscape($0))'" } ?? "null"
-        let safeFrom = accountName.map { "'\(jsEscape($0))'" } ?? "null"
-        let safeAttach = attachmentPath.map { "'\(jsEscape($0))'" } ?? "null"
+        let safeCc = jsEscapeOptional(cc)
+        let safeFrom = jsEscapeOptional(accountName)
+        let safeAttach = jsEscapeOptional(attachmentPath)
 
         return """
         var mail = Application('Mail');
-        var ready = false;
-        for (var attempt = 0; attempt < 20; attempt++) {
-            if (mail.accounts().length > 0) { ready = true; break; }
-            delay(0.5);
-        }
-        if (!ready) { throw new Error('MAILBRIDGE_ERR_NOT_READY'); }
-
+        \(jsMailReadyPoll(maxAttempts: 20, errorMessage: "MAILBRIDGE_ERR_NOT_READY"))
         var isDryRun = \(dryRun ? "true" : "false");
 
         var msg = mail.OutgoingMessage({
@@ -583,14 +561,7 @@ enum MailBridge {
 
         return """
         var mail = Application('Mail');
-        var ready = false;
-        // 20 attempts × 0.5s = 10s max cold-launch poll
-        for (var attempt = 0; attempt < 20; attempt++) {
-            if (mail.accounts().length > 0) { ready = true; break; }
-            delay(0.5);
-        }
-        if (!ready) { throw new Error('MAILBRIDGE_ERR_NOT_READY'); }
-
+        \(jsMailReadyPoll(maxAttempts: 20, errorMessage: "MAILBRIDGE_ERR_NOT_READY"))
         var targetRead = \(read ? "true" : "false");
         var isDryRun = \(dryRun ? "true" : "false");
         var found = false;
@@ -643,13 +614,7 @@ enum MailBridge {
 
         return """
         var mail = Application('Mail');
-        // Poll until Mail.app has loaded accounts (guards against post-launch account-sync race)
-        var ready = false;
-        for (var attempt = 0; attempt < 8; attempt++) {
-            if (mail.accounts().length > 0) { ready = true; break; }
-            delay(0.5);
-        }
-        if (!ready) { throw new Error('Mail not ready: no accounts visible after startup'); }
+        \(jsMailReadyPoll(maxAttempts: 8))
         var result = null;
 
         var accounts = mail.accounts();
