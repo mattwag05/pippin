@@ -7,6 +7,29 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.0] - 2026-03-05
+
+### Added
+
+- `memos summarize <id>` — AI-powered summarization of voice memo transcripts; saves Markdown summary to output directory
+- `memos templates` — list and manage summarization prompt templates (5 built-in + user-defined)
+- `memos delete <id> --force` — permanently delete a voice memo from the Voice Memos database
+- AI provider layer: Ollama (local) and Claude (Anthropic API) backends; configurable via `pippin init` or `--provider`
+- Transcript cache: transcripts saved alongside audio exports, reused on subsequent summarize calls
+- `--format` flag for `memos export` output (text/json, consistent with other subcommands)
+- 34 new tests (228 total, 0 failures)
+
+### Fixed
+
+- `createdAt` timestamp now used correctly for summary filename (was using file modification date)
+- `builtIn` field in template JSON now encodes as boolean (was encoding as integer)
+
+### Changed
+
+- Reduced duplication in `MailBridge`, `DoctorCommand`, and memos commands
+
+---
+
 ## [0.1.0] - 2026-03-05
 
 ### Added
@@ -81,6 +104,7 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mattwag05/pippin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mattwag05/pippin/compare/v0.1.0-beta...v0.1.0
 [0.1.0-beta]: https://github.com/mattwag05/pippin/releases/tag/v0.1.0-beta

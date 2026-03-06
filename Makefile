@@ -1,7 +1,7 @@
 INSTALL_DIR := $(HOME)/.local/bin
 VERSION := $(shell grep 'static let version' pippin/Version.swift | sed 's/.*"\(.*\)"/\1/')
 
-.PHONY: build test lint install completions version release clean
+.PHONY: build test lint install completions version release tarball clean
 
 build:
 	swift build -c release
@@ -31,6 +31,10 @@ release: build
 	@mkdir -p .build/release-artifacts
 	cp "$$(swift build -c release --show-bin-path)/pippin" ".build/release-artifacts/pippin-$(VERSION)-arm64-macos"
 	@echo "Release binary: .build/release-artifacts/pippin-$(VERSION)-arm64-macos"
+
+tarball: release
+	cd .build/release-artifacts && tar czf pippin-$(VERSION)-arm64-macos.tar.gz pippin-$(VERSION)-arm64-macos
+	@echo "Tarball: .build/release-artifacts/pippin-$(VERSION)-arm64-macos.tar.gz"
 
 clean:
 	swift package clean
