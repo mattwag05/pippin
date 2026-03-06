@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 macOS CLI toolkit bridging Apple's sandboxed apps to automation pipelines. Single arm64 binary, headless-safe (cron/launchd/N8N compatible).
 
-**Current status:** v0.1.3-beta — all mail and memos subcommands implemented. Python dependency eliminated; memos rewritten in Swift with GRDB.
+**Current status:** v0.1.0 — first stable release. All subcommands implemented including shell completions. Python dependency eliminated; memos rewritten in Swift with GRDB.
 
 ## What This Builds
 
