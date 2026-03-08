@@ -85,12 +85,13 @@ enum MailBridge {
     }
 
     static func sendMessage(
-        to: String,
+        to: [String],
         subject: String,
         body: String,
-        cc: String? = nil,
+        cc: [String] = [],
+        bcc: [String] = [],
         from accountName: String? = nil,
-        attachmentPath: String? = nil,
+        attachmentPaths: [String] = [],
         dryRun: Bool = false
     ) throws -> MailActionResult {
         let script = buildSendScript(
@@ -98,11 +99,76 @@ enum MailBridge {
             subject: subject,
             body: body,
             cc: cc,
+            bcc: bcc,
             from: accountName,
-            attachmentPath: attachmentPath,
+            attachmentPaths: attachmentPaths,
             dryRun: dryRun
         )
         // Send triggers SMTP handshake — use 45s timeout
+        let json = try runScript(script, timeoutSeconds: 45)
+        return try decode(MailActionResult.self, from: json)
+    }
+
+    static func listAttachments(compoundId: String, saveDir: String? = nil) throws -> [Attachment] {
+        let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
+        let script = buildSaveAttachmentsScript(account: account, mailbox: mailboxName, messageId: msgId, saveDir: saveDir)
+        let json = try runScript(script, timeoutSeconds: 30)
+        return try decode([Attachment].self, from: json)
+    }
+
+    static func replyToMessage(
+        compoundId: String,
+        body: String,
+        to overrideTo: [String]? = nil,
+        cc: [String] = [],
+        bcc: [String] = [],
+        from accountName: String? = nil,
+        attachmentPaths: [String] = [],
+        dryRun: Bool = false
+    ) throws -> MailActionResult {
+        let original = try readMessage(compoundId: compoundId)
+        let replyTo = overrideTo ?? [original.from]
+        let replySubject = buildReplySubject(original.subject)
+        let quotedBody = buildReplyQuote(date: original.date, from: original.from, body: original.body ?? "")
+        let fullBody = body + "\n\n" + quotedBody
+        let script = buildSendScript(
+            to: replyTo,
+            subject: replySubject,
+            body: fullBody,
+            cc: cc,
+            bcc: bcc,
+            from: accountName,
+            attachmentPaths: attachmentPaths,
+            dryRun: dryRun
+        )
+        let json = try runScript(script, timeoutSeconds: 45)
+        return try decode(MailActionResult.self, from: json)
+    }
+
+    static func forwardMessage(
+        compoundId: String,
+        to: [String],
+        body: String = "",
+        cc: [String] = [],
+        bcc: [String] = [],
+        from accountName: String? = nil,
+        attachmentPaths: [String] = [],
+        dryRun: Bool = false
+    ) throws -> MailActionResult {
+        let original = try readMessage(compoundId: compoundId)
+        let fwdSubject = buildForwardSubject(original.subject)
+        let prefix = buildForwardPrefix(from: original.from, date: original.date, subject: original.subject, to: original.to, body: original.body ?? "")
+        let fullBody = body.isEmpty ? prefix : body + "\n\n" + prefix
+        let script = buildSendScript(
+            to: to,
+            subject: fwdSubject,
+            body: fullBody,
+            cc: cc,
+            bcc: bcc,
+            from: accountName,
+            attachmentPaths: attachmentPaths,
+            dryRun: dryRun
+        )
         let json = try runScript(script, timeoutSeconds: 45)
         return try decode(MailActionResult.self, from: json)
     }
@@ -157,6 +223,11 @@ enum MailBridge {
 
     static func jsEscapeOptional(_ s: String?) -> String {
         s.map { "'\(jsEscape($0))'" } ?? "null"
+    }
+
+    static func jsStringArray(_ items: [String]) -> String {
+        let escaped = items.map { "'\(jsEscape($0))'" }.joined(separator: ", ")
+        return "[\(escaped)]"
     }
 
     static func jsMailReadyPoll(maxAttempts: Int, errorMessage: String = "Mail not ready: no accounts visible after startup") -> String {
@@ -492,20 +563,22 @@ enum MailBridge {
     }
 
     static func buildSendScript(
-        to: String,
+        to: [String],
         subject: String,
         body: String,
-        cc: String?,
-        from accountName: String?,
-        attachmentPath: String?,
+        cc: [String] = [],
+        bcc: [String] = [],
+        from accountName: String? = nil,
+        attachmentPaths: [String] = [],
         dryRun: Bool
     ) -> String {
-        let safeTo = jsEscape(to)
+        let safeTo = jsStringArray(to)
         let safeSubject = jsEscape(subject)
         let safeBody = jsEscape(body)
-        let safeCc = jsEscapeOptional(cc)
+        let safeCc = jsStringArray(cc)
+        let safeBcc = jsStringArray(bcc)
         let safeFrom = jsEscapeOptional(accountName)
-        let safeAttach = jsEscapeOptional(attachmentPath)
+        let safeAttachPaths = jsStringArray(attachmentPaths)
 
         return """
         var mail = Application('Mail');
@@ -520,13 +593,19 @@ enum MailBridge {
         mail.outgoingMessages.push(msg);
 
         try {
-            var toRecip = mail.Recipient({address: '\(safeTo)'});
-            msg.toRecipients.push(toRecip);
+            var toAddrs = \(safeTo);
+            for (var ti = 0; ti < toAddrs.length; ti++) {
+                msg.toRecipients.push(mail.Recipient({address: toAddrs[ti]}));
+            }
 
-            var ccAddr = \(safeCc);
-            if (ccAddr !== null) {
-                var ccRecip = mail.CcRecipient({address: ccAddr});
-                msg.ccRecipients.push(ccRecip);
+            var ccAddrs = \(safeCc);
+            for (var ci = 0; ci < ccAddrs.length; ci++) {
+                msg.ccRecipients.push(mail.CcRecipient({address: ccAddrs[ci]}));
+            }
+
+            var bccAddrs = \(safeBcc);
+            for (var bi = 0; bi < bccAddrs.length; bi++) {
+                msg.bccRecipients.push(mail.BccRecipient({address: bccAddrs[bi]}));
             }
 
             var fromAcct = \(safeFrom);
@@ -549,27 +628,25 @@ enum MailBridge {
                 if (!acctFound) { throw new Error('MAILBRIDGE_ERR_ACCT_NOT_FOUND'); }
             }
 
-            var attachPath = \(safeAttach);
-            if (attachPath !== null) {
-                var att = mail.Attachment({fileName: Path(attachPath)});
+            var attachPaths = \(safeAttachPaths);
+            for (var ai = 0; ai < attachPaths.length; ai++) {
+                var att = mail.Attachment({fileName: Path(attachPaths[ai])});
                 msg.attachments.push(att);
-                // Verify attachment was accepted (guard against silent drop on bad path)
-                if (msg.attachments().length === 0) {
-                    throw new Error('MAILBRIDGE_ERR_ATTACH_FAILED');
-                }
+            }
+            // Verify all attachments were accepted
+            if (attachPaths.length > 0 && msg.attachments().length !== attachPaths.length) {
+                throw new Error('MAILBRIDGE_ERR_ATTACH_FAILED');
             }
 
             if (!isDryRun) {
                 // msg.send() throws on SMTP rejection; success means accepted for delivery.
-                // A send delay keeps the message in outgoingMessages until the delay expires —
-                // checking queue length would produce a false failure in that case.
                 msg.send();
             } else {
-                // Dry-run: delete by object reference (not positional index) to avoid deleting wrong draft
+                // Dry-run: delete by object reference to avoid deleting wrong draft
                 try { msg.delete(); } catch(e) {}
             }
         } catch(err) {
-            // Cleanup: remove orphaned OutgoingMessage on any failure path (by object reference)
+            // Cleanup: remove orphaned OutgoingMessage on any failure path
             try { msg.delete(); } catch(e) {}
             throw err;
         }
@@ -578,12 +655,104 @@ enum MailBridge {
             success: true,
             action: 'send',
             details: {
-                to: '\(safeTo)',
+                to: toAddrs.join(', '),
                 subject: '\(safeSubject)',
                 dryRun: String(isDryRun)
             }
         });
         """
+    }
+
+    static func buildSaveAttachmentsScript(
+        account: String,
+        mailbox: String,
+        messageId: String,
+        saveDir: String?
+    ) -> String {
+        let safeAccount = jsEscape(account)
+        let safeMailbox = jsEscape(mailbox)
+        let safeMsgId = messageId
+        let safeSaveDir = jsEscapeOptional(saveDir)
+
+        return """
+        var mail = Application('Mail');
+        \(jsMailReadyPoll(maxAttempts: 8))
+        \(jsFindMailboxByName())
+        \(jsResolveMailbox())
+        var saveDir = \(safeSaveDir);
+        var result = [];
+
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            if (acct.name() !== '\(safeAccount)') continue;
+
+            var mb = resolveMailbox(acct, '\(safeMailbox)');
+            if (mb === null) throw new Error('MAILBRIDGE_ERR_MAILBOX_NOT_FOUND');
+
+            var msgs = mb.messages.whose({id: \(safeMsgId)})();
+            if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
+
+            var msg = msgs[0];
+            // Trigger IMAP body download
+            try { msg.content(); } catch(e) {}
+
+            var atts = [];
+            try { atts = msg.mailAttachments(); } catch(e) {}
+
+            for (var i = 0; i < atts.length; i++) {
+                var att = atts[i];
+                var attName = att.name();
+                var attMime = att.mimeType();
+                var attSize = 0;
+                try { attSize = att.fileSize(); } catch(e) {
+                    try { attSize = att.downloadedSize(); } catch(e2) {}
+                }
+                var savedPath = null;
+                if (saveDir !== null) {
+                    var dest = saveDir + '/' + attName;
+                    att.save({to: Path(dest)});
+                    savedPath = dest;
+                }
+                result.push({name: attName, mimeType: attMime, size: attSize, savedPath: savedPath});
+            }
+            break;
+        }
+
+        JSON.stringify(result);
+        """
+    }
+
+    // MARK: - Reply / Forward Helpers
+
+    static func buildReplyQuote(date: String, from: String, body: String) -> String {
+        let quotedLines = body.components(separatedBy: .newlines)
+            .map { "> \($0)" }
+            .joined(separator: "\n")
+        return "On \(date), \(from) wrote:\n\(quotedLines)"
+    }
+
+    static func buildForwardPrefix(from: String, date: String, subject: String, to: [String], body: String) -> String {
+        let toLine = to.joined(separator: ", ")
+        return """
+        ---------- Forwarded message ----------
+        From: \(from)
+        Date: \(date)
+        Subject: \(subject)
+        To: \(toLine)
+
+        \(body)
+        """
+    }
+
+    static func buildReplySubject(_ subject: String) -> String {
+        let stripped = subject.replacingOccurrences(of: #"^(Re:\s*)+"#, with: "", options: .regularExpression)
+        return "Re: \(stripped)"
+    }
+
+    static func buildForwardSubject(_ subject: String) -> String {
+        let stripped = subject.replacingOccurrences(of: #"^(Fwd?:\s*)+"#, with: "", options: .regularExpression)
+        return "Fwd: \(stripped)"
     }
 
     static func buildMarkScript(

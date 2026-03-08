@@ -240,10 +240,10 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("body: bodyText"))
     }
 
-    func testReadScriptContentBeforeHtmlContent() {
+    func testReadScriptContentBeforeHtmlContent() throws {
         let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
-        let contentIdx = script.range(of: "msg.content()")!.lowerBound
-        let htmlIdx = script.range(of: "msg.htmlContent()")!.lowerBound
+        let contentIdx = try XCTUnwrap(script.range(of: "msg.content()")?.lowerBound)
+        let htmlIdx = try XCTUnwrap(script.range(of: "msg.htmlContent()")?.lowerBound)
         XCTAssertLessThan(contentIdx, htmlIdx)
     }
 
@@ -363,49 +363,68 @@ final class JXAScriptBuilderTests: XCTestCase {
     // MARK: - buildSendScript
 
     func testSendScriptInterpolatesToAndSubject() {
-        let script = MailBridge.buildSendScript(to: "a@b.com", subject: "Hello", body: "Body", cc: nil, from: nil, attachmentPath: nil, dryRun: false)
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hello", body: "Body", dryRun: false)
         XCTAssertTrue(script.contains("'a@b.com'"))
         XCTAssertTrue(script.contains("'Hello'"))
     }
 
-    func testSendScriptCcNilIsNull() {
-        let script = MailBridge.buildSendScript(to: "a@b.com", subject: "Hi", body: "Body", cc: nil, from: nil, attachmentPath: nil, dryRun: false)
-        XCTAssertTrue(script.contains("var ccAddr = null;"))
+    func testSendScriptCcEmptyIsEmptyArray() {
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Body", dryRun: false)
+        XCTAssertTrue(script.contains("var ccAddrs = [];"))
     }
 
     func testSendScriptCcInterpolated() {
-        let script = MailBridge.buildSendScript(to: "a@b.com", subject: "Hi", body: "Body", cc: "cc@b.com", from: nil, attachmentPath: nil, dryRun: false)
-        XCTAssertTrue(script.contains("var ccAddr = 'cc@b.com';"))
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Body", cc: ["cc@b.com"], dryRun: false)
+        XCTAssertTrue(script.contains("'cc@b.com'"))
+        XCTAssertTrue(script.contains("var ccAddrs = "))
     }
 
-    func testSendScriptAttachmentNilIsNull() {
-        let script = MailBridge.buildSendScript(to: "a@b.com", subject: "Hi", body: "Body", cc: nil, from: nil, attachmentPath: nil, dryRun: false)
-        XCTAssertTrue(script.contains("var attachPath = null;"))
+    func testSendScriptBccInterpolated() {
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Body", bcc: ["bcc@b.com"], dryRun: false)
+        XCTAssertTrue(script.contains("'bcc@b.com'"))
+        XCTAssertTrue(script.contains("var bccAddrs = "))
+    }
+
+    func testSendScriptAttachmentEmpty() {
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Body", dryRun: false)
+        XCTAssertTrue(script.contains("var attachPaths = [];"))
     }
 
     func testSendScriptAttachmentInterpolated() {
-        let script = MailBridge.buildSendScript(to: "a@b.com", subject: "Hi", body: "Body", cc: nil, from: nil, attachmentPath: "/tmp/file.pdf", dryRun: false)
-        XCTAssertTrue(script.contains("var attachPath = '/tmp/file.pdf';"))
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Body", attachmentPaths: ["/tmp/file.pdf"], dryRun: false)
+        XCTAssertTrue(script.contains("'/tmp/file.pdf'"))
+    }
+
+    func testSendScriptMultipleAttachments() {
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Body", attachmentPaths: ["/tmp/a.pdf", "/tmp/b.pdf"], dryRun: false)
+        XCTAssertTrue(script.contains("'/tmp/a.pdf'"))
+        XCTAssertTrue(script.contains("'/tmp/b.pdf'"))
     }
 
     func testSendScriptDryRunTrue() {
-        let script = MailBridge.buildSendScript(to: "a@b.com", subject: "Hi", body: "Body", cc: nil, from: nil, attachmentPath: nil, dryRun: true)
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Body", dryRun: true)
         XCTAssertTrue(script.contains("var isDryRun = true;"))
     }
 
     func testSendScriptEscapesNewlineInBody() {
-        let script = MailBridge.buildSendScript(to: "a@b.com", subject: "Hi", body: "Line1\nLine2", cc: nil, from: nil, attachmentPath: nil, dryRun: false)
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Line1\nLine2", dryRun: false)
         XCTAssertTrue(script.contains("Line1\\nLine2"))
         XCTAssertFalse(script.contains("Line1\nLine2"))
     }
 
     func testSendScriptFromNilIsNull() {
-        let script = MailBridge.buildSendScript(to: "a@b.com", subject: "Hi", body: "Body", cc: nil, from: nil, attachmentPath: nil, dryRun: false)
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Body", dryRun: false)
         XCTAssertTrue(script.contains("var fromAcct = null;"))
     }
 
     func testSendScriptFromInterpolated() {
-        let script = MailBridge.buildSendScript(to: "a@b.com", subject: "Hi", body: "Body", cc: nil, from: "Personal", attachmentPath: nil, dryRun: false)
+        let script = MailBridge.buildSendScript(to: ["a@b.com"], subject: "Hi", body: "Body", from: "Personal", dryRun: false)
         XCTAssertTrue(script.contains("var fromAcct = 'Personal';"))
+    }
+
+    func testSendScriptMultipleToAddresses() {
+        let script = MailBridge.buildSendScript(to: ["a@b.com", "c@d.com"], subject: "Hi", body: "Body", dryRun: false)
+        XCTAssertTrue(script.contains("'a@b.com'"))
+        XCTAssertTrue(script.contains("'c@d.com'"))
     }
 }
