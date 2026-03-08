@@ -102,6 +102,20 @@ final class MailCommandValidationTests: XCTestCase {
         ]))
     }
 
+    func testSendMultipleToAddresses() throws {
+        let cmd = try MailCommand.Send.parse([
+            "--to", "a@example.com", "--to", "b@example.com",
+            "--subject", "Test", "--body", "Body",
+        ])
+        XCTAssertEqual(cmd.to, ["a@example.com", "b@example.com"])
+    }
+
+    func testSendMissingToFails() {
+        XCTAssertThrowsError(try MailCommand.Send.parse([
+            "--subject", "Test", "--body", "Body",
+        ]))
+    }
+
     func testSendValidCCPasses() {
         XCTAssertNoThrow(try MailCommand.Send.parse([
             "--to", "user@example.com", "--subject", "Test", "--body", "Body",
@@ -114,6 +128,29 @@ final class MailCommandValidationTests: XCTestCase {
             "--to", "user@example.com", "--subject", "Test", "--body", "Body",
             "--cc", "notanemail",
         ]))
+    }
+
+    func testSendBCCPasses() throws {
+        let cmd = try MailCommand.Send.parse([
+            "--to", "user@example.com", "--subject", "Test", "--body", "Body",
+            "--bcc", "hidden@example.com",
+        ])
+        XCTAssertEqual(cmd.bcc, ["hidden@example.com"])
+    }
+
+    func testSendInvalidBCCFails() {
+        XCTAssertThrowsError(try MailCommand.Send.parse([
+            "--to", "user@example.com", "--subject", "Test", "--body", "Body",
+            "--bcc", "notanemail",
+        ]))
+    }
+
+    func testSendMultipleBCC() throws {
+        let cmd = try MailCommand.Send.parse([
+            "--to", "user@example.com", "--subject", "Test", "--body", "Body",
+            "--bcc", "a@example.com", "--bcc", "b@example.com",
+        ])
+        XCTAssertEqual(cmd.bcc, ["a@example.com", "b@example.com"])
     }
 
     // MARK: - Send attachment file existence
@@ -135,6 +172,88 @@ final class MailCommandValidationTests: XCTestCase {
             "--to", "user@example.com", "--subject", "Test", "--body", "Body",
             "--attach", tmpURL.path,
         ]))
+    }
+
+    func testSendMultipleAttachmentsPasses() throws {
+        let tmp1 = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pippin-test-att1-\(UUID().uuidString).txt")
+        let tmp2 = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pippin-test-att2-\(UUID().uuidString).pdf")
+        FileManager.default.createFile(atPath: tmp1.path, contents: Data("a".utf8))
+        FileManager.default.createFile(atPath: tmp2.path, contents: Data("b".utf8))
+        defer {
+            try? FileManager.default.removeItem(at: tmp1)
+            try? FileManager.default.removeItem(at: tmp2)
+        }
+        let cmd = try MailCommand.Send.parse([
+            "--to", "user@example.com", "--subject", "Test", "--body", "Body",
+            "--attach", tmp1.path, "--attach", tmp2.path,
+        ])
+        XCTAssertEqual(cmd.attach.count, 2)
+    }
+
+    // MARK: - Attachments subcommand
+
+    func testAttachmentsParsesPasses() {
+        XCTAssertNoThrow(try MailCommand.Attachments.parse(["some-id"]))
+    }
+
+    func testAttachmentsSaveDirNonexistentFails() {
+        XCTAssertThrowsError(try MailCommand.Attachments.parse([
+            "some-id", "--save-dir", "/tmp/pippin-nonexistent-dir-\(UUID().uuidString)",
+        ]))
+    }
+
+    func testAttachmentsSaveDirExistingPasses() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pippin-test-savedir-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        XCTAssertNoThrow(try MailCommand.Attachments.parse(["some-id", "--save-dir", dir.path]))
+    }
+
+    // MARK: - Reply subcommand
+
+    func testReplyParsesWithBody() {
+        XCTAssertNoThrow(try MailCommand.Reply.parse(["some-id", "--body", "Thanks!"]))
+    }
+
+    func testReplyWithOptionalTo() throws {
+        let cmd = try MailCommand.Reply.parse(["some-id", "--body", "OK", "--to", "other@example.com"])
+        XCTAssertEqual(cmd.to, ["other@example.com"])
+    }
+
+    func testReplyInvalidToFails() {
+        XCTAssertThrowsError(try MailCommand.Reply.parse(["some-id", "--body", "OK", "--to", "notanemail"]))
+    }
+
+    func testReplyDefaultToIsEmpty() throws {
+        let cmd = try MailCommand.Reply.parse(["some-id", "--body", "OK"])
+        XCTAssertTrue(cmd.to.isEmpty)
+    }
+
+    // MARK: - Forward subcommand
+
+    func testForwardParsesWithTo() {
+        XCTAssertNoThrow(try MailCommand.Forward.parse(["some-id", "--to", "fwd@example.com"]))
+    }
+
+    func testForwardMissingToFails() {
+        XCTAssertThrowsError(try MailCommand.Forward.parse(["some-id"]))
+    }
+
+    func testForwardInvalidToFails() {
+        XCTAssertThrowsError(try MailCommand.Forward.parse(["some-id", "--to", "notanemail"]))
+    }
+
+    func testForwardWithOptionalBody() throws {
+        let cmd = try MailCommand.Forward.parse(["some-id", "--to", "fwd@example.com", "--body", "FYI"])
+        XCTAssertEqual(cmd.body, "FYI")
+    }
+
+    func testForwardDefaultBodyIsEmpty() throws {
+        let cmd = try MailCommand.Forward.parse(["some-id", "--to", "fwd@example.com"])
+        XCTAssertEqual(cmd.body, "")
     }
 
     // MARK: - Mailboxes subcommand
