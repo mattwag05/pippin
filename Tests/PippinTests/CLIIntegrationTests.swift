@@ -68,7 +68,7 @@ final class CLIIntegrationTests: XCTestCase {
         guard requireBinary() else { return }
         let result = run(["--version"])
         XCTAssertEqual(result.exitCode, 0)
-        XCTAssertTrue(result.stdout.contains("0.2"), "Expected version string in output, got: \(result.stdout)")
+        XCTAssertTrue(result.stdout.contains("0.3"), "Expected version string in output, got: \(result.stdout)")
     }
 
     // MARK: - Help
@@ -129,6 +129,28 @@ final class CLIIntegrationTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 0)
         let combined = result.stdout + result.stderr
         XCTAssertTrue(combined.contains("--limit") || combined.contains("limit"), "Expected --limit flag in help, got: \(combined)")
+    }
+
+    func testCalendarHelp() {
+        guard requireBinary() else { return }
+        let result = run(["calendar", "--help"])
+        XCTAssertEqual(result.exitCode, 0)
+        let combined = result.stdout + result.stderr
+        XCTAssertTrue(
+            combined.contains("events") || combined.contains("SUBCOMMANDS"),
+            "Expected calendar subcommand list, got: \(combined)"
+        )
+    }
+
+    func testCalendarEventsHelp() {
+        guard requireBinary() else { return }
+        let result = run(["calendar", "events", "--help"])
+        XCTAssertEqual(result.exitCode, 0)
+        let combined = result.stdout + result.stderr
+        XCTAssertTrue(
+            combined.contains("--from") || combined.contains("from"),
+            "Expected --from flag in help, got: \(combined)"
+        )
     }
 
     // MARK: - Invalid input

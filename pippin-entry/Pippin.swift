@@ -8,8 +8,8 @@ struct Pippin: AsyncParsableCommand {
         abstract: PippinVersion.tagline,
         version: "pippin \(PippinVersion.version)",
         subcommands: [
-            MailCommand.self, MemosCommand.self, DoctorCommand.self, InitCommand.self,
-            CompletionsCommand.self,
+            MailCommand.self, MemosCommand.self, CalendarCommand.self,
+            DoctorCommand.self, InitCommand.self, CompletionsCommand.self,
         ]
     )
 }

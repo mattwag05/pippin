@@ -292,8 +292,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else {
-                let detail = result.details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: detail))
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }
@@ -328,8 +327,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else {
-                let detail = result.details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: detail))
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }
@@ -398,8 +396,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else {
-                let detail = result.details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: detail))
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }

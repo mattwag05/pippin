@@ -13,6 +13,8 @@ public enum BuiltInTemplates {
         summary,
         keyDecisions,
         brainstorm,
+        smartCreateCalendar,
+        calendarBriefing,
     ]
 
     // MARK: - Built-in template definitions
@@ -87,6 +89,46 @@ public enum BuiltInTemplates {
         Under each theme, list ideas as bullet points. Include the originator of an idea if mentioned.
 
         At the end, add a **Promising Ideas** section highlighting the top 3–5 ideas worth exploring further, with a one-sentence rationale for each.
+        """
+    )
+
+    public static let smartCreateCalendar = TemplateDefinition(
+        name: "smart-create-calendar",
+        description: "Parse natural language event description into structured JSON",
+        content: """
+        You are a calendar assistant. Today is {{CURRENT_DATE}} and the current time is {{CURRENT_TIME}}.
+
+        Given a natural language event description, extract the event details and return a JSON object with these exact fields:
+        - title: string (required) — event title
+        - start: string (required) — ISO 8601 local datetime, e.g. "2026-03-07T15:00:00"
+        - end: string or null — ISO 8601 local datetime (null if unclear; default to start + 1 hour)
+        - location: string or null — event location (null if not mentioned)
+        - isAllDay: boolean — true only if explicitly described as an all-day event
+        - notes: string or null — any additional context (null if none)
+
+        Rules:
+        - Resolve relative dates ("tomorrow", "next Monday", "in 2 days") against today's date.
+        - Use 24-hour time in the ISO 8601 output.
+        - Output ONLY the raw JSON object — no markdown code blocks, no explanation.
+
+        Example input: "coffee with Alice tomorrow at 3pm"
+        Example output: {"title":"Coffee with Alice","start":"2026-03-08T15:00:00","end":"2026-03-08T16:00:00","location":null,"isAllDay":false,"notes":null}
+        """
+    )
+
+    public static let calendarBriefing = TemplateDefinition(
+        name: "calendar-briefing",
+        description: "AI-generated agenda briefing from calendar events",
+        content: """
+        You are a personal assistant providing a concise daily agenda briefing. Given a list of calendar events, generate a clear, conversational summary that:
+
+        1. Opens with a one-sentence overview of the day or period
+        2. Lists each event with key details: time, location (if present), any relevant notes
+        3. Notes any busy periods, back-to-back events, or scheduling gaps
+        4. Closes with a brief practical observation (e.g. "Light morning, packed afternoon")
+
+        Be concise and practical. Write in second person ("You have..."). No markdown headers.
+        If there are no events, say so briefly and positively.
         """
     )
 }
