@@ -5,7 +5,7 @@ final class TemplateTests: XCTestCase {
     // MARK: - Built-in templates
 
     func testBuiltInTemplatesCount() {
-        XCTAssertEqual(BuiltInTemplates.all.count, 5)
+        XCTAssertEqual(BuiltInTemplates.all.count, 7)
     }
 
     func testBuiltInTemplateNames() {
@@ -46,7 +46,7 @@ final class TemplateTests: XCTestCase {
         let dir = NSTemporaryDirectory() + UUID().uuidString
         let manager = TemplateManager(templatesDir: dir)
         let all = manager.allTemplates()
-        XCTAssertEqual(all.count, 5)
+        XCTAssertEqual(all.count, 7)
         XCTAssertTrue(all.allSatisfy(\.isBuiltIn))
     }
 
@@ -63,7 +63,7 @@ final class TemplateTests: XCTestCase {
 
         let manager = TemplateManager(templatesDir: dir)
         let all = manager.allTemplates()
-        XCTAssertEqual(all.count, 6) // 5 built-in + 1 user
+        XCTAssertEqual(all.count, 8) // 7 built-in + 1 user
         let user = try XCTUnwrap(all.last)
         XCTAssertEqual(user.name, "plain")
         XCTAssertFalse(user.isBuiltIn)

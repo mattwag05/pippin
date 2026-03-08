@@ -7,6 +7,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.0] - 2026-03-06
+
+### Added
+
+- `pippin calendar` — new command group for Apple Calendar automation using EventKit
+- `pippin calendar list` — list all calendars (NAME, TYPE, ACCOUNT, COLOR columns)
+- `pippin calendar events` — list events; `--from`, `--to`, `--calendar`, `--limit 50`; defaults to today
+- `pippin calendar show <id>` — full event card with attendees, recurrence, notes, URL
+- `pippin calendar create --title --start` — create event; `--end` (default: +1h), `--location`, `--notes`, `--all-day`, `--url`, `--calendar`
+- `pippin calendar edit <id>` — update any field on an existing event
+- `pippin calendar delete <id> --force` — delete an event (requires `--force`)
+- `pippin calendar smart-create "<description>"` — AI parses natural language → creates event; `--dry-run` to preview parsed JSON
+- `pippin calendar agenda` — AI-generated daily/weekly briefing; `--days 1` (max 7)
+- `pippin doctor` now checks Calendar TCC permission and reports ok/skip/fail
+- 2 built-in AI templates: `smart-create-calendar`, `calendar-briefing`
+- Event IDs use `calendarItemIdentifier` (stable UUID); prefix matching (8+ chars) supported
+- All `pippin calendar` subcommands accept `--format json`
+
+---
+
 ## [0.2.1] - 2026-03-06
 
 ### Fixed
