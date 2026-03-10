@@ -74,6 +74,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkCalendarAccess())
     checks.append(checkParakeetMLX())
     checks.append(checkSpeechRecognition())
+    checks.append(checkMLXAudio())
     checks.append(checkPippinVersion())
 
     return checks
@@ -252,6 +253,22 @@ private func checkSpeechRecognition() -> DiagnosticCheck {
         name: "Speech Recognition",
         status: .skip,
         detail: "not determined (grant on first use of --transcribe)"
+    )
+}
+
+private func checkMLXAudio() -> DiagnosticCheck {
+    if AudioBridge.isAvailable() {
+        return DiagnosticCheck(
+            name: "mlx-audio",
+            status: .ok,
+            detail: "available"
+        )
+    }
+    return DiagnosticCheck(
+        name: "mlx-audio",
+        status: .skip,
+        detail: "not found (optional — install for TTS/STT support)",
+        remediation: "→ pip install mlx-audio (optional, for `pippin audio` commands)"
     )
 }
 
