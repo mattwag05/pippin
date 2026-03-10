@@ -107,9 +107,9 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("var searchBody = true;"))
     }
 
-    func testSearchScriptPerMailboxLimitIs50() {
+    func testSearchScriptPerMailboxLimitIs200() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
-        XCTAssertTrue(script.contains("var perMailboxLimit = 50;"))
+        XCTAssertTrue(script.contains("var perMailboxLimit = 200;"))
     }
 
     // MARK: - buildListScript (offset/pagination)
@@ -426,5 +426,93 @@ final class JXAScriptBuilderTests: XCTestCase {
         let script = MailBridge.buildSendScript(to: ["a@b.com", "c@d.com"], subject: "Hi", body: "Body", dryRun: false)
         XCTAssertTrue(script.contains("'a@b.com'"))
         XCTAssertTrue(script.contains("'c@d.com'"))
+    }
+
+    // MARK: - buildSearchScript (scan order fix)
+
+    func testSearchScriptSlicesFromEnd() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("allMsgs.length - scanCount"))
+        XCTAssertTrue(script.contains("allMsgs.slice(startIdx, allMsgs.length)"))
+    }
+
+    func testSearchScriptIteratesNewestFirst() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        // Iterates from end to start (i = msgs.length - 1; i >= 0; i--)
+        XCTAssertTrue(script.contains("msgs.length - 1"))
+        XCTAssertTrue(script.contains("i--"))
+    }
+
+    func testSearchScriptOutputsMetaWrapper() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
+    }
+
+    // MARK: - buildSearchScript (date filters)
+
+    func testSearchScriptAfterFilterNilIsNull() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, after: nil)
+        XCTAssertTrue(script.contains("var afterFilter = null;"))
+    }
+
+    func testSearchScriptAfterFilterInterpolated() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, after: "2026-03-07")
+        XCTAssertTrue(script.contains("var afterFilter = '2026-03-07';"))
+    }
+
+    func testSearchScriptBeforeFilterNilIsNull() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, before: nil)
+        XCTAssertTrue(script.contains("var beforeFilter = null;"))
+    }
+
+    func testSearchScriptBeforeFilterInterpolated() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, before: "2026-03-10")
+        XCTAssertTrue(script.contains("var beforeFilter = '2026-03-10';"))
+    }
+
+    func testSearchScriptDateComparisonLogic() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, after: "2026-01-01")
+        XCTAssertTrue(script.contains("afterDate !== null && msgDate < afterDate"))
+        XCTAssertTrue(script.contains("beforeDate !== null && msgDate > beforeDate"))
+    }
+
+    // MARK: - buildSearchScript (to filter)
+
+    func testSearchScriptToFilterNilIsNull() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, to: nil)
+        XCTAssertTrue(script.contains("var toFilter = null;"))
+    }
+
+    func testSearchScriptToFilterInterpolated() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, to: "user@example.com")
+        XCTAssertTrue(script.contains("var toFilter = 'user@example.com';"))
+    }
+
+    func testSearchScriptToRecipientsCalledOnMatch() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, to: "user@example.com")
+        XCTAssertTrue(script.contains("matched && toFilter !== null"))
+        XCTAssertTrue(script.contains("msg.toRecipients()"))
+    }
+
+    func testSearchScriptToFieldPopulatedInResults() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("to: toAddrs"))
+    }
+
+    // MARK: - buildSearchScript (meta tracking)
+
+    func testSearchScriptMetaAccountsScanned() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("_meta.accountsScanned++"))
+    }
+
+    func testSearchScriptMetaMailboxesScanned() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("_meta.mailboxesScanned++"))
+    }
+
+    func testSearchScriptMetaMessagesExamined() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("_meta.messagesExamined++"))
     }
 }
