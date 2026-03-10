@@ -1,4 +1,5 @@
 import ArgumentParser
+import Contacts
 import EventKit
 import Foundation
 
@@ -72,8 +73,12 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkMailAutomation())
     checks.append(checkVoiceMemosDB())
     checks.append(checkCalendarAccess())
+    checks.append(checkContactsAccess())
     checks.append(checkParakeetMLX())
     checks.append(checkSpeechRecognition())
+    checks.append(checkMLXAudio())
+    checks.append(checkNodeJS())
+    checks.append(checkPlaywright())
     checks.append(checkPippinVersion())
 
     return checks
@@ -229,6 +234,37 @@ private func checkCalendarAccess() -> DiagnosticCheck {
     }
 }
 
+private func checkContactsAccess() -> DiagnosticCheck {
+    let status = CNContactStore.authorizationStatus(for: .contacts)
+    switch status {
+    case .authorized:
+        return DiagnosticCheck(name: "Contacts access", status: .ok, detail: "granted")
+    case .notDetermined:
+        return DiagnosticCheck(
+            name: "Contacts access",
+            status: .skip,
+            detail: "not determined (grant on first use of `pippin contacts`)"
+        )
+    case .denied, .restricted:
+        return DiagnosticCheck(
+            name: "Contacts access",
+            status: .fail,
+            detail: "permission denied",
+            remediation: """
+            → Open System Settings > Privacy & Security > Contacts
+              Grant access to Terminal.app (or the pippin binary).
+              Then run: pippin contacts list
+            """
+        )
+    default:
+        return DiagnosticCheck(
+            name: "Contacts access",
+            status: .skip,
+            detail: "status: \(status.rawValue) (grant on first use of `pippin contacts`)"
+        )
+    }
+}
+
 private func checkParakeetMLX() -> DiagnosticCheck {
     if let path = ParakeetTranscriber.findBinary() {
         return DiagnosticCheck(
@@ -252,6 +288,49 @@ private func checkSpeechRecognition() -> DiagnosticCheck {
         name: "Speech Recognition",
         status: .skip,
         detail: "not determined (grant on first use of --transcribe)"
+    )
+}
+
+private func checkMLXAudio() -> DiagnosticCheck {
+    if AudioBridge.isAvailable() {
+        return DiagnosticCheck(
+            name: "mlx-audio",
+            status: .ok,
+            detail: "available"
+        )
+    }
+    return DiagnosticCheck(
+        name: "mlx-audio",
+        status: .skip,
+        detail: "not found (optional — install for TTS/STT support)",
+        remediation: "→ pip install mlx-audio (optional, for `pippin audio` commands)"
+    )
+}
+
+private func checkNodeJS() -> DiagnosticCheck {
+    if BrowserBridge.isNodeAvailable() {
+        return DiagnosticCheck(name: "Node.js", status: .ok, detail: "found")
+    }
+    return DiagnosticCheck(
+        name: "Node.js",
+        status: .skip,
+        detail: "not found (optional — required for `pippin browser`)",
+        remediation: "→ Install Node.js: https://nodejs.org (optional, for browser automation)"
+    )
+}
+
+private func checkPlaywright() -> DiagnosticCheck {
+    guard BrowserBridge.isNodeAvailable() else {
+        return DiagnosticCheck(name: "Playwright", status: .skip, detail: "skipped (Node.js not found)")
+    }
+    if BrowserBridge.isPlaywrightAvailable() {
+        return DiagnosticCheck(name: "Playwright", status: .ok, detail: "found")
+    }
+    return DiagnosticCheck(
+        name: "Playwright",
+        status: .skip,
+        detail: "not found (optional — required for `pippin browser`)",
+        remediation: "→ Install Playwright: npx playwright install webkit"
     )
 }
 

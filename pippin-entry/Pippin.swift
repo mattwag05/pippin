@@ -9,6 +9,7 @@ struct Pippin: AsyncParsableCommand {
         version: "pippin \(PippinVersion.version)",
         subcommands: [
             MailCommand.self, MemosCommand.self, CalendarCommand.self,
+            AudioCommand.self, ContactsCommand.self, BrowserCommand.self,
             DoctorCommand.self, InitCommand.self, CompletionsCommand.self,
         ]
     )
