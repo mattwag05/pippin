@@ -88,3 +88,42 @@ public struct CalendarActionResult: Codable, Sendable {
         self.details = details
     }
 }
+
+// MARK: - Field filtering
+
+public extension CalendarEvent {
+    /// Encode only the specified fields to JSON. Pass nil to get all fields (standard encoding).
+    func jsonData(fields: [String]?) throws -> Data {
+        let encoder = JSONEncoder()
+        guard let fields else {
+            return try encoder.encode(self)
+        }
+        let eventData = try encoder.encode(self)
+        let all = try JSONSerialization.jsonObject(with: eventData) as! [String: Any]
+        var dict: [String: Any] = [:]
+        for field in fields {
+            if let val = all[field] {
+                dict[field] = val
+            }
+        }
+        return try JSONSerialization.data(withJSONObject: dict, options: .sortedKeys)
+    }
+}
+
+public extension Array where Element == CalendarEvent {
+    /// Encode each event with only the specified fields. Pass nil to get all fields.
+    func jsonData(fields: [String]?) throws -> Data {
+        let encoder = JSONEncoder()
+        guard let fields else {
+            return try encoder.encode(self)
+        }
+        let allDicts = try map { event -> [String: Any] in
+            let eventData = try encoder.encode(event)
+            let dict = try JSONSerialization.jsonObject(with: eventData) as! [String: Any]
+            return fields.reduce(into: [:]) { result, field in
+                if let val = dict[field] { result[field] = val }
+            }
+        }
+        return try JSONSerialization.data(withJSONObject: allDicts, options: .sortedKeys)
+    }
+}

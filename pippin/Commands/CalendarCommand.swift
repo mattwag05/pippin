@@ -69,6 +69,9 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum events to return (default: 50).")
         public var limit: Int = 50
 
+        @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. title,startDate,endDate). JSON output only.")
+        public var fields: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -113,7 +116,9 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
 
             if output.isJSON {
-                try printJSON(events)
+                let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let data = try events.jsonData(fields: fieldList)
+                print(String(data: data, encoding: .utf8)!)
             } else {
                 printEventsTable(events)
             }
@@ -483,6 +488,9 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "API key for Claude provider.")
         public var apiKey: String?
 
+        @Option(name: .long, help: "Comma-separated JSON field names to include (briefing, days, eventCount). JSON output only.")
+        public var fields: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -538,11 +546,14 @@ public struct CalendarCommand: AsyncParsableCommand {
             )
 
             if output.isJSON {
-                let result: [String: String] = [
+                var result: [String: String] = [
                     "briefing": briefing,
                     "days": "\(days)",
                     "eventCount": "\(events.count)",
                 ]
+                if let fieldList = fields?.components(separatedBy: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+                    result = result.filter { fieldList.contains($0.key) }
+                }
                 try printJSON(result)
             } else {
                 print(briefing)
