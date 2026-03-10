@@ -220,6 +220,9 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Option(name: .long, help: "New notes.")
         public var notes: String?
 
+        @Option(name: .long, help: "New URL.")
+        public var url: String?
+
         @Option(name: .long, help: "Move to list ID.")
         public var list: String?
 
@@ -244,7 +247,8 @@ public struct RemindersCommand: AsyncParsableCommand {
                 dueDate: due.flatMap { parseCalendarDate($0) },
                 priority: priority.flatMap { parseReminderPriority($0) },
                 notes: notes,
-                listId: list
+                listId: list,
+                url: url
             )
             if output.isJSON {
                 try printJSON(result)
@@ -391,7 +395,7 @@ private func printReminderCard(_ reminder: ReminderItem) {
     var fields: [(String, String)] = [
         ("ID", reminder.id),
         ("Title", reminder.title),
-        ("List", reminder.listId),
+        ("List", reminder.listTitle),
         ("Completed", reminder.isCompleted ? "yes" : "no"),
         ("Priority", formatReminderPriority(reminder.priority)),
     ]

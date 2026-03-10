@@ -170,7 +170,8 @@ public final class RemindersBridge: @unchecked Sendable {
         dueDate: Date? = nil,
         priority: Int? = nil,
         notes: String? = nil,
-        listId: String? = nil
+        listId: String? = nil,
+        url: String? = nil
     ) async throws -> ReminderActionResult {
         try await ensureAccess()
         guard let reminder = try findReminderByPrefix(id: id) else {
@@ -179,6 +180,9 @@ public final class RemindersBridge: @unchecked Sendable {
         if let title { reminder.title = title }
         if let notes { reminder.notes = notes }
         if let priority { reminder.priority = priority }
+        if let urlStr = url, let parsed = URL(string: urlStr) {
+            reminder.url = parsed
+        }
         if let dueDate {
             reminder.dueDateComponents = Calendar.current.dateComponents(
                 [.year, .month, .day, .hour, .minute, .second],
@@ -325,6 +329,7 @@ public final class RemindersBridge: @unchecked Sendable {
         return ReminderItem(
             id: r.calendarItemIdentifier,
             listId: r.calendar?.calendarIdentifier ?? "",
+            listTitle: r.calendar?.title ?? "",
             title: r.title ?? "(no title)",
             notes: r.notes,
             url: r.url?.absoluteString,
