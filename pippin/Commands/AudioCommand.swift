@@ -28,9 +28,9 @@ public struct AudioCommand: AsyncParsableCommand {
         public var voice: String = "af_heart"
 
         @Option(name: .shortAndLong, help: "Output file path. Omit to play via system audio.")
-        public var output: String?
+        public var outputFile: String?
 
-        @OptionGroup public var outputOptions: OutputOptions
+        @OptionGroup public var output: OutputOptions
 
         public init() {}
 
@@ -42,9 +42,9 @@ public struct AudioCommand: AsyncParsableCommand {
                 text: text,
                 model: model,
                 voice: voice,
-                outputPath: output
+                outputPath: outputFile
             )
-            if outputOptions.isJSON {
+            if output.isJSON {
                 try printJSON(result)
             } else {
                 if let path = result.outputPath {
@@ -81,6 +81,9 @@ public struct AudioCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             guard AudioBridge.isAvailable() else {
                 throw AudioCommandError.mlxAudioNotAvailable
+            }
+            guard ["text", "srt", "json"].contains(format) else {
+                throw AudioCommandError(errorDescription: "Invalid format '\(format)'. Supported: text, srt, json.")
             }
             let result = try AudioBridge.transcribe(
                 filePath: file,
