@@ -7,6 +7,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.0] - 2026-03-10
+
+### Added
+
+- `pippin reminders` subcommand: `lists`, `list`, `show`, `create`, `edit`, `complete`, `delete`, `search`
+- EventKit-based Reminders bridge using EKEventStore with `.reminder` entity type
+- Priority filtering and display (high/medium/low/none mapping to EKReminder priority values 1/5/9/0)
+- Due date filtering via `--due-before` and `--due-after` flags
+- `pippin doctor` now reports Reminders TCC permission status
+
+---
+
 ## [0.8.0] - 2026-03-10
 
 ### Added
