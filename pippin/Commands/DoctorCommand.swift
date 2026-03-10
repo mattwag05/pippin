@@ -73,6 +73,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkMailAutomation())
     checks.append(checkVoiceMemosDB())
     checks.append(checkCalendarAccess())
+    checks.append(checkRemindersAccess())
     checks.append(checkContactsAccess())
     checks.append(checkParakeetMLX())
     checks.append(checkSpeechRecognition())
@@ -230,6 +231,37 @@ private func checkCalendarAccess() -> DiagnosticCheck {
             name: "Calendar access",
             status: .skip,
             detail: "status: \(status.rawValue) (grant on first use of `pippin calendar`)"
+        )
+    }
+}
+
+private func checkRemindersAccess() -> DiagnosticCheck {
+    let status = EKEventStore.authorizationStatus(for: .reminder)
+    switch status {
+    case .fullAccess, .authorized:
+        return DiagnosticCheck(name: "Reminders access", status: .ok, detail: "granted")
+    case .notDetermined:
+        return DiagnosticCheck(
+            name: "Reminders access",
+            status: .skip,
+            detail: "not determined (grant on first use of `pippin reminders`)"
+        )
+    case .denied, .restricted:
+        return DiagnosticCheck(
+            name: "Reminders access",
+            status: .fail,
+            detail: "permission denied",
+            remediation: """
+            → Open System Settings > Privacy & Security > Reminders
+              Grant access to Terminal.app (or the pippin binary).
+              Then run: pippin reminders list
+            """
+        )
+    default:
+        return DiagnosticCheck(
+            name: "Reminders access",
+            status: .skip,
+            detail: "status: \(status.rawValue) (grant on first use of `pippin reminders`)"
         )
     }
 }
