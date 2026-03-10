@@ -92,6 +92,12 @@ public enum TextFormatter {
         return "[\(icon)] \(action): \(details)"
     }
 
+    /// Convenience overload that serializes a `[String: String]` details dict.
+    public static func actionResult(success: Bool, action: String, details: [String: String]) -> String {
+        let str = details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
+        return actionResult(success: success, action: action, details: str)
+    }
+
     // MARK: - Private
 
     private static func formatRow(_ cells: [String], widths: [Int]) -> String {

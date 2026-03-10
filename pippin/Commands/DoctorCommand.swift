@@ -1,4 +1,5 @@
 import ArgumentParser
+import EventKit
 import Foundation
 
 /// A single diagnostic check result.
@@ -70,6 +71,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkMacOSVersion())
     checks.append(checkMailAutomation())
     checks.append(checkVoiceMemosDB())
+    checks.append(checkCalendarAccess())
     checks.append(checkParakeetMLX())
     checks.append(checkSpeechRecognition())
     checks.append(checkPippinVersion())
@@ -188,6 +190,41 @@ private func checkVoiceMemosDB() -> DiagnosticCheck {
             → Open System Settings > Privacy & Security > Full Disk Access
               Add Terminal.app, then restart your terminal.
             """
+        )
+    }
+}
+
+private func checkCalendarAccess() -> DiagnosticCheck {
+    let status = EKEventStore.authorizationStatus(for: .event)
+    switch status {
+    case .fullAccess, .authorized:
+        return DiagnosticCheck(
+            name: "Calendar access",
+            status: .ok,
+            detail: "granted"
+        )
+    case .notDetermined:
+        return DiagnosticCheck(
+            name: "Calendar access",
+            status: .skip,
+            detail: "not determined (grant on first use of `pippin calendar`)"
+        )
+    case .denied, .restricted:
+        return DiagnosticCheck(
+            name: "Calendar access",
+            status: .fail,
+            detail: "permission denied",
+            remediation: """
+            → Open System Settings > Privacy & Security > Calendars
+              Grant access to Terminal.app (or the pippin binary).
+              Then run: pippin calendar list
+            """
+        )
+    default:
+        return DiagnosticCheck(
+            name: "Calendar access",
+            status: .skip,
+            detail: "status: \(status.rawValue) (grant on first use of `pippin calendar`)"
         )
     }
 }

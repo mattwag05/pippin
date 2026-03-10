@@ -248,4 +248,91 @@ final class MailModelsTests: XCTestCase {
         XCTAssertEqual(json["name"] as? String, "Work")
         XCTAssertEqual(json["email"] as? String, "work@example.com")
     }
+
+    // MARK: - Attachment savedPath
+
+    func testAttachmentWithoutSavedPath() throws {
+        let att = Attachment(name: "doc.pdf", mimeType: "application/pdf", size: 1024)
+        let data = try encoder.encode(att)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["name"] as? String, "doc.pdf")
+        XCTAssertFalse(json.keys.contains("savedPath"), "savedPath should be absent when nil")
+    }
+
+    func testAttachmentWithSavedPath() throws {
+        let att = Attachment(name: "doc.pdf", mimeType: "application/pdf", size: 1024, savedPath: "/tmp/doc.pdf")
+        let data = try encoder.encode(att)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["savedPath"] as? String, "/tmp/doc.pdf")
+    }
+
+    func testAttachmentRoundTripWithSavedPath() throws {
+        let att = Attachment(name: "img.png", mimeType: "image/png", size: 2048, savedPath: "/Downloads/img.png")
+        let data = try encoder.encode(att)
+        let decoded = try decode(Attachment.self, from: data)
+        XCTAssertEqual(decoded.savedPath, "/Downloads/img.png")
+    }
+
+    func testAttachmentRoundTripWithoutSavedPath() throws {
+        let att = Attachment(name: "img.png", mimeType: "image/png", size: 2048)
+        let data = try encoder.encode(att)
+        let decoded = try decode(Attachment.self, from: data)
+        XCTAssertNil(decoded.savedPath)
+    }
+
+    // MARK: - Reply / Forward quote helpers
+
+    func testBuildReplyQuote() {
+        let result = MailBridge.buildReplyQuote(date: "2024-06-15T10:00:00Z", from: "sender@example.com", body: "Hello\nWorld")
+        XCTAssertTrue(result.hasPrefix("On 2024-06-15T10:00:00Z, sender@example.com wrote:"))
+        XCTAssertTrue(result.contains("> Hello"))
+        XCTAssertTrue(result.contains("> World"))
+    }
+
+    func testBuildForwardPrefix() {
+        let result = MailBridge.buildForwardPrefix(
+            from: "a@example.com",
+            date: "2024-06-15T10:00:00Z",
+            subject: "Test Subject",
+            to: ["b@example.com", "c@example.com"],
+            body: "Original body"
+        )
+        XCTAssertTrue(result.contains("---------- Forwarded message ----------"))
+        XCTAssertTrue(result.contains("From: a@example.com"))
+        XCTAssertTrue(result.contains("Subject: Test Subject"))
+        XCTAssertTrue(result.contains("To: b@example.com, c@example.com"))
+        XCTAssertTrue(result.contains("Original body"))
+    }
+
+    func testBuildReplySubjectStripsExistingRe() {
+        XCTAssertEqual(MailBridge.buildReplySubject("Re: Hello"), "Re: Hello")
+        XCTAssertEqual(MailBridge.buildReplySubject("Re: Re: Hello"), "Re: Hello")
+        XCTAssertEqual(MailBridge.buildReplySubject("Hello"), "Re: Hello")
+    }
+
+    func testBuildForwardSubjectStripsExistingFwd() {
+        XCTAssertEqual(MailBridge.buildForwardSubject("Fwd: Hello"), "Fwd: Hello")
+        XCTAssertEqual(MailBridge.buildForwardSubject("Fw: Hello"), "Fwd: Hello")
+        XCTAssertEqual(MailBridge.buildForwardSubject("Hello"), "Fwd: Hello")
+    }
+
+    // MARK: - jsStringArray helper
+
+    func testJsStringArrayEmpty() {
+        XCTAssertEqual(MailBridge.jsStringArray([]), "[]")
+    }
+
+    func testJsStringArraySingle() {
+        XCTAssertEqual(MailBridge.jsStringArray(["a@example.com"]), "['a@example.com']")
+    }
+
+    func testJsStringArrayMultiple() {
+        let result = MailBridge.jsStringArray(["a@x.com", "b@x.com"])
+        XCTAssertEqual(result, "['a@x.com', 'b@x.com']")
+    }
+
+    func testJsStringArrayEscapesQuotes() {
+        let result = MailBridge.jsStringArray(["it's"])
+        XCTAssertTrue(result.contains("\\'"), "single quotes should be escaped")
+    }
 }

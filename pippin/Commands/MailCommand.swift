@@ -5,7 +5,7 @@ public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self]
     )
 
     public init() {}
@@ -292,8 +292,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else {
-                let detail = result.details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: detail))
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }
@@ -328,8 +327,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else {
-                let detail = result.details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: detail))
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }
@@ -342,8 +340,8 @@ public struct MailCommand: AsyncParsableCommand {
             abstract: "Send an email message."
         )
 
-        @Option(name: .long, help: "Recipient email address.")
-        public var to: String
+        @Option(name: .long, parsing: .unconditionalSingleValue, help: "Recipient email address (repeatable).")
+        public var to: [String] = []
 
         @Option(name: .long, help: "Message subject.")
         public var subject: String
@@ -351,14 +349,17 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Message body text.")
         public var body: String
 
-        @Option(name: .long, help: "CC recipient email address.")
-        public var cc: String?
+        @Option(name: .customLong("cc"), parsing: .unconditionalSingleValue, help: "CC recipient (repeatable).")
+        public var cc: [String] = []
+
+        @Option(name: .customLong("bcc"), parsing: .unconditionalSingleValue, help: "BCC recipient (repeatable).")
+        public var bcc: [String] = []
 
         @Option(name: .long, help: "Sending account name.")
         public var from: String?
 
-        @Option(name: .long, help: "Path to file to attach.")
-        public var attach: String?
+        @Option(name: .customLong("attach"), parsing: .unconditionalSingleValue, help: "Path to file to attach (repeatable).")
+        public var attach: [String] = []
 
         @Flag(name: .long, help: "Print what would happen without sending.")
         public var dryRun: Bool = false
@@ -368,21 +369,13 @@ public struct MailCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func validate() throws {
-            let emailPattern = #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#
-            guard to.range(of: emailPattern, options: .regularExpression) != nil else {
-                throw ValidationError("--to does not look like a valid email address.")
+            guard !to.isEmpty else {
+                throw ValidationError("At least one --to address is required.")
             }
-            if let ccAddr = cc {
-                guard ccAddr.range(of: emailPattern, options: .regularExpression) != nil else {
-                    throw ValidationError("--cc does not look like a valid email address.")
-                }
-            }
-            if let attachPath = attach {
-                guard FileManager.default.fileExists(atPath: attachPath) else {
-                    let filename = URL(fileURLWithPath: attachPath).lastPathComponent
-                    throw ValidationError("Attachment file not found: \(filename)")
-                }
-            }
+            try validateEmailAddresses(to, field: "to")
+            try validateEmailAddresses(cc, field: "cc")
+            try validateEmailAddresses(bcc, field: "bcc")
+            try validateAttachmentPaths(attach)
         }
 
         public mutating func run() async throws {
@@ -391,21 +384,217 @@ public struct MailCommand: AsyncParsableCommand {
                 subject: subject,
                 body: body,
                 cc: cc,
+                bcc: bcc,
                 from: from,
-                attachmentPath: attach,
+                attachmentPaths: attach,
                 dryRun: dryRun
             )
             if output.isJSON {
                 try printJSON(result)
             } else {
-                let detail = result.details.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: detail))
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
+            }
+        }
+    }
+
+    // MARK: - Attachments
+
+    public struct Attachments: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "attachments",
+            abstract: "List (and optionally save) attachments from a message."
+        )
+
+        @Argument(help: "Message id from `pippin mail list` output.")
+        public var messageId: String
+
+        @Option(name: .long, help: "Save attachments to this directory.")
+        public var saveDir: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func validate() throws {
+            if let dir = saveDir {
+                var isDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue else {
+                    throw ValidationError("--save-dir does not exist or is not a directory: \(dir)")
+                }
+                guard FileManager.default.isWritableFile(atPath: dir) else {
+                    throw ValidationError("--save-dir is not writable: \(dir)")
+                }
+            }
+        }
+
+        public mutating func run() async throws {
+            let attachments = try MailBridge.listAttachments(compoundId: messageId, saveDir: saveDir)
+            if output.isJSON {
+                try printJSON(attachments)
+            } else if attachments.isEmpty {
+                print("No attachments.")
+            } else {
+                let rows = attachments.map { att -> [String] in
+                    let saved = att.savedPath.map { "  → \($0)" } ?? ""
+                    return [att.name, att.mimeType, TextFormatter.fileSize(att.size), saved]
+                }
+                print(TextFormatter.table(
+                    headers: ["NAME", "TYPE", "SIZE", "SAVED"],
+                    rows: rows,
+                    columnWidths: [30, 25, 10, 40]
+                ))
+            }
+        }
+    }
+
+    // MARK: - Reply
+
+    public struct Reply: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "reply",
+            abstract: "Reply to a message."
+        )
+
+        @Argument(help: "Message id from `pippin mail list` output.")
+        public var messageId: String
+
+        @Option(name: .long, help: "Reply body text.")
+        public var body: String
+
+        @Option(name: .customLong("to"), parsing: .unconditionalSingleValue, help: "Override reply-to address (repeatable; defaults to original sender).")
+        public var to: [String] = []
+
+        @Option(name: .customLong("cc"), parsing: .unconditionalSingleValue, help: "CC recipient (repeatable).")
+        public var cc: [String] = []
+
+        @Option(name: .customLong("bcc"), parsing: .unconditionalSingleValue, help: "BCC recipient (repeatable).")
+        public var bcc: [String] = []
+
+        @Option(name: .long, help: "Sending account name.")
+        public var from: String?
+
+        @Option(name: .customLong("attach"), parsing: .unconditionalSingleValue, help: "Path to file to attach (repeatable).")
+        public var attach: [String] = []
+
+        @Flag(name: .long, help: "Print what would happen without sending.")
+        public var dryRun: Bool = false
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func validate() throws {
+            try validateEmailAddresses(to, field: "to")
+            try validateEmailAddresses(cc, field: "cc")
+            try validateEmailAddresses(bcc, field: "bcc")
+            try validateAttachmentPaths(attach)
+        }
+
+        public mutating func run() async throws {
+            let result = try MailBridge.replyToMessage(
+                compoundId: messageId,
+                body: body,
+                to: to.isEmpty ? nil : to,
+                cc: cc,
+                bcc: bcc,
+                from: from,
+                attachmentPaths: attach,
+                dryRun: dryRun
+            )
+            if output.isJSON {
+                try printJSON(result)
+            } else {
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
+            }
+        }
+    }
+
+    // MARK: - Forward
+
+    public struct Forward: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "forward",
+            abstract: "Forward a message."
+        )
+
+        @Argument(help: "Message id from `pippin mail list` output.")
+        public var messageId: String
+
+        @Option(name: .customLong("to"), parsing: .unconditionalSingleValue, help: "Recipient address (repeatable).")
+        public var to: [String] = []
+
+        @Option(name: .long, help: "Additional body text (prepended before forwarded content).")
+        public var body: String = ""
+
+        @Option(name: .customLong("cc"), parsing: .unconditionalSingleValue, help: "CC recipient (repeatable).")
+        public var cc: [String] = []
+
+        @Option(name: .customLong("bcc"), parsing: .unconditionalSingleValue, help: "BCC recipient (repeatable).")
+        public var bcc: [String] = []
+
+        @Option(name: .long, help: "Sending account name.")
+        public var from: String?
+
+        @Option(name: .customLong("attach"), parsing: .unconditionalSingleValue, help: "Path to file to attach (repeatable).")
+        public var attach: [String] = []
+
+        @Flag(name: .long, help: "Print what would happen without sending.")
+        public var dryRun: Bool = false
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func validate() throws {
+            guard !to.isEmpty else {
+                throw ValidationError("At least one --to address is required.")
+            }
+            try validateEmailAddresses(to, field: "to")
+            try validateEmailAddresses(cc, field: "cc")
+            try validateEmailAddresses(bcc, field: "bcc")
+            try validateAttachmentPaths(attach)
+        }
+
+        public mutating func run() async throws {
+            let result = try MailBridge.forwardMessage(
+                compoundId: messageId,
+                to: to,
+                body: body,
+                cc: cc,
+                bcc: bcc,
+                from: from,
+                attachmentPaths: attach,
+                dryRun: dryRun
+            )
+            if output.isJSON {
+                try printJSON(result)
+            } else {
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }
 }
 
 // MARK: - Shared Helpers
+
+private let emailPattern = #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#
+
+private func validateEmailAddresses(_ addrs: [String], field: String) throws {
+    for addr in addrs {
+        guard addr.range(of: emailPattern, options: .regularExpression) != nil else {
+            throw ValidationError("--\(field) '\(addr)' does not look like a valid email address.")
+        }
+    }
+}
+
+private func validateAttachmentPaths(_ paths: [String]) throws {
+    for path in paths {
+        guard FileManager.default.fileExists(atPath: path) else {
+            let filename = URL(fileURLWithPath: path).lastPathComponent
+            throw ValidationError("Attachment file not found: \(filename)")
+        }
+    }
+}
 
 /// Print a table of messages in text format (used by List and Search).
 private func printMessageTable(_ messages: [MailMessage]) {

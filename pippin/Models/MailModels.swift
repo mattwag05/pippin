@@ -82,6 +82,22 @@ public struct Attachment: Codable, Sendable {
     public let name: String
     public let mimeType: String
     public let size: Int
+    public let savedPath: String? // nil unless --save-dir was used
+
+    public init(name: String, mimeType: String, size: Int, savedPath: String? = nil) {
+        self.name = name
+        self.mimeType = mimeType
+        self.size = size
+        self.savedPath = savedPath
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(mimeType, forKey: .mimeType)
+        try container.encode(size, forKey: .size)
+        try container.encodeIfPresent(savedPath, forKey: .savedPath)
+    }
 }
 
 public struct Mailbox: Codable, Sendable {
