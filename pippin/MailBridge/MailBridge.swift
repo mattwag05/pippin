@@ -9,8 +9,8 @@ enum MailBridgeError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .scriptFailed: return "Mail automation script failed"
-        case .timeout: return "Mail automation script timed out"
+        case let .scriptFailed(msg): return "Mail automation script failed: \(msg.prefix(200))"
+        case .timeout: return "Mail automation timed out. Try narrowing with --account, --mailbox, or --after."
         case .decodingFailed: return "Failed to decode Mail response"
         case let .invalidMessageId(id): return "Invalid message id: \(id)"
         case let .invalidMailbox(name): return "Invalid mailbox name: \(name)"
@@ -48,13 +48,45 @@ enum MailBridge {
         mailbox: String? = nil,
         searchBody: Bool = false,
         limit: Int = 10,
-        offset: Int = 0
+        offset: Int = 0,
+        after: String? = nil,
+        before: String? = nil,
+        to: String? = nil,
+        verbose: Bool = false
     ) throws -> [MailMessage] {
         let clampedOffset = max(0, offset)
-        let script = buildSearchScript(query: query, account: account, mailbox: mailbox, searchBody: searchBody, limit: limit, offset: clampedOffset)
+        let script = buildSearchScript(
+            query: query, account: account, mailbox: mailbox, searchBody: searchBody,
+            limit: limit, offset: clampedOffset, after: after, before: before, to: to
+        )
         // Search scans all mailboxes — use 60s timeout to accommodate large inboxes
         let json = try runScript(script, timeoutSeconds: 60)
-        return try decode([MailMessage].self, from: json)
+        let wrapper = try decode(SearchResponse.self, from: json)
+        if verbose {
+            let stderr = FileHandle.standardError
+            let meta = wrapper.meta
+            let lines = [
+                "[search] accounts scanned: \(meta.accountsScanned)",
+                "[search] mailboxes scanned: \(meta.mailboxesScanned)",
+                "[search] messages examined: \(meta.messagesExamined)",
+                "[search] body search: \(searchBody ? "on" : "off (use --body to search message content)")",
+            ]
+            for line in lines {
+                stderr.write(Data((line + "\n").utf8))
+            }
+        }
+        return wrapper.results
+    }
+
+    private struct SearchMeta: Decodable {
+        let accountsScanned: Int
+        let mailboxesScanned: Int
+        let messagesExamined: Int
+    }
+
+    private struct SearchResponse: Decodable {
+        let results: [MailMessage]
+        let meta: SearchMeta
     }
 
     static func markMessage(
@@ -412,14 +444,20 @@ enum MailBridge {
         mailbox: String? = nil,
         searchBody: Bool = false,
         limit: Int,
-        offset: Int = 0
+        offset: Int = 0,
+        after: String? = nil,
+        before: String? = nil,
+        to: String? = nil
     ) -> String {
         let safeQuery = jsEscape(query)
         let acctFilter = jsEscapeOptional(account)
         let mbFilter = jsEscapeOptional(mailbox)
+        let afterFilter = jsEscapeOptional(after)
+        let beforeFilter = jsEscapeOptional(before)
+        let toFilter = jsEscapeOptional(to)
         // Clamp limit to prevent runaway scans; per-mailbox cap bounds scan time
         let safeLimitVal = max(1, min(limit, 500))
-        let perMailboxLimit = 50
+        let perMailboxLimit = 200
 
         return """
         var mail = Application('Mail');
@@ -433,14 +471,21 @@ enum MailBridge {
         var limit = \(safeLimitVal);
         var offset = \(offset);
         var perMailboxLimit = \(perMailboxLimit);
+        var afterFilter = \(afterFilter);
+        var beforeFilter = \(beforeFilter);
+        var toFilter = \(toFilter);
+        var afterDate = afterFilter !== null ? new Date(afterFilter) : null;
+        var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var results = [];
         var skipped = 0;
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0};
 
         var accounts = mail.accounts();
         for (var a = 0; a < accounts.length && results.length < limit; a++) {
             var acct = accounts[a];
             var acctName = acct.name();
             if (acctFilter !== null && acctName !== acctFilter) continue;
+            _meta.accountsScanned++;
 
             var mbList = acct.mailboxes();
             if (mbFilter !== null) {
@@ -449,13 +494,22 @@ enum MailBridge {
             }
             for (var m = 0; m < mbList.length && results.length < limit; m++) {
                 var mb = mbList[m];
-                // Cap messages scanned per mailbox to bound scan time on large inboxes
+                _meta.mailboxesScanned++;
+                // Cap messages scanned per mailbox; scan newest first (IMAP order is ascending)
                 var allMsgs = mb.messages();
                 var scanCount = Math.min(allMsgs.length, perMailboxLimit);
-                var msgs = allMsgs.slice(0, scanCount);
+                var startIdx = Math.max(0, allMsgs.length - scanCount);
+                var msgs = allMsgs.slice(startIdx, allMsgs.length);
 
-                for (var i = 0; i < msgs.length && results.length < limit; i++) {
+                for (var i = msgs.length - 1; i >= 0 && results.length < limit; i--) {
                     var msg = msgs[i];
+                    _meta.messagesExamined++;
+
+                    // Date range filter (cheap — no IMAP fetch)
+                    var msgDate = msg.dateSent();
+                    if (afterDate !== null && msgDate < afterDate) continue;
+                    if (beforeDate !== null && msgDate > beforeDate) continue;
+
                     var subject = msg.subject() || '';
                     var sender = msg.sender() || '';
 
@@ -469,20 +523,34 @@ enum MailBridge {
                         matched = body.toLowerCase().indexOf(query) !== -1;
                     }
 
+                    // Recipient filter: only fetch toRecipients() after text match (avoids overhead)
+                    if (matched && toFilter !== null) {
+                        var recipients = msg.toRecipients();
+                        var toMatched = false;
+                        for (var r = 0; r < recipients.length; r++) {
+                            if (recipients[r].address().toLowerCase().indexOf(toFilter.toLowerCase()) !== -1) {
+                                toMatched = true; break;
+                            }
+                        }
+                        if (!toMatched) matched = false;
+                    }
+
                     if (matched) {
                         if (skipped < offset) { skipped++; continue; }
                         var msgSize = null;
                         try { msgSize = msg.messageSize(); } catch(e) {}
                         var msgHasAtt = false;
                         try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {}
+                        var toAddrs = [];
+                        try { toAddrs = msg.toRecipients().map(function(r) { return r.address(); }); } catch(e) {}
                         results.push({
                             id: acctName + '||' + mb.name() + '||' + msg.id(),
                             account: acctName,
                             mailbox: mb.name(),
                             subject: subject,
                             from: sender,
-                            to: [],
-                            date: msg.dateSent().toISOString(),
+                            to: toAddrs,
+                            date: msgDate.toISOString(),
                             read: msg.readStatus(),
                             body: null,
                             size: msgSize,
@@ -493,7 +561,7 @@ enum MailBridge {
             }
         }
 
-        JSON.stringify(results);
+        JSON.stringify({results: results, meta: _meta});
         """
     }
 

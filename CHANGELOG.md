@@ -7,6 +7,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.4.0] - 2026-03-09
+
+### Fixed
+
+- `mail search` now scans **newest messages first** (was oldest-first, causing recent emails to be missed in large mailboxes)
+- Per-mailbox scan limit raised from 50 to 200 messages
+- Error messages include actionable suggestions (e.g., timeout now says "try --account or --after")
+- `to:` field is now populated in `mail search` results (was always empty `[]`)
+
+### Added
+
+- `--after YYYY-MM-DD` — only include messages on or after this date
+- `--before YYYY-MM-DD` — only include messages on or before this date
+- `--to <email>` — filter search results by recipient address
+- `--verbose` — print search diagnostics to stderr (accounts/mailboxes scanned, messages examined, body search status)
+
+---
+
 ## [0.3.1] - 2026-03-09
 
 ### Added
@@ -152,7 +170,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mattwag05/pippin/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/mattwag05/pippin/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/mattwag05/pippin/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/mattwag05/pippin/compare/v0.2.0...v0.2.1
