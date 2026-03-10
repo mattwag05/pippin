@@ -19,6 +19,5 @@ archive/**/.build/
 .worktrees/
 
 # Claude Code
-CLAUDE.md
 .claude/
 .swiftlint.yml
