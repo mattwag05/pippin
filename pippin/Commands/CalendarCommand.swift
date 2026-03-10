@@ -593,7 +593,11 @@ public struct CalendarCommand: AsyncParsableCommand {
                 if let fieldList = fields?.components(separatedBy: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
                     result = result.filter { fieldList.contains($0.key) }
                 }
-                try printJSON(result)
+                if output.isAgent {
+                    try printAgentJSON(result)
+                } else {
+                    try printJSON(result)
+                }
             } else {
                 print(briefing)
             }

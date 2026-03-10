@@ -132,7 +132,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if all {
                 let memos = try db.listMemos(limit: allMemosLimit)
                 for memo in memos {
-                    if !outputOptions.isJSON {
+                    if !outputOptions.isJSON, !outputOptions.isAgent {
                         print("Exporting: \(memo.title)...", terminator: " ")
                         fflush(stdout)
                     }
@@ -144,17 +144,17 @@ public struct MemosCommand: AsyncParsableCommand {
                             sidecarFormat: sidecarFormat
                         )
                         results.append(result)
-                        if !outputOptions.isJSON {
+                        if !outputOptions.isJSON, !outputOptions.isAgent {
                             print("done")
                         }
                     } catch {
-                        if !outputOptions.isJSON {
+                        if !outputOptions.isJSON, !outputOptions.isAgent {
                             print("FAILED: \(error.localizedDescription)")
                         }
                     }
                 }
             } else if let id {
-                if !outputOptions.isJSON {
+                if !outputOptions.isJSON, !outputOptions.isAgent {
                     print("Exporting...", terminator: " ")
                     fflush(stdout)
                 }
@@ -168,7 +168,7 @@ public struct MemosCommand: AsyncParsableCommand {
                     sidecarFormat: sidecarFormat
                 )
                 results.append(result)
-                if !outputOptions.isJSON {
+                if !outputOptions.isJSON, !outputOptions.isAgent {
                     print("done")
                 }
             }
@@ -219,7 +219,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if all {
                 let memos = try db.listMemos(limit: allMemosLimit)
                 for memo in memos {
-                    if !outputOptions.isJSON {
+                    if !outputOptions.isJSON, !outputOptions.isAgent {
                         print("Transcribing: \(memo.title)...", terminator: " ")
                         fflush(stdout)
                     }
@@ -228,11 +228,11 @@ public struct MemosCommand: AsyncParsableCommand {
                             id: memo.id, transcriber: transcriber, outputDir: output
                         )
                         results.append(result)
-                        if !outputOptions.isJSON {
+                        if !outputOptions.isJSON, !outputOptions.isAgent {
                             print("done")
                         }
                     } catch {
-                        if !outputOptions.isJSON {
+                        if !outputOptions.isJSON, !outputOptions.isAgent {
                             print("FAILED: \(error.localizedDescription)")
                         }
                     }
