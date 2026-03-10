@@ -94,3 +94,42 @@ public struct ReminderActionResult: Codable, Sendable {
         self.details = details
     }
 }
+
+// MARK: - Field filtering
+
+public extension ReminderItem {
+    /// Encode only the specified fields to JSON. Pass nil to get all fields (standard encoding).
+    func jsonData(fields: [String]?) throws -> Data {
+        let encoder = JSONEncoder()
+        guard let fields else {
+            return try encoder.encode(self)
+        }
+        let reminderData = try encoder.encode(self)
+        let all = try JSONSerialization.jsonObject(with: reminderData) as! [String: Any]
+        var dict: [String: Any] = [:]
+        for field in fields {
+            if let val = all[field] {
+                dict[field] = val
+            }
+        }
+        return try JSONSerialization.data(withJSONObject: dict, options: .sortedKeys)
+    }
+}
+
+public extension Array where Element == ReminderItem {
+    /// Encode each reminder with only the specified fields. Pass nil to get all fields.
+    func jsonData(fields: [String]?) throws -> Data {
+        let encoder = JSONEncoder()
+        guard let fields else {
+            return try encoder.encode(self)
+        }
+        let allDicts = try map { reminder -> [String: Any] in
+            let reminderData = try encoder.encode(reminder)
+            let dict = try JSONSerialization.jsonObject(with: reminderData) as! [String: Any]
+            return fields.reduce(into: [:]) { result, field in
+                if let val = dict[field] { result[field] = val }
+            }
+        }
+        return try JSONSerialization.data(withJSONObject: allDicts, options: .sortedKeys)
+    }
+}
