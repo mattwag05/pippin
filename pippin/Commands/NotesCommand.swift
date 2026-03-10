@@ -259,7 +259,7 @@ public struct NotesCommand: ParsableCommand {
 
 private func printNotesTable(_ notes: [NoteInfo]) -> String {
     let rows = notes.map { note -> [String] in
-        let shortId = String(note.id.prefix(8))
+        let shortId = note.id.components(separatedBy: "/").last ?? String(note.id.suffix(8))
         let date = TextFormatter.compactDate(note.modificationDate)
         return [shortId, date, note.folder, note.title]
     }
