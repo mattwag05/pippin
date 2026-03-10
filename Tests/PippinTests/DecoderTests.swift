@@ -65,13 +65,13 @@ final class DecoderTests: XCTestCase {
 
     func testScriptFailedDescription() {
         let error = MailBridgeError.scriptFailed("osascript exited with code 1")
-        XCTAssertEqual(error.errorDescription, "Mail automation script failed")
+        XCTAssertEqual(error.errorDescription, "Mail automation script failed: osascript exited with code 1")
         XCTAssertEqual(error.debugDetail, "osascript exited with code 1")
     }
 
     func testTimeoutDescription() {
         let error = MailBridgeError.timeout
-        XCTAssertEqual(error.errorDescription, "Mail automation script timed out")
+        XCTAssertEqual(error.errorDescription, "Mail automation timed out. Try narrowing with --account, --mailbox, or --after.")
         XCTAssertNil(error.debugDetail)
     }
 
