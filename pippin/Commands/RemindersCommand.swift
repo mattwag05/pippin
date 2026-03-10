@@ -72,6 +72,9 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum reminders to return (default: 50).")
         public var limit: Int = 50
 
+        @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,title,dueDate). JSON output only.")
+        public var fields: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -102,7 +105,9 @@ public struct RemindersCommand: AsyncParsableCommand {
                 limit: limit
             )
             if output.isJSON {
-                try printJSON(reminders)
+                let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let data = try reminders.jsonData(fields: fieldList)
+                print(String(data: data, encoding: .utf8)!)
             } else {
                 printRemindersTable(reminders)
             }
@@ -330,6 +335,9 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Search completed reminders instead of incomplete.")
         public var completed: Bool = false
 
+        @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,title,dueDate). JSON output only.")
+        public var fields: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -349,7 +357,9 @@ public struct RemindersCommand: AsyncParsableCommand {
                 limit: limit
             )
             if output.isJSON {
-                try printJSON(reminders)
+                let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let data = try reminders.jsonData(fields: fieldList)
+                print(String(data: data, encoding: .utf8)!)
             } else {
                 printRemindersTable(reminders)
             }
