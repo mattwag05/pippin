@@ -331,4 +331,50 @@ final class MailCommandValidationTests: XCTestCase {
             "--format", "json",
         ]))
     }
+
+    // MARK: - Search --after / --before date validation
+
+    func testSearchAfterDateValidPasses() {
+        XCTAssertNoThrow(try MailCommand.Search.parse(["query", "--after", "2026-03-07"]))
+    }
+
+    func testSearchAfterDateInvalidFails() {
+        XCTAssertThrowsError(try MailCommand.Search.parse(["query", "--after", "03/07/2026"]))
+    }
+
+    func testSearchAfterDateBadCalendarFails() {
+        XCTAssertThrowsError(try MailCommand.Search.parse(["query", "--after", "2026-13-01"]))
+    }
+
+    func testSearchBeforeDateValidPasses() {
+        XCTAssertNoThrow(try MailCommand.Search.parse(["query", "--before", "2026-03-10"]))
+    }
+
+    func testSearchBeforeAndAfterBothValidPass() {
+        XCTAssertNoThrow(try MailCommand.Search.parse(["query", "--after", "2026-03-07", "--before", "2026-03-10"]))
+    }
+
+    // MARK: - Search --to filter
+
+    func testSearchToFilterPasses() throws {
+        let cmd = try MailCommand.Search.parse(["query", "--to", "user@example.com"])
+        XCTAssertEqual(cmd.to, "user@example.com")
+    }
+
+    func testSearchToFilterNilByDefault() throws {
+        let cmd = try MailCommand.Search.parse(["query"])
+        XCTAssertNil(cmd.to)
+    }
+
+    // MARK: - Search --verbose flag
+
+    func testSearchVerboseFlagPasses() throws {
+        let cmd = try MailCommand.Search.parse(["query", "--verbose"])
+        XCTAssertTrue(cmd.verbose)
+    }
+
+    func testSearchVerboseDefaultsFalse() throws {
+        let cmd = try MailCommand.Search.parse(["query"])
+        XCTAssertFalse(cmd.verbose)
+    }
 }

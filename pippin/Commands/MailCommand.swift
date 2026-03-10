@@ -83,6 +83,18 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Include message body in search (slower).")
         public var body: Bool = false
 
+        @Option(name: .long, help: "Only include messages on or after this date (YYYY-MM-DD).")
+        public var after: String?
+
+        @Option(name: .long, help: "Only include messages on or before this date (YYYY-MM-DD).")
+        public var before: String?
+
+        @Option(name: .long, help: "Filter by recipient email address.")
+        public var to: String?
+
+        @Flag(name: .long, help: "Print search diagnostics (accounts/mailboxes scanned, messages examined).")
+        public var verbose: Bool = false
+
         @Option(name: .long, help: "Maximum number of results to return (default: 10).")
         public var limit: Int = 10
 
@@ -97,6 +109,16 @@ public struct MailCommand: AsyncParsableCommand {
             guard page >= 1 else {
                 throw ValidationError("--page must be 1 or greater.")
             }
+            if let after = after {
+                guard isValidDate(after) else {
+                    throw ValidationError("--after must be in YYYY-MM-DD format, got: \(after)")
+                }
+            }
+            if let before = before {
+                guard isValidDate(before) else {
+                    throw ValidationError("--before must be in YYYY-MM-DD format, got: \(before)")
+                }
+            }
         }
 
         public mutating func run() async throws {
@@ -106,7 +128,11 @@ public struct MailCommand: AsyncParsableCommand {
                 mailbox: mailbox,
                 searchBody: body,
                 limit: limit,
-                offset: (page - 1) * limit
+                offset: (page - 1) * limit,
+                after: after,
+                before: before,
+                to: to,
+                verbose: verbose
             )
             if output.isJSON {
                 try printJSON(messages)
@@ -578,6 +604,16 @@ public struct MailCommand: AsyncParsableCommand {
 // MARK: - Shared Helpers
 
 private let emailPattern = #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#
+
+private let datePattern = #"^\d{4}-\d{2}-\d{2}$"#
+
+private func isValidDate(_ s: String) -> Bool {
+    guard s.range(of: datePattern, options: .regularExpression) != nil else { return false }
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    return formatter.date(from: s) != nil
+}
 
 private func validateEmailAddresses(_ addrs: [String], field: String) throws {
     for addr in addrs {
