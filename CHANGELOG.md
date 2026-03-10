@@ -7,6 +7,44 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.1] - 2026-03-09
+
+### Added
+
+- `pippin mail reply <id> --body "..."` — reply to a message; optional `--to` to override recipient
+- `pippin mail forward <id> --to <addr>` — forward a message; optional `--body` for additional text
+- `pippin mail attachments <id>` — list attachments; `--save-dir <path>` to save to disk
+- `--bcc` flag on `mail send`, `mail reply`, `mail forward`
+- `--to`, `--cc`, `--bcc`, `--attach` are now repeatable (accept multiple values)
+
+### Changed
+
+- Email address and attachment path validation extracted to shared helpers (DRY)
+- Reply/forward quoting built in Swift (`buildReplyQuote`, `buildForwardPrefix`) before JXA execution
+- `buildSaveAttachmentsScript` uses `resolveMailbox` helper for alias support
+
+---
+
+## [0.3.0] - 2026-03-06
+
+### Added
+
+- `pippin calendar` — new command group for Apple Calendar automation using EventKit
+- `pippin calendar list` — list all calendars (NAME, TYPE, ACCOUNT, COLOR columns)
+- `pippin calendar events` — list events; `--from`, `--to`, `--calendar`, `--limit 50`; defaults to today
+- `pippin calendar show <id>` — full event card with attendees, recurrence, notes, URL
+- `pippin calendar create --title --start` — create event; `--end` (default: +1h), `--location`, `--notes`, `--all-day`, `--url`, `--calendar`
+- `pippin calendar edit <id>` — update any field on an existing event
+- `pippin calendar delete <id> --force` — delete an event (requires `--force`)
+- `pippin calendar smart-create "<description>"` — AI parses natural language → creates event; `--dry-run` to preview parsed JSON
+- `pippin calendar agenda` — AI-generated daily/weekly briefing; `--days 1` (max 7)
+- `pippin doctor` now checks Calendar TCC permission and reports ok/skip/fail
+- 2 built-in AI templates: `smart-create-calendar`, `calendar-briefing`
+- Event IDs use `calendarItemIdentifier` (stable UUID); prefix matching (8+ chars) supported
+- All `pippin calendar` subcommands accept `--format json`
+
+---
+
 ## [0.2.1] - 2026-03-06
 
 ### Fixed
@@ -114,7 +152,10 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/mattwag05/pippin/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/mattwag05/pippin/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/mattwag05/pippin/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mattwag05/pippin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mattwag05/pippin/compare/v0.1.0-beta...v0.1.0
 [0.1.0-beta]: https://github.com/mattwag05/pippin/releases/tag/v0.1.0-beta
