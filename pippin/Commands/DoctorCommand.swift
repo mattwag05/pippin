@@ -77,6 +77,8 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkParakeetMLX())
     checks.append(checkSpeechRecognition())
     checks.append(checkMLXAudio())
+    checks.append(checkNodeJS())
+    checks.append(checkPlaywright())
     checks.append(checkPippinVersion())
 
     return checks
@@ -302,6 +304,33 @@ private func checkMLXAudio() -> DiagnosticCheck {
         status: .skip,
         detail: "not found (optional — install for TTS/STT support)",
         remediation: "→ pip install mlx-audio (optional, for `pippin audio` commands)"
+    )
+}
+
+private func checkNodeJS() -> DiagnosticCheck {
+    if BrowserBridge.isNodeAvailable() {
+        return DiagnosticCheck(name: "Node.js", status: .ok, detail: "found")
+    }
+    return DiagnosticCheck(
+        name: "Node.js",
+        status: .skip,
+        detail: "not found (optional — required for `pippin browser`)",
+        remediation: "→ Install Node.js: https://nodejs.org (optional, for browser automation)"
+    )
+}
+
+private func checkPlaywright() -> DiagnosticCheck {
+    guard BrowserBridge.isNodeAvailable() else {
+        return DiagnosticCheck(name: "Playwright", status: .skip, detail: "skipped (Node.js not found)")
+    }
+    if BrowserBridge.isPlaywrightAvailable() {
+        return DiagnosticCheck(name: "Playwright", status: .ok, detail: "found")
+    }
+    return DiagnosticCheck(
+        name: "Playwright",
+        status: .skip,
+        detail: "not found (optional — required for `pippin browser`)",
+        remediation: "→ Install Playwright: npx playwright install webkit"
     )
 }
 
