@@ -7,6 +7,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.1] - 2026-03-09
+
+### Added
+
+- `pippin mail reply <id> --body "..."` — reply to a message; optional `--to` to override recipient
+- `pippin mail forward <id> --to <addr>` — forward a message; optional `--body` for additional text
+- `pippin mail attachments <id>` — list attachments; `--save-dir <path>` to save to disk
+- `--bcc` flag on `mail send`, `mail reply`, `mail forward`
+- `--to`, `--cc`, `--bcc`, `--attach` are now repeatable (accept multiple values)
+
+### Changed
+
+- Email address and attachment path validation extracted to shared helpers (DRY)
+- Reply/forward quoting built in Swift (`buildReplyQuote`, `buildForwardPrefix`) before JXA execution
+- `buildSaveAttachmentsScript` uses `resolveMailbox` helper for alias support
+
+---
+
 ## [0.3.0] - 2026-03-06
 
 ### Added
@@ -134,7 +152,10 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/mattwag05/pippin/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/mattwag05/pippin/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/mattwag05/pippin/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mattwag05/pippin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mattwag05/pippin/compare/v0.1.0-beta...v0.1.0
 [0.1.0-beta]: https://github.com/mattwag05/pippin/releases/tag/v0.1.0-beta
