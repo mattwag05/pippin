@@ -4,14 +4,12 @@ public enum NotesBridgeError: LocalizedError, Sendable {
     case scriptFailed(String)
     case timeout
     case decodingFailed(String)
-    case noteNotFound(String)
 
     public var errorDescription: String? {
         switch self {
         case let .scriptFailed(msg): return "Notes automation script failed: \(msg.prefix(200))"
         case .timeout: return "Notes automation timed out. Ensure Notes.app is running."
         case .decodingFailed: return "Failed to decode Notes response"
-        case let .noteNotFound(id): return "Note not found: \(id)"
         }
     }
 

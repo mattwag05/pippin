@@ -31,15 +31,6 @@ final class NotesTests: XCTestCase {
         )
     }
 
-    func testNoteNotFoundDescription() {
-        let err = NotesBridgeError.noteNotFound("x-coredata://abc")
-        let desc = err.errorDescription ?? ""
-        XCTAssertTrue(
-            desc.contains("x-coredata://abc"),
-            "Expected note ID in message, got: \(desc)"
-        )
-    }
-
     // MARK: - NoteInfo Codable roundtrip
 
     func testNoteInfoCodableRoundtrip() throws {
@@ -208,6 +199,10 @@ final class NotesTests: XCTestCase {
         XCTAssertTrue(
             script.contains("delete"),
             "Expected script to contain delete call, got: \(script)"
+        )
+        XCTAssertTrue(
+            script.contains("abc") || script.contains("p5"),
+            "Expected script to contain note ID, got: \(script)"
         )
     }
 
