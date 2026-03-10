@@ -46,6 +46,8 @@ public struct MemosCommand: AsyncParsableCommand {
 
             if output.isJSON {
                 try printJSON(memos)
+            } else if output.isAgent {
+                try printAgentJSON(memos)
             } else {
                 printMemosTable(memos)
             }
@@ -75,6 +77,8 @@ public struct MemosCommand: AsyncParsableCommand {
 
             if output.isJSON {
                 try printJSON(memo)
+            } else if output.isAgent {
+                try printAgentJSON(memo)
             } else {
                 printMemoCard(memo)
             }
@@ -171,6 +175,8 @@ public struct MemosCommand: AsyncParsableCommand {
 
             if outputOptions.isJSON {
                 try printJSON(results)
+            } else if outputOptions.isAgent {
+                try printAgentJSON(results)
             } else {
                 let noun = results.count == 1 ? "recording" : "recordings"
                 print("\nExported \(results.count) \(noun) to \(output)")
@@ -243,6 +249,8 @@ public struct MemosCommand: AsyncParsableCommand {
 
             if outputOptions.isJSON {
                 try printJSON(results)
+            } else if outputOptions.isAgent {
+                try printAgentJSON(results)
             } else if !all {
                 if let result = results.first {
                     print(result.transcription)

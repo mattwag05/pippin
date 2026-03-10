@@ -36,6 +36,8 @@ public struct BrowserCommand: AsyncParsableCommand {
             let info = try BrowserBridge.open(url: url, sessionDir: sessionDir)
             if output.isJSON {
                 try printJSON(info)
+            } else if output.isAgent {
+                try printAgentJSON(info)
             } else {
                 print("URL:   \(info.url)")
                 print("Title: \(info.title)")
@@ -65,6 +67,8 @@ public struct BrowserCommand: AsyncParsableCommand {
             let result = try BrowserBridge.snapshot(sessionDir: sessionDir)
             if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print("URL:   \(result.url)")
                 print("Title: \(result.title)")
@@ -203,6 +207,8 @@ public struct BrowserCommand: AsyncParsableCommand {
             let tabs = try BrowserBridge.tabs(sessionDir: sessionDir)
             if output.isJSON {
                 try printJSON(tabs)
+            } else if output.isAgent {
+                try printAgentJSON(tabs)
             } else {
                 if tabs.isEmpty {
                     print("No open tabs.")
