@@ -11,7 +11,7 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 
 ```bash
 make build          # swift build -c release
-make test           # swift test (421 tests, 0 failures expected)
+make test           # swift test (511 tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
 make install        # build + copy to ~/.local/bin/pippin + install zsh completions
 make release        # build + copy release binary to .build/release-artifacts/
@@ -61,6 +61,12 @@ make version        # print current version from Version.swift
 
 **Reply/Forward quoting:** Happens in Swift (`buildReplyQuote`, `buildForwardPrefix`) before the JXA send script runs — not inside osascript. Subject de-duplication (`Re:`/`Fwd:`) also in Swift via `buildReplySubject`/`buildForwardSubject`.
 
+**New bridge pattern (Audio/Contacts/Browser):** All bridges follow MailBridge's subprocess pattern — `nonisolated(unsafe)` vars + DispatchGroup concurrent pipe drain + DispatchWorkItem SIGTERM→SIGKILL timeout. Copy the `runScript`/`runPython`/`runNodeScript` pattern from any existing bridge.
+
+**GRDB `SQL` type inference trap:** In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — string interpolation inside closures near array builders causes wrong type inference. Fix: use explicit `let x: String = ...` type annotations.
+
+**CLIIntegrationTests version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` has `result.stdout.contains("X.Y")` hardcoded — update with each version bump or the test fails.
+
 ## Version + Release
 
 1. Bump `pippin/Version.swift`
@@ -71,6 +77,7 @@ make version        # print current version from Version.swift
 6. `git push github main --tags` (GitHub mirror must have the tag for Homebrew)
 7. Update tap formula (`tag`, `revision`, `assert_match` version):
    `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb`
+   `revision` = merge commit SHA: `git rev-parse vX.Y.Z` (not tarball SHA256 — formula uses git source)
 8. `cd /opt/homebrew/Library/Taps/mattwag05/homebrew-tap && git add -A && git commit -m "pippin vX.Y.Z" && git push`
 9. `brew upgrade pippin && pippin --version` to verify
 
@@ -79,6 +86,8 @@ make version        # print current version from Version.swift
 - **Forgejo Actions:** `.forgejo/workflows/ci.yaml` — runs on `macbook-air` runner (`com.matthewwagner.act-runner` LaunchAgent, labels: `macos macos-15 arm64`)
 - **Release workflow:** `.forgejo/workflows/release.yaml` — triggers on `v*` tag push; builds tarball, extracts changelog, creates Forgejo release with arm64 asset
 - `.github/workflows/` kept in place but not used on GitHub
+- **act_runner + Docker:** Runner checks Docker socket at startup. If Docker is not running, act_runner exits and all CI runs cancel silently. Start Docker first, then `brew services restart act_runner`.
+- **Manual release (when CI is down):** `make tarball` → check if release exists (`GET /releases/tags/vX.Y.Z`) → POST create only if missing → `POST /releases/{id}/assets` to upload tarball. The release workflow may have partially run and already created the release — always check before creating.
 
 ## Forgejo API Gotchas
 
