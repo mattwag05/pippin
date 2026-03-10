@@ -7,6 +7,50 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.0] - 2026-03-10
+
+### Added
+
+- `pippin browser` subcommand: `open`, `snapshot`, `screenshot`, `click`, `fill`, `scroll`, `tabs`, `close`, `fetch`
+- Playwright WebKit subprocess bridge with persistent session support
+- Accessibility tree parsing with @ref IDs for AI agent interaction
+- `pippin doctor` now reports Node.js and Playwright availability (optional dependencies)
+
+---
+
+## [0.7.0] - 2026-03-10
+
+### Added
+
+- `pippin calendar events --fields`: comma-separated JSON field filtering
+- `pippin calendar events --range`: date shorthands (`today`, `today+N`, `week`, `month`)
+- `pippin calendar events --type`: filter by calendar type (calDAV, exchange, local, etc.)
+- `pippin calendar list --type`: filter calendars by type
+- New subcommands: `today`, `remaining`, `upcoming` (convenience aliases)
+
+---
+
+## [0.6.0] - 2026-03-10
+
+### Added
+
+- `pippin contacts` subcommand: `list`, `search`, `show`, `groups`
+- CNContactStore-based contacts access (read-only)
+- `--fields` flag for token-efficient field filtering on list/search
+- `pippin doctor` now reports Contacts TCC permission status
+
+---
+
+## [0.5.0] - 2026-03-10
+
+### Added
+
+- `pippin audio` subcommand: `speak`, `transcribe`, `voices`, `models`
+- Python mlx-audio subprocess bridge (TTS via Kokoro, STT via Parakeet/Whisper)
+- `pippin doctor` now reports mlx-audio availability (optional dependency)
+
+---
+
 ## [0.4.0] - 2026-03-09
 
 ### Fixed
@@ -170,7 +214,11 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/mattwag05/pippin/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/mattwag05/pippin/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/mattwag05/pippin/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/mattwag05/pippin/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mattwag05/pippin/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/mattwag05/pippin/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/mattwag05/pippin/compare/v0.2.1...v0.3.0
