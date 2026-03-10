@@ -127,6 +127,11 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertNoThrow(try RemindersCommand.List.parse(["--format", "json"]))
     }
 
+    func testListFieldsOptionPasses() throws {
+        let cmd = try RemindersCommand.List.parse(["--fields", "id,title"])
+        XCTAssertEqual(cmd.fields, "id,title")
+    }
+
     // MARK: - Show subcommand
 
     func testShowRequiresId() {
@@ -276,5 +281,10 @@ final class RemindersCommandTests: XCTestCase {
 
     func testSearchWithListPasses() {
         XCTAssertNoThrow(try RemindersCommand.Search.parse(["query", "--list", "list-id"]))
+    }
+
+    func testSearchFieldsOptionPasses() throws {
+        let cmd = try RemindersCommand.Search.parse(["test query", "--fields", "id,dueDate"])
+        XCTAssertEqual(cmd.fields, "id,dueDate")
     }
 }

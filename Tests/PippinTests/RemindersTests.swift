@@ -45,6 +45,7 @@ final class RemindersTests: XCTestCase {
         let original = ReminderItem(
             id: "test-id-1",
             listId: "list-id-1",
+            listTitle: "Groceries",
             title: "Buy groceries",
             notes: "Milk, eggs, bread",
             url: "https://example.com",
@@ -59,6 +60,7 @@ final class RemindersTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ReminderItem.self, from: data)
         XCTAssertEqual(decoded.id, original.id)
         XCTAssertEqual(decoded.listId, original.listId)
+        XCTAssertEqual(decoded.listTitle, original.listTitle)
         XCTAssertEqual(decoded.title, original.title)
         XCTAssertEqual(decoded.notes, original.notes)
         XCTAssertEqual(decoded.url, original.url)
@@ -69,7 +71,7 @@ final class RemindersTests: XCTestCase {
     }
 
     func testReminderItemMinimalCodable() throws {
-        let original = ReminderItem(id: "r1", listId: "l1", title: "Do laundry")
+        let original = ReminderItem(id: "r1", listId: "l1", listTitle: "Tasks", title: "Do laundry")
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(ReminderItem.self, from: data)
         XCTAssertEqual(decoded.id, "r1")

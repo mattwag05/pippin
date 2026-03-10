@@ -46,6 +46,7 @@ public struct ReminderList: Codable, Sendable {
 public struct ReminderItem: Codable, Sendable {
     public let id: String
     public let listId: String
+    public let listTitle: String
     public let title: String
     public let notes: String?
     public let url: String?
@@ -59,6 +60,7 @@ public struct ReminderItem: Codable, Sendable {
     public init(
         id: String,
         listId: String,
+        listTitle: String,
         title: String,
         notes: String? = nil,
         url: String? = nil,
@@ -71,6 +73,7 @@ public struct ReminderItem: Codable, Sendable {
     ) {
         self.id = id
         self.listId = listId
+        self.listTitle = listTitle
         self.title = title
         self.notes = notes
         self.url = url
