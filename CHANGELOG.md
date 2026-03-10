@@ -7,6 +7,21 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.10.0] - 2026-03-10
+
+### Added
+
+- `pippin notes` subcommand: `list`, `show`, `search`, `folders`, `create`, `edit`, `delete`
+- JXA (JavaScript for Automation) subprocess bridge for Notes.app automation
+- Notes sorted by modification date (newest first)
+- `--folder` filter for `list` and `search` subcommands
+- `--append` flag on `edit` to append body content instead of replacing
+- `--force` required for `delete` to prevent accidental note removal
+- `--fields` JSON field filtering for `list` and `search` (JSON output only)
+- `pippin doctor` now reports Notes.app automation TCC permission status
+
+---
+
 ## [0.9.0] - 2026-03-10
 
 ### Added

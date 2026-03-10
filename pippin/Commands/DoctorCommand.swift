@@ -75,6 +75,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkCalendarAccess())
     checks.append(checkRemindersAccess())
     checks.append(checkContactsAccess())
+    checks.append(checkNotesAccess())
     checks.append(checkParakeetMLX())
     checks.append(checkSpeechRecognition())
     checks.append(checkMLXAudio())
@@ -262,6 +263,65 @@ private func checkRemindersAccess() -> DiagnosticCheck {
             name: "Reminders access",
             status: .skip,
             detail: "status: \(status.rawValue) (grant on first use of `pippin reminders`)"
+        )
+    }
+}
+
+private func checkNotesAccess() -> DiagnosticCheck {
+    do {
+        _ = try NotesBridge.listFolders()
+        return DiagnosticCheck(
+            name: "Notes automation",
+            status: .ok,
+            detail: "granted"
+        )
+    } catch let error as NotesBridgeError {
+        switch error {
+        case .timeout:
+            return DiagnosticCheck(
+                name: "Notes automation",
+                status: .fail,
+                detail: "Notes.app is not running or timed out",
+                remediation: """
+                → Open Notes.app first, then run: pippin notes folders
+                  open -a Notes && sleep 2 && pippin notes folders
+                """
+            )
+        default:
+            let detail = error.localizedDescription
+            if detail.contains("not authorized") || detail.contains("AppleEvent") ||
+                detail.contains("1002") || detail.contains("TCC")
+            {
+                return DiagnosticCheck(
+                    name: "Notes automation",
+                    status: .fail,
+                    detail: "permission denied",
+                    remediation: """
+                    → Open System Settings > Privacy & Security > Automation
+                      Grant Terminal.app (or pippin binary) access to Notes.
+                      Then run: pippin notes folders
+                    """
+                )
+            }
+            return DiagnosticCheck(
+                name: "Notes automation",
+                status: .fail,
+                detail: detail,
+                remediation: """
+                → Ensure Notes.app is installed and open.
+                  Then run: pippin notes folders
+                """
+            )
+        }
+    } catch {
+        return DiagnosticCheck(
+            name: "Notes automation",
+            status: .fail,
+            detail: error.localizedDescription,
+            remediation: """
+            → Ensure Notes.app is installed and open.
+              Then run: pippin notes folders
+            """
         )
     }
 }
