@@ -9,6 +9,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             ListCalendars.self, Events.self, Show.self,
             Create.self, Edit.self, Delete.self,
             SmartCreate.self, Agenda.self, Search.self,
+            Today.self, Remaining.self, Upcoming.self,
         ]
     )
 
@@ -24,11 +25,18 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         @OptionGroup public var output: OutputOptions
 
+        @Option(name: .long, help: "Filter by calendar type: local, calDAV, exchange, subscription, birthday.")
+        public var type: String?
+
         public init() {}
 
         public mutating func run() async throws {
             let bridge = CalendarBridge()
-            let calendars = try await bridge.listCalendars()
+            var calendars = try await bridge.listCalendars()
+            if let typeFilter = type {
+                let allowedTypes = typeFilter.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                calendars = calendars.filter { allowedTypes.contains($0.type.lowercased()) }
+            }
             if output.isJSON {
                 try printJSON(calendars)
             } else {
@@ -69,6 +77,15 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum events to return (default: 50).")
         public var limit: Int = 50
 
+        @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. title,startDate,endDate). JSON output only.")
+        public var fields: String?
+
+        @Option(name: .long, help: "Date range shorthand: today, today+N (e.g. today+3), week, or month. Overrides --from/--to.")
+        public var range: String?
+
+        @Option(name: .long, help: "Calendar types to include: local, calDAV, exchange, subscription, birthday.")
+        public var type: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -86,20 +103,29 @@ public struct CalendarCommand: AsyncParsableCommand {
             if calendar != nil, calendarName != nil {
                 throw ValidationError("--calendar and --calendar-name cannot both be set.")
             }
+            if let range, parseRange(range) == nil {
+                throw ValidationError("--range must be: today, today+N (e.g. today+3), week, or month.")
+            }
         }
 
         public mutating func run() async throws {
-            let startDate = from.flatMap { parseCalendarDate($0) }
-                ?? Calendar.current.startOfDay(for: Date())
+            let startDate: Date
             let endDate: Date
-            if let to, let parsed = parseCalendarDate(to) {
-                endDate = parsed
+            if let range, let (rangeStart, rangeEnd) = parseRange(range) {
+                startDate = rangeStart
+                endDate = rangeEnd
             } else {
-                // End of today (midnight of tomorrow)
-                endDate = Calendar.current.date(
-                    byAdding: .day, value: 1,
-                    to: Calendar.current.startOfDay(for: Date())
-                )!
+                startDate = from.flatMap { parseCalendarDate($0) }
+                    ?? Calendar.current.startOfDay(for: Date())
+                if let to, let parsed = parseCalendarDate(to) {
+                    endDate = parsed
+                } else {
+                    // End of today (midnight of tomorrow)
+                    endDate = Calendar.current.date(
+                        byAdding: .day, value: 1,
+                        to: Calendar.current.startOfDay(for: Date())
+                    )!
+                }
             }
 
             let bridge = CalendarBridge()
@@ -108,12 +134,24 @@ public struct CalendarCommand: AsyncParsableCommand {
                 calendarId = try await resolveCalendarName(name, bridge: bridge)
             }
             var events = try await bridge.listEvents(from: startDate, to: endDate, calendarId: calendarId)
+
+            if let typeFilter = type {
+                let allowedTypes = typeFilter.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                let allCalendars = try await bridge.listCalendars()
+                let matchingIds = allCalendars
+                    .filter { allowedTypes.contains($0.type.lowercased()) }
+                    .map { $0.id }
+                events = events.filter { matchingIds.contains($0.calendarId) }
+            }
+
             if events.count > limit {
                 events = Array(events.prefix(limit))
             }
 
             if output.isJSON {
-                try printJSON(events)
+                let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let data = try events.jsonData(fields: fieldList)
+                print(String(data: data, encoding: .utf8)!)
             } else {
                 printEventsTable(events)
             }
@@ -483,6 +521,9 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "API key for Claude provider.")
         public var apiKey: String?
 
+        @Option(name: .long, help: "Comma-separated JSON field names to include (briefing, days, eventCount). JSON output only.")
+        public var fields: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -538,11 +579,14 @@ public struct CalendarCommand: AsyncParsableCommand {
             )
 
             if output.isJSON {
-                let result: [String: String] = [
+                var result: [String: String] = [
                     "briefing": briefing,
                     "days": "\(days)",
                     "eventCount": "\(events.count)",
                 ]
+                if let fieldList = fields?.components(separatedBy: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+                    result = result.filter { fieldList.contains($0.key) }
+                }
                 try printJSON(result)
             } else {
                 print(briefing)
@@ -616,6 +660,94 @@ public struct CalendarCommand: AsyncParsableCommand {
 
             if output.isJSON {
                 try printJSON(events)
+            } else {
+                printEventsTable(events)
+            }
+        }
+    }
+
+    // MARK: - Today
+
+    public struct Today: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "today",
+            abstract: "List events for today."
+        )
+
+        @OptionGroup public var output: OutputOptions
+
+        @Option(name: .long, help: "Comma-separated JSON field names to include. JSON output only.")
+        public var fields: String?
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let (start, end) = parseRange("today")!
+            let bridge = CalendarBridge()
+            let events = try await bridge.listEvents(from: start, to: end, calendarId: nil)
+            let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            if output.isJSON {
+                let data = try events.jsonData(fields: fieldList)
+                print(String(data: data, encoding: .utf8)!)
+            } else {
+                printEventsTable(events)
+            }
+        }
+    }
+
+    // MARK: - Remaining
+
+    public struct Remaining: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "remaining",
+            abstract: "List events from now until end of today."
+        )
+
+        @OptionGroup public var output: OutputOptions
+
+        @Option(name: .long, help: "Comma-separated JSON field names to include. JSON output only.")
+        public var fields: String?
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let now = Date()
+            let endOfToday = parseRange("today")!.end
+            let bridge = CalendarBridge()
+            let events = try await bridge.listEvents(from: now, to: endOfToday, calendarId: nil)
+            let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            if output.isJSON {
+                let data = try events.jsonData(fields: fieldList)
+                print(String(data: data, encoding: .utf8)!)
+            } else {
+                printEventsTable(events)
+            }
+        }
+    }
+
+    // MARK: - Upcoming
+
+    public struct Upcoming: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "upcoming",
+            abstract: "List events for the next 7 days."
+        )
+
+        @OptionGroup public var output: OutputOptions
+
+        @Option(name: .long, help: "Comma-separated JSON field names to include. JSON output only.")
+        public var fields: String?
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let (start, end) = parseRange("today+6")! // today + 6 more days = 7 days total
+            let bridge = CalendarBridge()
+            let events = try await bridge.listEvents(from: start, to: end, calendarId: nil)
+            let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            if output.isJSON {
+                let data = try events.jsonData(fields: fieldList)
+                print(String(data: data, encoding: .utf8)!)
             } else {
                 printEventsTable(events)
             }

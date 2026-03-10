@@ -110,6 +110,42 @@ func formatAlertOffset(_ seconds: TimeInterval) -> String {
     }
 }
 
+// MARK: - Date range shorthands
+
+/// Parse a date range shorthand into (start: Date, end: Date).
+/// Supported formats:
+///   "today"      — start of today to end of today (midnight of tomorrow)
+///   "today+N"    — start of today to end of day N days from today (e.g. "today+3")
+///   "week"       — start of current week (Sunday/Monday) to end of week
+///   "month"      — start of current month to end of current month
+/// Returns nil for unrecognized formats.
+func parseRange(_ s: String) -> (start: Date, end: Date)? {
+    let cal = Calendar.current
+    let now = Date()
+    let today = cal.startOfDay(for: now)
+    let tomorrow = cal.date(byAdding: .day, value: 1, to: today)!
+
+    switch s.lowercased() {
+    case "today":
+        return (today, tomorrow)
+    case "week":
+        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
+        let weekEnd = cal.date(byAdding: .weekOfYear, value: 1, to: weekStart)!
+        return (weekStart, weekEnd)
+    case "month":
+        let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: now))!
+        let monthEnd = cal.date(byAdding: .month, value: 1, to: monthStart)!
+        return (monthStart, monthEnd)
+    default:
+        // "today+N"
+        if s.lowercased().hasPrefix("today+"), let n = Int(s.dropFirst(6)), n > 0 {
+            let rangeEnd = cal.date(byAdding: .day, value: n + 1, to: today)!
+            return (today, rangeEnd)
+        }
+        return nil
+    }
+}
+
 // MARK: - Comparable clamping helper
 
 private extension Comparable {
