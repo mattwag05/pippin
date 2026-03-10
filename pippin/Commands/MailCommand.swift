@@ -26,6 +26,8 @@ public struct MailCommand: AsyncParsableCommand {
             let accounts = try MailBridge.listAccounts()
             if output.isJSON {
                 try printJSON(accounts)
+            } else if output.isAgent {
+                try printAgentJSON(accounts)
             } else {
                 let rows = accounts.map { [$0.name, $0.email] }
                 print(TextFormatter.table(headers: ["NAME", "EMAIL"], rows: rows, columnWidths: [25, 50]))
@@ -52,6 +54,8 @@ public struct MailCommand: AsyncParsableCommand {
             let mailboxes = try MailBridge.listMailboxes(account: account)
             if output.isJSON {
                 try printJSON(mailboxes)
+            } else if output.isAgent {
+                try printAgentJSON(mailboxes)
             } else {
                 let rows = mailboxes.map { [$0.account, $0.name, "\($0.messageCount)", "\($0.unreadCount)"] }
                 print(TextFormatter.table(
@@ -136,6 +140,8 @@ public struct MailCommand: AsyncParsableCommand {
             )
             if output.isJSON {
                 try printJSON(messages)
+            } else if output.isAgent {
+                try printAgentJSON(messages)
             } else {
                 printMessageTable(messages)
             }
@@ -185,6 +191,8 @@ public struct MailCommand: AsyncParsableCommand {
             )
             if output.isJSON {
                 try printJSON(messages)
+            } else if output.isAgent {
+                try printAgentJSON(messages)
             } else {
                 printMessageTable(messages)
             }
@@ -233,6 +241,8 @@ public struct MailCommand: AsyncParsableCommand {
             let message = try MailBridge.readMessage(compoundId: compoundId)
             if output.isJSON {
                 try printJSON(message)
+            } else if output.isAgent {
+                try printAgentJSON(message)
             } else {
                 var fields: [(String, String)] = [
                     ("From", message.from),
@@ -315,7 +325,7 @@ public struct MailCommand: AsyncParsableCommand {
                 read: read,
                 dryRun: dryRun
             )
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -350,7 +360,7 @@ public struct MailCommand: AsyncParsableCommand {
                 toMailbox: to,
                 dryRun: dryRun
             )
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -415,7 +425,7 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPaths: attach,
                 dryRun: dryRun
             )
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -457,6 +467,8 @@ public struct MailCommand: AsyncParsableCommand {
             let attachments = try MailBridge.listAttachments(compoundId: messageId, saveDir: saveDir)
             if output.isJSON {
                 try printJSON(attachments)
+            } else if output.isAgent {
+                try printAgentJSON(attachments)
             } else if attachments.isEmpty {
                 print("No attachments.")
             } else {
@@ -527,7 +539,7 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPaths: attach,
                 dryRun: dryRun
             )
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -592,7 +604,7 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPaths: attach,
                 dryRun: dryRun
             )
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))

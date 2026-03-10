@@ -7,6 +7,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.11.0] - 2026-03-10
+
+### Added
+
+- `--format agent` output mode across all commands: compact (non-pretty-printed) JSON for AI agent consumption
+- `OutputFormat.agent` case added to `OutputFormat` enum (alongside `text` and `json`)
+- `OutputOptions.isAgent` computed property for command dispatch
+- `printAgentJSON<T: Encodable>()` helper in `AgentOutput.swift` — uses `JSONEncoder` with no formatting options (compact by default)
+- Agent mode for action results (create/edit/delete/complete/send/move/mark) — same as `json` (already compact)
+- Agent mode for `notes show` uses `NoteAgentView` — excludes large HTML body, includes `plainText`, reducing token usage
+- Claude Code plugin at `~/.claude/plugins/pippin/` — skill that teaches Claude to use pippin for Apple app automation
+
+---
+
 ## [0.10.0] - 2026-03-10
 
 ### Added

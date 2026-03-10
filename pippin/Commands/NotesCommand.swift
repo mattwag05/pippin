@@ -44,6 +44,8 @@ public struct NotesCommand: ParsableCommand {
             let notes = try NotesBridge.listNotes(folder: folder, limit: limit)
             if output.isJSON {
                 try printFilteredNotes(notes, fields: fields)
+            } else if output.isAgent {
+                try printAgentJSON(notes)
             } else {
                 if notes.isEmpty {
                     print("No notes found.")
@@ -73,6 +75,9 @@ public struct NotesCommand: ParsableCommand {
             let note = try NotesBridge.showNote(id: id)
             if output.isJSON {
                 try printJSON(note)
+            } else if output.isAgent {
+                // Agent mode: exclude large HTML body, include plainText instead
+                try printAgentJSON(NoteAgentView(note: note))
             } else {
                 print(printNoteCard(note))
             }
@@ -113,6 +118,8 @@ public struct NotesCommand: ParsableCommand {
             let notes = try NotesBridge.searchNotes(query: query, folder: folder, limit: limit)
             if output.isJSON {
                 try printFilteredNotes(notes, fields: fields)
+            } else if output.isAgent {
+                try printAgentJSON(notes)
             } else {
                 if notes.isEmpty {
                     print("No notes matching \"\(query)\".")
@@ -139,6 +146,8 @@ public struct NotesCommand: ParsableCommand {
             let folders = try NotesBridge.listFolders()
             if output.isJSON {
                 try printJSON(folders)
+            } else if output.isAgent {
+                try printAgentJSON(folders)
             } else {
                 if folders.isEmpty {
                     print("No folders found.")
@@ -172,7 +181,7 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let result = try NotesBridge.createNote(title: title, body: body, folder: folder)
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -212,7 +221,7 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let result = try NotesBridge.editNote(id: id, title: title, body: body, append: append)
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -246,12 +255,31 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let result = try NotesBridge.deleteNote(id: id)
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
+    }
+}
+
+// MARK: - Agent view helpers
+
+/// Compact note view for agent mode — excludes large HTML body.
+private struct NoteAgentView: Encodable {
+    let id: String
+    let title: String
+    let plainText: String
+    let folder: String
+    let modificationDate: String
+
+    init(note: NoteInfo) {
+        id = note.id
+        title = note.title
+        plainText = note.plainText
+        folder = note.folder
+        modificationDate = note.modificationDate
     }
 }
 

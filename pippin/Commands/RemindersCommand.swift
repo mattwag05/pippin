@@ -31,6 +31,8 @@ public struct RemindersCommand: AsyncParsableCommand {
             let lists = try await bridge.listReminderLists()
             if output.isJSON {
                 try printJSON(lists)
+            } else if output.isAgent {
+                try printAgentJSON(lists)
             } else {
                 if lists.isEmpty {
                     print("No reminder lists found.")
@@ -108,6 +110,8 @@ public struct RemindersCommand: AsyncParsableCommand {
                 let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
+            } else if output.isAgent {
+                try printAgentJSON(reminders)
             } else {
                 printRemindersTable(reminders)
             }
@@ -134,6 +138,8 @@ public struct RemindersCommand: AsyncParsableCommand {
             let reminder = try await bridge.showReminder(id: id)
             if output.isJSON {
                 try printJSON(reminder)
+            } else if output.isAgent {
+                try printAgentJSON(reminder)
             } else {
                 printReminderCard(reminder)
             }
@@ -189,7 +195,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 notes: notes,
                 url: url
             )
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -250,7 +256,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 listId: list,
                 url: url
             )
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -276,7 +282,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let bridge = RemindersBridge()
             let result = try await bridge.completeReminder(id: id)
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -311,7 +317,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let bridge = RemindersBridge()
             let result = try await bridge.deleteReminder(id: id)
-            if output.isJSON {
+            if output.isJSON || output.isAgent {
                 try printJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
@@ -364,6 +370,8 @@ public struct RemindersCommand: AsyncParsableCommand {
                 let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
+            } else if output.isAgent {
+                try printAgentJSON(reminders)
             } else {
                 printRemindersTable(reminders)
             }
