@@ -1,6 +1,6 @@
 # CLAUDE.md — pippin
 
-macOS CLI toolkit for Apple app automation (Mail, Voice Memos, Calendar). Swift 6, SPM build system, macOS 15+.
+macOS CLI toolkit for Apple app automation (Mail, Voice Memos, Calendar, Reminders, Notes, Contacts, Audio, Browser). Swift 6, SPM build system, macOS 15+.
 
 Repo: `https://forgejo.tail6e035b.ts.net/matthewwagner/pippin` (primary)
 GitHub mirror: `https://github.com/mattwag05/pippin` (public — required for Homebrew formula source)
@@ -11,7 +11,7 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 
 ```bash
 make build          # swift build -c release
-make test           # swift test (511 tests, 0 failures expected)
+make test           # swift test (682 tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
 make install        # build + copy to ~/.local/bin/pippin + install zsh completions
 make release        # build + copy release binary to .build/release-artifacts/
@@ -34,6 +34,11 @@ make version        # print current version from Version.swift
 | `pippin/Templates/` | Built-in summarization prompt templates |
 | `pippin/Models/CalendarModels.swift` | CalendarInfo, CalendarEvent, Attendee, CalendarActionResult |
 | `pippin/Models/MailModels.swift` | MailMessage, Attachment (savedPath), MailActionResult, Mailbox, MailAccount |
+| `pippin/RemindersBridge/` | EventKit-based Reminders automation (.reminder entity) |
+| `pippin/NotesBridge/` | JXA-based Notes automation (enum pattern, synchronous) |
+| `pippin/Models/ReminderModels.swift` | ReminderList, ReminderItem (listTitle), ReminderActionResult |
+| `pippin/Models/NoteModels.swift` | NoteInfo (body HTML + plainText), NoteFolder, NoteActionResult |
+| `pippin/Formatting/AgentOutput.swift` | printAgentJSON<T>() — compact JSON for agent consumers |
 | `pippin-entry/` | Thin `@main` executable target |
 | `Tests/PippinTests/` | Unit tests |
 
@@ -61,11 +66,23 @@ make version        # print current version from Version.swift
 
 **Reply/Forward quoting:** Happens in Swift (`buildReplyQuote`, `buildForwardPrefix`) before the JXA send script runs — not inside osascript. Subject de-duplication (`Re:`/`Fwd:`) also in Swift via `buildReplySubject`/`buildForwardSubject`.
 
-**New bridge pattern (Audio/Contacts/Browser):** All bridges follow MailBridge's subprocess pattern — `nonisolated(unsafe)` vars + DispatchGroup concurrent pipe drain + DispatchWorkItem SIGTERM→SIGKILL timeout. Copy the `runScript`/`runPython`/`runNodeScript` pattern from any existing bridge.
+**New bridge pattern (Audio/Contacts/Browser/Notes):** JXA/subprocess bridges follow MailBridge's pattern — `nonisolated(unsafe)` vars + DispatchGroup concurrent pipe drain + DispatchWorkItem SIGTERM→SIGKILL timeout. Copy `runScript` from any existing bridge. JXA bridges are `enum` with `static` methods (not class); commands are `ParsableCommand` (not Async).
+
+**EventKit Reminders bridge:** `EKEventStore.fetchReminders(matching:)` uses a completion handler and `EKReminder` is not `Sendable` — cannot use `withCheckedThrowingContinuation` in Swift 6 strict mode. Use `DispatchSemaphore` + `nonisolated(unsafe) var` instead. See `RemindersBridge.fetchRemindersSync()`.
+
+**JXA typed error trap:** JXA script errors always arrive as `scriptFailed(String)` — never as a typed Swift case like `noteNotFound`. Don't add typed not-found cases to JXA bridge error enums; they'll be dead code.
+
+**Notes IDs prefix trap:** Notes IDs start with `x-coredata://` — `String(id.prefix(8))` always yields `"x-coreda"`. Use `id.components(separatedBy: "/").last` for display.
+
+**Memos progress output in agent mode:** Progress `print()` calls guarded by `!outputOptions.isJSON` also need `&& !outputOptions.isAgent` — otherwise stdout is corrupted in agent mode.
+
+**Agent output format:** `OutputOptions` now has `.agent` case and `isAgent` property. `printAgentJSON<T>()` uses `JSONEncoder()` with no formatting options (compact). Notes `show` in agent mode uses `NoteAgentView` (excludes HTML body field).
+
+**Worktree cleanup order:** `git worktree remove <path>` first, then `git branch -d <branch>`. Reverse order fails — branch can't be deleted while worktree is using it.
 
 **GRDB `SQL` type inference trap:** In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — string interpolation inside closures near array builders causes wrong type inference. Fix: use explicit `let x: String = ...` type annotations.
 
-**CLIIntegrationTests version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` has `result.stdout.contains("X.Y")` hardcoded — update with each version bump or the test fails.
+**CLIIntegrationTests version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` has `result.stdout.contains("X.Y")` hardcoded — update with each version bump or the test fails. Currently `"0.11"`.
 
 ## Version + Release
 
