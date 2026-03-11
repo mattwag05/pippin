@@ -189,10 +189,70 @@ private func parseFields(_ fields: String?) -> [String]? {
     return fields.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
 }
 
+/// Mask an email address to avoid logging it in cleartext while retaining some identifiability.
+/// Examples:
+///   "alice@example.com" -> "a***@e*****.com"
+private func maskEmail(_ email: String) -> String {
+    let parts = email.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
+    guard parts.count == 2 else {
+        // Fallback: mask all but first and last character if not a standard email format.
+        guard email.count > 2 else { return String(repeating: "*", count: email.count) }
+        let first = email.first!
+        let last = email.last!
+        let maskedCount = email.count - 2
+        return "\(first)\(String(repeating: "*", count: maskedCount))\(last)"
+    }
+    let localPart = String(parts[0])
+    let domainPart = String(parts[1])
+
+    // Mask local part: keep first character if available.
+    let maskedLocal: String
+    if localPart.count <= 1 {
+        maskedLocal = String(repeating: "*", count: max(localPart.count, 1))
+    } else {
+        let first = localPart.first!
+        maskedLocal = "\(first)\(String(repeating: "*", count: localPart.count - 1))"
+    }
+
+    // Split domain into name and TLD, mask most of the name.
+    let domainComponents = domainPart.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+    guard domainComponents.count == 2 else {
+        // Non-standard domain, fully mask.
+        return "\(maskedLocal)@\(String(repeating: "*", count: max(domainPart.count, 1)))"
+    }
+    let domainName = String(domainComponents[0])
+    let tld = String(domainComponents[1])
+
+    let maskedDomainName: String
+    if domainName.count <= 1 {
+        maskedDomainName = String(repeating: "*", count: max(domainName.count, 1))
+    } else {
+        let first = domainName.first!
+        maskedDomainName = "\(first)\(String(repeating: "*", count: domainName.count - 1))"
+    }
+
+    return "\(maskedLocal)@\(maskedDomainName).\(tld)"
+}
+
+/// Mask a phone number to avoid logging it in cleartext, keeping only the last few digits.
+/// Examples:
+///   "+1 415 555 1234" -> "**********1234"
+private func maskPhone(_ phone: String) -> String {
+    // Remove whitespace to determine length, but preserve original non-space characters' count.
+    let digitsOnly = phone.filter { !$0.isWhitespace }
+    guard digitsOnly.count > 4 else {
+        return String(repeating: "*", count: digitsOnly.count)
+    }
+    let visibleCount = 4
+    let maskedCount = max(digitsOnly.count - visibleCount, 0)
+    let visibleSuffix = digitsOnly.suffix(visibleCount)
+    return String(repeating: "*", count: maskedCount) + String(visibleSuffix)
+}
+
 private func formatContactLine(_ contact: ContactInfo) -> String {
     let name = contact.fullName.isEmpty ? "(no name)" : contact.fullName
-    let emailPart = contact.emails.first.map { " <\($0.value)>" } ?? ""
-    let phonePart = contact.phones.first.map { "  \($0.value)" } ?? ""
+    let emailPart = contact.emails.first.map { " <\(maskEmail($0.value))>" } ?? ""
+    let phonePart = contact.phones.first.map { "  \(maskPhone($0.value))" } ?? ""
     return "\(name)\(emailPart)\(phonePart)"
 }
 
