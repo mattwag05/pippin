@@ -68,7 +68,7 @@ final class CLIIntegrationTests: XCTestCase {
         guard requireBinary() else { return }
         let result = run(["--version"])
         XCTAssertEqual(result.exitCode, 0)
-        XCTAssertTrue(result.stdout.contains("0.11"), "Expected version string in output, got: \(result.stdout)")
+        XCTAssertTrue(result.stdout.contains("0.12"), "Expected version string in output, got: \(result.stdout)")
     }
 
     // MARK: - Help
@@ -165,6 +165,25 @@ final class CLIIntegrationTests: XCTestCase {
         guard requireBinary() else { return }
         let result = run(["mail", "list", "--format", "xml"])
         XCTAssertNotEqual(result.exitCode, 0)
+    }
+
+    // MARK: - Doctor agent format
+
+    func testDoctorFormatAgent() throws {
+        guard requireBinary() else { return }
+        let result = run(["doctor", "--format", "agent"])
+        // doctor may exit 0 or 1 depending on system state — both are valid
+        let data = try XCTUnwrap(result.stdout.data(using: .utf8))
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            XCTFail("doctor --format agent must output a valid JSON array, got: \(result.stdout)")
+            return
+        }
+        XCTAssertGreaterThan(json.count, 0, "Expected at least one check in output")
+        for check in json {
+            XCTAssertNotNil(check["name"], "Each check must have a 'name' field")
+            XCTAssertNotNil(check["status"], "Each check must have a 'status' field")
+            XCTAssertNotNil(check["detail"], "Each check must have a 'detail' field")
+        }
     }
 }
 

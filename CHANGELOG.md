@@ -7,6 +7,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.12.0] - 2026-03-13
+
+### Added
+
+- `pippin doctor --format agent` — compact JSON output for AI agent consumption
+- `pippin doctor` now checks Python 3 availability as a separate named check
+- `pippin doctor` Notes.app pre-check via `pgrep` — faster fail when Notes is not running
+- `classifyMailError()` and `classifyPython3Output()` extracted as testable public helpers
+- `DoctorTests` — unit tests for mail error classification, python3 detection, and permission-denied remediation format
+
+### Fixed
+
+- Doctor command remediation strings unified: agent-runnable commands use `$` prefix, human-only instructions have no `$` prefix
+- Notes.app timeout remediation simplified to `$ open -a Notes && sleep 2`
+- Node.js remediation updated to `$ brew install node`
+- Playwright remediation updated to `$ npx playwright install webkit`
+
+---
+
 ## [0.11.0] - 2026-03-10
 
 ### Added
@@ -255,7 +274,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/mattwag05/pippin/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/mattwag05/pippin/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/mattwag05/pippin/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/mattwag05/pippin/compare/v0.8.0...v0.9.0

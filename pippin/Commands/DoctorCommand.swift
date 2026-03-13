@@ -37,7 +37,9 @@ public struct DoctorCommand: AsyncParsableCommand {
     public mutating func run() async throws {
         let checks = runAllChecks()
 
-        if output.isJSON {
+        if output.isAgent {
+            try printAgentJSON(checks)
+        } else if output.isJSON {
             try printJSON(checks)
         } else {
             for check in checks {
@@ -63,6 +65,62 @@ public struct DoctorCommand: AsyncParsableCommand {
     }
 }
 
+// MARK: - Testable helpers
+
+/// Classify a Mail automation error by its description string.
+func classifyMailError(_ detail: String) -> DiagnosticCheck {
+    if detail.contains("not authorized") || detail.contains("AppleEvent") ||
+        detail.contains("1002") || detail.contains("TCC")
+    {
+        return DiagnosticCheck(
+            name: "Mail automation",
+            status: .fail,
+            detail: "permission denied",
+            remediation: """
+            Open System Settings > Privacy & Security > Automation
+            Grant Terminal.app (or pippin binary) access to Mail.
+            Then run: pippin mail list
+            """
+        )
+    }
+    if detail.isEmpty {
+        return DiagnosticCheck(
+            name: "Mail automation",
+            status: .fail,
+            detail: "Mail.app is not running",
+            remediation: "$ open -a Mail && sleep 4"
+        )
+    }
+    return DiagnosticCheck(
+        name: "Mail automation",
+        status: .fail,
+        detail: detail,
+        remediation: """
+        Ensure Mail.app is installed and has at least one account configured.
+        Then run: pippin mail list
+        """
+    )
+}
+
+/// Classify `python3 --version` output into a DiagnosticCheck.
+func classifyPython3Output(exitCode: Int32, output: String) -> DiagnosticCheck {
+    let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+    if exitCode == 0 && !trimmed.isEmpty {
+        let version = trimmed.hasPrefix("Python ") ? String(trimmed.dropFirst(7)) : trimmed
+        return DiagnosticCheck(
+            name: "Python3",
+            status: .ok,
+            detail: version
+        )
+    }
+    return DiagnosticCheck(
+        name: "Python3",
+        status: .fail,
+        detail: "not found",
+        remediation: "$ brew install python3"
+    )
+}
+
 // MARK: - Diagnostic checks (shared with InitCommand)
 
 /// Run all diagnostic checks and return results.
@@ -76,6 +134,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkRemindersAccess())
     checks.append(checkContactsAccess())
     checks.append(checkNotesAccess())
+    checks.append(checkPython3())
     checks.append(checkParakeetMLX())
     checks.append(checkSpeechRecognition())
     checks.append(checkMLXAudio())
@@ -109,7 +168,6 @@ private func checkMacOSVersion() -> DiagnosticCheck {
 }
 
 private func checkMailAutomation() -> DiagnosticCheck {
-    // Try to list accounts with a short timeout to test TCC grant
     do {
         _ = try MailBridge.listAccounts()
         return DiagnosticCheck(
@@ -118,31 +176,7 @@ private func checkMailAutomation() -> DiagnosticCheck {
             detail: "granted"
         )
     } catch {
-        let detail = error.localizedDescription
-        if detail.contains("not authorized") || detail.contains("AppleEvent") ||
-            detail.contains("1002") || detail.contains("TCC")
-        {
-            return DiagnosticCheck(
-                name: "Mail automation",
-                status: .fail,
-                detail: "permission denied",
-                remediation: """
-                → Open System Settings > Privacy & Security > Automation
-                  Grant Terminal.app (or pippin binary) access to Mail.
-                  Then run: pippin mail list
-                """
-            )
-        }
-        // Could be Mail not running or other issue
-        return DiagnosticCheck(
-            name: "Mail automation",
-            status: .fail,
-            detail: detail,
-            remediation: """
-            → Ensure Mail.app is installed and has at least one account configured.
-              Then run: pippin mail list
-            """
-        )
+        return classifyMailError(error.localizedDescription)
     }
 }
 
@@ -163,8 +197,9 @@ private func checkVoiceMemosDB() -> DiagnosticCheck {
                 status: .fail,
                 detail: "database not found",
                 remediation: """
-                → Voice Memos database not found at expected path.
-                  Ensure Voice Memos.app has been opened at least once.
+                Voice Memos database not found at expected path.
+                $ open -a "Voice Memos" && sleep 3
+                Then run: pippin memos list
                 """
             )
         case let .unsupportedSchemaVersion(v):
@@ -222,9 +257,9 @@ private func checkCalendarAccess() -> DiagnosticCheck {
             status: .fail,
             detail: "permission denied",
             remediation: """
-            → Open System Settings > Privacy & Security > Calendars
-              Grant access to Terminal.app (or the pippin binary).
-              Then run: pippin calendar list
+            Open System Settings > Privacy & Security > Calendars
+            Grant access to Terminal.app (or the pippin binary).
+            Then run: pippin calendar list
             """
         )
     default:
@@ -253,9 +288,9 @@ private func checkRemindersAccess() -> DiagnosticCheck {
             status: .fail,
             detail: "permission denied",
             remediation: """
-            → Open System Settings > Privacy & Security > Reminders
-              Grant access to Terminal.app (or the pippin binary).
-              Then run: pippin reminders list
+            Open System Settings > Privacy & Security > Reminders
+            Grant access to Terminal.app (or the pippin binary).
+            Then run: pippin reminders list
             """
         )
     default:
@@ -268,6 +303,24 @@ private func checkRemindersAccess() -> DiagnosticCheck {
 }
 
 private func checkNotesAccess() -> DiagnosticCheck {
+    // Fast pre-check: is Notes.app running? Avoids 30s JXA timeout when it's not.
+    let pgrep = Process()
+    pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+    pgrep.arguments = ["-x", "Notes"]
+    pgrep.standardOutput = Pipe()
+    pgrep.standardError = Pipe()
+    if let _ = try? pgrep.run() {
+        pgrep.waitUntilExit()
+        if pgrep.terminationStatus != 0 {
+            return DiagnosticCheck(
+                name: "Notes automation",
+                status: .fail,
+                detail: "Notes.app is not running",
+                remediation: "$ open -a Notes && sleep 2"
+            )
+        }
+    }
+    // Notes is running (or pgrep not available) — try the bridge
     do {
         _ = try NotesBridge.listFolders()
         return DiagnosticCheck(
@@ -282,10 +335,7 @@ private func checkNotesAccess() -> DiagnosticCheck {
                 name: "Notes automation",
                 status: .fail,
                 detail: "Notes.app is not running or timed out",
-                remediation: """
-                → Open Notes.app first, then run: pippin notes folders
-                  open -a Notes && sleep 2 && pippin notes folders
-                """
+                remediation: "$ open -a Notes && sleep 2"
             )
         default:
             let detail = error.localizedDescription
@@ -297,9 +347,9 @@ private func checkNotesAccess() -> DiagnosticCheck {
                     status: .fail,
                     detail: "permission denied",
                     remediation: """
-                    → Open System Settings > Privacy & Security > Automation
-                      Grant Terminal.app (or pippin binary) access to Notes.
-                      Then run: pippin notes folders
+                    Open System Settings > Privacy & Security > Automation
+                    Grant Terminal.app (or pippin binary) access to Notes.
+                    Then run: pippin notes folders
                     """
                 )
             }
@@ -308,8 +358,9 @@ private func checkNotesAccess() -> DiagnosticCheck {
                 status: .fail,
                 detail: detail,
                 remediation: """
-                → Ensure Notes.app is installed and open.
-                  Then run: pippin notes folders
+                Ensure Notes.app is installed and open.
+                $ open -a Notes && sleep 2
+                Then run: pippin notes folders
                 """
             )
         }
@@ -319,8 +370,9 @@ private func checkNotesAccess() -> DiagnosticCheck {
             status: .fail,
             detail: error.localizedDescription,
             remediation: """
-            → Ensure Notes.app is installed and open.
-              Then run: pippin notes folders
+            Ensure Notes.app is installed and open.
+            $ open -a Notes && sleep 2
+            Then run: pippin notes folders
             """
         )
     }
@@ -343,9 +395,9 @@ private func checkContactsAccess() -> DiagnosticCheck {
             status: .fail,
             detail: "permission denied",
             remediation: """
-            → Open System Settings > Privacy & Security > Contacts
-              Grant access to Terminal.app (or the pippin binary).
-              Then run: pippin contacts list
+            Open System Settings > Privacy & Security > Contacts
+            Grant access to Terminal.app (or the pippin binary).
+            Then run: pippin contacts list
             """
         )
     default:
@@ -355,6 +407,36 @@ private func checkContactsAccess() -> DiagnosticCheck {
             detail: "status: \(status.rawValue) (grant on first use of `pippin contacts`)"
         )
     }
+}
+
+func checkPython3() -> DiagnosticCheck {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = ["python3", "--version"]
+
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = pipe // python3 may write to stderr
+
+    guard (try? process.run()) != nil else {
+        return classifyPython3Output(exitCode: 1, output: "")
+    }
+
+    // 5-second timeout
+    let deadline = DispatchTime.now() + .seconds(5)
+    let result = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async {
+        process.waitUntilExit()
+        result.signal()
+    }
+    if result.wait(timeout: deadline) == .timedOut {
+        process.terminate()
+        return classifyPython3Output(exitCode: 1, output: "")
+    }
+
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    let output = String(data: data, encoding: .utf8) ?? ""
+    return classifyPython3Output(exitCode: process.terminationStatus, output: output)
 }
 
 private func checkParakeetMLX() -> DiagnosticCheck {
@@ -369,7 +451,7 @@ private func checkParakeetMLX() -> DiagnosticCheck {
         name: "parakeet-mlx",
         status: .skip,
         detail: "not found (optional — install for transcription)",
-        remediation: "→ pip install parakeet-mlx (optional, for `--transcribe` support)"
+        remediation: "$ pip install parakeet-mlx"
     )
 }
 
@@ -395,7 +477,7 @@ private func checkMLXAudio() -> DiagnosticCheck {
         name: "mlx-audio",
         status: .skip,
         detail: "not found (optional — install for TTS/STT support)",
-        remediation: "→ pip install mlx-audio (optional, for `pippin audio` commands)"
+        remediation: "$ pip install mlx-audio"
     )
 }
 
@@ -407,7 +489,7 @@ private func checkNodeJS() -> DiagnosticCheck {
         name: "Node.js",
         status: .skip,
         detail: "not found (optional — required for `pippin browser`)",
-        remediation: "→ Install Node.js: https://nodejs.org (optional, for browser automation)"
+        remediation: "$ brew install node"
     )
 }
 
@@ -422,7 +504,7 @@ private func checkPlaywright() -> DiagnosticCheck {
         name: "Playwright",
         status: .skip,
         detail: "not found (optional — required for `pippin browser`)",
-        remediation: "→ Install Playwright: npx playwright install webkit"
+        remediation: "$ npx playwright install webkit"
     )
 }
 
