@@ -7,7 +7,9 @@ public enum NotesBridgeError: LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case let .scriptFailed(msg): return "Notes automation script failed: \(msg.prefix(200))"
+        case let .scriptFailed(msg):
+            if msg.contains("NOTESBRIDGE_ERR_NOT_FOUND") { return "Note not found." }
+            return "Notes automation script failed: \(msg.prefix(200))"
         case .timeout: return "Notes automation timed out. Ensure Notes.app is running."
         case .decodingFailed: return "Failed to decode Notes response"
         }

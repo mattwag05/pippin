@@ -13,6 +13,20 @@ final class NotesTests: XCTestCase {
         )
     }
 
+    func testScriptFailedNotFoundHidesJXAMarker() {
+        let jxaError = "NOTESBRIDGE_ERR_NOT_FOUND: x-coredata://abc-123/ICNote/p1"
+        let err = NotesBridgeError.scriptFailed(jxaError)
+        let desc = err.errorDescription ?? ""
+        XCTAssertFalse(
+            desc.contains("NOTESBRIDGE_ERR_NOT_FOUND"),
+            "Should not expose internal JXA error marker to user, got: \(desc)"
+        )
+        XCTAssertTrue(
+            desc.lowercased().contains("not found") || desc.lowercased().contains("note"),
+            "Should give user-friendly not-found message, got: \(desc)"
+        )
+    }
+
     func testTimeoutDescription() {
         let err = NotesBridgeError.timeout
         let desc = err.errorDescription ?? ""

@@ -29,6 +29,16 @@ final class RemindersTests: XCTestCase {
         XCTAssertTrue(err.errorDescription?.contains("disk full") == true)
     }
 
+    func testNoDefaultCalendarDescription() {
+        let err = RemindersBridgeError.noDefaultCalendar
+        let desc = err.errorDescription ?? ""
+        XCTAssertTrue(
+            desc.lowercased().contains("default") || desc.lowercased().contains("list") || desc.lowercased().contains("calendar"),
+            "Expected default calendar message, got: \(desc)"
+        )
+        XCTAssertFalse(desc.isEmpty, "errorDescription should not be empty")
+    }
+
     func testAmbiguousIdDescription() {
         let err = RemindersBridgeError.ambiguousId("ab")
         let desc = err.errorDescription ?? ""
