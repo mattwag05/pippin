@@ -194,7 +194,9 @@ public final class VoiceMemosDB: Sendable {
         id: String,
         outputDir: String,
         transcriber: Transcriber? = nil,
-        sidecarFormat: ExportSidecarFormat = .txt
+        sidecarFormat: ExportSidecarFormat = .txt,
+        cache: TranscriptCache? = nil, // swiftlint:disable:this identifier_name
+        forceTranscribe: Bool = false
     ) throws -> ExportResult {
         guard let memo = try getMemo(id: id) else {
             throw VoiceMemosError.memoNotFound(id)
@@ -236,7 +238,15 @@ public final class VoiceMemosDB: Sendable {
         var transcriptionText: String?
         var transcriptionFilePath: String?
         if let transcriber {
-            let text = try transcriber.transcribe(audioPath: sourcePath)
+            // Check cache first (unless force)
+            let text: String
+            if !forceTranscribe, let cached = try cache?.get(memoId: memo.id) {
+                text = cached.transcript
+            } else {
+                let result = try transcriber.transcribe(audioPath: sourcePath)
+                text = result.text
+                try cache?.set(memoId: memo.id, transcript: text, provider: "mlx-audio")
+            }
             transcriptionText = text
 
             // Write sidecar next to the exported audio in the requested format
@@ -331,7 +341,8 @@ public final class VoiceMemosDB: Sendable {
             throw VoiceMemosError.fileNotFound(sourcePath)
         }
 
-        let text = try transcriber.transcribe(audioPath: sourcePath)
+        let transcribeResult = try transcriber.transcribe(audioPath: sourcePath)
+        let text = transcribeResult.text
 
         var outputFile: String?
         if let outputDir {

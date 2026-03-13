@@ -2,74 +2,57 @@
 import XCTest
 
 final class TranscriberTests: XCTestCase {
-    // MARK: - TranscriberFactory
+    // MARK: - MLXAudioTranscriber
 
-    func testIsParakeetAvailableReturnsBool() {
-        // Should not crash regardless of whether parakeet-mlx is installed
-        let available = TranscriberFactory.isParakeetAvailable()
-        XCTAssertTrue(available == true || available == false)
-    }
-
-    func testMakeDefaultReturnsTranscriber() {
-        let transcriber = TranscriberFactory.makeDefault()
-        // Should return either ParakeetTranscriber or SpeechFrameworkTranscriber
-        XCTAssertTrue(transcriber is ParakeetTranscriber || transcriber is SpeechFrameworkTranscriber)
-    }
-
-    // MARK: - ParakeetTranscriber
-
-    func testParakeetTranscriberHandlesMissingBinary() {
-        // When parakeet-mlx is not installed, transcribe should throw binaryNotFound
-        // We test with a path that definitely does not contain the binary
-        guard !TranscriberFactory.isParakeetAvailable() else {
-            // parakeet-mlx is actually installed — skip this test
+    func testMLXAudioTranscriberNotAvailableThrows() {
+        guard !AudioBridge.isAvailable() else {
+            // mlx-audio is installed — skip this test
             return
         }
-
-        let transcriber = ParakeetTranscriber()
+        let transcriber = MLXAudioTranscriber()
         XCTAssertThrowsError(try transcriber.transcribe(audioPath: "/nonexistent/audio.m4a")) { error in
             guard let tError = error as? TranscriberError else {
                 XCTFail("Expected TranscriberError, got \(type(of: error))")
                 return
             }
-            if case .binaryNotFound = tError {
+            if case .notAvailable = tError {
                 // Expected
             } else {
-                XCTFail("Expected binaryNotFound, got \(tError)")
+                XCTFail("Expected .notAvailable, got \(tError)")
             }
         }
     }
 
-    // MARK: - SpeechFrameworkTranscriber
-
-    func testSpeechFrameworkTranscriberThrowsUnavailable() {
-        let transcriber = SpeechFrameworkTranscriber()
-        XCTAssertThrowsError(try transcriber.transcribe(audioPath: "/test.m4a")) { error in
-            guard let tError = error as? TranscriberError else {
-                XCTFail("Expected TranscriberError, got \(type(of: error))")
-                return
-            }
-            if case .speechFrameworkUnavailable = tError {
-                // Expected
-            } else {
-                XCTFail("Expected speechFrameworkUnavailable, got \(tError)")
-            }
-        }
+    func testMLXAudioTranscriberDefaultModel() {
+        let transcriber = MLXAudioTranscriber()
+        XCTAssertEqual(transcriber.model, "parakeet")
     }
 
-    // MARK: - Error descriptions
+    func testMLXAudioTranscriberCustomModel() {
+        let transcriber = MLXAudioTranscriber(model: "whisper")
+        XCTAssertEqual(transcriber.model, "whisper")
+    }
+
+    // MARK: - TranscriberError descriptions
 
     func testTranscriberErrorDescriptions() throws {
         let errors: [TranscriberError] = [
-            .binaryNotFound("parakeet-mlx"),
+            .notAvailable,
             .timeout,
             .failed(1, "some error"),
             .emptyOutput,
-            .speechFrameworkUnavailable,
         ]
         for error in errors {
             XCTAssertNotNil(error.errorDescription, "Error should have a description: \(error)")
             XCTAssertFalse(try XCTUnwrap(error.errorDescription?.isEmpty))
         }
+    }
+
+    func testNotAvailableErrorContainsInstallCommand() {
+        let error = TranscriberError.notAvailable
+        XCTAssertTrue(
+            error.errorDescription?.contains("pip install mlx-audio") == true,
+            "notAvailable error should include install command, got: \(error.errorDescription ?? "nil")"
+        )
     }
 }
