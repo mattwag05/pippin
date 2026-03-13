@@ -135,8 +135,6 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkContactsAccess())
     checks.append(checkNotesAccess())
     checks.append(checkPython3())
-    checks.append(checkParakeetMLX())
-    checks.append(checkSpeechRecognition())
     checks.append(checkMLXAudio())
     checks.append(checkNodeJS())
     checks.append(checkPlaywright())
@@ -439,32 +437,6 @@ func checkPython3() -> DiagnosticCheck {
     return classifyPython3Output(exitCode: process.terminationStatus, output: output)
 }
 
-private func checkParakeetMLX() -> DiagnosticCheck {
-    if let path = ParakeetTranscriber.findBinary() {
-        return DiagnosticCheck(
-            name: "parakeet-mlx",
-            status: .ok,
-            detail: "found at \(path)"
-        )
-    }
-    return DiagnosticCheck(
-        name: "parakeet-mlx",
-        status: .skip,
-        detail: "not found (optional — install for transcription)",
-        remediation: "$ pip install parakeet-mlx"
-    )
-}
-
-private func checkSpeechRecognition() -> DiagnosticCheck {
-    // SFSpeechRecognizer status check without importing Speech framework
-    // Just report as skip since we use parakeet-mlx as primary
-    return DiagnosticCheck(
-        name: "Speech Recognition",
-        status: .skip,
-        detail: "not determined (grant on first use of --transcribe)"
-    )
-}
-
 private func checkMLXAudio() -> DiagnosticCheck {
     if AudioBridge.isAvailable() {
         return DiagnosticCheck(
@@ -475,8 +447,8 @@ private func checkMLXAudio() -> DiagnosticCheck {
     }
     return DiagnosticCheck(
         name: "mlx-audio",
-        status: .skip,
-        detail: "not found (optional — install for TTS/STT support)",
+        status: .fail,
+        detail: "not found (required for `pippin memos transcribe`)",
         remediation: "$ pip install mlx-audio"
     )
 }

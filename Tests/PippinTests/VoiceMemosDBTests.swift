@@ -617,11 +617,147 @@ final class VoiceMemosDBTests: XCTestCase {
     }
 }
 
+// MARK: - Cache integration tests
+
+extension VoiceMemosDBTests {
+    // Helper: set up DB + filesystem with one memo file
+    private func makeDBWithFile() throws -> (db: VoiceMemosDB, recordingsDir: String, tmpDir: String) {
+        let tmpDir = NSTemporaryDirectory() + "pippin-cache-\(UUID().uuidString)"
+        let recordingsDir = tmpDir + "/recordings"
+        try FileManager.default.createDirectory(atPath: recordingsDir, withIntermediateDirectories: true)
+        let audioPath = (recordingsDir as NSString).appendingPathComponent("memo.m4a")
+        FileManager.default.createFile(atPath: audioPath, contents: Data())
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "cache-memo", title: "Cache Test", path: "memo.m4a")
+        let db = try VoiceMemosDB(dbQueue: dbQueue, recordingsDir: recordingsDir)
+        return (db, recordingsDir, tmpDir)
+    }
+
+    func testExportMemoWithCacheHit() throws {
+        let (db, _, tmpDir) = try makeDBWithFile()
+        defer { try? FileManager.default.removeItem(atPath: tmpDir) }
+        let outputDir = tmpDir + "/output"
+        let cache = try TranscriptCache(dbPath: tmpDir + "/cache.db")
+        try cache.set(memoId: "cache-memo", transcript: "cached text", provider: "mlx-audio")
+
+        let spy = SpyTranscriber(text: "live text")
+        let result = try db.exportMemo(
+            id: "cache-memo", outputDir: outputDir, transcriber: spy,
+            cache: cache, forceTranscribe: false
+        )
+        XCTAssertFalse(spy.wasCalled, "Transcriber must not be called on cache hit")
+        XCTAssertEqual(result.transcription, "cached text")
+    }
+
+    func testExportMemoWithCacheMiss() throws {
+        let (db, _, tmpDir) = try makeDBWithFile()
+        defer { try? FileManager.default.removeItem(atPath: tmpDir) }
+        let outputDir = tmpDir + "/output"
+        let cache = try TranscriptCache(dbPath: tmpDir + "/cache.db")
+
+        let spy = SpyTranscriber(text: "live text")
+        _ = try db.exportMemo(
+            id: "cache-memo", outputDir: outputDir, transcriber: spy,
+            cache: cache, forceTranscribe: false
+        )
+        XCTAssertTrue(spy.wasCalled, "Transcriber must be called on cache miss")
+        let stored = try cache.get(memoId: "cache-memo")
+        XCTAssertEqual(stored?.transcript, "live text", "Cache must store transcription result")
+        XCTAssertEqual(stored?.provider, "mlx-audio")
+    }
+
+    func testExportMemoForceTranscribeBypassesCache() throws {
+        let (db, _, tmpDir) = try makeDBWithFile()
+        defer { try? FileManager.default.removeItem(atPath: tmpDir) }
+        let outputDir = tmpDir + "/output"
+        let cache = try TranscriptCache(dbPath: tmpDir + "/cache.db")
+        try cache.set(memoId: "cache-memo", transcript: "old text", provider: "mlx-audio")
+
+        let spy = SpyTranscriber(text: "fresh text")
+        let result = try db.exportMemo(
+            id: "cache-memo", outputDir: outputDir, transcriber: spy,
+            cache: cache, forceTranscribe: true
+        )
+        XCTAssertTrue(spy.wasCalled, "Transcriber must be called when force=true")
+        XCTAssertEqual(result.transcription, "fresh text")
+    }
+
+    func testParallelTranscribeMemosReturnAllResults() async throws {
+        let tmpDir = NSTemporaryDirectory() + "pippin-parallel-\(UUID().uuidString)"
+        let recordingsDir = tmpDir + "/recordings"
+        try FileManager.default.createDirectory(atPath: recordingsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tmpDir) }
+
+        let dbQueue = try makeTestDB()
+        for i in 0 ..< 5 {
+            let audioPath = (recordingsDir as NSString).appendingPathComponent("memo\(i).m4a")
+            FileManager.default.createFile(atPath: audioPath, contents: Data())
+            try insertMemo(db: dbQueue, id: "parallel-\(i)", title: "Memo \(i)", path: "memo\(i).m4a")
+        }
+        let db = try VoiceMemosDB(dbQueue: dbQueue, recordingsDir: recordingsDir)
+        let memos = try db.listMemos(limit: 10)
+        XCTAssertEqual(memos.count, 5)
+
+        // Simulate the parallel batch with jobs=2
+        let jobs = 2
+        let transcriber = MockTranscriber(text: "hello")
+        var results: [TranscribeResult] = []
+        let chunks = stride(from: 0, to: memos.count, by: jobs).map { i in
+            Array(memos[i ..< min(i + jobs, memos.count)])
+        }
+        for chunk in chunks {
+            let chunkResults: [(Int, Result<TranscribeResult, Error>)] = await withTaskGroup(
+                of: (Int, Result<TranscribeResult, Error>).self
+            ) { group in
+                for (i, memo) in chunk.enumerated() {
+                    let memoId = memo.id
+                    group.addTask {
+                        do {
+                            let r = try db.transcribeMemo(id: memoId, transcriber: transcriber)
+                            return (i, .success(r))
+                        } catch {
+                            return (i, .failure(error))
+                        }
+                    }
+                }
+                var out: [(Int, Result<TranscribeResult, Error>)] = []
+                for await result in group {
+                    out.append(result)
+                }
+                return out.sorted { $0.0 < $1.0 }
+            }
+            for (_, result) in chunkResults {
+                if case let .success(r) = result { results.append(r) }
+            }
+        }
+
+        XCTAssertEqual(results.count, 5, "All 5 memos must be transcribed")
+        // Results should be in chunk order (each chunk sorted by index within chunk)
+        for result in results {
+            XCTAssertEqual(result.transcription, "hello")
+        }
+    }
+}
+
 // MARK: - Test helpers
 
 private struct MockTranscriber: Transcriber {
     let text: String
-    func transcribe(audioPath _: String) throws -> String {
-        text
+    func transcribe(audioPath _: String) throws -> TranscriptionResult {
+        TranscriptionResult(text: text)
+    }
+}
+
+private final class SpyTranscriber: Transcriber, @unchecked Sendable {
+    let text: String
+    private(set) var wasCalled = false
+
+    init(text: String) {
+        self.text = text
+    }
+
+    func transcribe(audioPath _: String) throws -> TranscriptionResult {
+        wasCalled = true
+        return TranscriptionResult(text: text)
     }
 }

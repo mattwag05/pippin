@@ -34,6 +34,9 @@ public struct SummarizeCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Write output to a directory instead of stdout.")
     public var output: String?
 
+    @Option(name: .long, help: "Parallel summarization jobs (default: 2).")
+    public var jobs: Int = 2
+
     @OptionGroup public var outputOptions: OutputOptions
 
     public init() {}
@@ -49,6 +52,9 @@ public struct SummarizeCommand: AsyncParsableCommand {
             guard parseDateString(since) != nil else {
                 throw ValidationError("--since must be in YYYY-MM-DD format.")
             }
+        }
+        guard jobs >= 1 else {
+            throw ValidationError("--jobs must be at least 1.")
         }
     }
 
@@ -68,29 +74,53 @@ public struct SummarizeCommand: AsyncParsableCommand {
             let memos = try db.listMemos(since: sinceDate, limit: allMemosLimit)
             var results: [SummarizeResult] = []
 
-            for memo in memos {
+            let chunks = stride(from: 0, to: memos.count, by: jobs).map { i in
+                Array(memos[i ..< min(i + jobs, memos.count)])
+            }
+            for chunk in chunks {
                 if !outputOptions.isJSON {
-                    print("Summarizing: \(memo.title)...", terminator: " ")
-                    fflush(stdout)
-                }
-                do {
-                    let result = try summarizeMemo(
-                        memo: memo,
-                        db: db,
-                        cache: cache,
-                        aiProvider: aiProvider,
-                        systemPrompt: systemPrompt
-                    )
-                    results.append(result)
-                    if let outputDir = output {
-                        try writeResult(result, toDir: outputDir)
-                        if !outputOptions.isJSON { print("done") }
-                    } else if !outputOptions.isJSON {
-                        print("done")
+                    for memo in chunk {
+                        print("Summarizing: \(memo.title)...", terminator: " ")
+                        fflush(stdout)
                     }
-                } catch {
-                    if !outputOptions.isJSON {
-                        print("FAILED: \(error.localizedDescription)")
+                }
+                // Extract self properties before task group (can't capture mutating self)
+                let tmpl = template
+                let prmt = prompt
+                let prvdr = provider
+                let chunkResults: [(Int, Result<SummarizeResult, Error>)] = await withTaskGroup(
+                    of: (Int, Result<SummarizeResult, Error>).self
+                ) { group in
+                    for (i, memo) in chunk.enumerated() {
+                        group.addTask {
+                            do {
+                                let r = try SummarizeCommand.summarizeMemoStatic(
+                                    memo: memo, db: db, cache: cache,
+                                    aiProvider: aiProvider, systemPrompt: systemPrompt,
+                                    template: tmpl, prompt: prmt, provider: prvdr
+                                )
+                                return (i, .success(r))
+                            } catch {
+                                return (i, .failure(error))
+                            }
+                        }
+                    }
+                    var out: [(Int, Result<SummarizeResult, Error>)] = []
+                    for await result in group {
+                        out.append(result)
+                    }
+                    return out.sorted { $0.0 < $1.0 }
+                }
+                for (_, result) in chunkResults {
+                    switch result {
+                    case let .success(r):
+                        results.append(r)
+                        if let outputDir = output {
+                            try writeResult(r, toDir: outputDir)
+                        }
+                        if !outputOptions.isJSON { print("done") }
+                    case let .failure(e):
+                        if !outputOptions.isJSON { print("FAILED: \(e.localizedDescription)") }
                     }
                 }
             }
@@ -150,16 +180,31 @@ public struct SummarizeCommand: AsyncParsableCommand {
         aiProvider: any AIProvider,
         systemPrompt: String
     ) throws -> SummarizeResult {
+        try Self.summarizeMemoStatic(
+            memo: memo, db: db, cache: cache, aiProvider: aiProvider,
+            systemPrompt: systemPrompt, template: template, prompt: prompt, provider: provider
+        )
+    }
+
+    private static func summarizeMemoStatic(
+        memo: VoiceMemo,
+        db: VoiceMemosDB,
+        cache: TranscriptCache,
+        aiProvider: any AIProvider,
+        systemPrompt: String,
+        template: String?,
+        prompt: String?,
+        provider: String?
+    ) throws -> SummarizeResult {
         // 1. Get transcript — from cache or transcribe
         let transcriptText: String
         if let cached = try cache.get(memoId: memo.id) {
             transcriptText = cached.transcript
         } else {
-            let transcriber = TranscriberFactory.makeDefault()
+            let transcriber = MLXAudioTranscriber()
             let result = try db.transcribeMemo(id: memo.id, transcriber: transcriber)
             transcriptText = result.transcription
-            let providerName = "parakeet-mlx"
-            try cache.set(memoId: memo.id, transcript: transcriptText, provider: providerName)
+            try cache.set(memoId: memo.id, transcript: transcriptText, provider: "mlx-audio")
         }
 
         // 2. Build user prompt
@@ -178,8 +223,8 @@ public struct SummarizeCommand: AsyncParsableCommand {
         let summary = try aiProvider.complete(prompt: userPrompt, system: systemPrompt)
 
         let resolvedProviderName: String
-        if let provider = provider {
-            resolvedProviderName = provider
+        if let p = provider {
+            resolvedProviderName = p
         } else {
             resolvedProviderName = String(describing: type(of: aiProvider))
         }

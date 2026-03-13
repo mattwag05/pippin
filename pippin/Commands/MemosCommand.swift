@@ -108,6 +108,12 @@ public struct MemosCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Transcript sidecar format: txt, srt, markdown, rtf (default: txt).")
         public var format: String = "txt"
 
+        @Flag(name: .customLong("force-transcribe"), help: "Bypass transcript cache when transcribing.")
+        public var forceTranscribe: Bool = false
+
+        @Option(name: .long, help: "Parallel transcription jobs (default: 2).")
+        public var jobs: Int = 2
+
         @OptionGroup public var outputOptions: OutputOptions
 
         public init() {}
@@ -120,36 +126,68 @@ public struct MemosCommand: AsyncParsableCommand {
             guard valid.contains(format) else {
                 throw ValidationError("--format must be one of: \(valid.joined(separator: ", "))")
             }
+            guard jobs >= 1 else {
+                throw ValidationError("--jobs must be at least 1.")
+            }
         }
 
         public mutating func run() async throws {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
             let sidecarFormat = ExportSidecarFormat(rawValue: format) ?? .txt
-            let transcriber: Transcriber? = transcribe ? TranscriberFactory.makeDefault() : nil
+            let transcriber: (any Transcriber)? = transcribe ? MLXAudioTranscriber() : nil
+            let cache: TranscriptCache? = transcribe ? try TranscriptCache() : nil
 
             var results: [ExportResult] = []
 
             if all {
                 let memos = try db.listMemos(limit: allMemosLimit)
-                for memo in memos {
+                let chunks = stride(from: 0, to: memos.count, by: jobs).map { i in
+                    Array(memos[i ..< min(i + jobs, memos.count)])
+                }
+                for chunk in chunks {
                     if !outputOptions.isJSON, !outputOptions.isAgent {
-                        print("Exporting: \(memo.title)...", terminator: " ")
-                        fflush(stdout)
-                    }
-                    do {
-                        let result = try db.exportMemo(
-                            id: memo.id,
-                            outputDir: output,
-                            transcriber: transcriber,
-                            sidecarFormat: sidecarFormat
-                        )
-                        results.append(result)
-                        if !outputOptions.isJSON, !outputOptions.isAgent {
-                            print("done")
+                        for memo in chunk {
+                            print("Exporting: \(memo.title)...", terminator: " ")
+                            fflush(stdout)
                         }
-                    } catch {
-                        if !outputOptions.isJSON, !outputOptions.isAgent {
-                            print("FAILED: \(error.localizedDescription)")
+                    }
+                    let outputDir = output
+                    let sidecarFmt = sidecarFormat
+                    let forceT = forceTranscribe
+                    let chunkResults: [(Int, Result<ExportResult, Error>)] = await withTaskGroup(
+                        of: (Int, Result<ExportResult, Error>).self
+                    ) { group in
+                        for (i, memo) in chunk.enumerated() {
+                            let memoId = memo.id
+                            group.addTask {
+                                do {
+                                    let r = try db.exportMemo(
+                                        id: memoId,
+                                        outputDir: outputDir,
+                                        transcriber: transcriber,
+                                        sidecarFormat: sidecarFmt,
+                                        cache: cache,
+                                        forceTranscribe: forceT
+                                    )
+                                    return (i, .success(r))
+                                } catch {
+                                    return (i, .failure(error))
+                                }
+                            }
+                        }
+                        var out: [(Int, Result<ExportResult, Error>)] = []
+                        for await result in group {
+                            out.append(result)
+                        }
+                        return out.sorted { $0.0 < $1.0 }
+                    }
+                    for (_, result) in chunkResults {
+                        switch result {
+                        case let .success(r):
+                            results.append(r)
+                            if !outputOptions.isJSON, !outputOptions.isAgent { print("done") }
+                        case let .failure(e):
+                            if !outputOptions.isJSON, !outputOptions.isAgent { print("FAILED: \(e.localizedDescription)") }
                         }
                     }
                 }
@@ -165,7 +203,9 @@ public struct MemosCommand: AsyncParsableCommand {
                     id: memo.id,
                     outputDir: output,
                     transcriber: transcriber,
-                    sidecarFormat: sidecarFormat
+                    sidecarFormat: sidecarFormat,
+                    cache: cache,
+                    forceTranscribe: forceTranscribe
                 )
                 results.append(result)
                 if !outputOptions.isJSON, !outputOptions.isAgent {
@@ -201,6 +241,12 @@ public struct MemosCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Directory to write .txt files (default: print to stdout).")
         public var output: String?
 
+        @Flag(name: .long, help: "Bypass transcript cache.")
+        public var force: Bool = false
+
+        @Option(name: .long, help: "Parallel transcription jobs (default: 2).")
+        public var jobs: Int = 2
+
         @OptionGroup public var outputOptions: OutputOptions
 
         public init() {}
@@ -209,31 +255,68 @@ public struct MemosCommand: AsyncParsableCommand {
             guard id != nil || all else {
                 throw ValidationError("Provide a memo UUID or --all.")
             }
+            guard jobs >= 1 else {
+                throw ValidationError("--jobs must be at least 1.")
+            }
         }
 
         public mutating func run() async throws {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
-            let transcriber = TranscriberFactory.makeDefault()
+            let transcriber = MLXAudioTranscriber()
+            let cache = try TranscriptCache()
             var results: [TranscribeResult] = []
 
             if all {
                 let memos = try db.listMemos(limit: allMemosLimit)
-                for memo in memos {
+                let chunks = stride(from: 0, to: memos.count, by: jobs).map { i in
+                    Array(memos[i ..< min(i + jobs, memos.count)])
+                }
+                for chunk in chunks {
                     if !outputOptions.isJSON, !outputOptions.isAgent {
-                        print("Transcribing: \(memo.title)...", terminator: " ")
-                        fflush(stdout)
-                    }
-                    do {
-                        let result = try db.transcribeMemo(
-                            id: memo.id, transcriber: transcriber, outputDir: output
-                        )
-                        results.append(result)
-                        if !outputOptions.isJSON, !outputOptions.isAgent {
-                            print("done")
+                        for memo in chunk {
+                            print("Transcribing: \(memo.title)...", terminator: " ")
+                            fflush(stdout)
                         }
-                    } catch {
-                        if !outputOptions.isJSON, !outputOptions.isAgent {
-                            print("FAILED: \(error.localizedDescription)")
+                    }
+                    let outputDir = output
+                    let forceFlag = force
+                    let chunkResults: [(Int, Result<TranscribeResult, Error>)] = await withTaskGroup(
+                        of: (Int, Result<TranscribeResult, Error>).self
+                    ) { group in
+                        for (i, memo) in chunk.enumerated() {
+                            let memoId = memo.id
+                            let memoTitle = memo.title
+                            group.addTask {
+                                do {
+                                    if !forceFlag, let cached = try cache.get(memoId: memoId) {
+                                        return (i, .success(TranscribeResult(
+                                            id: memoId, title: memoTitle,
+                                            transcription: cached.transcript, outputFile: nil
+                                        )))
+                                    }
+                                    let r = try db.transcribeMemo(
+                                        id: memoId, transcriber: transcriber, outputDir: outputDir
+                                    )
+                                    try cache.set(memoId: memoId, transcript: r.transcription, provider: "mlx-audio")
+                                    return (i, .success(r))
+                                } catch {
+                                    return (i, .failure(error))
+                                }
+                            }
+                        }
+                        var out: [(Int, Result<TranscribeResult, Error>)] = []
+                        for await result in group {
+                            out.append(result)
+                        }
+                        return out.sorted { $0.0 < $1.0 }
+                    }
+                    for (_, result) in chunkResults {
+                        switch result {
+                        case let .success(r):
+                            results.append(r)
+                            if !outputOptions.isJSON, !outputOptions.isAgent { print("done") }
+                        case let .failure(e):
+                            if !outputOptions.isJSON, !outputOptions.isAgent { print("FAILED: \(e.localizedDescription)") }
                         }
                     }
                 }
@@ -241,10 +324,16 @@ public struct MemosCommand: AsyncParsableCommand {
                 guard let memo = try db.getMemoByPrefix(id: id) else {
                     throw VoiceMemosError.memoNotFound(id)
                 }
-                let result = try db.transcribeMemo(
-                    id: memo.id, transcriber: transcriber, outputDir: output
-                )
-                results.append(result)
+                if !force, let cached = try cache.get(memoId: memo.id) {
+                    results.append(TranscribeResult(
+                        id: memo.id, title: memo.title,
+                        transcription: cached.transcript, outputFile: nil
+                    ))
+                } else {
+                    let result = try db.transcribeMemo(id: memo.id, transcriber: transcriber, outputDir: output)
+                    try cache.set(memoId: memo.id, transcript: result.transcription, provider: "mlx-audio")
+                    results.append(result)
+                }
             }
 
             if outputOptions.isJSON {

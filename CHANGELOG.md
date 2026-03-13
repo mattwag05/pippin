@@ -23,6 +23,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Notes.app timeout remediation simplified to `$ open -a Notes && sleep 2`
 - Node.js remediation updated to `$ brew install node`
 - Playwright remediation updated to `$ npx playwright install webkit`
+- Transcription unified on `mlx-audio` (AudioBridge) — removes separate `parakeet-mlx` binary dependency
+- `pippin memos transcribe` and `pippin memos export --transcribe` now read/write transcript cache (no more redundant transcription)
+- `pippin doctor` no longer checks `parakeet-mlx` or Speech Recognition; `mlx-audio` check promoted from optional to required
+- `MLXAudioTranscriber` replaces `ParakeetTranscriber`/`SpeechFrameworkTranscriber`/`TranscriberFactory` (dead code removed)
+
+### Changed
+
+- `pippin memos transcribe`, `pippin memos export`, and `pippin memos summarize` support `--jobs N` for parallel batch processing (default: 2)
+- `pippin memos transcribe` gains `--force` flag to bypass transcript cache
+- `pippin memos export` gains `--force-transcribe` flag to bypass transcript cache
 
 ---
 

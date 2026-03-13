@@ -96,13 +96,16 @@ final class DoctorTests: XCTestCase {
 
     // MARK: - Agent-actionable remediations (must have $ command)
 
-    func testParakeetMLXRemediationHasRunnableCommand() {
+    func testMLXAudioIsRequiredCheck() {
         let checks = runAllChecks()
-        guard let check = checks.first(where: { $0.name == "parakeet-mlx" }),
-              let remediation = check.remediation else { return }
+        guard let check = checks.first(where: { $0.name == "mlx-audio" }) else {
+            XCTFail("mlx-audio check must be present in runAllChecks()")
+            return
+        }
+        // mlx-audio is now required for transcription — must be .ok or .fail, never .skip
         XCTAssertTrue(
-            remediation.contains("$ "),
-            "parakeet-mlx remediation must include a '$ ' command, got: \(remediation)"
+            check.status == .ok || check.status == .fail,
+            "mlx-audio must be .ok or .fail (not .skip), got: \(check.status)"
         )
     }
 
