@@ -6,6 +6,7 @@ public enum RemindersBridgeError: LocalizedError, Sendable {
     case listNotFound(String)
     case saveFailed(String)
     case ambiguousId(String)
+    case noDefaultCalendar
 
     public var errorDescription: String? {
         switch self {
@@ -23,6 +24,8 @@ public enum RemindersBridgeError: LocalizedError, Sendable {
             return "Failed to save reminder: \(msg)"
         case let .ambiguousId(id):
             return "Ambiguous ID prefix '\(id)' — matches multiple reminders. Use more characters."
+        case .noDefaultCalendar:
+            return "No default Reminders list is set. Open Reminders and set a default list, then retry."
         }
     }
 }

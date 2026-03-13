@@ -24,7 +24,7 @@ public enum ContactsBridge {
         if let groupName = group {
             let groups = try store.groups(matching: nil)
             guard let matchedGroup = groups.first(where: { $0.name == groupName }) else {
-                return []
+                throw ContactsBridgeError.groupNotFound(groupName)
             }
             let predicate = CNContact.predicateForContactsInGroup(
                 withIdentifier: matchedGroup.identifier

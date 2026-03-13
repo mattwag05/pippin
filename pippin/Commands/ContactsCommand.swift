@@ -135,6 +135,8 @@ public struct ContactsCommand: AsyncParsableCommand {
                     throw ContactsCommandError(message: error.errorDescription ?? "Contact not found.")
                 case .fetchFailed:
                     throw ContactsCommandError(message: error.errorDescription ?? "Failed to fetch contact.")
+                case .groupNotFound:
+                    throw ContactsCommandError(message: error.errorDescription ?? "Contact group not found.")
                 }
             }
         }

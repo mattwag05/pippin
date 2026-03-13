@@ -228,12 +228,24 @@ final class ContactsTests: XCTestCase {
             .accessDenied,
             .contactNotFound("some-id-123"),
             .fetchFailed("network timeout"),
+            .groupNotFound("My Group"),
         ]
         for error in errors {
             let desc = error.errorDescription
             XCTAssertNotNil(desc, "errorDescription should not be nil for \(error)")
             XCTAssertFalse(try XCTUnwrap(desc?.isEmpty), "errorDescription should not be empty for \(error)")
         }
+    }
+
+    func testContactsBridgeErrorGroupNotFoundDescription() {
+        let groupName = "Work Colleagues"
+        let error = ContactsBridgeError.groupNotFound(groupName)
+        let desc = error.errorDescription ?? ""
+        XCTAssertTrue(desc.contains(groupName), "Error should include the group name, got: \(desc)")
+        XCTAssertTrue(
+            desc.lowercased().contains("not found") || desc.lowercased().contains("group"),
+            "Error should mention group not found, got: \(desc)"
+        )
     }
 
     func testContactsBridgeErrorAccessDeniedDescription() {

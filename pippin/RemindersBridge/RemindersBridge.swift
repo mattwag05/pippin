@@ -148,7 +148,10 @@ public final class RemindersBridge: @unchecked Sendable {
             }
             reminder.calendar = cal
         } else {
-            reminder.calendar = store.defaultCalendarForNewReminders()
+            guard let defaultCal = store.defaultCalendarForNewReminders() else {
+                throw RemindersBridgeError.noDefaultCalendar
+            }
+            reminder.calendar = defaultCal
         }
         do {
             try store.save(reminder, commit: true)

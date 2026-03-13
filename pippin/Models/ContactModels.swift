@@ -103,6 +103,7 @@ public enum ContactsBridgeError: LocalizedError, Sendable {
     case accessDenied
     case contactNotFound(String)
     case fetchFailed(String)
+    case groupNotFound(String)
 
     public var errorDescription: String? {
         switch self {
@@ -116,6 +117,8 @@ public enum ContactsBridgeError: LocalizedError, Sendable {
             return "Contact not found: \(id)"
         case let .fetchFailed(msg):
             return "Failed to fetch contacts: \(msg)"
+        case let .groupNotFound(name):
+            return "Contact group not found: \(name)"
         }
     }
 }
