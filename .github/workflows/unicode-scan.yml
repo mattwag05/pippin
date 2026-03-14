@@ -1,0 +1,21 @@
+name: Unicode Safety Scan
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Scan for invisible Unicode
+        run: |
+          if grep -rP '[\x{E0100}-\x{E01EF}\x{FE00}-\x{FE0F}\x{200B}-\x{200F}\x{2060}-\x{2064}\x{E0000}-\x{E007F}\x{F0000}-\x{10FFFD}]' \
+            --include='*.swift' --include='*.js' --include='*.py' --include='*.rb' \
+            --include='*.yml' --include='*.yaml' --include='*.json' --include='*.md' .; then
+            echo "::error::Invisible Unicode characters detected — possible Glassworm payload"
+            exit 1
+          fi
