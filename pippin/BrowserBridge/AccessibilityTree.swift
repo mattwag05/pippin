@@ -32,10 +32,10 @@ public enum AccessibilityTree {
     /// Returns the root-level ElementRef array.
     public static func parse(_ jsonString: String) throws -> [ElementRef] {
         guard let data = jsonString.data(using: .utf8) else {
-            throw BrowserBridgeError.actionFailed("AccessibilityTree: cannot convert JSON string to data")
+            throw BrowserBridgeError.decodingFailed("AccessibilityTree: cannot convert JSON string to data")
         }
         guard let rawArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            throw BrowserBridgeError.actionFailed("AccessibilityTree: expected top-level JSON array of objects")
+            throw BrowserBridgeError.decodingFailed("AccessibilityTree: expected top-level JSON array of objects")
         }
         return fromArray(rawArray)
     }

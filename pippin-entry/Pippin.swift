@@ -1,4 +1,5 @@
 import ArgumentParser
+import Foundation
 import PippinLib
 
 @main
@@ -14,6 +15,36 @@ struct Pippin: AsyncParsableCommand {
             DoctorCommand.self, InitCommand.self, CompletionsCommand.self,
         ]
     )
+
+    static func main() async {
+        do {
+            var command = try parseAsRoot(nil)
+            if var asyncCommand = command as? AsyncParsableCommand {
+                try await asyncCommand.run()
+            } else {
+                try command.run()
+            }
+        } catch {
+            // CleanExit (--help, --version) and ExitCode (intentional exit code) must be handled normally.
+            if error is CleanExit || error is ExitCode {
+                Pippin.exit(withError: error)
+            } else if isAgentMode() {
+                printAgentError(error)
+                Darwin.exit(1)
+            } else {
+                Pippin.exit(withError: error)
+            }
+        }
+    }
+
+    /// Returns true if `--format agent` was passed on the command line.
+    private static func isAgentMode() -> Bool {
+        let args = CommandLine.arguments
+        for index in 0 ..< (args.count - 1) where args[index] == "--format" {
+            if args[index + 1] == "agent" { return true }
+        }
+        return args.contains("--format=agent")
+    }
 }
 
 struct CompletionsCommand: ParsableCommand {

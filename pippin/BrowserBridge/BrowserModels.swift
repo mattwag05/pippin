@@ -70,7 +70,9 @@ public enum BrowserBridgeError: LocalizedError, Sendable {
     case sessionNotActive // no active browser session
     case navigationFailed(String)
     case elementNotFound(String) // ref ID not found
-    case actionFailed(String) // click/fill/etc. failed
+    case scriptFailed(String) // node script exited non-zero or setup error
+    case decodingFailed(String) // JSON parse or decode error
+    case timeout // node script exceeded timeout
     case fetchFailed(String) // HTTP fetch failed
 
     public var errorDescription: String? {
@@ -85,8 +87,12 @@ public enum BrowserBridgeError: LocalizedError, Sendable {
             return "Browser navigation failed: \(msg)"
         case let .elementNotFound(ref):
             return "Element not found: \(ref)"
-        case let .actionFailed(msg):
-            return "Browser action failed: \(msg)"
+        case let .scriptFailed(msg):
+            return "Browser script failed: \(msg)"
+        case let .decodingFailed(msg):
+            return "Failed to decode browser response: \(msg)"
+        case .timeout:
+            return "Browser operation timed out"
         case let .fetchFailed(msg):
             return "HTTP fetch failed: \(msg)"
         }

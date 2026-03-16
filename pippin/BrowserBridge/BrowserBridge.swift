@@ -59,7 +59,7 @@ public enum BrowserBridge {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            throw BrowserBridgeError.actionFailed("Failed to parse snapshot response")
+            throw BrowserBridgeError.decodingFailed("Failed to parse snapshot response")
         }
 
         let url = obj["url"] as? String ?? ""
@@ -331,7 +331,7 @@ public enum BrowserBridge {
         do {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         } catch {
-            throw BrowserBridgeError.actionFailed("Cannot create session directory \(path): \(error.localizedDescription)")
+            throw BrowserBridgeError.scriptFailed("Cannot create session directory \(path): \(error.localizedDescription)")
         }
     }
 
@@ -339,7 +339,7 @@ public enum BrowserBridge {
         guard let data = json.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            throw BrowserBridgeError.actionFailed("Failed to parse action result")
+            throw BrowserBridgeError.decodingFailed("Failed to parse action result")
         }
         return obj["success"] as? Bool ?? false
     }
@@ -354,7 +354,7 @@ public enum BrowserBridge {
         do {
             try script.write(to: tmpFile, atomically: true, encoding: .utf8)
         } catch {
-            throw BrowserBridgeError.actionFailed("Failed to write temp script: \(error.localizedDescription)")
+            throw BrowserBridgeError.scriptFailed("Failed to write temp script: \(error.localizedDescription)")
         }
         defer { try? FileManager.default.removeItem(at: tmpFile) }
 
@@ -408,14 +408,14 @@ public enum BrowserBridge {
 
         // Detect timeout via termination reason
         if process.terminationReason == .uncaughtSignal {
-            throw BrowserBridgeError.actionFailed("Browser operation timed out after \(timeoutSeconds)s")
+            throw BrowserBridgeError.timeout
         }
 
         let stdoutStr = (String(data: stdoutData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let stderrStr = (String(data: stderrData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard process.terminationStatus == 0 else {
-            throw BrowserBridgeError.actionFailed(stderrStr.isEmpty ? "Node process exited with status \(process.terminationStatus)" : stderrStr)
+            throw BrowserBridgeError.scriptFailed(stderrStr.isEmpty ? "Node process exited with status \(process.terminationStatus)" : stderrStr)
         }
 
         return stdoutStr
@@ -425,15 +425,15 @@ public enum BrowserBridge {
 
     private static func decodeJSON<T: Decodable>(_ type: T.Type, from json: String) throws -> T {
         guard !json.isEmpty else {
-            throw BrowserBridgeError.actionFailed("Node script returned empty output")
+            throw BrowserBridgeError.decodingFailed("Node script returned empty output")
         }
         guard let data = json.data(using: .utf8) else {
-            throw BrowserBridgeError.actionFailed("Non-UTF8 output from Node script")
+            throw BrowserBridgeError.decodingFailed("Non-UTF8 output from Node script")
         }
         do {
             return try JSONDecoder().decode(type, from: data)
         } catch {
-            throw BrowserBridgeError.actionFailed("JSON decode error: \(error.localizedDescription)")
+            throw BrowserBridgeError.decodingFailed("JSON decode error: \(error.localizedDescription)")
         }
     }
 }

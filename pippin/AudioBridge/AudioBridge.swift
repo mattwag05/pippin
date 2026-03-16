@@ -1,31 +1,5 @@
 import Foundation
 
-// MARK: - AudioBridgeError
-
-public enum AudioBridgeError: LocalizedError, Sendable {
-    /// mlx-audio Python package is not installed or importable.
-    case notAvailable
-    /// The subprocess exited with a non-zero status.
-    case processFailed(String)
-    /// The subprocess was killed due to exceeding the timeout.
-    case timeout
-    /// The output could not be decoded into the expected type.
-    case decodingFailed(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .notAvailable:
-            return "mlx-audio is not available. Install with: pip install mlx-audio"
-        case let .processFailed(stderr):
-            return "Audio process failed: \(stderr)"
-        case .timeout:
-            return "Audio process timed out"
-        case let .decodingFailed(detail):
-            return "Failed to decode audio output: \(detail)"
-        }
-    }
-}
-
 // MARK: - AudioBridge
 
 /// Process runner that shells out to the mlx-audio Python package via subprocess.
