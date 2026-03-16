@@ -68,7 +68,7 @@ final class CLIIntegrationTests: XCTestCase {
         guard requireBinary() else { return }
         let result = run(["--version"])
         XCTAssertEqual(result.exitCode, 0)
-        XCTAssertTrue(result.stdout.contains("0.12"), "Expected version string in output, got: \(result.stdout)")
+        XCTAssertTrue(result.stdout.contains("0.13"), "Expected version string in output, got: \(result.stdout)")
     }
 
     // MARK: - Help
