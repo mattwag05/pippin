@@ -73,8 +73,8 @@ public struct AudioCommand: AsyncParsableCommand {
         @Option(name: .long, help: "STT model to use (default: parakeet).")
         public var model: String = "parakeet"
 
-        @Option(name: .long, help: "Output format: text (default), srt, or json.")
-        public var format: String = "text"
+        @Option(name: .long, help: "Transcription format: text (default), srt, or json.")
+        public var transcriptionFormat: String = "text"
 
         @OptionGroup public var output: OutputOptions
 
@@ -84,13 +84,15 @@ public struct AudioCommand: AsyncParsableCommand {
             guard AudioBridge.isAvailable() else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
-            guard ["text", "srt", "json"].contains(format) else {
-                throw AudioCommandError(errorDescription: "Invalid format '\(format)'. Supported: text, srt, json.")
+            guard ["text", "srt", "json"].contains(transcriptionFormat) else {
+                throw AudioCommandError(
+                    errorDescription: "Invalid format '\(transcriptionFormat)'. Supported: text, srt, json."
+                )
             }
             let result = try AudioBridge.transcribe(
                 filePath: file,
                 model: model,
-                outputFormat: format
+                outputFormat: transcriptionFormat
             )
             if output.isJSON {
                 try printJSON(result)
