@@ -1,5 +1,36 @@
 import Foundation
 
+// MARK: - MailBridgeError
+
+public enum MailBridgeError: LocalizedError, Sendable {
+    case scriptFailed(String)
+    case timeout
+    case decodingFailed(String)
+    case invalidMessageId(String)
+    case invalidMailbox(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .scriptFailed(msg): return "Mail automation script failed: \(msg.prefix(200))"
+        case .timeout: return "Mail automation timed out. Try narrowing with --account, --mailbox, or --after."
+        case .decodingFailed: return "Failed to decode Mail response"
+        case let .invalidMessageId(id): return "Invalid message id: \(id)"
+        case let .invalidMailbox(name): return "Invalid mailbox name: \(name)"
+        }
+    }
+
+    /// Raw technical detail for debugging — do not write to stdout
+    public var debugDetail: String? {
+        switch self {
+        case let .scriptFailed(msg): return msg
+        case let .decodingFailed(msg): return msg
+        default: return nil
+        }
+    }
+}
+
+// MARK: - MailMessage
+
 public struct MailMessage: Codable, Sendable {
     public let id: String // compound: "account||mailbox||messageId"
     public let account: String
