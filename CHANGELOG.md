@@ -7,6 +7,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.13.0] - 2026-03-15
+
+### Added
+
+- Structured agent error output: when `--format agent` is active, unhandled errors emit `{"error":{"code":"snake_case_code","message":"..."}}`  to stdout (via `AgentError` + `printAgentError()` in `AgentOutput.swift`)
+- `BrowserCommandTests` — parse/validate tests for all 9 browser subcommands + `BrowserBridgeError` descriptions
+- `AudioCommandTests` — parse/validate tests for all 4 audio subcommands + `AudioBridgeError` descriptions
+- `ContactsCommandTests` — parse/validate tests for all 4 contacts subcommands
+
+### Changed
+
+- `MailBridge.swift` split into four focused files: `MailBridgeScripts.swift`, `MailBridgeHelpers.swift`, `MailBridgeRunner.swift` (core API methods remain in `MailBridge.swift`); removes `swiftlint:disable file_length`
+- `MailBridgeError` moved to `MailModels.swift` (public, `Sendable`)
+- `AudioBridgeError` moved from `AudioBridge.swift` to `AudioModels.swift` (public, `Sendable`)
+- `BrowserBridgeError.actionFailed(String)` replaced with typed cases: `scriptFailed(String)`, `decodingFailed(String)`, `timeout` — matching Mail/Notes pattern
+- `AudioCommand.Transcribe` renames `--format` to `--transcription-format` (was colliding with `OutputOptions --format`)
+- 703 → 819 tests, 0 failures
+
+---
+
 ## [0.12.0] - 2026-03-13
 
 ### Added
@@ -285,6 +305,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 ---
 
 [Unreleased]: https://github.com/mattwag05/pippin/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/mattwag05/pippin/compare/v0.11.0...v0.12.0
+[0.13.0]: https://github.com/mattwag05/pippin/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/mattwag05/pippin/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/mattwag05/pippin/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/mattwag05/pippin/compare/v0.9.0...v0.10.0
