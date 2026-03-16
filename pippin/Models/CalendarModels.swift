@@ -99,7 +99,9 @@ public extension CalendarEvent {
             return try encoder.encode(self)
         }
         let eventData = try encoder.encode(self)
-        let all = try JSONSerialization.jsonObject(with: eventData) as! [String: Any]
+        guard let all = try JSONSerialization.jsonObject(with: eventData) as? [String: Any] else {
+            throw EncodingError.invalidValue(self, .init(codingPath: [], debugDescription: "Expected JSON object"))
+        }
         var dict: [String: Any] = [:]
         for field in fields {
             if let val = all[field] {
@@ -119,7 +121,9 @@ public extension Array where Element == CalendarEvent {
         }
         let allDicts = try map { event -> [String: Any] in
             let eventData = try encoder.encode(event)
-            let dict = try JSONSerialization.jsonObject(with: eventData) as! [String: Any]
+            guard let dict = try JSONSerialization.jsonObject(with: eventData) as? [String: Any] else {
+                throw EncodingError.invalidValue(event, .init(codingPath: [], debugDescription: "Expected JSON object"))
+            }
             return fields.reduce(into: [:]) { result, field in
                 if let val = dict[field] { result[field] = val }
             }

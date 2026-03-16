@@ -335,7 +335,9 @@ private func printFilteredNotes(_ notes: [NoteInfo], fields: String?) throws {
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let allDicts: [[String: Any]] = try notes.map { note in
         let noteData = try encoder.encode(note)
-        let dict = try JSONSerialization.jsonObject(with: noteData) as! [String: Any]
+        guard let dict = try JSONSerialization.jsonObject(with: noteData) as? [String: Any] else {
+            throw EncodingError.invalidValue(note, .init(codingPath: [], debugDescription: "Expected JSON object"))
+        }
         return fieldList.reduce(into: [:]) { result, field in
             if let val = dict[field] { result[field] = val }
         }
