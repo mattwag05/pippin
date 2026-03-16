@@ -27,6 +27,7 @@ enum MailBridgeError: LocalizedError {
     }
 }
 
+// swiftlint:disable file_length type_body_length
 enum MailBridge {
     static func listMessages(
         account: String? = nil,

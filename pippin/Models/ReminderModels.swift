@@ -111,7 +111,9 @@ public extension ReminderItem {
             return try encoder.encode(self)
         }
         let reminderData = try encoder.encode(self)
-        let all = try JSONSerialization.jsonObject(with: reminderData) as! [String: Any]
+        guard let all = try JSONSerialization.jsonObject(with: reminderData) as? [String: Any] else {
+            throw EncodingError.invalidValue(self, .init(codingPath: [], debugDescription: "Expected JSON object"))
+        }
         var dict: [String: Any] = [:]
         for field in fields {
             if let val = all[field] {
@@ -131,7 +133,9 @@ public extension Array where Element == ReminderItem {
         }
         let allDicts = try map { reminder -> [String: Any] in
             let reminderData = try encoder.encode(reminder)
-            let dict = try JSONSerialization.jsonObject(with: reminderData) as! [String: Any]
+            guard let dict = try JSONSerialization.jsonObject(with: reminderData) as? [String: Any] else {
+                throw EncodingError.invalidValue(reminder, .init(codingPath: [], debugDescription: "Expected JSON object"))
+            }
             return fields.reduce(into: [:]) { result, field in
                 if let val = dict[field] { result[field] = val }
             }
