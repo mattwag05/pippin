@@ -7,6 +7,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- [ax] BrowserCommand.swift: `browser screenshot`, `click`, `fill`, `scroll`, `close` now support `--format text|json|agent`; action commands return `BrowserActionResult{success,action,details}` in structured modes
+- [ax] MemosCommand.swift: `memos delete` now supports `--format text|json|agent`; returns `MemosActionResult{success,action,details}` in structured modes
+
+### Added
+
+- [test] BrowserCommandTests.swift: 13 new tests covering `--format agent/json/text` parsing for Screenshot, Click, Fill, Scroll, Close + `BrowserActionResult` encoding
+- 831 → 844 tests, 0 failures
+
+---
+
 ## [0.13.0] - 2026-03-15
 
 ### Added
@@ -304,8 +318,7 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.12.0...HEAD
-[0.12.0]: https://github.com/mattwag05/pippin/compare/v0.11.0...v0.12.0
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.13.0...HEAD
 [0.13.0]: https://github.com/mattwag05/pippin/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/mattwag05/pippin/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/mattwag05/pippin/compare/v0.10.0...v0.11.0

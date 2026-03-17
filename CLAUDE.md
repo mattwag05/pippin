@@ -11,7 +11,7 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 
 ```bash
 make build          # swift build -c release
-make test           # swift test (819 tests, 0 failures expected)
+make test           # swift test (831 tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
 make install        # build + copy to ~/.local/bin/pippin + install zsh completions
 make release        # build + copy release binary to .build/release-artifacts/
@@ -80,6 +80,8 @@ make version        # print current version from Version.swift
 
 **Worktree cleanup order:** `git worktree remove <path>` first, then `git branch -d <branch>`. Reverse order fails — branch can't be deleted while worktree is using it.
 
+**SwiftLint in worktrees:** `.swiftlint.yml` only exists in the main worktree. In a linked worktree, run `swiftlint lint --config /Users/matthewwagner/Projects/pippin/.swiftlint.yml ...` (absolute path required).
+
 **GRDB `SQL` type inference trap:** In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — string interpolation inside closures near array builders causes wrong type inference. Fix: use explicit `let x: String = ...` type annotations.
 
 **ArgumentParser async `main()` override:** Must cast before dispatching: `if var asyncCommand = command as? AsyncParsableCommand { try await asyncCommand.run() } else { try command.run() }`. Calling `try await command.run()` directly on a `ParsableCommand` existential invokes the sync `run()`, which prints help for command-groups instead of running subcommands.
@@ -96,13 +98,16 @@ make version        # print current version from Version.swift
 
 1. Bump `pippin/Version.swift`
 2. Update `CHANGELOG.md` (including comparison links at bottom — they go stale)
-3. `swift test` — must pass (run `make test`)
+   - Update `[Unreleased]` base to the new version tag
+   - Avoid duplicate version entries in the comparison link table
+3. Update `README.md` if any new commands or subcommands were added
+4. `swift test` — must pass (run `make test`)
 4. `git commit -m "chore: bump to vX.Y.Z"` then `git tag vX.Y.Z`
 5. `git push forgejo main --tags`
 6. `git push github main --tags` (GitHub mirror must have the tag for Homebrew)
 7. Update tap formula (`tag`, `revision`, `assert_match` version):
    `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb`
-   `revision` = merge commit SHA: `git rev-parse vX.Y.Z` (not tarball SHA256 — formula uses git source)
+   `revision` = commit SHA — use `git rev-parse vX.Y.Z^{}` (dereference annotated tag to commit; plain `git rev-parse vX.Y.Z` returns the tag object SHA, which will fail Homebrew's integrity check)
 8. `cd /opt/homebrew/Library/Taps/mattwag05/homebrew-tap && git add -A && git commit -m "pippin vX.Y.Z" && git push`
 9. `brew upgrade pippin && pippin --version` to verify
 

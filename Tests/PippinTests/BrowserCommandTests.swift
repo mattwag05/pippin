@@ -282,4 +282,79 @@ final class BrowserCommandTests: XCTestCase {
         let error = BrowserBridgeError.fetchFailed("net")
         XCTAssertEqual(error.errorDescription, "HTTP fetch failed: net")
     }
+
+    // MARK: - --format agent support (Screenshot, Click, Fill, Scroll, Close)
+
+    func testScreenshotParsesFormatAgent() throws {
+        let cmd = try BrowserCommand.Screenshot.parse(["--format", "agent"])
+        XCTAssertTrue(cmd.output.isAgent)
+    }
+
+    func testScreenshotParsesFormatJSON() throws {
+        let cmd = try BrowserCommand.Screenshot.parse(["--format", "json"])
+        XCTAssertTrue(cmd.output.isJSON)
+    }
+
+    func testScreenshotDefaultFormatIsText() throws {
+        let cmd = try BrowserCommand.Screenshot.parse([])
+        XCTAssertFalse(cmd.output.isStructured)
+    }
+
+    func testClickParsesFormatAgent() throws {
+        let cmd = try BrowserCommand.Click.parse(["@ref1", "--format", "agent"])
+        XCTAssertTrue(cmd.output.isAgent)
+    }
+
+    func testClickParsesFormatJSON() throws {
+        let cmd = try BrowserCommand.Click.parse(["@ref1", "--format", "json"])
+        XCTAssertTrue(cmd.output.isJSON)
+    }
+
+    func testClickDefaultFormatIsText() throws {
+        let cmd = try BrowserCommand.Click.parse(["@ref1"])
+        XCTAssertFalse(cmd.output.isStructured)
+    }
+
+    func testFillParsesFormatAgent() throws {
+        let cmd = try BrowserCommand.Fill.parse(["@ref2", "hello", "--format", "agent"])
+        XCTAssertTrue(cmd.output.isAgent)
+    }
+
+    func testScrollParsesFormatAgent() throws {
+        let cmd = try BrowserCommand.Scroll.parse(["down", "--format", "agent"])
+        XCTAssertTrue(cmd.output.isAgent)
+    }
+
+    func testScrollDefaultFormatIsText() throws {
+        let cmd = try BrowserCommand.Scroll.parse(["down"])
+        XCTAssertFalse(cmd.output.isStructured)
+    }
+
+    func testCloseParsesFormatAgent() throws {
+        let cmd = try BrowserCommand.Close.parse(["--format", "agent"])
+        XCTAssertTrue(cmd.output.isAgent)
+    }
+
+    func testCloseDefaultFormatIsText() throws {
+        let cmd = try BrowserCommand.Close.parse([])
+        XCTAssertFalse(cmd.output.isStructured)
+    }
+
+    // MARK: - BrowserActionResult encoding
+
+    func testBrowserActionResultEncoding() throws {
+        let result = BrowserActionResult(success: true, action: "click", details: ["ref": "@ref3"])
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(result)
+        let dict = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(dict["success"] as? Bool, true)
+        XCTAssertEqual(dict["action"] as? String, "click")
+        let details = try XCTUnwrap(dict["details"] as? [String: String])
+        XCTAssertEqual(details["ref"], "@ref3")
+    }
+
+    func testBrowserActionResultEmptyDetails() {
+        let result = BrowserActionResult(success: true, action: "close")
+        XCTAssertTrue(result.details.isEmpty)
+    }
 }
