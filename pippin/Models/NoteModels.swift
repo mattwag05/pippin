@@ -16,7 +16,7 @@ public enum NotesBridgeError: LocalizedError, Sendable {
     }
 
     /// Raw technical detail for debugging — do not write to stdout
-    var debugDetail: String? {
+    public var debugDetail: String? {
         switch self {
         case let .scriptFailed(msg): return msg
         case let .decodingFailed(msg): return msg

@@ -78,7 +78,7 @@ public struct SummarizeCommand: AsyncParsableCommand {
                 Array(memos[i ..< min(i + jobs, memos.count)])
             }
             for chunk in chunks {
-                if !outputOptions.isJSON {
+                if !outputOptions.isStructured {
                     for memo in chunk {
                         print("Summarizing: \(memo.title)...", terminator: " ")
                         fflush(stdout)
@@ -118,15 +118,17 @@ public struct SummarizeCommand: AsyncParsableCommand {
                         if let outputDir = output {
                             try writeResult(r, toDir: outputDir)
                         }
-                        if !outputOptions.isJSON { print("done") }
+                        if !outputOptions.isStructured { print("done") }
                     case let .failure(e):
-                        if !outputOptions.isJSON { print("FAILED: \(e.localizedDescription)") }
+                        if !outputOptions.isStructured { print("FAILED: \(e.localizedDescription)") }
                     }
                 }
             }
 
             if outputOptions.isJSON {
                 try printJSON(results)
+            } else if outputOptions.isAgent {
+                try printAgentJSON(results)
             } else if output == nil {
                 for result in results {
                     printSummaryText(result)
@@ -150,13 +152,17 @@ public struct SummarizeCommand: AsyncParsableCommand {
 
             if let outputDir = output {
                 let path = try writeResult(result, toDir: outputDir)
-                if !outputOptions.isJSON {
+                if !outputOptions.isStructured {
                     print("Summary written to: \(path)")
+                } else if outputOptions.isAgent {
+                    try printAgentJSON(result)
                 } else {
                     try printJSON(result)
                 }
             } else if outputOptions.isJSON {
                 try printJSON(result)
+            } else if outputOptions.isAgent {
+                try printAgentJSON(result)
             } else {
                 printSummaryText(result)
             }
@@ -244,7 +250,7 @@ public struct SummarizeCommand: AsyncParsableCommand {
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let dateStr = VoiceMemosDB.exportDatePrefix(result.createdAt)
         let sanitized = VoiceMemosDB.sanitizeFilename(result.title)
-        let ext = outputOptions.isJSON ? "json" : "md"
+        let ext = outputOptions.isStructured ? "json" : "md"
         let baseName = "\(dateStr)_\(sanitized)"
         let path = VoiceMemosDB.resolveCollision(dir: dir, baseName: baseName, ext: ext)
 

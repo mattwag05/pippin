@@ -97,4 +97,15 @@ public enum BrowserBridgeError: LocalizedError, Sendable {
             return "HTTP fetch failed: \(msg)"
         }
     }
+
+    /// Raw technical detail for debugging — do not write to stdout
+    public var debugDetail: String? {
+        switch self {
+        case let .scriptFailed(msg): return msg
+        case let .decodingFailed(msg): return msg
+        case let .navigationFailed(msg): return msg
+        case let .fetchFailed(msg): return msg
+        default: return nil
+        }
+    }
 }

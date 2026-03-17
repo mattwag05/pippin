@@ -7,6 +7,8 @@ public enum CalendarBridgeError: LocalizedError, Sendable {
     case calendarNotFound(String)
     case saveFailed(String)
     case ambiguousId(String)
+    case dateParseError(String)
+    case aiParseError(String)
 
     public var errorDescription: String? {
         switch self {
@@ -24,6 +26,10 @@ public enum CalendarBridgeError: LocalizedError, Sendable {
             return "Failed to save event: \(msg)"
         case let .ambiguousId(id):
             return "Ambiguous ID prefix '\(id)' — matches multiple events. Use more characters."
+        case let .dateParseError(value):
+            return "Could not parse date from AI response: \(value)"
+        case let .aiParseError(detail):
+            return "AI response could not be parsed as event JSON: \(detail)"
         }
     }
 }

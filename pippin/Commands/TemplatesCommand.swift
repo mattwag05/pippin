@@ -26,16 +26,18 @@ public struct TemplatesCommand: AsyncParsableCommand {
             let manager = TemplateManager()
             let templates = manager.allTemplates()
 
+            struct TemplateListItem: Encodable {
+                let name: String
+                let description: String
+                let builtIn: Bool
+            }
+            let items = templates.map { t in
+                TemplateListItem(name: t.name, description: t.description, builtIn: t.isBuiltIn)
+            }
             if output.isJSON {
-                struct TemplateListItem: Encodable {
-                    let name: String
-                    let description: String
-                    let builtIn: Bool
-                }
-                let items = templates.map { t in
-                    TemplateListItem(name: t.name, description: t.description, builtIn: t.isBuiltIn)
-                }
                 try printJSON(items)
+            } else if output.isAgent {
+                try printAgentJSON(items)
             } else {
                 printTemplatesTable(templates)
             }

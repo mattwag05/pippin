@@ -24,6 +24,15 @@ public enum AudioBridgeError: LocalizedError, Sendable {
             return "Failed to decode audio output: \(detail)"
         }
     }
+
+    /// Raw technical detail for debugging — do not write to stdout
+    public var debugDetail: String? {
+        switch self {
+        case let .processFailed(stderr): return stderr
+        case let .decodingFailed(detail): return detail
+        default: return nil
+        }
+    }
 }
 
 // MARK: - Audio Models

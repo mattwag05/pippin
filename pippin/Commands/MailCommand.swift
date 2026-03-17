@@ -325,8 +325,10 @@ public struct MailCommand: AsyncParsableCommand {
                 read: read,
                 dryRun: dryRun
             )
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -360,8 +362,10 @@ public struct MailCommand: AsyncParsableCommand {
                 toMailbox: to,
                 dryRun: dryRun
             )
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -425,8 +429,10 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPaths: attach,
                 dryRun: dryRun
             )
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -539,8 +545,10 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPaths: attach,
                 dryRun: dryRun
             )
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -604,8 +612,10 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPaths: attach,
                 dryRun: dryRun
             )
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }

@@ -181,8 +181,10 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let result = try NotesBridge.createNote(title: title, body: body, folder: folder)
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -221,8 +223,10 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let result = try NotesBridge.editNote(id: id, title: title, body: body, append: append)
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -255,8 +259,10 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let result = try NotesBridge.deleteNote(id: id)
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
