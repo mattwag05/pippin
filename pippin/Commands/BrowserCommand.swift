@@ -105,11 +105,20 @@ public struct BrowserCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Browser session directory (default: ~/.local/share/pippin/browser-session).")
         public var sessionDir: String?
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
             let savedPath = try BrowserBridge.screenshot(outputPath: file, sessionDir: sessionDir)
-            print("Screenshot saved to: \(savedPath)")
+            let result = BrowserActionResult(success: true, action: "screenshot", details: ["path": savedPath])
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print("Screenshot saved to: \(savedPath)")
+            }
         }
     }
 
@@ -127,11 +136,20 @@ public struct BrowserCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Browser session directory (default: ~/.local/share/pippin/browser-session).")
         public var sessionDir: String?
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
             _ = try BrowserBridge.click(ref: ref, sessionDir: sessionDir)
-            print("Clicked \(ref)")
+            let result = BrowserActionResult(success: true, action: "click", details: ["ref": ref])
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print("Clicked \(ref)")
+            }
         }
     }
 
@@ -152,11 +170,20 @@ public struct BrowserCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Browser session directory (default: ~/.local/share/pippin/browser-session).")
         public var sessionDir: String?
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
             _ = try BrowserBridge.fill(ref: ref, value: value, sessionDir: sessionDir)
-            print("Filled \(ref)")
+            let result = BrowserActionResult(success: true, action: "fill", details: ["ref": ref])
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print("Filled \(ref)")
+            }
         }
     }
 
@@ -174,6 +201,8 @@ public struct BrowserCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Browser session directory (default: ~/.local/share/pippin/browser-session).")
         public var sessionDir: String?
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
@@ -184,7 +213,14 @@ public struct BrowserCommand: AsyncParsableCommand {
                 )
             }
             _ = try BrowserBridge.scroll(direction: direction.lowercased(), sessionDir: sessionDir)
-            print("Scrolled \(direction)")
+            let result = BrowserActionResult(success: true, action: "scroll", details: ["direction": direction.lowercased()])
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print("Scrolled \(direction)")
+            }
         }
     }
 
@@ -235,11 +271,20 @@ public struct BrowserCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Browser session directory (default: ~/.local/share/pippin/browser-session).")
         public var sessionDir: String?
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
             try BrowserBridge.close(sessionDir: sessionDir)
-            print("Browser session closed.")
+            let result = BrowserActionResult(success: true, action: "close")
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print("Browser session closed.")
+            }
         }
     }
 

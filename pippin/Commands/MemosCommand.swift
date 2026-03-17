@@ -364,6 +364,8 @@ public struct MemosCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Required: confirm deletion without a prompt.")
         public var force: Bool = false
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func validate() throws {
@@ -391,8 +393,18 @@ public struct MemosCommand: AsyncParsableCommand {
                 try? cache.delete(memoId: memo.id)
             }
 
-            print("Deleted: \(memo.title)")
-            print("  Audio: \(audioPath)")
+            let result = MemosActionResult(
+                success: true, action: "deleted",
+                details: ["title": memo.title, "audioPath": audioPath]
+            )
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print("Deleted: \(memo.title)")
+                print("  Audio: \(audioPath)")
+            }
         }
     }
 }

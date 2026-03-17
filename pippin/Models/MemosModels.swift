@@ -70,3 +70,15 @@ public struct TranscribeResult: Codable, Sendable {
     public let transcription: String
     public let outputFile: String?
 }
+
+public struct MemosActionResult: Codable, Sendable {
+    public let success: Bool
+    public let action: String
+    public let details: [String: String]
+
+    public init(success: Bool, action: String, details: [String: String] = [:]) {
+        self.success = success
+        self.action = action
+        self.details = details
+    }
+}
