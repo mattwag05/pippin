@@ -195,8 +195,10 @@ public struct RemindersCommand: AsyncParsableCommand {
                 notes: notes,
                 url: url
             )
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -256,8 +258,10 @@ public struct RemindersCommand: AsyncParsableCommand {
                 listId: list,
                 url: url
             )
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -282,8 +286,10 @@ public struct RemindersCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let bridge = RemindersBridge()
             let result = try await bridge.completeReminder(id: id)
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -317,8 +323,10 @@ public struct RemindersCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let bridge = RemindersBridge()
             let result = try await bridge.deleteReminder(id: id)
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }

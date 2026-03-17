@@ -19,4 +19,8 @@ public struct OutputOptions: ParsableArguments {
     public var isAgent: Bool {
         format == .agent
     }
+
+    public var isStructured: Bool {
+        isJSON || isAgent
+    }
 }

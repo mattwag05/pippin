@@ -39,7 +39,7 @@ final class TranscriberTests: XCTestCase {
         let errors: [TranscriberError] = [
             .notAvailable,
             .timeout,
-            .failed(1, "some error"),
+            .processFailed(1, "some error"),
             .emptyOutput,
         ]
         for error in errors {

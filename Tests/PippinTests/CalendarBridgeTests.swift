@@ -39,6 +39,42 @@ final class CalendarBridgeTests: XCTestCase {
         )
     }
 
+    func testDateParseErrorDescription() {
+        let err = CalendarBridgeError.dateParseError("tomorrow at noon")
+        let desc = err.errorDescription ?? ""
+        XCTAssertTrue(desc.contains("tomorrow at noon"), "Expected input value in message, got: \(desc)")
+        XCTAssertTrue(
+            desc.contains("date") || desc.contains("parse"),
+            "Expected parse-related message, got: \(desc)"
+        )
+    }
+
+    func testAiParseErrorDescription() {
+        let err = CalendarBridgeError.aiParseError("not valid json")
+        let desc = err.errorDescription ?? ""
+        XCTAssertTrue(desc.contains("not valid json"), "Expected AI response in message, got: \(desc)")
+        XCTAssertTrue(
+            desc.contains("AI") || desc.contains("parsed") || desc.contains("JSON"),
+            "Expected AI parse message, got: \(desc)"
+        )
+    }
+
+    func testAllErrorCasesHaveDescriptions() {
+        let errors: [CalendarBridgeError] = [
+            .accessDenied,
+            .eventNotFound("evt-1"),
+            .calendarNotFound("cal-1"),
+            .saveFailed("disk full"),
+            .ambiguousId("ab"),
+            .dateParseError("bad date"),
+            .aiParseError("bad json"),
+        ]
+        for err in errors {
+            XCTAssertNotNil(err.errorDescription, "Missing errorDescription for: \(err)")
+            XCTAssertFalse(err.errorDescription?.isEmpty == true, "Empty errorDescription for: \(err)")
+        }
+    }
+
     // MARK: - mapCalendarType helper
 
     func testMapCalendarTypeLocal() {

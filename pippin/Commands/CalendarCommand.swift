@@ -265,8 +265,10 @@ public struct CalendarCommand: AsyncParsableCommand {
                 alertOffset: alert.flatMap { parseAlertDuration($0) }
             )
 
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -356,8 +358,10 @@ public struct CalendarCommand: AsyncParsableCommand {
                 alertOffset: alert.flatMap { parseAlertDuration($0) },
                 span: ekSpan
             )
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -398,8 +402,10 @@ public struct CalendarCommand: AsyncParsableCommand {
             let ekSpan = parseSpan(span) ?? .thisEvent
             let bridge = CalendarBridge()
             let result = try await bridge.deleteEvent(id: id, span: ekSpan)
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -464,8 +470,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let eventData = extractJSON(from: jsonStr),
                 let parsed = try? JSONDecoder().decode(SmartEventSpec.self, from: eventData)
             else {
-                fputs("AI response could not be parsed as event JSON:\n\(jsonStr)\n", stderr)
-                throw ExitCode(1)
+                throw CalendarBridgeError.aiParseError(jsonStr)
             }
 
             if dryRun {
@@ -478,8 +483,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
 
             guard let startDate = parseCalendarDate(parsed.start) else {
-                fputs("Could not parse start date from AI response: \(parsed.start)\n", stderr)
-                throw ExitCode(1)
+                throw CalendarBridgeError.dateParseError(parsed.start)
             }
             let endDate: Date
             if let endStr = parsed.end, let parsedEnd = parseCalendarDate(endStr) {
@@ -499,8 +503,10 @@ public struct CalendarCommand: AsyncParsableCommand {
                 isAllDay: parsed.isAllDay ?? false
             )
 
-            if output.isJSON || output.isAgent {
+            if output.isJSON {
                 try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
