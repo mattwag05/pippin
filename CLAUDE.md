@@ -11,7 +11,7 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 
 ```bash
 make build          # swift build -c release
-make test           # swift test (682 tests, 0 failures expected)
+make test           # swift test (703 tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
 make install        # build + copy to ~/.local/bin/pippin + install zsh completions
 make release        # build + copy release binary to .build/release-artifacts/
@@ -82,7 +82,13 @@ make version        # print current version from Version.swift
 
 **GRDB `SQL` type inference trap:** In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — string interpolation inside closures near array builders causes wrong type inference. Fix: use explicit `let x: String = ...` type annotations.
 
-**CLIIntegrationTests version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` has `result.stdout.contains("X.Y")` hardcoded — update with each version bump or the test fails. Currently `"0.11"`.
+**CLIIntegrationTests version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` has `result.stdout.contains("X.Y")` hardcoded — update with each version bump or the test fails. Currently `"0.12"`.
+
+**SwiftLint `force_cast` fix pattern:** `JSONSerialization.jsonObject(with:) as! [String: Any]` → `guard let x = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw EncodingError.invalidValue(...) }`. Same pattern in CalendarModels, ReminderModels, NotesCommand — apply consistently.
+
+**MailBridge.swift structural lint:** `// swiftlint:disable file_length type_body_length` at the `enum MailBridge {` line — file is intentionally large; splitting is a separate task.
+
+**Dual-remote push divergence:** `forgejo` and `github` can each be ahead independently. If push rejected: `git stash && git pull --rebase <remote> main && git stash pop && git push <remote> main` — repeat for each remote separately.
 
 ## Version + Release
 
@@ -102,7 +108,7 @@ make version        # print current version from Version.swift
 
 - **Forgejo Actions:** `.forgejo/workflows/ci.yaml` — runs on `macbook-air` runner (`com.matthewwagner.act-runner` LaunchAgent, labels: `macos macos-15 arm64`)
 - **Release workflow:** `.forgejo/workflows/release.yaml` — triggers on `v*` tag push; builds tarball, extracts changelog, creates Forgejo release with arm64 asset
-- `.github/workflows/` kept in place but not used on GitHub
+- `.github/workflows/` active on GitHub — actions pinned to full commit SHAs (not `@v4` tags) for supply-chain security; update SHAs when upgrading, don't revert to tag syntax
 - **act_runner + Docker:** Runner checks Docker socket at startup. If Docker is not running, act_runner exits and all CI runs cancel silently. Start Docker first, then `brew services restart act_runner`.
 - **Manual release (when CI is down):** `make tarball` → check if release exists (`GET /releases/tags/vX.Y.Z`) → POST create only if missing → `POST /releases/{id}/assets` to upload tarball. The release workflow may have partially run and already created the release — always check before creating.
 
