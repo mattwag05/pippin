@@ -343,4 +343,73 @@ final class CalendarCommandTests: XCTestCase {
             "--to", "2026-12-31",
         ]))
     }
+
+    // MARK: - Today subcommand
+
+    func testTodayCommandName() {
+        XCTAssertEqual(CalendarCommand.Today.configuration.commandName, "today")
+    }
+
+    func testTodayNoArgsPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Today.parse([]))
+    }
+
+    func testTodayJsonFormatPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Today.parse(["--format", "json"]))
+    }
+
+    func testTodayAgentFormatPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Today.parse(["--format", "agent"]))
+    }
+
+    func testTodayFieldsOptionPasses() throws {
+        let cmd = try CalendarCommand.Today.parse(["--fields", "title,startDate"])
+        XCTAssertEqual(cmd.fields, "title,startDate")
+    }
+
+    // MARK: - Remaining subcommand
+
+    func testRemainingCommandName() {
+        XCTAssertEqual(CalendarCommand.Remaining.configuration.commandName, "remaining")
+    }
+
+    func testRemainingNoArgsPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Remaining.parse([]))
+    }
+
+    func testRemainingJsonFormatPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Remaining.parse(["--format", "json"]))
+    }
+
+    func testRemainingAgentFormatPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Remaining.parse(["--format", "agent"]))
+    }
+
+    func testRemainingFieldsOptionPasses() throws {
+        let cmd = try CalendarCommand.Remaining.parse(["--fields", "title,endDate"])
+        XCTAssertEqual(cmd.fields, "title,endDate")
+    }
+
+    // MARK: - Upcoming subcommand
+
+    func testUpcomingCommandName() {
+        XCTAssertEqual(CalendarCommand.Upcoming.configuration.commandName, "upcoming")
+    }
+
+    func testUpcomingNoArgsPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Upcoming.parse([]))
+    }
+
+    func testUpcomingJsonFormatPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Upcoming.parse(["--format", "json"]))
+    }
+
+    func testUpcomingAgentFormatPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Upcoming.parse(["--format", "agent"]))
+    }
+
+    func testUpcomingFieldsOptionPasses() throws {
+        let cmd = try CalendarCommand.Upcoming.parse(["--fields", "id,title,startDate"])
+        XCTAssertEqual(cmd.fields, "id,title,startDate")
+    }
 }

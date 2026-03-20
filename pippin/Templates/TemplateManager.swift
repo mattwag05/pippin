@@ -99,13 +99,9 @@ public final class TemplateManager: Sendable {
 
         if raw.hasPrefix("---") {
             let lines = raw.components(separatedBy: "\n")
-            var endIndex = -1
-            for (i, line) in lines.dropFirst().enumerated() {
-                if line.trimmingCharacters(in: .whitespaces) == "---" {
-                    endIndex = i + 1
-                    break
-                }
-            }
+            let endIndex = lines.dropFirst().enumerated()
+                .first(where: { $0.element.trimmingCharacters(in: .whitespaces) == "---" })
+                .map { $0.offset + 1 } ?? -1
             if endIndex > 0 {
                 let frontmatterLines = Array(lines[1 ..< endIndex])
                 for line in frontmatterLines {

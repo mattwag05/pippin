@@ -105,8 +105,8 @@ public struct MemosCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Transcribe audio and write transcript sidecar.")
         public var transcribe: Bool = false
 
-        @Option(name: .long, help: "Transcript sidecar format: txt, srt, markdown, rtf (default: txt).")
-        public var format: String = "txt"
+        @Option(name: .customLong("sidecar-format"), help: "Transcript sidecar format: txt, srt, markdown, rtf (default: txt).")
+        public var sidecarFormat: String = "txt"
 
         @Flag(name: .customLong("force-transcribe"), help: "Bypass transcript cache when transcribing.")
         public var forceTranscribe: Bool = false
@@ -123,8 +123,8 @@ public struct MemosCommand: AsyncParsableCommand {
                 throw ValidationError("Provide a memo UUID or --all.")
             }
             let valid = ExportSidecarFormat.allCases.map(\.rawValue)
-            guard valid.contains(format) else {
-                throw ValidationError("--format must be one of: \(valid.joined(separator: ", "))")
+            guard valid.contains(sidecarFormat) else {
+                throw ValidationError("--sidecar-format must be one of: \(valid.joined(separator: ", "))")
             }
             guard jobs >= 1 else {
                 throw ValidationError("--jobs must be at least 1.")
@@ -133,7 +133,7 @@ public struct MemosCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
-            let sidecarFormat = ExportSidecarFormat(rawValue: format) ?? .txt
+            let sidecarFmt = ExportSidecarFormat(rawValue: sidecarFormat) ?? .txt
             let transcriber: (any Transcriber)? = transcribe ? MLXAudioTranscriber() : nil
             let cache: TranscriptCache? = transcribe ? try TranscriptCache() : nil
 
@@ -152,7 +152,7 @@ public struct MemosCommand: AsyncParsableCommand {
                         }
                     }
                     let outputDir = output
-                    let sidecarFmt = sidecarFormat
+                    let sidecarFmtCapture = sidecarFmt
                     let forceT = forceTranscribe
                     let chunkResults: [(Int, Result<ExportResult, Error>)] = await withTaskGroup(
                         of: (Int, Result<ExportResult, Error>).self
@@ -165,7 +165,7 @@ public struct MemosCommand: AsyncParsableCommand {
                                         id: memoId,
                                         outputDir: outputDir,
                                         transcriber: transcriber,
-                                        sidecarFormat: sidecarFmt,
+                                        sidecarFormat: sidecarFmtCapture,
                                         cache: cache,
                                         forceTranscribe: forceT
                                     )
@@ -203,7 +203,7 @@ public struct MemosCommand: AsyncParsableCommand {
                     id: memo.id,
                     outputDir: output,
                     transcriber: transcriber,
-                    sidecarFormat: sidecarFormat,
+                    sidecarFormat: sidecarFmt,
                     cache: cache,
                     forceTranscribe: forceTranscribe
                 )

@@ -39,8 +39,7 @@ public struct AgentError: Encodable {
 public func printAgentError(_ error: Error) {
     let agentError = AgentError.from(error)
     if let data = try? JSONEncoder().encode(agentError),
-       let str = String(data: data, encoding: .utf8)
-    {
+       let str = String(data: data, encoding: .utf8) {
         print(str)
     }
 }
