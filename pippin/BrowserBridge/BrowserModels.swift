@@ -62,6 +62,20 @@ public struct TabInfo: Codable, Sendable {
     }
 }
 
+// MARK: - Action Result
+
+public struct BrowserActionResult: Codable, Sendable {
+    public let success: Bool
+    public let action: String
+    public let details: [String: String]
+
+    public init(success: Bool, action: String, details: [String: String] = [:]) {
+        self.success = success
+        self.action = action
+        self.details = details
+    }
+}
+
 // MARK: - Errors
 
 public enum BrowserBridgeError: LocalizedError, Sendable {
