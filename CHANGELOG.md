@@ -9,15 +9,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [ax] MemosCommand.swift: `memos export` had a hidden `--format` collision — the sidecar transcript format option (`txt`, `srt`, `markdown`, `rtf`) shadowed the `OutputOptions --format` flag, causing ArgumentParser to fatal-error whenever `--format` was used; renamed to `--sidecar-format` (matching the `AudioCommand.Transcribe` fix in v0.13.0)
+
 ### Changed
 
 - [ax] BrowserCommand.swift: `browser screenshot`, `click`, `fill`, `scroll`, `close` now support `--format text|json|agent`; action commands return `BrowserActionResult{success,action,details}` in structured modes
 - [ax] MemosCommand.swift: `memos delete` now supports `--format text|json|agent`; returns `MemosActionResult{success,action,details}` in structured modes
+- [quality] AgentOutput.swift: fix opening brace spacing (SwiftLint `opening_brace` warning)
+- [quality] TemplateManager.swift: replace for-loop with `first(where:)` to satisfy SwiftLint `for_where` rule
 
 ### Added
 
 - [test] BrowserCommandTests.swift: 13 new tests covering `--format agent/json/text` parsing for Screenshot, Click, Fill, Scroll, Close + `BrowserActionResult` encoding
-- 831 → 844 tests, 0 failures
+- [test] MemosCommandTests.swift: 55 new tests covering all 5 MemosCommand subcommands (List, Info, Export, Transcribe, Delete) — argument parsing, validation, and format options
+- [test] CalendarCommandTests.swift: 15 new tests for `calendar today`, `calendar remaining`, `calendar upcoming` subcommands — argument parsing and format options
+- 844 → 914 tests, 0 failures
 
 ---
 
