@@ -21,3 +21,7 @@ archive/**/.build/
 # Claude Code
 .claude/
 .swiftlint.yml
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
