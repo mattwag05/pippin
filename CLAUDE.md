@@ -80,6 +80,8 @@ make version        # print current version from Version.swift
 
 **Worktree cleanup order:** `git worktree remove <path>` first, then `git branch -d <branch>`. Reverse order fails — branch can't be deleted while worktree is using it.
 
+**Worktree blocks checkout:** If `git checkout <branch>` fails "already used by worktree at ...", run `git worktree remove --force .claude/worktrees/<name>` first.
+
 **SwiftLint in worktrees:** `.swiftlint.yml` only exists in the main worktree. In a linked worktree, run `swiftlint lint --config /Users/matthewwagner/Projects/pippin/.swiftlint.yml ...` (absolute path required).
 
 **GRDB `SQL` type inference trap:** In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — string interpolation inside closures near array builders causes wrong type inference. Fix: use explicit `let x: String = ...` type annotations.
@@ -90,7 +92,7 @@ make version        # print current version from Version.swift
 
 **`--format` collision with `OutputOptions`:** Commands using `@OptionGroup var output: OutputOptions` must NOT also declare `@Option var format` — ArgumentParser throws "Multiple arguments named --format" at parse time. Rename the command-specific option (e.g. `--transcription-format`).
 
-**CLIIntegrationTests version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` has `result.stdout.contains("X.Y")` hardcoded — update with each version bump or the test fails. Currently `"0.13"`.
+**CLIIntegrationTests version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` has `result.stdout.contains("X.Y")` hardcoded — update with each version bump or the test fails. Currently `"0.14"`.
 
 **Dual-remote push divergence:** `forgejo` and `github` can each be ahead independently. If push rejected: `git stash && git pull --rebase <remote> main && git stash pop && git push <remote> main` — repeat for each remote separately.
 
@@ -102,7 +104,7 @@ make version        # print current version from Version.swift
    - Avoid duplicate version entries in the comparison link table
 3. Update `README.md` if any new commands or subcommands were added
 4. `swift test` — must pass (run `make test`)
-4. `git commit -m "chore: bump to vX.Y.Z"` then `git tag vX.Y.Z`
+4. `git commit -m "chore: bump to vX.Y.Z"` then `git tag -a vX.Y.Z -m "vX.Y.Z"` (annotated tag required — bare `git tag` fails with "no tag message")
 5. `git push forgejo main --tags`
 6. `git push github main --tags` (GitHub mirror must have the tag for Homebrew)
 7. Update tap formula (`tag`, `revision`, `assert_match` version):
@@ -127,6 +129,15 @@ Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
 - `pippin calendar agenda --format agent`
 - `pippin reminders list --format agent`
 Don't change these command shapes or agent JSON output structure without updating the task.
+
+## Issue Tracking (beads / bd)
+
+Claude owns the beads workflow automatically — no need to ask. In every session:
+- `bd ready` at session start to find available work
+- `bd create "Title" --description "..."` for new issues discovered during work
+- `bd update <id> --status in_progress` when starting an issue
+- `bd close <id>` when work is complete
+- `bd sync` before pushing
 
 ## Forgejo API Gotchas
 
