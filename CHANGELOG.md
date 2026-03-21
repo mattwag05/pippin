@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.14.0] - 2026-03-21
+
 ### Fixed
 
 - [ax] MemosCommand.swift: `memos export` had a hidden `--format` collision — the sidecar transcript format option (`txt`, `srt`, `markdown`, `rtf`) shadowed the `OutputOptions --format` flag, causing ArgumentParser to fatal-error whenever `--format` was used; renamed to `--sidecar-format` (matching the `AudioCommand.Transcribe` fix in v0.13.0)
@@ -326,7 +330,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/mattwag05/pippin/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/mattwag05/pippin/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/mattwag05/pippin/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/mattwag05/pippin/compare/v0.10.0...v0.11.0
