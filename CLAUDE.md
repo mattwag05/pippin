@@ -119,6 +119,15 @@ make version        # print current version from Version.swift
 - **act_runner + Docker:** Runner checks Docker socket at startup. If Docker is not running, act_runner exits and all CI runs cancel silently. Start Docker first, then `brew services restart act_runner`.
 - **Manual release (when CI is down):** `make tarball` → check if release exists (`GET /releases/tags/vX.Y.Z`) → POST create only if missing → `POST /releases/{id}/assets` to upload tarball. The release workflow may have partially run and already created the release — always check before creating.
 
+## Known Consumers
+
+**Morning briefing scheduled task** (`~/.claude/scheduled-tasks/morning-briefing/SKILL.md`):
+Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
+- `pippin mail list --account <acc> --format agent` (all 5 accounts)
+- `pippin calendar agenda --format agent`
+- `pippin reminders list --format agent`
+Don't change these command shapes or agent JSON output structure without updating the task.
+
 ## Forgejo API Gotchas
 
 - **Merge API returns HTTP 204** (empty body) on success — don't pipe to JSON parser
