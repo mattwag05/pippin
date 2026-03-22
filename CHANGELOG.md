@@ -9,6 +9,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- [quality] MemosCommand.swift: replace 8 verbose `!outputOptions.isJSON, !outputOptions.isAgent` progress guards with the canonical `!outputOptions.isStructured` — consistent with `SummarizeCommand` and the documented pattern
+- [quality] CalendarCommand.swift: refactor `SmartBriefing` output block from combined `if isJSON || isAgent {}` to the standard three-way `if isJSON / else if isAgent / else` pattern
+
 ---
 
 ## [0.14.0] - 2026-03-21
