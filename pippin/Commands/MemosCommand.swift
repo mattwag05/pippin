@@ -145,7 +145,7 @@ public struct MemosCommand: AsyncParsableCommand {
                     Array(memos[i ..< min(i + jobs, memos.count)])
                 }
                 for chunk in chunks {
-                    if !outputOptions.isJSON, !outputOptions.isAgent {
+                    if !outputOptions.isStructured {
                         for memo in chunk {
                             print("Exporting: \(memo.title)...", terminator: " ")
                             fflush(stdout)
@@ -185,14 +185,14 @@ public struct MemosCommand: AsyncParsableCommand {
                         switch result {
                         case let .success(r):
                             results.append(r)
-                            if !outputOptions.isJSON, !outputOptions.isAgent { print("done") }
+                            if !outputOptions.isStructured { print("done") }
                         case let .failure(e):
-                            if !outputOptions.isJSON, !outputOptions.isAgent { print("FAILED: \(e.localizedDescription)") }
+                            if !outputOptions.isStructured { print("FAILED: \(e.localizedDescription)") }
                         }
                     }
                 }
             } else if let id {
-                if !outputOptions.isJSON, !outputOptions.isAgent {
+                if !outputOptions.isStructured {
                     print("Exporting...", terminator: " ")
                     fflush(stdout)
                 }
@@ -208,7 +208,7 @@ public struct MemosCommand: AsyncParsableCommand {
                     forceTranscribe: forceTranscribe
                 )
                 results.append(result)
-                if !outputOptions.isJSON, !outputOptions.isAgent {
+                if !outputOptions.isStructured {
                     print("done")
                 }
             }
@@ -272,7 +272,7 @@ public struct MemosCommand: AsyncParsableCommand {
                     Array(memos[i ..< min(i + jobs, memos.count)])
                 }
                 for chunk in chunks {
-                    if !outputOptions.isJSON, !outputOptions.isAgent {
+                    if !outputOptions.isStructured {
                         for memo in chunk {
                             print("Transcribing: \(memo.title)...", terminator: " ")
                             fflush(stdout)
@@ -314,9 +314,9 @@ public struct MemosCommand: AsyncParsableCommand {
                         switch result {
                         case let .success(r):
                             results.append(r)
-                            if !outputOptions.isJSON, !outputOptions.isAgent { print("done") }
+                            if !outputOptions.isStructured { print("done") }
                         case let .failure(e):
-                            if !outputOptions.isJSON, !outputOptions.isAgent { print("FAILED: \(e.localizedDescription)") }
+                            if !outputOptions.isStructured { print("FAILED: \(e.localizedDescription)") }
                         }
                     }
                 }
