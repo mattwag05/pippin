@@ -590,20 +590,18 @@ public struct CalendarCommand: AsyncParsableCommand {
                 system: BuiltInTemplates.calendarBriefing.content
             )
 
-            if output.isJSON || output.isAgent {
-                var result: [String: String] = [
-                    "briefing": briefing,
-                    "days": "\(days)",
-                    "eventCount": "\(events.count)",
-                ]
-                if let fieldList = fields?.components(separatedBy: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
-                    result = result.filter { fieldList.contains($0.key) }
-                }
-                if output.isAgent {
-                    try printAgentJSON(result)
-                } else {
-                    try printJSON(result)
-                }
+            var result: [String: String] = [
+                "briefing": briefing,
+                "days": "\(days)",
+                "eventCount": "\(events.count)",
+            ]
+            if let fieldList = fields?.components(separatedBy: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+                result = result.filter { fieldList.contains($0.key) }
+            }
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
             } else {
                 print(briefing)
             }
