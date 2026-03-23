@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.14.1] - 2026-03-23
+
 ### Changed
 
 - [quality] MemosCommand.swift: replace 8 verbose `!outputOptions.isJSON, !outputOptions.isAgent` progress guards with the canonical `!outputOptions.isStructured` — consistent with `SummarizeCommand` and the documented pattern
@@ -335,7 +339,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/mattwag05/pippin/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/mattwag05/pippin/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/mattwag05/pippin/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/mattwag05/pippin/compare/v0.11.0...v0.12.0
