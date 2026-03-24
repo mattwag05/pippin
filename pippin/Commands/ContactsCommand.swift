@@ -32,23 +32,19 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let fieldList = parseFields(fields)
-            do {
-                let contacts = try ContactsBridge.listContacts(group: group, fields: fieldList)
-                if output.isJSON {
-                    try printJSON(contacts)
-                } else if output.isAgent {
-                    try printAgentJSON(contacts)
-                } else {
-                    if contacts.isEmpty {
-                        print("No contacts found.")
-                        return
-                    }
-                    for contact in contacts {
-                        print(formatContactLine(contact))
-                    }
+            let contacts = try ContactsBridge.listContacts(group: group, fields: fieldList)
+            if output.isJSON {
+                try printJSON(contacts)
+            } else if output.isAgent {
+                try printAgentJSON(contacts)
+            } else {
+                if contacts.isEmpty {
+                    print("No contacts found.")
+                    return
                 }
-            } catch let error as ContactsBridgeError {
-                throw ContactsCommandError(message: error.errorDescription ?? "Contacts access denied.")
+                for contact in contacts {
+                    print(formatContactLine(contact))
+                }
             }
         }
     }
@@ -76,28 +72,24 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let fieldList = parseFields(fields)
-            do {
-                let contacts: [ContactInfo]
-                if email {
-                    contacts = try ContactsBridge.searchByEmail(query, fields: fieldList)
-                } else {
-                    contacts = try ContactsBridge.searchByName(query, fields: fieldList)
+            let contacts: [ContactInfo]
+            if email {
+                contacts = try ContactsBridge.searchByEmail(query, fields: fieldList)
+            } else {
+                contacts = try ContactsBridge.searchByName(query, fields: fieldList)
+            }
+            if output.isJSON {
+                try printJSON(contacts)
+            } else if output.isAgent {
+                try printAgentJSON(contacts)
+            } else {
+                if contacts.isEmpty {
+                    print("No contacts found.")
+                    return
                 }
-                if output.isJSON {
-                    try printJSON(contacts)
-                } else if output.isAgent {
-                    try printAgentJSON(contacts)
-                } else {
-                    if contacts.isEmpty {
-                        print("No contacts found.")
-                        return
-                    }
-                    for contact in contacts {
-                        print(formatContactLine(contact))
-                    }
+                for contact in contacts {
+                    print(formatContactLine(contact))
                 }
-            } catch let error as ContactsBridgeError {
-                throw ContactsCommandError(message: error.errorDescription ?? "Contacts access denied.")
             }
         }
     }
@@ -118,26 +110,13 @@ public struct ContactsCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            do {
-                let contact = try ContactsBridge.getContact(identifier)
-                if output.isJSON {
-                    try printJSON(contact)
-                } else if output.isAgent {
-                    try printAgentJSON(contact)
-                } else {
-                    printContactCard(contact)
-                }
-            } catch let error as ContactsBridgeError {
-                switch error {
-                case .accessDenied:
-                    throw ContactsCommandError(message: error.errorDescription ?? "Contacts access denied.")
-                case .contactNotFound:
-                    throw ContactsCommandError(message: error.errorDescription ?? "Contact not found.")
-                case .fetchFailed:
-                    throw ContactsCommandError(message: error.errorDescription ?? "Failed to fetch contact.")
-                case .groupNotFound:
-                    throw ContactsCommandError(message: error.errorDescription ?? "Contact group not found.")
-                }
+            let contact = try ContactsBridge.getContact(identifier)
+            if output.isJSON {
+                try printJSON(contact)
+            } else if output.isAgent {
+                try printAgentJSON(contact)
+            } else {
+                printContactCard(contact)
             }
         }
     }
@@ -155,36 +134,25 @@ public struct ContactsCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            do {
-                let groups = try ContactsBridge.listGroups()
-                if output.isJSON {
-                    try printJSON(groups)
-                } else if output.isAgent {
-                    try printAgentJSON(groups)
-                } else {
-                    if groups.isEmpty {
-                        print("No contact groups found.")
-                        return
-                    }
-                    for group in groups {
-                        print("\(group.name) (\(group.contactCount) contacts)")
-                    }
+            let groups = try ContactsBridge.listGroups()
+            if output.isJSON {
+                try printJSON(groups)
+            } else if output.isAgent {
+                try printAgentJSON(groups)
+            } else {
+                if groups.isEmpty {
+                    print("No contact groups found.")
+                    return
                 }
-            } catch let error as ContactsBridgeError {
-                throw ContactsCommandError(message: error.errorDescription ?? "Contacts access denied.")
+                for group in groups {
+                    print("\(group.name) (\(group.contactCount) contacts)")
+                }
             }
         }
     }
 }
 
 // MARK: - Shared helpers
-
-private struct ContactsCommandError: LocalizedError {
-    let message: String
-    var errorDescription: String? {
-        message
-    }
-}
 
 private func parseFields(_ fields: String?) -> [String]? {
     guard let fields else { return nil }

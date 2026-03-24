@@ -1,4 +1,5 @@
 import XCTest
+@testable import PippinLib
 
 /// Integration tests that run the actual `pippin` binary via Process.
 ///
@@ -68,7 +69,7 @@ final class CLIIntegrationTests: XCTestCase {
         guard requireBinary() else { return }
         let result = run(["--version"])
         XCTAssertEqual(result.exitCode, 0)
-        XCTAssertTrue(result.stdout.contains("0.14"), "Expected version string in output, got: \(result.stdout)")
+        XCTAssertTrue(result.stdout.contains(PippinVersion.version), "Expected version string in output, got: \(result.stdout)")
     }
 
     // MARK: - Help
