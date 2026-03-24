@@ -11,7 +11,7 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 
 ```bash
 make build          # swift build -c release
-make test           # swift test (831 tests, 0 failures expected)
+make test           # swift test (914 tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
 make install        # build + copy to ~/.local/bin/pippin + install zsh completions
 make release        # build + copy release binary to .build/release-artifacts/
@@ -130,14 +130,10 @@ Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
 - `pippin reminders list --format agent`
 Don't change these command shapes or agent JSON output structure without updating the task.
 
-## Issue Tracking (beads / bd)
+## Issue Tracking
 
-Claude owns the beads workflow automatically — no need to ask. In every session:
-- `bd ready` at session start to find available work
-- `bd create "Title" --description "..."` for new issues discovered during work
-- `bd update <id> --status in_progress` when starting an issue
-- `bd close <id>` when work is complete
-- `bd sync` before pushing
+Uses `bd` (beads) — Claude owns this autonomously. See `~/.claude/CLAUDE.md` § Issue Tracking for commands.
+Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists.
 
 ## Forgejo API Gotchas
 
