@@ -10,67 +10,21 @@ public enum TriageEngine {
         let batches = stride(from: 0, to: messages.count, by: 10).map {
             Array(messages[$0 ..< min($0 + 10, messages.count)])
         }
-
-        nonisolated(unsafe) var batchResults: [(index: Int, result: BatchResponse)] = []
-        nonisolated(unsafe) var firstError: Error?
-
-        let group = DispatchGroup()
-        let lock = NSLock()
-        let rateLimiter = DispatchSemaphore(value: 4)
-
-        for (i, batch) in batches.enumerated() {
-            rateLimiter.wait()
-            group.enter()
-            DispatchQueue.global(qos: .userInitiated).async {
-                defer {
-                    rateLimiter.signal()
-                    group.leave()
-                }
-                lock.lock()
-                guard firstError == nil else {
-                    lock.unlock()
-                    return
-                }
-                lock.unlock()
-                do {
-                    let result = try triageBatch(batch, provider: provider)
-                    lock.lock()
-                    batchResults.append((index: i, result: result))
-                    lock.unlock()
-                } catch {
-                    lock.lock()
-                    if firstError == nil { firstError = error }
-                    lock.unlock()
-                }
-            }
-        }
-
-        group.wait()
-
-        if let error = firstError {
-            throw error
-        }
-
-        batchResults.sort { $0.index < $1.index }
+        let responses = try runBatchesConcurrently(batches) { try triageBatch($0, provider: provider) }
 
         var allTriaged: [TriagedMessage] = []
         var lastSummary = ""
         var allActionItems: [String] = []
-        for (_, batchResult) in batchResults {
-            allTriaged.append(contentsOf: batchResult.messages)
-            lastSummary = batchResult.summary
-            for item in batchResult.actionItems {
+        for response in responses {
+            allTriaged.append(contentsOf: response.messages)
+            lastSummary = response.summary
+            for item in response.actionItems {
                 if !allActionItems.contains(item) {
                     allActionItems.append(item)
                 }
             }
         }
-
-        return TriageResult(
-            messages: allTriaged,
-            summary: lastSummary,
-            actionItems: allActionItems
-        )
+        return TriageResult(messages: allTriaged, summary: lastSummary, actionItems: allActionItems)
     }
 
     /// Get one-liners for a list of messages (for --summarize on mail list).
@@ -82,49 +36,7 @@ public enum TriageEngine {
         let batches = stride(from: 0, to: messages.count, by: 10).map {
             Array(messages[$0 ..< min($0 + 10, messages.count)])
         }
-
-        nonisolated(unsafe) var batchResults: [(index: Int, messages: [TriagedMessage])] = []
-        nonisolated(unsafe) var firstError: Error?
-
-        let group = DispatchGroup()
-        let lock = NSLock()
-        let rateLimiter = DispatchSemaphore(value: 4)
-
-        for (i, batch) in batches.enumerated() {
-            rateLimiter.wait()
-            group.enter()
-            DispatchQueue.global(qos: .userInitiated).async {
-                defer {
-                    rateLimiter.signal()
-                    group.leave()
-                }
-                lock.lock()
-                guard firstError == nil else {
-                    lock.unlock()
-                    return
-                }
-                lock.unlock()
-                do {
-                    let result = try triageBatch(batch, provider: provider)
-                    lock.lock()
-                    batchResults.append((index: i, messages: result.messages))
-                    lock.unlock()
-                } catch {
-                    lock.lock()
-                    if firstError == nil { firstError = error }
-                    lock.unlock()
-                }
-            }
-        }
-
-        group.wait()
-
-        if let error = firstError {
-            throw error
-        }
-
-        return batchResults
-            .sorted { $0.index < $1.index }
+        return try runBatchesConcurrently(batches) { try triageBatch($0, provider: provider) }
             .flatMap(\.messages)
     }
 
@@ -150,15 +62,62 @@ public enum TriageEngine {
         for (i, msg) in batch.enumerated() {
             prompt += "\(i + 1). Subject: \(msg.subject)\n   From: \(msg.from)\n   Date: \(msg.date)\n   ID: \(msg.id)\n\n"
         }
-
         let response = try provider.complete(prompt: prompt, system: MailAIPrompts.triageSystemPrompt)
-
         let stripped = stripAIResponseJSON(response)
-
         do {
             return try JSONDecoder().decode(BatchResponse.self, from: Data(stripped.utf8))
         } catch {
             throw MailAIError.malformedAIResponse(response)
         }
+    }
+
+    /// Dispatch `batches` concurrently, collecting results in original order.
+    /// At most `maxConcurrent` batches run in parallel (default: 4).
+    private static func runBatchesConcurrently<T>(
+        _ batches: [[MailMessage]],
+        maxConcurrent: Int = 4,
+        transform: @Sendable @escaping ([MailMessage]) throws -> T
+    ) throws -> [T] {
+        nonisolated(unsafe) var results: [(index: Int, value: T)] = []
+        nonisolated(unsafe) var firstError: Error?
+
+        let group = DispatchGroup()
+        let lock = NSLock()
+        let rateLimiter = DispatchSemaphore(value: maxConcurrent)
+
+        for (i, batch) in batches.enumerated() {
+            rateLimiter.wait()
+            group.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                defer {
+                    rateLimiter.signal()
+                    group.leave()
+                }
+                lock.lock()
+                guard firstError == nil else {
+                    lock.unlock()
+                    return
+                }
+                lock.unlock()
+                do {
+                    let value = try transform(batch)
+                    lock.lock()
+                    results.append((index: i, value: value))
+                    lock.unlock()
+                } catch {
+                    lock.lock()
+                    if firstError == nil { firstError = error }
+                    lock.unlock()
+                }
+            }
+        }
+
+        group.wait()
+
+        if let error = firstError {
+            throw error
+        }
+
+        return results.sorted { $0.index < $1.index }.map(\.value)
     }
 }
