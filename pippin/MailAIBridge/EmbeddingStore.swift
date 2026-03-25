@@ -64,6 +64,12 @@ public final class EmbeddingStore: Sendable {
 
     // MARK: - Public API
 
+    public func exists(compoundId: String) -> Bool {
+        (try? dbQueue.read { db in
+            try EmbeddingRecord.fetchOne(db, key: compoundId)
+        }) != nil
+    }
+
     public func needsReindex(compoundId: String, bodyHash: String) throws -> Bool {
         try dbQueue.read { db in
             guard let record = try EmbeddingRecord.fetchOne(

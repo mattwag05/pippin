@@ -29,19 +29,7 @@ public enum PromptInjectionScanner {
             system: MailAIPrompts.injectionDetectionSystemPrompt
         )
 
-        var stripped = rawResponse.trimmingCharacters(in: .whitespacesAndNewlines)
-        if stripped.hasPrefix("```") {
-            let lines = stripped.components(separatedBy: "\n")
-            stripped = lines.dropFirst().dropLast().joined(separator: "\n")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        // Fallback: extract outermost { ... } if response doesn't start with a brace
-        if !stripped.hasPrefix("{") {
-            if let firstBrace = stripped.firstIndex(of: "{"),
-               let lastBrace = stripped.lastIndex(of: "}") {
-                stripped = String(stripped[firstBrace...lastBrace])
-            }
-        }
+        let stripped = stripAIResponseJSON(rawResponse)
 
         guard let data = stripped.data(using: .utf8) else {
             throw MailAIError.malformedAIResponse(rawResponse)

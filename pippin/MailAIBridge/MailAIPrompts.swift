@@ -75,3 +75,22 @@ public enum MailAIPrompts {
     Summarize this email in 2-3 sentences. Focus on: who sent it, what they want, and any deadlines or action items. Be concise and specific.
     """
 }
+
+// MARK: - Shared helpers
+
+public func stripAIResponseJSON(_ response: String) -> String {
+    var stripped = response.trimmingCharacters(in: .whitespacesAndNewlines)
+    if stripped.hasPrefix("```") {
+        var lines = stripped.components(separatedBy: "\n")
+        lines.removeFirst()
+        if lines.last?.hasPrefix("```") == true { lines.removeLast() }
+        stripped = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    if !stripped.hasPrefix("{") || !stripped.hasSuffix("}") {
+        if let firstBrace = stripped.firstIndex(of: "{"),
+           let lastBrace = stripped.lastIndex(of: "}") {
+            stripped = String(stripped[firstBrace...lastBrace])
+        }
+    }
+    return stripped
+}
