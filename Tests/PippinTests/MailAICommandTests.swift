@@ -135,4 +135,19 @@ final class MailAICommandTests: XCTestCase {
         let cmd = try MailCommand.Search.parse(["somequery", "--semantic", "--embedding-model", "nomic-embed-text"])
         XCTAssertEqual(cmd.embeddingModel, "nomic-embed-text")
     }
+
+    func testSearchOllamaUrlOption() throws {
+        let cmd = try MailCommand.Search.parse(["query", "--semantic", "--ollama-url", "http://localhost:11435"])
+        XCTAssertEqual(cmd.ollamaUrl, "http://localhost:11435")
+    }
+
+    func testSearchProviderOption() throws {
+        let cmd = try MailCommand.Search.parse(["query", "--semantic", "--provider", "ollama"])
+        XCTAssertEqual(cmd.provider, "ollama")
+    }
+
+    func testSearchProviderDefaultsToOllama() throws {
+        let cmd = try MailCommand.Search.parse(["somequery"])
+        XCTAssertEqual(cmd.provider, "ollama")
+    }
 }
