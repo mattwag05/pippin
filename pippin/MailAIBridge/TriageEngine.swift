@@ -1,7 +1,8 @@
 import Foundation
 
 public enum TriageEngine {
-    /// Triage messages using metadata only (no body reads)
+    /// Triage messages using metadata only (no body reads).
+    /// Batches of 10 are dispatched concurrently (max 4 in-flight) to reduce AI round-trip latency.
     public static func triage(
         messages: [MailMessage],
         provider: any AIProvider
@@ -10,12 +11,52 @@ public enum TriageEngine {
             Array(messages[$0 ..< min($0 + 10, messages.count)])
         }
 
+        nonisolated(unsafe) var batchResults: [(index: Int, result: BatchResponse)] = []
+        nonisolated(unsafe) var firstError: Error?
+
+        let group = DispatchGroup()
+        let lock = NSLock()
+        let rateLimiter = DispatchSemaphore(value: 4)
+
+        for (i, batch) in batches.enumerated() {
+            rateLimiter.wait()
+            group.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                defer {
+                    rateLimiter.signal()
+                    group.leave()
+                }
+                lock.lock()
+                guard firstError == nil else {
+                    lock.unlock()
+                    return
+                }
+                lock.unlock()
+                do {
+                    let result = try triageBatch(batch, provider: provider)
+                    lock.lock()
+                    batchResults.append((index: i, result: result))
+                    lock.unlock()
+                } catch {
+                    lock.lock()
+                    if firstError == nil { firstError = error }
+                    lock.unlock()
+                }
+            }
+        }
+
+        group.wait()
+
+        if let error = firstError {
+            throw error
+        }
+
+        batchResults.sort { $0.index < $1.index }
+
         var allTriaged: [TriagedMessage] = []
         var lastSummary = ""
         var allActionItems: [String] = []
-
-        for batch in batches {
-            let batchResult = try triageBatch(batch, provider: provider)
+        for (_, batchResult) in batchResults {
             allTriaged.append(contentsOf: batchResult.messages)
             lastSummary = batchResult.summary
             for item in batchResult.actionItems {
@@ -32,8 +73,8 @@ public enum TriageEngine {
         )
     }
 
-    /// Get one-liners for a list of messages (for --summarize on mail list)
-    /// Reuses triage batching but only surfaces oneLiner per message
+    /// Get one-liners for a list of messages (for --summarize on mail list).
+    /// Batches are dispatched concurrently (max 4 in-flight).
     public static func triageBatchForSummaries(
         messages: [MailMessage],
         provider: any AIProvider
@@ -41,12 +82,50 @@ public enum TriageEngine {
         let batches = stride(from: 0, to: messages.count, by: 10).map {
             Array(messages[$0 ..< min($0 + 10, messages.count)])
         }
-        var all: [TriagedMessage] = []
-        for batch in batches {
-            let result = try triageBatch(batch, provider: provider)
-            all.append(contentsOf: result.messages)
+
+        nonisolated(unsafe) var batchResults: [(index: Int, messages: [TriagedMessage])] = []
+        nonisolated(unsafe) var firstError: Error?
+
+        let group = DispatchGroup()
+        let lock = NSLock()
+        let rateLimiter = DispatchSemaphore(value: 4)
+
+        for (i, batch) in batches.enumerated() {
+            rateLimiter.wait()
+            group.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                defer {
+                    rateLimiter.signal()
+                    group.leave()
+                }
+                lock.lock()
+                guard firstError == nil else {
+                    lock.unlock()
+                    return
+                }
+                lock.unlock()
+                do {
+                    let result = try triageBatch(batch, provider: provider)
+                    lock.lock()
+                    batchResults.append((index: i, messages: result.messages))
+                    lock.unlock()
+                } catch {
+                    lock.lock()
+                    if firstError == nil { firstError = error }
+                    lock.unlock()
+                }
+            }
         }
-        return all
+
+        group.wait()
+
+        if let error = firstError {
+            throw error
+        }
+
+        return batchResults
+            .sorted { $0.index < $1.index }
+            .flatMap(\.messages)
     }
 
     /// Single message summary (for --summarize on mail show — DOES call readMessage)
