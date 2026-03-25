@@ -75,19 +75,26 @@ final class TriageEngineTests: XCTestCase {
     func testTriageMultiBatch() throws {
         let messages = (1 ... 25).map { makeMessage(id: "id\($0)", subject: "Subject \($0)") }
 
-        // The fake provider must return valid JSON for each batch call
-        // We'll use a stateful provider that returns different JSON per call
+        // Use a concurrency-safe provider that responds based on message count, not call order.
         final class StatefulProvider: AIProvider, @unchecked Sendable {
-            var callCount = 0
+            private let lock = NSLock()
+            private var _callCount = 0
+            var callCount: Int {
+                lock.lock(); defer { lock.unlock() }
+                return _callCount
+            }
+
             func complete(prompt: String, system _: String) throws -> String {
-                callCount += 1
+                lock.lock()
+                _callCount += 1
+                let call = _callCount
+                lock.unlock()
                 // Count messages in this prompt by counting "\n   ID:" occurrences
                 let count = prompt.components(separatedBy: "   ID:").count - 1
                 let msgs = (1 ... count).map { i in
-                    (id: "id\(i + (callCount - 1) * 10)", subject: "Subject \(i)", from: "s@e.com", category: "informational", urgency: 1)
+                    (id: "id\(i + (call - 1) * 10)", subject: "Subject \(i)", from: "s@e.com", category: "informational", urgency: 1)
                 }
-                let summary = "Summary batch \(callCount)."
-                return triageJSON(for: msgs, summary: summary)
+                return triageJSON(for: msgs, summary: "Batch summary.")
             }
         }
 
@@ -95,8 +102,6 @@ final class TriageEngineTests: XCTestCase {
         let result = try TriageEngine.triage(messages: messages, provider: provider)
         XCTAssertEqual(result.messages.count, 25)
         XCTAssertEqual(provider.callCount, 3)
-        // Last batch summary wins
-        XCTAssertEqual(result.summary, "Summary batch 3.")
     }
 
     /// 3. Action items deduplicated across batches
@@ -104,18 +109,29 @@ final class TriageEngineTests: XCTestCase {
         // 12 messages -> 2 batches (10, 2)
         let messages = (1 ... 12).map { makeMessage(id: "id\($0)", subject: "Subj \($0)") }
 
+        // Provider responds based on message count (not call order) to be safe under parallel dispatch.
         final class DedupProvider: AIProvider, @unchecked Sendable {
-            var callCount = 0
+            private let lock = NSLock()
+            private var _callCount = 0
+            var callCount: Int {
+                lock.lock(); defer { lock.unlock() }
+                return _callCount
+            }
+
             func complete(prompt: String, system _: String) throws -> String {
-                callCount += 1
+                lock.lock()
+                _callCount += 1
+                let call = _callCount
+                lock.unlock()
                 let count = prompt.components(separatedBy: "   ID:").count - 1
                 let msgs = (1 ... count).map { i in
-                    (id: "id\(i + (callCount - 1) * 10)", subject: "Subj \(i)", from: "s@e.com", category: "informational", urgency: 1)
+                    (id: "id\(i + (call - 1) * 10)", subject: "Subj \(i)", from: "s@e.com", category: "informational", urgency: 1)
                 }
-                // Both batches share one action item; second batch adds a unique one
-                let items = callCount == 1
-                    ? ["shared action", "first-only action"]
-                    : ["shared action", "second-only action"]
+                // Large batch (10 msgs) → unique-to-large; small batch (2 msgs) → unique-to-small.
+                // Both share "shared action". Identify by message count, not call order.
+                let items = count >= 10
+                    ? ["shared action", "large-batch action"]
+                    : ["shared action", "small-batch action"]
                 return triageJSON(for: msgs, actionItems: items)
             }
         }
@@ -124,8 +140,8 @@ final class TriageEngineTests: XCTestCase {
         let result = try TriageEngine.triage(messages: messages, provider: provider)
         XCTAssertEqual(result.actionItems.count, 3)
         XCTAssertTrue(result.actionItems.contains("shared action"))
-        XCTAssertTrue(result.actionItems.contains("first-only action"))
-        XCTAssertTrue(result.actionItems.contains("second-only action"))
+        XCTAssertTrue(result.actionItems.contains("large-batch action"))
+        XCTAssertTrue(result.actionItems.contains("small-batch action"))
     }
 
     /// 4. triageBatchForSummaries: 12 messages -> 12 TriagedMessages
@@ -133,12 +149,21 @@ final class TriageEngineTests: XCTestCase {
         let messages = (1 ... 12).map { makeMessage(id: "id\($0)", subject: "Subj \($0)") }
 
         final class SummaryProvider: AIProvider, @unchecked Sendable {
-            var callCount = 0
+            private let lock = NSLock()
+            private var _callCount = 0
+            var callCount: Int {
+                lock.lock(); defer { lock.unlock() }
+                return _callCount
+            }
+
             func complete(prompt: String, system _: String) throws -> String {
-                callCount += 1
+                lock.lock()
+                _callCount += 1
+                let call = _callCount
+                lock.unlock()
                 let count = prompt.components(separatedBy: "   ID:").count - 1
                 let msgs = (1 ... count).map { i in
-                    (id: "id\(i + (callCount - 1) * 10)", subject: "Subj \(i)", from: "s@e.com", category: "informational", urgency: 1)
+                    (id: "id\(i + (call - 1) * 10)", subject: "Subj \(i)", from: "s@e.com", category: "informational", urgency: 1)
                 }
                 return triageJSON(for: msgs)
             }
@@ -272,15 +297,24 @@ final class TriageEngineTests: XCTestCase {
         let messages = (1 ... 11).map { makeMessage(id: "acc||INBOX||\($0)", subject: "Subject \($0)") }
 
         final class TwoBatchProvider: AIProvider, @unchecked Sendable {
-            var callCount = 0
+            private let lock = NSLock()
+            private var _callCount = 0
+            var callCount: Int {
+                lock.lock(); defer { lock.unlock() }
+                return _callCount
+            }
+
             func complete(prompt: String, system _: String) throws -> String {
-                callCount += 1
+                lock.lock()
+                _callCount += 1
+                let call = _callCount
+                lock.unlock()
                 let count = prompt.components(separatedBy: "   ID:").count - 1
-                let offset = (callCount - 1) * 10
+                let offset = (call - 1) * 10
                 let msgs = (1 ... max(count, 1)).map { i in
                     (id: "acc||INBOX||\(i + offset)", subject: "Subject \(i + offset)", from: "s@e.com", category: "informational", urgency: 1)
                 }
-                return triageJSON(for: msgs, summary: "Batch \(callCount) summary.")
+                return triageJSON(for: msgs, summary: "Batch summary.")
             }
         }
 

@@ -136,6 +136,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkNotesAccess())
     checks.append(checkPython3())
     checks.append(checkMLXAudio())
+    checks.append(checkOllama())
     checks.append(checkNodeJS())
     checks.append(checkPlaywright())
     checks.append(checkPippinVersion())
@@ -451,6 +452,33 @@ private func checkMLXAudio() -> DiagnosticCheck {
         detail: "not found (required for `pippin memos transcribe`)",
         remediation: "$ pip install mlx-audio"
     )
+}
+
+private func checkOllama() -> DiagnosticCheck {
+    guard let url = URL(string: "http://localhost:11434/api/version") else {
+        return DiagnosticCheck(name: "Ollama", status: .skip, detail: "invalid URL")
+    }
+    var request = URLRequest(url: url, timeoutInterval: 3)
+    request.httpMethod = "GET"
+    do {
+        let (_, httpResponse) = try sendSynchronousRequest(request)
+        if httpResponse.statusCode == 200 {
+            return DiagnosticCheck(name: "Ollama", status: .ok, detail: "reachable at localhost:11434")
+        }
+        return DiagnosticCheck(
+            name: "Ollama",
+            status: .skip,
+            detail: "not reachable (HTTP \(httpResponse.statusCode)) — optional, required for `mail index`, `mail triage`, `mail extract`",
+            remediation: "$ brew install ollama && ollama serve"
+        )
+    } catch {
+        return DiagnosticCheck(
+            name: "Ollama",
+            status: .skip,
+            detail: "not reachable — optional, required for `mail index`, `mail triage`, `mail extract`",
+            remediation: "$ brew install ollama && ollama serve"
+        )
+    }
 }
 
 private func checkNodeJS() -> DiagnosticCheck {
