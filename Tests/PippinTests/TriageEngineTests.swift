@@ -226,4 +226,104 @@ final class TriageEngineTests: XCTestCase {
         let summary = try TriageEngine.summarizeMessage(message: message, provider: provider)
         XCTAssertEqual(summary, "Two sentence summary. It covers the main points.")
     }
+
+    // 10. triage with zero messages returns empty result without calling AI
+    func testTriageEmptyMessages() throws {
+        struct FailingProvider: AIProvider {
+            func complete(prompt _: String, system _: String) throws -> String {
+                throw AIProviderError.networkError("should not be called")
+            }
+        }
+        let result = try TriageEngine.triage(messages: [], provider: FailingProvider())
+        XCTAssertTrue(result.messages.isEmpty)
+        XCTAssertEqual(result.summary, "")
+        XCTAssertTrue(result.actionItems.isEmpty)
+    }
+
+    // 11. exactly 10 messages produces one batch (one AI call)
+    func testTriageTenMessagesSingleBatch() throws {
+        let messages = (1...10).map { makeMessage(id: "acc||INBOX||\($0)", subject: "Subject \($0)") }
+        let msgData = messages.map { (id: $0.id, subject: $0.subject, from: $0.from, category: "informational", urgency: 2) }
+        let json = triageJSON(for: msgData, summary: "Ten messages.")
+
+        final class CountingProvider: AIProvider, @unchecked Sendable {
+            var callCount = 0
+            let response: String
+            init(response: String) { self.response = response }
+            func complete(prompt _: String, system _: String) throws -> String {
+                callCount += 1
+                return response
+            }
+        }
+
+        let provider = CountingProvider(response: json)
+        let result = try TriageEngine.triage(messages: messages, provider: provider)
+        XCTAssertEqual(provider.callCount, 1)
+        XCTAssertEqual(result.messages.count, 10)
+    }
+
+    // 12. 11 messages produces two batches (two AI calls)
+    func testTriageElevenMessagesTwoBatches() throws {
+        let messages = (1...11).map { makeMessage(id: "acc||INBOX||\($0)", subject: "Subject \($0)") }
+
+        final class TwoBatchProvider: AIProvider, @unchecked Sendable {
+            var callCount = 0
+            func complete(prompt: String, system _: String) throws -> String {
+                callCount += 1
+                let count = prompt.components(separatedBy: "   ID:").count - 1
+                let offset = (callCount - 1) * 10
+                let msgs = (1...max(count, 1)).map { i in
+                    (id: "acc||INBOX||\(i + offset)", subject: "Subject \(i + offset)", from: "s@e.com", category: "informational", urgency: 1)
+                }
+                return triageJSON(for: msgs, summary: "Batch \(self.callCount) summary.")
+            }
+        }
+
+        let provider = TwoBatchProvider()
+        let result = try TriageEngine.triage(messages: messages, provider: provider)
+        XCTAssertEqual(provider.callCount, 2)
+        XCTAssertEqual(result.messages.count, 11)
+    }
+
+    // 13. summarizeMessage with nil body passes "(no body)" to provider
+    func testSummarizeMessageNilBody() throws {
+        final class CapturingProvider: AIProvider, @unchecked Sendable {
+            var capturedPrompt: String = ""
+            func complete(prompt: String, system _: String) throws -> String {
+                capturedPrompt = prompt
+                return "Summary of empty message."
+            }
+        }
+        let message = MailMessage(
+            id: "acc||INBOX||1",
+            account: "acc",
+            mailbox: "INBOX",
+            subject: "Test",
+            from: "test@example.com",
+            to: [],
+            date: "2026-01-01",
+            read: false,
+            body: nil
+        )
+        let provider = CapturingProvider()
+        let summary = try TriageEngine.summarizeMessage(message: message, provider: provider)
+        XCTAssertEqual(provider.capturedPrompt, "(no body)")
+        XCTAssertEqual(summary, "Summary of empty message.")
+    }
+
+    // 14. fence stripping with trailing text after closing fence
+    func testTriageMarkdownFenceWithTrailingText() throws {
+        let messages = [makeMessage(id: "acc||INBOX||1", subject: "Hello")]
+        let innerJSON = triageJSON(
+            for: [(id: "acc||INBOX||1", subject: "Hello", from: "sender@example.com", category: "informational", urgency: 2)],
+            summary: "Just one."
+        )
+        // trailing text after the closing fence — old dropLast() would drop this line instead of ```
+        let fenced = "```json\n\(innerJSON)\n```\nsome trailing note"
+        let provider = FakeTriageProvider(response: fenced)
+
+        let result = try TriageEngine.triage(messages: messages, provider: provider)
+        XCTAssertEqual(result.messages.count, 1)
+        XCTAssertEqual(result.messages[0].subject, "Hello")
+    }
 }

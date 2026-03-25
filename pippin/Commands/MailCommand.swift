@@ -210,11 +210,16 @@ public struct MailCommand: AsyncParsableCommand {
                 let triaged = try TriageEngine.triageBatchForSummaries(messages: messages, provider: aiProvider)
                 let triageMap = Dictionary(triaged.map { ($0.compoundId, $0.oneLiner) }, uniquingKeysWith: { first, _ in first })
 
+                if triageMap.count < messages.count {
+                    let missing = messages.count - triageMap.count
+                    fputs("Warning: AI summary unavailable for \(missing) message(s). Use --format json for details.\n", stderr)
+                }
+
                 struct MessageWithSummary: Codable {
                     let message: MailMessage
                     let summary: String
                 }
-                let withSummaries = messages.map { MessageWithSummary(message: $0, summary: triageMap[$0.id] ?? "") }
+                let withSummaries = messages.map { MessageWithSummary(message: $0, summary: triageMap[$0.id] ?? "(summary unavailable)") }
 
                 if output.isJSON {
                     try printJSON(withSummaries)
@@ -228,7 +233,7 @@ public struct MailCommand: AsyncParsableCommand {
                             TextFormatter.truncate(msg.from, to: 18),
                             TextFormatter.truncate(msg.subject, to: 24),
                             msg.read ? "Y" : "N",
-                            TextFormatter.truncate(triageMap[msg.id] ?? "", to: 40),
+                            TextFormatter.truncate(triageMap[msg.id] ?? "(summary unavailable)", to: 40),
                         ]
                     }
                     print(TextFormatter.table(
