@@ -28,6 +28,22 @@ private func insertRecord(store: EmbeddingStore, compoundId: String, embedding: 
     try store.upsert(record)
 }
 
+/// Returns a fake `messageLoader` closure that builds stub `MailMessage` values from compound IDs.
+private func fakeLoader() -> (String) throws -> MailMessage {
+    return { compoundId in
+        MailMessage(
+            id: compoundId,
+            account: "test-account",
+            mailbox: "INBOX",
+            subject: "Subject for \(compoundId)",
+            from: "sender@example.com",
+            to: ["recipient@example.com"],
+            date: "2026-01-01T00:00:00Z",
+            read: false
+        )
+    }
+}
+
 final class SemanticSearchTests: XCTestCase {
 
     // MARK: - 1. Empty store throws emptyEmbeddingIndex
@@ -35,7 +51,9 @@ final class SemanticSearchTests: XCTestCase {
     func testSearchEmptyStoreThrows() throws {
         let store = try makeStore()
         let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
-        XCTAssertThrowsError(try SemanticSearch.search(query: "hello", store: store, provider: provider)) { error in
+        XCTAssertThrowsError(
+            try SemanticSearch.search(query: "hello", store: store, provider: provider, messageLoader: fakeLoader())
+        ) { error in
             guard case MailAIError.emptyEmbeddingIndex = error else {
                 XCTFail("Expected emptyEmbeddingIndex, got \(error)")
                 return
@@ -54,11 +72,13 @@ final class SemanticSearchTests: XCTestCase {
         try insertRecord(store: store, compoundId: "C", embedding: [0, 0, 1])
 
         let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [0, 1, 0])
-        let results = try SemanticSearch.search(query: "irrelevant", store: store, provider: provider)
+        let results = try SemanticSearch.search(
+            query: "irrelevant", store: store, provider: provider, messageLoader: fakeLoader()
+        )
 
         XCTAssertFalse(results.isEmpty)
-        XCTAssertEqual(results.first?.compoundId, "B")
-        XCTAssertEqual(results.first?.score ?? 0.0, 1.0, accuracy: 0.001)
+        // B has cosine similarity 1.0 — must be ranked first
+        XCTAssertEqual(results.first?.id, "B")
     }
 
     // MARK: - 3. Respects limit
@@ -69,11 +89,13 @@ final class SemanticSearchTests: XCTestCase {
             try insertRecord(store: store, compoundId: "msg\(i)", embedding: [Float(i), 1, 0])
         }
         let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
-        let results = try SemanticSearch.search(query: "q", store: store, provider: provider, limit: 2)
+        let results = try SemanticSearch.search(
+            query: "q", store: store, provider: provider, limit: 2, messageLoader: fakeLoader()
+        )
         XCTAssertEqual(results.count, 2)
     }
 
-    // MARK: - 4. Results sorted by score descending
+    // MARK: - 4. Results sorted by score descending (highest similarity first)
 
     func testSearchSortedByScoreDescending() throws {
         let store = try makeStore()
@@ -86,16 +108,15 @@ final class SemanticSearchTests: XCTestCase {
         try insertRecord(store: store, compoundId: "high", embedding: [0.9, 0.1, 0])
 
         let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
-        let results = try SemanticSearch.search(query: "q", store: store, provider: provider)
+        let results = try SemanticSearch.search(
+            query: "q", store: store, provider: provider, messageLoader: fakeLoader()
+        )
 
         XCTAssertEqual(results.count, 3)
-        XCTAssertEqual(results[0].compoundId, "high")
-        XCTAssertEqual(results[1].compoundId, "mid")
-        XCTAssertEqual(results[2].compoundId, "low")
-        // Scores must be in descending order
-        for i in 0..<(results.count - 1) {
-            XCTAssertGreaterThanOrEqual(results[i].score, results[i + 1].score)
-        }
+        // Results ordered highest → lowest similarity
+        XCTAssertEqual(results[0].id, "high")
+        XCTAssertEqual(results[1].id, "mid")
+        XCTAssertEqual(results[2].id, "low")
     }
 
     // MARK: - 5. Single record returns that record
@@ -104,12 +125,14 @@ final class SemanticSearchTests: XCTestCase {
         let store = try makeStore()
         try insertRecord(store: store, compoundId: "only-one", embedding: [1, 0, 0])
         let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
-        let results = try SemanticSearch.search(query: "q", store: store, provider: provider)
+        let results = try SemanticSearch.search(
+            query: "q", store: store, provider: provider, messageLoader: fakeLoader()
+        )
         XCTAssertEqual(results.count, 1)
-        XCTAssertEqual(results.first?.compoundId, "only-one")
+        XCTAssertEqual(results.first?.id, "only-one")
     }
 
-    // MARK: - 6. SemanticSearchResult Codable round-trip
+    // MARK: - 6. SemanticSearchResult Codable round-trip (internal intermediate type)
 
     func testSemanticSearchResultCodable() throws {
         let original = SemanticSearchResult(compoundId: "acct||INBOX||42", score: 0.987)
@@ -125,11 +148,44 @@ final class SemanticSearchTests: XCTestCase {
         let store = try makeStore()
         try insertRecord(store: store, compoundId: "msg1", embedding: [1, 0, 0])
         let provider = ThrowingEmbeddingProvider()
-        XCTAssertThrowsError(try SemanticSearch.search(query: "q", store: store, provider: provider)) { error in
+        XCTAssertThrowsError(
+            try SemanticSearch.search(query: "q", store: store, provider: provider, messageLoader: fakeLoader())
+        ) { error in
             guard case MailAIError.embeddingFailed = error else {
                 XCTFail("Expected embeddingFailed, got \(error)")
                 return
             }
         }
+    }
+
+    // MARK: - 8. messageLoader failures are skipped (try? behavior)
+
+    func testSearchSkipsFailedMessageLoads() throws {
+        let store = try makeStore()
+        try insertRecord(store: store, compoundId: "good", embedding: [1, 0, 0])
+        try insertRecord(store: store, compoundId: "bad",  embedding: [0.9, 0, 0])
+
+        let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
+        let failingLoader: (String) throws -> MailMessage = { compoundId in
+            if compoundId == "bad" {
+                throw NSError(domain: "TestError", code: 404, userInfo: nil)
+            }
+            return MailMessage(
+                id: compoundId,
+                account: "test",
+                mailbox: "INBOX",
+                subject: "Subject",
+                from: "sender@example.com",
+                to: [],
+                date: "2026-01-01T00:00:00Z",
+                read: false
+            )
+        }
+        let results = try SemanticSearch.search(
+            query: "q", store: store, provider: provider, messageLoader: failingLoader
+        )
+        // "bad" load fails silently; only "good" returned
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.id, "good")
     }
 }
