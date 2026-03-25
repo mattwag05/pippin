@@ -106,6 +106,15 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Page number (1-based, with --limit as page size).")
         public var page: Int = 1
 
+        @Flag(name: .long, help: "Use semantic (embedding-based) search. Requires running `mail index` first.")
+        public var semantic: Bool = false
+
+        @Option(name: .customLong("embedding-model"), help: "Embedding model for semantic search (default: nomic-embed-text).")
+        public var embeddingModel: String?
+
+        @Option(name: .customLong("ollama-url"), help: "Ollama base URL for semantic search.")
+        public var ollamaUrl: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -127,6 +136,40 @@ public struct MailCommand: AsyncParsableCommand {
         }
 
         public mutating func run() async throws {
+            if semantic {
+                let baseURL = ollamaUrl ?? "http://localhost:11434"
+                let model = embeddingModel ?? "nomic-embed-text"
+                let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: model)
+                let store = try EmbeddingStore()
+
+                let searchResults = try SemanticSearch.search(
+                    query: query,
+                    store: store,
+                    provider: embedProvider,
+                    limit: limit
+                )
+
+                if output.isJSON {
+                    try printJSON(searchResults)
+                } else if output.isAgent {
+                    try printAgentJSON(searchResults)
+                } else {
+                    if searchResults.isEmpty {
+                        print("No results found.")
+                    } else {
+                        let rows = searchResults.map { r in
+                            [String(format: "%.3f", r.score), r.compoundId]
+                        }
+                        print(TextFormatter.table(
+                            headers: ["SCORE", "MESSAGE ID"],
+                            rows: rows,
+                            columnWidths: [7, 70]
+                        ))
+                    }
+                }
+                return
+            }
+
             let messages = try MailBridge.searchMessages(
                 query: query,
                 account: account,

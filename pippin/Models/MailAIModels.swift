@@ -161,3 +161,14 @@ public enum TriageCategory: String, Codable, Sendable, CaseIterable {
     case promotional
     case automated
 }
+
+// MARK: - Semantic Search Models
+
+public struct SemanticSearchResult: Codable, Sendable {
+    public let compoundId: String
+    public let score: Float
+    public init(compoundId: String, score: Float) {
+        self.compoundId = compoundId
+        self.score = score
+    }
+}

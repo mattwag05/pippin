@@ -118,4 +118,21 @@ final class MailAICommandTests: XCTestCase {
         let cmd = try MailCommand.List.parse([])
         XCTAssertFalse(cmd.summarize, "--summarize on list should default to false")
     }
+
+    // MARK: - Phase 5: Semantic Search
+
+    func testSearchSemanticFlagDefault() throws {
+        let cmd = try MailCommand.Search.parse(["somequery"])
+        XCTAssertFalse(cmd.semantic, "--semantic should default to false")
+    }
+
+    func testSearchSemanticFlagParsed() throws {
+        let cmd = try MailCommand.Search.parse(["somequery", "--semantic"])
+        XCTAssertTrue(cmd.semantic, "--semantic flag should parse to true")
+    }
+
+    func testSearchEmbeddingModelOption() throws {
+        let cmd = try MailCommand.Search.parse(["somequery", "--semantic", "--embedding-model", "nomic-embed-text"])
+        XCTAssertEqual(cmd.embeddingModel, "nomic-embed-text")
+    }
 }
