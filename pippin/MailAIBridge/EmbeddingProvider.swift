@@ -28,6 +28,7 @@ public struct OllamaEmbeddingProvider: EmbeddingProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+        // Uses sendSynchronousRequest() from AIProvider/AIProvider.swift (same PippinLib module)
         let (data, httpResponse) = try sendSynchronousRequest(request)
 
         guard httpResponse.statusCode == 200 else {
