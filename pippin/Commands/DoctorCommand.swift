@@ -460,25 +460,15 @@ private func checkOllama() -> DiagnosticCheck {
     }
     var request = URLRequest(url: url, timeoutInterval: 3)
     request.httpMethod = "GET"
-    do {
-        let (_, httpResponse) = try sendSynchronousRequest(request)
-        if httpResponse.statusCode == 200 {
-            return DiagnosticCheck(name: "Ollama", status: .ok, detail: "reachable at localhost:11434")
-        }
-        return DiagnosticCheck(
-            name: "Ollama",
-            status: .skip,
-            detail: "not reachable (HTTP \(httpResponse.statusCode)) — optional, required for `mail index`, `mail triage`, `mail extract`",
-            remediation: "$ brew install ollama && ollama serve"
-        )
-    } catch {
-        return DiagnosticCheck(
-            name: "Ollama",
-            status: .skip,
-            detail: "not reachable — optional, required for `mail index`, `mail triage`, `mail extract`",
-            remediation: "$ brew install ollama && ollama serve"
-        )
+    if let (_, httpResponse) = try? sendSynchronousRequest(request), httpResponse.statusCode == 200 {
+        return DiagnosticCheck(name: "Ollama", status: .ok, detail: "reachable at localhost:11434")
     }
+    return DiagnosticCheck(
+        name: "Ollama",
+        status: .skip,
+        detail: "not reachable — optional, required for `mail index`, `mail triage`, `mail extract`",
+        remediation: "$ brew install ollama && ollama serve"
+    )
 }
 
 private func checkNodeJS() -> DiagnosticCheck {
