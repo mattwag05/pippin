@@ -142,7 +142,7 @@ public struct MailCommand: AsyncParsableCommand {
                 let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: model)
                 let store = try EmbeddingStore()
 
-                let searchResults = try SemanticSearch.search(
+                let messages = try SemanticSearch.search(
                     query: query,
                     store: store,
                     provider: embedProvider,
@@ -150,22 +150,11 @@ public struct MailCommand: AsyncParsableCommand {
                 )
 
                 if output.isJSON {
-                    try printJSON(searchResults)
+                    try printJSON(messages)
                 } else if output.isAgent {
-                    try printAgentJSON(searchResults)
+                    try printAgentJSON(messages)
                 } else {
-                    if searchResults.isEmpty {
-                        print("No results found.")
-                    } else {
-                        let rows = searchResults.map { r in
-                            [String(format: "%.3f", r.score), r.compoundId]
-                        }
-                        print(TextFormatter.table(
-                            headers: ["SCORE", "MESSAGE ID"],
-                            rows: rows,
-                            columnWidths: [7, 70]
-                        ))
-                    }
+                    printMessageTable(messages)
                 }
                 return
             }
