@@ -6,7 +6,7 @@ public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, Index.self, Sanitize.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, Index.self, Sanitize.self, Extract.self]
     )
 
     public init() {}
@@ -846,6 +846,80 @@ public struct MailCommand: AsyncParsableCommand {
                     for threat in scanResult.threats {
                         print("  [\(threat.category.rawValue)] confidence=\(String(format: "%.2f", threat.confidence)): \(threat.matchedText)")
                     }
+                }
+            }
+        }
+    }
+    // MARK: - Extract
+
+    public struct Extract: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "extract",
+            abstract: "Extract structured data (dates, amounts, contacts, action items) from a message."
+        )
+
+        @Argument(help: "Message ID (from `pippin mail list`).")
+        public var messageId: String
+
+        @Option(name: .long, help: "AI provider: ollama or claude (default: ollama).")
+        public var provider: String?
+
+        @Option(name: .long, help: "Model name (provider-specific default).")
+        public var model: String?
+
+        @Option(name: .customLong("api-key"), help: "API key for Claude provider.")
+        public var apiKey: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let message = try MailBridge.readMessage(compoundId: messageId)
+            let aiProvider = try AIProviderFactory.make(
+                providerFlag: provider,
+                modelFlag: model,
+                apiKeyFlag: apiKey
+            )
+            let result = try DataExtractor.extract(
+                messageBody: message.body ?? "",
+                subject: message.subject,
+                provider: aiProvider
+            )
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                if !result.dates.isEmpty {
+                    print("Dates:")
+                    result.dates.forEach { print("  \($0.text)" + ($0.isoDate.map { " [\($0)]" } ?? "")) }
+                }
+                if !result.amounts.isEmpty {
+                    print("Amounts:")
+                    result.amounts.forEach { print("  \($0.text)") }
+                }
+                if !result.trackingNumbers.isEmpty {
+                    print("Tracking: \(result.trackingNumbers.joined(separator: ", "))")
+                }
+                if !result.actionItems.isEmpty {
+                    print("Action items:")
+                    result.actionItems.forEach { print("  \u{2022} \($0)") }
+                }
+                if !result.contacts.isEmpty {
+                    print("Contacts:")
+                    result.contacts.forEach { c in
+                        let parts = [c.name, c.email, c.phone].compactMap { $0 }
+                        print("  \(parts.joined(separator: " | "))")
+                    }
+                }
+                if !result.urls.isEmpty {
+                    print("URLs:")
+                    result.urls.forEach { print("  \($0)") }
+                }
+                if result.dates.isEmpty && result.amounts.isEmpty && result.trackingNumbers.isEmpty &&
+                   result.actionItems.isEmpty && result.contacts.isEmpty && result.urls.isEmpty {
+                    print("No structured data found.")
                 }
             }
         }

@@ -62,4 +62,24 @@ final class MailAICommandTests: XCTestCase {
         let cmd = try MailCommand.Show.parse(["msg123"])
         XCTAssertFalse(cmd.sanitize, "sanitize should default to false")
     }
+
+    // MARK: - Phase 3: Extract
+
+    func testExtractSubcommandRegistered() throws {
+        let subcommands = MailCommand.configuration.subcommands
+        let names = subcommands.map { $0.configuration.commandName }
+        XCTAssertTrue(names.contains("extract"), "Expected 'extract' in subcommands, got: \(names)")
+    }
+
+    func testExtractParsesWithMessageId() throws {
+        XCTAssertNoThrow(try MailCommand.Extract.parse(["some-id"]))
+    }
+
+    func testExtractAcceptsProvider() throws {
+        XCTAssertNoThrow(try MailCommand.Extract.parse(["id", "--provider", "claude"]))
+    }
+
+    func testExtractAcceptsFormat() throws {
+        XCTAssertNoThrow(try MailCommand.Extract.parse(["id", "--format", "json"]))
+    }
 }
