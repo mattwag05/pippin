@@ -1,5 +1,5 @@
-import XCTest
 @testable import PippinLib
+import XCTest
 
 /// Integration tests that run the actual `pippin` binary via Process.
 ///

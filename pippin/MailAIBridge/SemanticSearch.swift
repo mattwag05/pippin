@@ -1,7 +1,6 @@
 import Foundation
 
 public enum SemanticSearch {
-
     /// Search for messages semantically similar to `query`.
     /// Throws `MailAIError.emptyEmbeddingIndex` if the index is empty (run `pippin mail index` first).
     ///

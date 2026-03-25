@@ -82,27 +82,27 @@ final class EmbeddingStoreTests: XCTestCase {
         XCTAssertEqual(all.count, 2)
     }
 
-    func testSerializationRoundTrip() throws {
+    func testSerializationRoundTrip() {
         let original: [Float] = [1.0, 2.0, 3.0]
         let data = serializeEmbedding(original)
         let roundTripped = deserializeEmbedding(data)
         XCTAssertEqual(roundTripped, original)
     }
 
-    func testCosineSimilarityIdentical() throws {
+    func testCosineSimilarityIdentical() {
         let v: [Float] = [1.0, 0.0, 1.0]
         let sim = cosineSimilarity(v, v)
         XCTAssertEqual(sim, 1.0, accuracy: 1e-6)
     }
 
-    func testCosineSimilarityOrthogonal() throws {
+    func testCosineSimilarityOrthogonal() {
         let a: [Float] = [1.0, 0.0]
         let b: [Float] = [0.0, 1.0]
         let sim = cosineSimilarity(a, b)
         XCTAssertEqual(sim, 0.0, accuracy: 1e-6)
     }
 
-    func testCosineSimilarityZeroVector() throws {
+    func testCosineSimilarityZeroVector() {
         let a: [Float] = [0.0, 0.0]
         let b: [Float] = [1.0, 2.0]
         let sim = cosineSimilarity(a, b)

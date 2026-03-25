@@ -830,6 +830,7 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
     }
+
     // MARK: - Index
 
     public struct Index: AsyncParsableCommand {
@@ -1011,6 +1012,7 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
     }
+
     // MARK: - Triage
 
     public struct Triage: AsyncParsableCommand {
@@ -1142,9 +1144,9 @@ public struct MailCommand: AsyncParsableCommand {
                 }
                 if !result.contacts.isEmpty {
                     print("Contacts:")
-                    result.contacts.forEach { c in
+                    for c in result.contacts {
                         let parts = [c.name, c.email, c.phone].compactMap { $0 }
-                        guard !parts.isEmpty else { return }
+                        guard !parts.isEmpty else { continue }
                         print("  \(parts.joined(separator: " | "))")
                     }
                 }
@@ -1152,8 +1154,9 @@ public struct MailCommand: AsyncParsableCommand {
                     print("URLs:")
                     result.urls.forEach { print("  \($0)") }
                 }
-                if result.dates.isEmpty && result.amounts.isEmpty && result.trackingNumbers.isEmpty &&
-                   result.actionItems.isEmpty && result.contacts.isEmpty && result.urls.isEmpty {
+                if result.dates.isEmpty, result.amounts.isEmpty, result.trackingNumbers.isEmpty,
+                   result.actionItems.isEmpty, result.contacts.isEmpty, result.urls.isEmpty
+                {
                     print("No structured data found.")
                 }
             }

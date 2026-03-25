@@ -3,7 +3,9 @@ import XCTest
 
 private struct FakeTriageProvider: AIProvider {
     let response: String
-    func complete(prompt _: String, system _: String) throws -> String { response }
+    func complete(prompt _: String, system _: String) throws -> String {
+        response
+    }
 }
 
 private struct FailingTriageProvider: AIProvider {
@@ -29,7 +31,8 @@ private func makeMessage(id: String, subject: String, from: String = "sender@exa
 
 private func triageJSON(for messages: [(id: String, subject: String, from: String, category: String, urgency: Int)],
                         summary: String = "Batch summary.",
-                        actionItems: [String] = []) -> String {
+                        actionItems: [String] = []) -> String
+{
     let msgs = messages.map { m in
         """
         {
@@ -55,10 +58,9 @@ private func triageJSON(for messages: [(id: String, subject: String, from: Strin
 // MARK: - Tests
 
 final class TriageEngineTests: XCTestCase {
-
-    // 1. Single batch: 5 messages
+    /// 1. Single batch: 5 messages
     func testTriageSingleBatch() throws {
-        let messages = (1...5).map { makeMessage(id: "id\($0)", subject: "Subject \($0)") }
+        let messages = (1 ... 5).map { makeMessage(id: "id\($0)", subject: "Subject \($0)") }
         let msgData = messages.map { (id: $0.id, subject: $0.subject, from: $0.from, category: "informational", urgency: 2) }
         let json = triageJSON(for: msgData, summary: "Five messages.", actionItems: ["Do something"])
         let provider = FakeTriageProvider(response: json)
@@ -69,9 +71,9 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(result.actionItems, ["Do something"])
     }
 
-    // 2. Multi-batch: 25 messages (batches of 10, 10, 5)
+    /// 2. Multi-batch: 25 messages (batches of 10, 10, 5)
     func testTriageMultiBatch() throws {
-        let messages = (1...25).map { makeMessage(id: "id\($0)", subject: "Subject \($0)") }
+        let messages = (1 ... 25).map { makeMessage(id: "id\($0)", subject: "Subject \($0)") }
 
         // The fake provider must return valid JSON for each batch call
         // We'll use a stateful provider that returns different JSON per call
@@ -81,10 +83,10 @@ final class TriageEngineTests: XCTestCase {
                 callCount += 1
                 // Count messages in this prompt by counting "\n   ID:" occurrences
                 let count = prompt.components(separatedBy: "   ID:").count - 1
-                let msgs = (1...count).map { i in
+                let msgs = (1 ... count).map { i in
                     (id: "id\(i + (callCount - 1) * 10)", subject: "Subject \(i)", from: "s@e.com", category: "informational", urgency: 1)
                 }
-                let summary = "Summary batch \(self.callCount)."
+                let summary = "Summary batch \(callCount)."
                 return triageJSON(for: msgs, summary: summary)
             }
         }
@@ -97,17 +99,17 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(result.summary, "Summary batch 3.")
     }
 
-    // 3. Action items deduplicated across batches
+    /// 3. Action items deduplicated across batches
     func testTriageActionItemsDeduped() throws {
         // 12 messages -> 2 batches (10, 2)
-        let messages = (1...12).map { makeMessage(id: "id\($0)", subject: "Subj \($0)") }
+        let messages = (1 ... 12).map { makeMessage(id: "id\($0)", subject: "Subj \($0)") }
 
         final class DedupProvider: AIProvider, @unchecked Sendable {
             var callCount = 0
             func complete(prompt: String, system _: String) throws -> String {
                 callCount += 1
                 let count = prompt.components(separatedBy: "   ID:").count - 1
-                let msgs = (1...count).map { i in
+                let msgs = (1 ... count).map { i in
                     (id: "id\(i + (callCount - 1) * 10)", subject: "Subj \(i)", from: "s@e.com", category: "informational", urgency: 1)
                 }
                 // Both batches share one action item; second batch adds a unique one
@@ -126,16 +128,16 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertTrue(result.actionItems.contains("second-only action"))
     }
 
-    // 4. triageBatchForSummaries: 12 messages -> 12 TriagedMessages
+    /// 4. triageBatchForSummaries: 12 messages -> 12 TriagedMessages
     func testTriageBatchForSummaries() throws {
-        let messages = (1...12).map { makeMessage(id: "id\($0)", subject: "Subj \($0)") }
+        let messages = (1 ... 12).map { makeMessage(id: "id\($0)", subject: "Subj \($0)") }
 
         final class SummaryProvider: AIProvider, @unchecked Sendable {
             var callCount = 0
             func complete(prompt: String, system _: String) throws -> String {
                 callCount += 1
                 let count = prompt.components(separatedBy: "   ID:").count - 1
-                let msgs = (1...count).map { i in
+                let msgs = (1 ... count).map { i in
                     (id: "id\(i + (callCount - 1) * 10)", subject: "Subj \(i)", from: "s@e.com", category: "informational", urgency: 1)
                 }
                 return triageJSON(for: msgs)
@@ -148,7 +150,7 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(provider.callCount, 2)
     }
 
-    // 5. Throws malformedAIResponse on non-JSON
+    /// 5. Throws malformedAIResponse on non-JSON
     func testTriageThrowsMalformedAIResponse() throws {
         let messages = [makeMessage(id: "id1", subject: "Test")]
         let provider = FakeTriageProvider(response: "This is not JSON at all.")
@@ -163,7 +165,7 @@ final class TriageEngineTests: XCTestCase {
         }
     }
 
-    // 6. Markdown fence stripping
+    /// 6. Markdown fence stripping
     func testTriageMarkdownFenceStripping() throws {
         let messages = [makeMessage(id: "acc||INBOX||1", subject: "Hello")]
         let innerJSON = triageJSON(
@@ -178,7 +180,7 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(result.messages[0].subject, "Hello")
     }
 
-    // 7. TriagedMessage codable round-trip
+    /// 7. TriagedMessage codable round-trip
     func testTriagedMessageCodable() throws {
         let original = TriagedMessage(
             compoundId: "acc||INBOX||42",
@@ -199,7 +201,7 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(decoded.oneLiner, original.oneLiner)
     }
 
-    // 8. TriageCategory raw values
+    /// 8. TriageCategory raw values
     func testTriageCategoryRawValues() {
         XCTAssertEqual(TriageCategory.urgent.rawValue, "urgent")
         XCTAssertEqual(TriageCategory.actionRequired.rawValue, "actionRequired")
@@ -209,7 +211,7 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(TriageCategory.allCases.count, 5)
     }
 
-    // 9. summarizeMessage uses body (or fallback)
+    /// 9. summarizeMessage uses body (or fallback)
     func testSummarizeMessageUsesBody() throws {
         let message = MailMessage(
             id: "acc||INBOX||1",
@@ -227,7 +229,7 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(summary, "Two sentence summary. It covers the main points.")
     }
 
-    // 10. triage with zero messages returns empty result without calling AI
+    /// 10. triage with zero messages returns empty result without calling AI
     func testTriageEmptyMessages() throws {
         struct FailingProvider: AIProvider {
             func complete(prompt _: String, system _: String) throws -> String {
@@ -240,16 +242,19 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertTrue(result.actionItems.isEmpty)
     }
 
-    // 11. exactly 10 messages produces one batch (one AI call)
+    /// 11. exactly 10 messages produces one batch (one AI call)
     func testTriageTenMessagesSingleBatch() throws {
-        let messages = (1...10).map { makeMessage(id: "acc||INBOX||\($0)", subject: "Subject \($0)") }
+        let messages = (1 ... 10).map { makeMessage(id: "acc||INBOX||\($0)", subject: "Subject \($0)") }
         let msgData = messages.map { (id: $0.id, subject: $0.subject, from: $0.from, category: "informational", urgency: 2) }
         let json = triageJSON(for: msgData, summary: "Ten messages.")
 
         final class CountingProvider: AIProvider, @unchecked Sendable {
             var callCount = 0
             let response: String
-            init(response: String) { self.response = response }
+            init(response: String) {
+                self.response = response
+            }
+
             func complete(prompt _: String, system _: String) throws -> String {
                 callCount += 1
                 return response
@@ -262,9 +267,9 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(result.messages.count, 10)
     }
 
-    // 12. 11 messages produces two batches (two AI calls)
+    /// 12. 11 messages produces two batches (two AI calls)
     func testTriageElevenMessagesTwoBatches() throws {
-        let messages = (1...11).map { makeMessage(id: "acc||INBOX||\($0)", subject: "Subject \($0)") }
+        let messages = (1 ... 11).map { makeMessage(id: "acc||INBOX||\($0)", subject: "Subject \($0)") }
 
         final class TwoBatchProvider: AIProvider, @unchecked Sendable {
             var callCount = 0
@@ -272,10 +277,10 @@ final class TriageEngineTests: XCTestCase {
                 callCount += 1
                 let count = prompt.components(separatedBy: "   ID:").count - 1
                 let offset = (callCount - 1) * 10
-                let msgs = (1...max(count, 1)).map { i in
+                let msgs = (1 ... max(count, 1)).map { i in
                     (id: "acc||INBOX||\(i + offset)", subject: "Subject \(i + offset)", from: "s@e.com", category: "informational", urgency: 1)
                 }
-                return triageJSON(for: msgs, summary: "Batch \(self.callCount) summary.")
+                return triageJSON(for: msgs, summary: "Batch \(callCount) summary.")
             }
         }
 
@@ -285,7 +290,7 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(result.messages.count, 11)
     }
 
-    // 13. summarizeMessage with nil body passes "(no body)" to provider
+    /// 13. summarizeMessage with nil body passes "(no body)" to provider
     func testSummarizeMessageNilBody() throws {
         final class CapturingProvider: AIProvider, @unchecked Sendable {
             var capturedPrompt: String = ""
@@ -311,7 +316,7 @@ final class TriageEngineTests: XCTestCase {
         XCTAssertEqual(summary, "Summary of empty message.")
     }
 
-    // 14. fence stripping with trailing text after closing fence
+    /// 14. fence stripping with trailing text after closing fence
     func testTriageMarkdownFenceWithTrailingText() throws {
         let messages = [makeMessage(id: "acc||INBOX||1", subject: "Hello")]
         let innerJSON = triageJSON(

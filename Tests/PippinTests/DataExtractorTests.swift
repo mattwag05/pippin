@@ -3,7 +3,9 @@ import XCTest
 
 private struct FakeExtractAIProvider: AIProvider {
     let response: String
-    func complete(prompt _: String, system _: String) throws -> String { response }
+    func complete(prompt _: String, system _: String) throws -> String {
+        response
+    }
 }
 
 private struct FailingExtractAIProvider: AIProvider {
@@ -13,7 +15,6 @@ private struct FailingExtractAIProvider: AIProvider {
 }
 
 final class DataExtractorTests: XCTestCase {
-
     // MARK: - 1. Valid JSON
 
     func testExtractParsesValidJSON() throws {
@@ -177,7 +178,7 @@ final class DataExtractorTests: XCTestCase {
         do {
             _ = try DataExtractor.extract(messageBody: "body", subject: "Test", provider: provider)
             XCTFail("Expected throw")
-        } catch MailAIError.malformedAIResponse(let msg) {
+        } catch let MailAIError.malformedAIResponse(msg) {
             XCTAssertEqual(msg, rawResponse, "Raw AI response should be preserved in the error")
         } catch {
             XCTFail("Expected MailAIError.malformedAIResponse, got \(error)")
