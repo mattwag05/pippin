@@ -882,44 +882,65 @@ public struct MailCommand: AsyncParsableCommand {
             var skipped = 0
             let isoFormatter = ISO8601DateFormatter()
 
+            // Phase 1: Identify messages needing indexing (skip already-indexed — email bodies are immutable)
+            struct PendingItem {
+                let id: String
+                let subject: String
+                let embedText: String
+                let bodyHash: String
+            }
+            var toIndex: [PendingItem] = []
             for message in messages {
-                let full = try MailBridge.readMessage(compoundId: message.id)
-                let body = full.body ?? ""
-                let hash = sha256Hex(body)
-
-                let needsIndex = try store.needsReindex(compoundId: message.id, bodyHash: hash)
-                guard needsIndex else {
+                if store.exists(compoundId: message.id) {
                     skipped += 1
                     if !output.isStructured {
                         fputs("  skip \(message.id)\n", stderr)
                     }
                     continue
                 }
+                let full = try MailBridge.readMessage(compoundId: message.id)
+                let body = (full.body ?? "") + full.subject
+                let hash = sha256Hex(body)
+                let embedText = "Subject: \(message.subject)\nFrom: \(message.from)\nDate: \(message.date)"
+                toIndex.append(PendingItem(id: message.id, subject: message.subject, embedText: embedText, bodyHash: hash))
+            }
 
-                let text = "Subject: \(message.subject)\nFrom: \(message.from)\nDate: \(message.date)"
-
-                let floats = try await withCheckedThrowingContinuation { continuation in
-                    DispatchQueue.global(qos: .background).async {
-                        do {
-                            let result = try embedProvider.embed(text: text)
-                            continuation.resume(returning: result)
-                        } catch {
-                            continuation.resume(throwing: error)
+            // Phase 2: Embed concurrently
+            var embeddings: [(id: String, hash: String, floats: [Float])] = []
+            try await withThrowingTaskGroup(of: (String, String, [Float]).self) { group in
+                for item in toIndex {
+                    group.addTask {
+                        let floats = try await withCheckedThrowingContinuation { continuation in
+                            DispatchQueue.global(qos: .background).async {
+                                do {
+                                    let result = try embedProvider.embed(text: item.embedText)
+                                    continuation.resume(returning: result)
+                                } catch {
+                                    continuation.resume(throwing: error)
+                                }
+                            }
                         }
+                        return (item.id, item.bodyHash, floats)
                     }
                 }
+                for try await (id, hash, floats) in group {
+                    embeddings.append((id: id, hash: hash, floats: floats))
+                }
+            }
 
+            // Phase 3: Upsert all results
+            for embedding in embeddings {
                 let record = EmbeddingRecord(
-                    compoundId: message.id,
-                    embedding: serializeEmbedding(floats),
-                    bodyHash: hash,
+                    compoundId: embedding.id,
+                    embedding: serializeEmbedding(embedding.floats),
+                    bodyHash: embedding.hash,
                     model: embeddingModel,
                     indexedAt: isoFormatter.string(from: Date())
                 )
                 try store.upsert(record)
                 indexed += 1
                 if !output.isStructured {
-                    fputs("  index (\(indexed)/\(messages.count)) \(message.subject)\n", stderr)
+                    fputs("  index (\(indexed)/\(toIndex.count)) \(embedding.id)\n", stderr)
                 }
             }
 
