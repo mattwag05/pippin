@@ -1,11 +1,12 @@
 import ArgumentParser
+import CryptoKit
 import Foundation
 
 public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, Index.self]
     )
 
     public init() {}
@@ -621,6 +622,101 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
     }
+    // MARK: - Index
+
+    public struct Index: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "index",
+            abstract: "Build or update the semantic search index for mail messages."
+        )
+
+        @Option(name: .long, help: "Filter by account name.")
+        public var account: String?
+
+        @Option(name: .long, help: "Mailbox to index (default: INBOX).")
+        public var mailbox: String = "INBOX"
+
+        @Option(name: .long, help: "Maximum messages to index per run (default: 500).")
+        public var limit: Int = 500
+
+        @Option(name: .long, help: "Embedding provider (only 'ollama' supported).")
+        public var provider: String = "ollama"
+
+        @Option(name: .long, help: "Ollama base URL (default: http://localhost:11434).")
+        public var ollamaUrl: String?
+
+        @Option(name: .long, help: "Embedding model (default: nomic-embed-text).")
+        public var model: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            guard provider == "ollama" else {
+                throw MailAIError.unsupportedEmbeddingProvider(provider)
+            }
+
+            let baseURL = ollamaUrl ?? "http://localhost:11434"
+            let embeddingModel = model ?? "nomic-embed-text"
+            let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: embeddingModel)
+            let store = try EmbeddingStore()
+
+            let messages = try MailBridge.listMessages(
+                account: account,
+                mailbox: mailbox,
+                unread: false,
+                limit: limit,
+                offset: 0
+            )
+
+            var indexed = 0
+            var skipped = 0
+
+            for message in messages {
+                let full = try MailBridge.readMessage(compoundId: message.id)
+                let body = full.body ?? ""
+                let hash = sha256Hex(body)
+
+                let needsIndex = try store.needsReindex(compoundId: message.id, bodyHash: hash)
+                guard needsIndex else {
+                    skipped += 1
+                    if !output.isStructured {
+                        fputs("  skip \(message.id)\n", stderr)
+                    }
+                    continue
+                }
+
+                let text = "Subject: \(message.subject)\nFrom: \(message.from)\nDate: \(message.date)"
+
+                let floats = try await Task.detached(priority: .background) {
+                    try embedProvider.embed(text: text)
+                }.value
+
+                let record = EmbeddingRecord(
+                    compoundId: message.id,
+                    embedding: serializeEmbedding(floats),
+                    bodyHash: hash,
+                    model: embeddingModel,
+                    indexedAt: ISO8601DateFormatter().string(from: Date())
+                )
+                try store.upsert(record)
+                indexed += 1
+                if !output.isStructured {
+                    fputs("  index (\(indexed)/\(messages.count)) \(message.subject)\n", stderr)
+                }
+            }
+
+            let result = IndexResult(indexed: indexed, skipped: skipped, total: messages.count)
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print("Indexed \(indexed) messages, skipped \(skipped) (total \(messages.count))")
+            }
+        }
+    }
 }
 
 // MARK: - Shared Helpers
@@ -652,6 +748,12 @@ private func validateAttachmentPaths(_ paths: [String]) throws {
             throw ValidationError("Attachment file not found: \(filename)")
         }
     }
+}
+
+private func sha256Hex(_ string: String) -> String {
+    let data = Data(string.utf8)
+    let digest = SHA256.hash(data: data)
+    return digest.map { String(format: "%02x", $0) }.joined()
 }
 
 /// Print a table of messages in text format (used by List and Search).
