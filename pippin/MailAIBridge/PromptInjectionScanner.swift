@@ -109,9 +109,15 @@ public enum PromptInjectionScanner {
         }
         // Sort descending so end-of-string replacements don't shift earlier offsets
         nsRanges.sort { $0.location > $1.location }
-        // Remove duplicates at the same location
+        // Remove ranges that overlap with the last accepted range.
+        // Sorted descending, so "last accepted" has a higher location.
+        // A range overlaps if its end (location + length) extends into the last accepted range.
         let uniqueRanges = nsRanges.reduce(into: [NSRange]()) { acc, range in
-            if acc.last?.location != range.location { acc.append(range) }
+            if let last = acc.last, range.location + range.length > last.location {
+                // Overlapping or contained — skip
+                return
+            }
+            acc.append(range)
         }
         var result = body
         for nsRange in uniqueRanges {
