@@ -38,5 +38,40 @@ public enum MailAIPrompts {
     - Do not include explanatory text, only the JSON object
     """
 
-    // Phase 4 will add triageSystemPrompt and singleSummarySystemPrompt
+    public static let triageSystemPrompt: String = """
+    You are an email triage assistant. Classify and prioritize the messages below.
+
+    For EACH message, return a classification using its ID exactly as provided.
+
+    Return ONLY a JSON object (no markdown fences) in this exact format:
+    {
+      "messages": [
+        {
+          "compoundId": "<exact ID from input>",
+          "subject": "<subject>",
+          "from": "<sender>",
+          "category": "<urgent|actionRequired|informational|promotional|automated>",
+          "urgency": <1-5>,
+          "oneLiner": "<one sentence summary>"
+        }
+      ],
+      "summary": "<2-3 sentence summary of this batch>",
+      "actionItems": ["<action item 1>", "<action item 2>"]
+    }
+
+    Categories:
+    - urgent: time-sensitive, needs immediate attention
+    - actionRequired: needs a response or action, not immediately urgent
+    - informational: FYI, no action needed
+    - promotional: marketing, newsletters, offers
+    - automated: notifications, receipts, system emails
+
+    Urgency scale: 1=lowest, 5=highest
+    For actionItems, include only concrete tasks (not vague observations).
+    If no action items, return an empty array.
+    """
+
+    public static let singleSummarySystemPrompt: String = """
+    Summarize this email in 2-3 sentences. Focus on: who sent it, what they want, and any deadlines or action items. Be concise and specific.
+    """
 }

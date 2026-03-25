@@ -1,4 +1,5 @@
 @testable import PippinLib
+import ArgumentParser
 import XCTest
 
 final class MailAICommandTests: XCTestCase {
@@ -81,5 +82,40 @@ final class MailAICommandTests: XCTestCase {
 
     func testExtractAcceptsFormat() throws {
         XCTAssertNoThrow(try MailCommand.Extract.parse(["id", "--format", "json"]))
+    }
+
+    // MARK: - Phase 4: Triage
+
+    func testTriageSubcommandRegistered() throws {
+        let subcommands = MailCommand.configuration.subcommands
+        let names = subcommands.map { $0.configuration.commandName }
+        XCTAssertTrue(names.contains("triage"), "Expected 'triage' in subcommands, got: \(names)")
+    }
+
+    func testTriageParsesDefaults() throws {
+        let cmd = try MailCommand.Triage.parse([])
+        XCTAssertEqual(cmd.limit, 20)
+        XCTAssertEqual(cmd.mailbox, "INBOX")
+        XCTAssertNil(cmd.account)
+        XCTAssertNil(cmd.provider)
+    }
+
+    func testTriageCustomLimit() throws {
+        let cmd = try MailCommand.Triage.parse(["--limit", "5"])
+        XCTAssertEqual(cmd.limit, 5)
+    }
+
+    func testTriageLimitRejectsZero() throws {
+        XCTAssertThrowsError(try MailCommand.Triage.parse(["--limit", "0"]))
+    }
+
+    func testShowSummarizeFlagDefault() throws {
+        let cmd = try MailCommand.Show.parse(["msg123"])
+        XCTAssertFalse(cmd.summarize, "--summarize should default to false")
+    }
+
+    func testListSummarizeFlagDefault() throws {
+        let cmd = try MailCommand.List.parse([])
+        XCTAssertFalse(cmd.summarize, "--summarize on list should default to false")
     }
 }
