@@ -11,7 +11,7 @@ public enum MailAIError: LocalizedError, Sendable {
         case let .malformedAIResponse(raw):
             return "Malformed AI response: \(raw)"
         case .emptyEmbeddingIndex:
-            return "Embedding index is empty — run `pippin mail index` first"
+            return "Embedding index is empty. Run 'pippin mail index' first."
         case let .embeddingFailed(msg):
             return "Embedding failed: \(msg)"
         case let .unsupportedEmbeddingProvider(provider):
