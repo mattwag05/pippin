@@ -910,6 +910,7 @@ public struct MailCommand: AsyncParsableCommand {
                     print("Contacts:")
                     result.contacts.forEach { c in
                         let parts = [c.name, c.email, c.phone].compactMap { $0 }
+                        guard !parts.isEmpty else { return }
                         print("  \(parts.joined(separator: " | "))")
                     }
                 }
