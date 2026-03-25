@@ -35,4 +35,31 @@ final class MailAICommandTests: XCTestCase {
     func testIndexAcceptsAccount() throws {
         XCTAssertNoThrow(try MailCommand.Index.parse(["--account", "me@example.com"]))
     }
+
+    // MARK: - Phase 2 tests
+
+    func testSanitizeSubcommandRegistered() throws {
+        let subcommands = MailCommand.configuration.subcommands
+        let names = subcommands.map { $0.configuration.commandName }
+        XCTAssertTrue(names.contains("sanitize"), "Expected 'sanitize' in subcommands, got: \(names)")
+    }
+
+    func testSanitizeParsesWithMessageId() throws {
+        let cmd = try MailCommand.Sanitize.parse(["msg123"])
+        XCTAssertEqual(cmd.messageId, "msg123")
+    }
+
+    func testSanitizeAiAssistedFlagDefault() throws {
+        let cmd = try MailCommand.Sanitize.parse(["msg123"])
+        XCTAssertFalse(cmd.aiAssisted, "ai-assisted should default to false")
+    }
+
+    func testSanitizeAcceptsFormat() throws {
+        XCTAssertNoThrow(try MailCommand.Sanitize.parse(["msg123", "--format", "json"]))
+    }
+
+    func testShowSanitizeFlagDefault() throws {
+        let cmd = try MailCommand.Show.parse(["msg123"])
+        XCTAssertFalse(cmd.sanitize, "sanitize should default to false")
+    }
 }
