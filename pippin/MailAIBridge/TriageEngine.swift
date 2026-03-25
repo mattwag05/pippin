@@ -1,14 +1,13 @@
 import Foundation
 
 public enum TriageEngine {
-
-    // Triage messages using metadata only (no body reads)
+    /// Triage messages using metadata only (no body reads)
     public static func triage(
         messages: [MailMessage],
         provider: any AIProvider
     ) throws -> TriageResult {
         let batches = stride(from: 0, to: messages.count, by: 10).map {
-            Array(messages[$0..<min($0 + 10, messages.count)])
+            Array(messages[$0 ..< min($0 + 10, messages.count)])
         }
 
         var allTriaged: [TriagedMessage] = []
@@ -33,14 +32,14 @@ public enum TriageEngine {
         )
     }
 
-    // Get one-liners for a list of messages (for --summarize on mail list)
-    // Reuses triage batching but only surfaces oneLiner per message
+    /// Get one-liners for a list of messages (for --summarize on mail list)
+    /// Reuses triage batching but only surfaces oneLiner per message
     public static func triageBatchForSummaries(
         messages: [MailMessage],
         provider: any AIProvider
     ) throws -> [TriagedMessage] {
         let batches = stride(from: 0, to: messages.count, by: 10).map {
-            Array(messages[$0..<min($0 + 10, messages.count)])
+            Array(messages[$0 ..< min($0 + 10, messages.count)])
         }
         var all: [TriagedMessage] = []
         for batch in batches {
@@ -50,7 +49,7 @@ public enum TriageEngine {
         return all
     }
 
-    // Single message summary (for --summarize on mail show — DOES call readMessage)
+    /// Single message summary (for --summarize on mail show — DOES call readMessage)
     public static func summarizeMessage(
         message: MailMessage,
         provider: any AIProvider

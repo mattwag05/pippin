@@ -1,7 +1,6 @@
 import Foundation
 
 public enum PromptInjectionScanner {
-
     // MARK: - Pass 1: Rule-based scan (always runs, no AI)
 
     public static func scan(text: String) -> ScanResult {
@@ -69,8 +68,8 @@ public enum PromptInjectionScanner {
         for aiThreat in aiThreats {
             let isDuplicate = ruleThreats.contains { existing in
                 existing.category == aiThreat.category &&
-                (existing.matchedText.lowercased().contains(aiThreat.matchedText.lowercased()) ||
-                 aiThreat.matchedText.lowercased().contains(existing.matchedText.lowercased()))
+                    (existing.matchedText.lowercased().contains(aiThreat.matchedText.lowercased()) ||
+                        aiThreat.matchedText.lowercased().contains(existing.matchedText.lowercased()))
             }
             if !isDuplicate { merged.append(aiThreat) }
         }
@@ -122,9 +121,9 @@ public enum PromptInjectionScanner {
         let maxConfidence = threats.map { $0.confidence }.max() ?? 0
         switch maxConfidence {
         case ..<0.1: return .none
-        case 0.1..<0.4: return .low
-        case 0.4..<0.7: return .medium
-        case 0.7..<0.9: return .high
+        case 0.1 ..< 0.4: return .low
+        case 0.4 ..< 0.7: return .medium
+        case 0.7 ..< 0.9: return .high
         default: return .critical
         }
     }

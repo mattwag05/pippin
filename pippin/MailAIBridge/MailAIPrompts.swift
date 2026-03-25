@@ -88,8 +88,9 @@ public func stripAIResponseJSON(_ response: String) -> String {
     }
     if !stripped.hasPrefix("{") || !stripped.hasSuffix("}") {
         if let firstBrace = stripped.firstIndex(of: "{"),
-           let lastBrace = stripped.lastIndex(of: "}") {
-            stripped = String(stripped[firstBrace...lastBrace])
+           let lastBrace = stripped.lastIndex(of: "}")
+        {
+            stripped = String(stripped[firstBrace ... lastBrace])
         }
     }
     return stripped

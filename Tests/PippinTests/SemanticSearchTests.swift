@@ -3,7 +3,9 @@ import XCTest
 
 private struct FakeSemanticEmbeddingProvider: EmbeddingProvider {
     let fixedEmbedding: [Float]
-    func embed(text _: String) throws -> [Float] { fixedEmbedding }
+    func embed(text _: String) throws -> [Float] {
+        fixedEmbedding
+    }
 }
 
 private struct ThrowingEmbeddingProvider: EmbeddingProvider {
@@ -45,7 +47,6 @@ private func fakeLoader() -> (String) throws -> MailMessage {
 }
 
 final class SemanticSearchTests: XCTestCase {
-
     // MARK: - 1. Empty store throws emptyEmbeddingIndex
 
     func testSearchEmptyStoreThrows() throws {
@@ -85,7 +86,7 @@ final class SemanticSearchTests: XCTestCase {
 
     func testSearchRespectsLimit() throws {
         let store = try makeStore()
-        for i in 0..<5 {
+        for i in 0 ..< 5 {
             try insertRecord(store: store, compoundId: "msg\(i)", embedding: [Float(i), 1, 0])
         }
         let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
@@ -103,8 +104,8 @@ final class SemanticSearchTests: XCTestCase {
         // high similarity: [0.9, 0.1, 0] → dot ≈ 0.9
         // mid similarity:  [0.5, 0.5, 0] → dot ≈ 0.5/norm
         // low similarity:  [0.1, 0.9, 0] → dot ≈ 0.1/norm
-        try insertRecord(store: store, compoundId: "low",  embedding: [0.1, 0.9, 0])
-        try insertRecord(store: store, compoundId: "mid",  embedding: [0.5, 0.5, 0])
+        try insertRecord(store: store, compoundId: "low", embedding: [0.1, 0.9, 0])
+        try insertRecord(store: store, compoundId: "mid", embedding: [0.5, 0.5, 0])
         try insertRecord(store: store, compoundId: "high", embedding: [0.9, 0.1, 0])
 
         let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
@@ -172,7 +173,7 @@ final class SemanticSearchTests: XCTestCase {
     func testSearchSkipsFailedMessageLoads() throws {
         let store = try makeStore()
         try insertRecord(store: store, compoundId: "good", embedding: [1, 0, 0])
-        try insertRecord(store: store, compoundId: "bad",  embedding: [0.9, 0, 0])
+        try insertRecord(store: store, compoundId: "bad", embedding: [0.9, 0, 0])
 
         let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
         let failingLoader: (String) throws -> MailMessage = { compoundId in

@@ -1,9 +1,9 @@
-@testable import PippinLib
 import ArgumentParser
+@testable import PippinLib
 import XCTest
 
 final class MailAICommandTests: XCTestCase {
-    func testIndexSubcommandRegistered() throws {
+    func testIndexSubcommandRegistered() {
         let subcommands = MailCommand.configuration.subcommands
         let names = subcommands.map { $0.configuration.commandName }
         XCTAssertTrue(names.contains("index"), "Expected 'index' in subcommands, got: \(names)")
@@ -39,7 +39,7 @@ final class MailAICommandTests: XCTestCase {
 
     // MARK: - Phase 2 tests
 
-    func testSanitizeSubcommandRegistered() throws {
+    func testSanitizeSubcommandRegistered() {
         let subcommands = MailCommand.configuration.subcommands
         let names = subcommands.map { $0.configuration.commandName }
         XCTAssertTrue(names.contains("sanitize"), "Expected 'sanitize' in subcommands, got: \(names)")
@@ -66,7 +66,7 @@ final class MailAICommandTests: XCTestCase {
 
     // MARK: - Phase 3: Extract
 
-    func testExtractSubcommandRegistered() throws {
+    func testExtractSubcommandRegistered() {
         let subcommands = MailCommand.configuration.subcommands
         let names = subcommands.map { $0.configuration.commandName }
         XCTAssertTrue(names.contains("extract"), "Expected 'extract' in subcommands, got: \(names)")
@@ -86,7 +86,7 @@ final class MailAICommandTests: XCTestCase {
 
     // MARK: - Phase 4: Triage
 
-    func testTriageSubcommandRegistered() throws {
+    func testTriageSubcommandRegistered() {
         let subcommands = MailCommand.configuration.subcommands
         let names = subcommands.map { $0.configuration.commandName }
         XCTAssertTrue(names.contains("triage"), "Expected 'triage' in subcommands, got: \(names)")

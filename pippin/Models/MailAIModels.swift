@@ -164,11 +164,7 @@ public enum TriageCategory: String, Codable, Sendable, CaseIterable {
 
 // MARK: - Semantic Search Models
 
-struct SemanticSearchResult: Sendable {
+struct SemanticSearchResult {
     let compoundId: String
     let score: Float
-    init(compoundId: String, score: Float) {
-        self.compoundId = compoundId
-        self.score = score
-    }
 }
