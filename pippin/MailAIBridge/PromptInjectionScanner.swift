@@ -31,7 +31,16 @@ public enum PromptInjectionScanner {
 
         var stripped = rawResponse.trimmingCharacters(in: .whitespacesAndNewlines)
         if stripped.hasPrefix("```") {
-            stripped = stripped.components(separatedBy: "\n").dropFirst().dropLast().joined(separator: "\n")
+            let lines = stripped.components(separatedBy: "\n")
+            stripped = lines.dropFirst().dropLast().joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // Fallback: extract outermost { ... } if response doesn't start with a brace
+        if !stripped.hasPrefix("{") {
+            if let firstBrace = stripped.firstIndex(of: "{"),
+               let lastBrace = stripped.lastIndex(of: "}") {
+                stripped = String(stripped[firstBrace...lastBrace])
+            }
         }
 
         guard let data = stripped.data(using: .utf8) else {
@@ -66,15 +75,16 @@ public enum PromptInjectionScanner {
             )
         }
 
-        // Merge: deduplicate by category + matchedText exact string match
-        var merged = ruleResult.threats
+        // Merge: deduplicate by category + case-insensitive substring containment
+        let ruleThreats = ruleResult.threats
+        var merged = ruleThreats
         for aiThreat in aiThreats {
-            let isDuplicate = merged.contains { existing in
-                existing.category == aiThreat.category && existing.matchedText == aiThreat.matchedText
+            let isDuplicate = ruleThreats.contains { existing in
+                existing.category == aiThreat.category &&
+                (existing.matchedText.lowercased().contains(aiThreat.matchedText.lowercased()) ||
+                 aiThreat.matchedText.lowercased().contains(existing.matchedText.lowercased()))
             }
-            if !isDuplicate {
-                merged.append(aiThreat)
-            }
+            if !isDuplicate { merged.append(aiThreat) }
         }
 
         let sanitized = sanitize(body: text, threats: merged)
@@ -85,9 +95,28 @@ public enum PromptInjectionScanner {
     // MARK: - Sanitize body: redact matched threat patterns
 
     public static func sanitize(body: String, threats: [Threat]) -> String {
-        var result = body
+        let nsBody = body as NSString
+        var nsRanges: [NSRange] = []
         for threat in threats {
-            result = result.replacingOccurrences(of: threat.matchedText, with: "[REDACTED]")
+            var searchRange = NSRange(location: 0, length: nsBody.length)
+            while searchRange.location < nsBody.length {
+                let found = nsBody.range(of: threat.matchedText, options: .caseInsensitive, range: searchRange)
+                guard found.location != NSNotFound else { break }
+                nsRanges.append(found)
+                let nextStart = found.location + found.length
+                searchRange = NSRange(location: nextStart, length: nsBody.length - nextStart)
+            }
+        }
+        // Sort descending so end-of-string replacements don't shift earlier offsets
+        nsRanges.sort { $0.location > $1.location }
+        // Remove duplicates at the same location
+        let uniqueRanges = nsRanges.reduce(into: [NSRange]()) { acc, range in
+            if acc.last?.location != range.location { acc.append(range) }
+        }
+        var result = body
+        for nsRange in uniqueRanges {
+            guard let range = Range(nsRange, in: result) else { continue }
+            result.replaceSubrange(range, with: "[REDACTED]")
         }
         return result
     }
@@ -119,15 +148,11 @@ public enum PromptInjectionScanner {
     }
 
     private static func substringMatches(patterns: [String], in text: String) -> [String] {
-        let lowered = text.lowercased()
         var found: [String] = []
         for pattern in patterns {
-            if lowered.contains(pattern.lowercased()) {
-                // Find the actual substring in the original text for display
-                if let range = text.range(of: pattern, options: .caseInsensitive) {
-                    let matched = String(text[range].prefix(100))
-                    found.append(matched)
-                }
+            if let range = text.range(of: pattern, options: .caseInsensitive) {
+                let matched = String(text[range].prefix(100))
+                found.append(matched)
             }
         }
         return found
@@ -160,20 +185,20 @@ public enum PromptInjectionScanner {
     }
 
     private static func systemPromptOverrideThreats(in text: String) -> [Threat] {
-        let patterns = [
-            ("ignore previous instructions", "Attempt to override previous instructions"),
-            ("disregard your", "Attempt to disregard AI guidelines"),
-            ("forget everything", "Attempt to reset AI context"),
-            ("you are now", "Attempt to redefine AI identity"),
-            ("act as if", "Attempt to make AI act under false premise"),
+        let patterns: [(String, Float, String)] = [
+            ("ignore previous instructions", 1.0, "Attempt to override previous instructions"),
+            ("disregard your", 1.0, "Attempt to disregard AI guidelines"),
+            ("forget everything", 1.0, "Attempt to reset AI context"),
+            ("you are now", 0.3, "Attempt to redefine AI identity"),
+            ("act as if", 0.3, "Attempt to make AI act under false premise"),
         ]
         var threats: [Threat] = []
-        for (pattern, explanation) in patterns {
+        for (pattern, confidence, explanation) in patterns {
             let matches = substringMatches(patterns: [pattern], in: text)
             for match in matches {
                 threats.append(Threat(
                     category: .systemPromptOverride,
-                    confidence: 1.0,
+                    confidence: confidence,
                     matchedText: match,
                     explanation: explanation
                 ))
@@ -205,19 +230,19 @@ public enum PromptInjectionScanner {
     }
 
     private static func roleHijackingThreats(in text: String) -> [Threat] {
-        let patterns = [
-            ("you are a", "Attempt to redefine AI role"),
-            ("pretend to be", "Attempt to make AI impersonate another entity"),
-            ("from now on you", "Attempt to permanently change AI behavior"),
-            ("your new instructions", "Attempt to replace AI instructions"),
+        let patterns: [(String, Float, String)] = [
+            ("you are a", 0.3, "Attempt to redefine AI role"),
+            ("pretend to be", 0.6, "Attempt to make AI impersonate another entity"),
+            ("from now on you", 0.3, "Attempt to permanently change AI behavior"),
+            ("your new instructions", 1.0, "Attempt to replace AI instructions"),
         ]
         var threats: [Threat] = []
-        for (pattern, explanation) in patterns {
+        for (pattern, confidence, explanation) in patterns {
             let matches = substringMatches(patterns: [pattern], in: text)
             for match in matches {
                 threats.append(Threat(
                     category: .roleHijacking,
-                    confidence: 1.0,
+                    confidence: confidence,
                     matchedText: match,
                     explanation: explanation
                 ))

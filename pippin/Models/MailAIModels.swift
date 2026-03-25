@@ -1,5 +1,7 @@
 import Foundation
 
+// MARK: - Embedding Models
+
 public struct IndexResult: Codable, Sendable {
     public let indexed: Int
     public let skipped: Int
