@@ -121,3 +121,43 @@ public struct ExtractedContact: Codable, Sendable {
         self.phone = phone
     }
 }
+
+// MARK: - Triage Models
+
+public struct TriageResult: Codable, Sendable {
+    public let messages: [TriagedMessage]
+    public let summary: String
+    public let actionItems: [String]
+
+    public init(messages: [TriagedMessage], summary: String, actionItems: [String]) {
+        self.messages = messages
+        self.summary = summary
+        self.actionItems = actionItems
+    }
+}
+
+public struct TriagedMessage: Codable, Sendable {
+    public let compoundId: String
+    public let subject: String
+    public let from: String
+    public let category: TriageCategory
+    public let urgency: Int
+    public let oneLiner: String
+
+    public init(compoundId: String, subject: String, from: String, category: TriageCategory, urgency: Int, oneLiner: String) {
+        self.compoundId = compoundId
+        self.subject = subject
+        self.from = from
+        self.category = category
+        self.urgency = urgency
+        self.oneLiner = oneLiner
+    }
+}
+
+public enum TriageCategory: String, Codable, Sendable, CaseIterable {
+    case urgent
+    case actionRequired
+    case informational
+    case promotional
+    case automated
+}

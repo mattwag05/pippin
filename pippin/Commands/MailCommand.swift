@@ -6,7 +6,7 @@ public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, Index.self, Sanitize.self, Extract.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, Index.self, Sanitize.self, Extract.self, Triage.self]
     )
 
     public init() {}
@@ -172,6 +172,18 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Page number (1-based, with --limit as page size).")
         public var page: Int = 1
 
+        @Flag(name: .long, help: "Include AI-generated one-liner summaries per message (uses batch AI calls).")
+        public var summarize: Bool = false
+
+        @Option(name: .customLong("summarize-provider"), help: "AI provider for summaries.")
+        public var summarizeProvider: String?
+
+        @Option(name: .customLong("summarize-model"), help: "Model for summaries.")
+        public var summarizeModel: String?
+
+        @Option(name: .customLong("summarize-api-key"), help: "API key for summary provider.")
+        public var summarizeApiKey: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -190,7 +202,42 @@ public struct MailCommand: AsyncParsableCommand {
                 limit: limit,
                 offset: (page - 1) * limit
             )
-            if output.isJSON {
+
+            if summarize {
+                let aiProvider = try AIProviderFactory.make(
+                    providerFlag: summarizeProvider, modelFlag: summarizeModel, apiKeyFlag: summarizeApiKey
+                )
+                let triaged = try TriageEngine.triageBatchForSummaries(messages: messages, provider: aiProvider)
+                let triageMap = Dictionary(triaged.map { ($0.compoundId, $0.oneLiner) }, uniquingKeysWith: { first, _ in first })
+
+                struct MessageWithSummary: Codable {
+                    let message: MailMessage
+                    let summary: String
+                }
+                let withSummaries = messages.map { MessageWithSummary(message: $0, summary: triageMap[$0.id] ?? "") }
+
+                if output.isJSON {
+                    try printJSON(withSummaries)
+                } else if output.isAgent {
+                    try printAgentJSON(withSummaries)
+                } else {
+                    let rows = messages.map { msg in
+                        [
+                            TextFormatter.truncate(msg.id, to: 8),
+                            TextFormatter.compactDate(msg.date),
+                            TextFormatter.truncate(msg.from, to: 18),
+                            TextFormatter.truncate(msg.subject, to: 24),
+                            msg.read ? "Y" : "N",
+                            TextFormatter.truncate(triageMap[msg.id] ?? "", to: 40),
+                        ]
+                    }
+                    print(TextFormatter.table(
+                        headers: ["ID", "DATE", "FROM", "SUBJECT", "READ", "SUMMARY"],
+                        rows: rows,
+                        columnWidths: [10, 18, 20, 26, 4, 42]
+                    ))
+                }
+            } else if output.isJSON {
                 try printJSON(messages)
             } else if output.isAgent {
                 try printAgentJSON(messages)
@@ -229,6 +276,18 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("sanitize-api-key"), help: "API key for Claude provider (scan).")
         public var sanitizeApiKey: String?
 
+        @Flag(name: .long, help: "Include an AI-generated summary.")
+        public var summarize: Bool = false
+
+        @Option(name: .customLong("summarize-provider"), help: "AI provider for summary.")
+        public var summarizeProvider: String?
+
+        @Option(name: .customLong("summarize-model"), help: "Model for summary.")
+        public var summarizeModel: String?
+
+        @Option(name: .customLong("summarize-api-key"), help: "API key for summary provider.")
+        public var summarizeApiKey: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -256,7 +315,45 @@ public struct MailCommand: AsyncParsableCommand {
 
             let message = try MailBridge.readMessage(compoundId: compoundId)
 
-            if sanitize {
+            if summarize {
+                let summaryProvider = try AIProviderFactory.make(
+                    providerFlag: summarizeProvider, modelFlag: summarizeModel, apiKeyFlag: summarizeApiKey
+                )
+                let summary = try TriageEngine.summarizeMessage(message: message, provider: summaryProvider)
+
+                if output.isJSON || output.isAgent {
+                    struct ShowWithSummary: Codable {
+                        let message: MailMessage
+                        let summary: String
+                    }
+                    let combined = ShowWithSummary(message: message, summary: summary)
+                    if output.isJSON {
+                        try printJSON(combined)
+                    } else {
+                        try printAgentJSON(combined)
+                    }
+                } else {
+                    var fields: [(String, String)] = [
+                        ("From", message.from),
+                        ("To", message.to.joined(separator: ", ")),
+                        ("Date", TextFormatter.compactDate(message.date)),
+                        ("Subject", message.subject),
+                        ("Mailbox", "\(message.account) / \(message.mailbox)"),
+                    ]
+                    if let size = message.size {
+                        fields.append(("Size", TextFormatter.fileSize(size)))
+                    }
+                    if let atts = message.attachments, !atts.isEmpty {
+                        let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
+                            .joined(separator: "\n")
+                        fields.append(("Attachments", attStr))
+                    }
+                    fields.append(("Body", message.body ?? "(no body)"))
+                    print(TextFormatter.card(fields: fields))
+                    print("")
+                    print("Summary: \(summary)")
+                }
+            } else if sanitize {
                 let body = message.body ?? ""
                 let scanResult: ScanResult
                 if aiAssistedScan {
@@ -850,6 +947,79 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
     }
+    // MARK: - Triage
+
+    public struct Triage: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "triage",
+            abstract: "AI-powered triage: classify and prioritize messages using metadata only."
+        )
+
+        @Option(name: .long, help: "Filter by account name.")
+        public var account: String?
+
+        @Option(name: .long, help: "Mailbox to triage (default: INBOX).")
+        public var mailbox: String = "INBOX"
+
+        @Option(name: .long, help: "Maximum messages to triage (default: 20, min: 1).")
+        public var limit: Int = 20
+
+        @Option(name: .long, help: "AI provider: ollama or claude.")
+        public var provider: String?
+
+        @Option(name: .long, help: "Model name.")
+        public var model: String?
+
+        @Option(name: .customLong("api-key"), help: "API key for Claude provider.")
+        public var apiKey: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func validate() throws {
+            if limit < 1 {
+                throw ValidationError("--limit must be at least 1")
+            }
+        }
+
+        public mutating func run() async throws {
+            let messages = try MailBridge.listMessages(
+                account: account,
+                mailbox: mailbox,
+                unread: false,
+                limit: limit,
+                offset: 0
+            )
+            let aiProvider = try AIProviderFactory.make(
+                providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
+            )
+            let result = try TriageEngine.triage(messages: messages, provider: aiProvider)
+
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                let rows = result.messages.map { m in
+                    [m.category.rawValue, "\(m.urgency)", TextFormatter.truncate(m.subject, to: 35), m.oneLiner]
+                }
+                print(TextFormatter.table(
+                    headers: ["CATEGORY", "PRI", "SUBJECT", "SUMMARY"],
+                    rows: rows,
+                    columnWidths: [15, 4, 36, 40]
+                ))
+                if !result.summary.isEmpty {
+                    print("\nSummary: \(result.summary)")
+                }
+                if !result.actionItems.isEmpty {
+                    print("\nAction items:")
+                    result.actionItems.forEach { print("  \u{2022} \($0)") }
+                }
+            }
+        }
+    }
+
     // MARK: - Extract
 
     public struct Extract: AsyncParsableCommand {
