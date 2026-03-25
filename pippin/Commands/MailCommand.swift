@@ -6,7 +6,7 @@ public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, Index.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, Index.self, Sanitize.self]
     )
 
     public init() {}
@@ -214,6 +214,21 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Find first message matching this subject and show it.")
         public var subject: String?
 
+        @Flag(name: .long, help: "Scan message body for prompt injection patterns before display.")
+        public var sanitize: Bool = false
+
+        @Flag(name: .long, help: "Include AI-assisted scan (requires --sanitize).")
+        public var aiAssistedScan: Bool = false
+
+        @Option(name: .long, help: "AI provider for --ai-assisted-scan.")
+        public var sanitizeProvider: String?
+
+        @Option(name: .customLong("sanitize-model"), help: "Model for AI-assisted scan.")
+        public var sanitizeModel: String?
+
+        @Option(name: .customLong("sanitize-api-key"), help: "API key for Claude provider (scan).")
+        public var sanitizeApiKey: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -240,28 +255,81 @@ public struct MailCommand: AsyncParsableCommand {
             }
 
             let message = try MailBridge.readMessage(compoundId: compoundId)
-            if output.isJSON {
-                try printJSON(message)
-            } else if output.isAgent {
-                try printAgentJSON(message)
+
+            if sanitize {
+                let body = message.body ?? ""
+                let scanResult: ScanResult
+                if aiAssistedScan {
+                    let aiProvider = try AIProviderFactory.make(
+                        providerFlag: sanitizeProvider, modelFlag: sanitizeModel, apiKeyFlag: sanitizeApiKey
+                    )
+                    scanResult = try PromptInjectionScanner.scanWithAI(text: body, provider: aiProvider)
+                } else {
+                    scanResult = PromptInjectionScanner.scan(text: body)
+                }
+
+                if output.isJSON || output.isAgent {
+                    struct ShowWithScan: Codable {
+                        let message: MailMessage
+                        let scan: ScanResult
+                    }
+                    let combined = ShowWithScan(message: message, scan: scanResult)
+                    if output.isJSON {
+                        try printJSON(combined)
+                    } else {
+                        try printAgentJSON(combined)
+                    }
+                } else {
+                    var fields: [(String, String)] = [
+                        ("From", message.from),
+                        ("To", message.to.joined(separator: ", ")),
+                        ("Date", TextFormatter.compactDate(message.date)),
+                        ("Subject", message.subject),
+                        ("Mailbox", "\(message.account) / \(message.mailbox)"),
+                    ]
+                    if let size = message.size {
+                        fields.append(("Size", TextFormatter.fileSize(size)))
+                    }
+                    if let atts = message.attachments, !atts.isEmpty {
+                        let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
+                            .joined(separator: "\n")
+                        fields.append(("Attachments", attStr))
+                    }
+                    fields.append(("Body", scanResult.sanitizedBody.isEmpty ? "(no body)" : scanResult.sanitizedBody))
+                    print(TextFormatter.card(fields: fields))
+                    print("")
+                    print("Risk level: \(scanResult.riskLevel.rawValue.uppercased())")
+                    print("Threats found: \(scanResult.threats.count)")
+                    if !scanResult.threats.isEmpty {
+                        for threat in scanResult.threats {
+                            print("  [\(threat.category.rawValue)] confidence=\(String(format: "%.2f", threat.confidence)): \(threat.matchedText)")
+                        }
+                    }
+                }
             } else {
-                var fields: [(String, String)] = [
-                    ("From", message.from),
-                    ("To", message.to.joined(separator: ", ")),
-                    ("Date", TextFormatter.compactDate(message.date)),
-                    ("Subject", message.subject),
-                    ("Mailbox", "\(message.account) / \(message.mailbox)"),
-                ]
-                if let size = message.size {
-                    fields.append(("Size", TextFormatter.fileSize(size)))
+                if output.isJSON {
+                    try printJSON(message)
+                } else if output.isAgent {
+                    try printAgentJSON(message)
+                } else {
+                    var fields: [(String, String)] = [
+                        ("From", message.from),
+                        ("To", message.to.joined(separator: ", ")),
+                        ("Date", TextFormatter.compactDate(message.date)),
+                        ("Subject", message.subject),
+                        ("Mailbox", "\(message.account) / \(message.mailbox)"),
+                    ]
+                    if let size = message.size {
+                        fields.append(("Size", TextFormatter.fileSize(size)))
+                    }
+                    if let atts = message.attachments, !atts.isEmpty {
+                        let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
+                            .joined(separator: "\n")
+                        fields.append(("Attachments", attStr))
+                    }
+                    fields.append(("Body", message.body ?? "(no body)"))
+                    print(TextFormatter.card(fields: fields))
                 }
-                if let atts = message.attachments, !atts.isEmpty {
-                    let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
-                        .joined(separator: "\n")
-                    fields.append(("Attachments", attStr))
-                }
-                fields.append(("Body", message.body ?? "(no body)"))
-                print(TextFormatter.card(fields: fields))
             }
         }
     }
@@ -722,6 +790,63 @@ public struct MailCommand: AsyncParsableCommand {
                 try printAgentJSON(result)
             } else {
                 print("Indexed \(indexed) messages, skipped \(skipped) (total \(messages.count))")
+            }
+        }
+    }
+
+    // MARK: - Sanitize
+
+    public struct Sanitize: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "sanitize",
+            abstract: "Scan a message for prompt injection patterns."
+        )
+
+        @Argument(help: "Message ID (from `pippin mail list`).")
+        public var messageId: String
+
+        @Flag(name: .long, help: "Include AI-assisted scan in addition to rule-based patterns.")
+        public var aiAssisted: Bool = false
+
+        @Option(name: .long, help: "AI provider for --ai-assisted (ollama or claude).")
+        public var provider: String?
+
+        @Option(name: .long, help: "Model name.")
+        public var model: String?
+
+        @Option(name: .customLong("api-key"), help: "API key for Claude provider.")
+        public var apiKey: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let message = try MailBridge.readMessage(compoundId: messageId)
+            let body = message.body ?? ""
+
+            let scanResult: ScanResult
+            if aiAssisted {
+                let aiProvider = try AIProviderFactory.make(
+                    providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
+                )
+                scanResult = try PromptInjectionScanner.scanWithAI(text: body, provider: aiProvider)
+            } else {
+                scanResult = PromptInjectionScanner.scan(text: body)
+            }
+
+            if output.isJSON {
+                try printJSON(scanResult)
+            } else if output.isAgent {
+                try printAgentJSON(scanResult)
+            } else {
+                print("Risk level: \(scanResult.riskLevel.rawValue.uppercased())")
+                print("Threats found: \(scanResult.threats.count)")
+                if !scanResult.threats.isEmpty {
+                    for threat in scanResult.threats {
+                        print("  [\(threat.category.rawValue)] confidence=\(String(format: "%.2f", threat.confidence)): \(threat.matchedText)")
+                    }
+                }
             }
         }
     }
