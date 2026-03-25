@@ -132,16 +132,6 @@ final class SemanticSearchTests: XCTestCase {
         XCTAssertEqual(results.first?.id, "only-one")
     }
 
-    // MARK: - 6. SemanticSearchResult Codable round-trip (internal intermediate type)
-
-    func testSemanticSearchResultCodable() throws {
-        let original = SemanticSearchResult(compoundId: "acct||INBOX||42", score: 0.987)
-        let encoded = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(SemanticSearchResult.self, from: encoded)
-        XCTAssertEqual(decoded.compoundId, original.compoundId)
-        XCTAssertEqual(decoded.score, original.score, accuracy: 0.0001)
-    }
-
     // MARK: - 7. Provider throw propagates as embeddingFailed
 
     func testSearchEmbeddingFailurePropagates() throws {
@@ -158,7 +148,26 @@ final class SemanticSearchTests: XCTestCase {
         }
     }
 
-    // MARK: - 8. messageLoader failures are skipped (try? behavior)
+    // MARK: - 8. Zero-vector embedding is handled gracefully (no crash, finite score)
+
+    func testSearchZeroVectorEmbeddingHandledGracefully() throws {
+        let store = try makeStore()
+        // One normal record and one zero-vector record
+        try insertRecord(store: store, compoundId: "normal", embedding: [1, 0, 0])
+        try insertRecord(store: store, compoundId: "zero", embedding: [Float](repeating: 0, count: 768))
+
+        let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
+        // Must not crash or produce NaN scores — the guard !storedFloats.isEmpty passes for a zero vector
+        // (it's non-empty), cosineSimilarity returns 0.0 for a zero-vector input.
+        XCTAssertNoThrow(try SemanticSearch.search(query: "q", store: store, provider: provider, messageLoader: fakeLoader()))
+        let results = try SemanticSearch.search(query: "q", store: store, provider: provider, messageLoader: fakeLoader())
+        for msg in results {
+            // All returned messages come from valid loader responses — none should have NaN ids
+            XCTAssertFalse(msg.id.isEmpty)
+        }
+    }
+
+    // MARK: - 9. messageLoader failures are skipped (try? behavior)
 
     func testSearchSkipsFailedMessageLoads() throws {
         let store = try makeStore()

@@ -115,6 +115,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("ollama-url"), help: "Ollama base URL for semantic search.")
         public var ollamaUrl: String?
 
+        @Option(name: .long, help: "Embedding provider for semantic search (only 'ollama' supported).")
+        public var provider: String = "ollama"
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -137,6 +140,9 @@ public struct MailCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             if semantic {
+                guard provider == "ollama" else {
+                    throw MailAIError.unsupportedEmbeddingProvider(provider)
+                }
                 let baseURL = ollamaUrl ?? "http://localhost:11434"
                 let model = embeddingModel ?? "nomic-embed-text"
                 let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: model)
