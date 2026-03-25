@@ -34,6 +34,7 @@ final class EmbeddingStoreTests: XCTestCase {
         XCTAssertEqual(fetched?.bodyHash, record.bodyHash)
         XCTAssertEqual(fetched?.model, record.model)
         XCTAssertEqual(fetched?.indexedAt, record.indexedAt)
+        XCTAssertEqual(fetched?.embedding, record.embedding)
     }
 
     func testNeedsReindexNewId() throws {

@@ -672,6 +672,7 @@ public struct MailCommand: AsyncParsableCommand {
 
             var indexed = 0
             var skipped = 0
+            let isoFormatter = ISO8601DateFormatter()
 
             for message in messages {
                 let full = try MailBridge.readMessage(compoundId: message.id)
@@ -689,16 +690,23 @@ public struct MailCommand: AsyncParsableCommand {
 
                 let text = "Subject: \(message.subject)\nFrom: \(message.from)\nDate: \(message.date)"
 
-                let floats = try await Task.detached(priority: .background) {
-                    try embedProvider.embed(text: text)
-                }.value
+                let floats = try await withCheckedThrowingContinuation { continuation in
+                    DispatchQueue.global(qos: .background).async {
+                        do {
+                            let result = try embedProvider.embed(text: text)
+                            continuation.resume(returning: result)
+                        } catch {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                }
 
                 let record = EmbeddingRecord(
                     compoundId: message.id,
                     embedding: serializeEmbedding(floats),
                     bodyHash: hash,
                     model: embeddingModel,
-                    indexedAt: ISO8601DateFormatter().string(from: Date())
+                    indexedAt: isoFormatter.string(from: Date())
                 )
                 try store.upsert(record)
                 indexed += 1
