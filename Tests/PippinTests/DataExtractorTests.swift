@@ -39,6 +39,7 @@ final class DataExtractorTests: XCTestCase {
         XCTAssertEqual(result.amounts[0].text, "$50.00")
         XCTAssertEqual(result.amounts[0].value, 50.0)
         XCTAssertEqual(result.amounts[0].currency, "USD")
+        XCTAssertEqual(result.amounts[0].context, "Pay $50.00 by Friday")
 
         XCTAssertEqual(result.trackingNumbers, ["1Z999AA10123456784"])
         XCTAssertEqual(result.actionItems, ["Reply by Friday", "Book the flight"])
