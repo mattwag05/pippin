@@ -77,11 +77,15 @@ public enum TriageEngine {
 
         var stripped = response.trimmingCharacters(in: .whitespacesAndNewlines)
         if stripped.hasPrefix("```") {
-            let lines = stripped.components(separatedBy: "\n")
-            stripped = lines.dropFirst().dropLast().joined(separator: "\n")
+            var lines = stripped.components(separatedBy: "\n")
+            lines.removeFirst() // remove opening ```json or ```
+            if lines.last?.hasPrefix("```") == true {
+                lines.removeLast() // remove closing ```
+            }
+            stripped = lines.joined(separator: "\n")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        if !stripped.hasPrefix("{") {
+        if !stripped.hasPrefix("{") || !stripped.hasSuffix("}") {
             if let firstBrace = stripped.firstIndex(of: "{"),
                let lastBrace = stripped.lastIndex(of: "}") {
                 stripped = String(stripped[firstBrace...lastBrace])
