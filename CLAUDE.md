@@ -11,7 +11,7 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 
 ```bash
 make build          # swift build -c release
-make test           # swift test (914 tests, 0 failures expected)
+make test           # swift test (~1000 tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
 make install        # build + copy to ~/.local/bin/pippin + install zsh completions
 make release        # build + copy release binary to .build/release-artifacts/
