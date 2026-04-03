@@ -79,7 +79,7 @@ public enum AIProviderFactory {
         // 2. Environment variable
         if let key = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"], !key.isEmpty { return key }
         // 3. Vaultwarden via get-secret helper
-        if let key = tryGetSecret("Antropic API"), !key.isEmpty { return key }
+        if let key = tryGetSecret("Anthropic API"), !key.isEmpty { return key }
         throw AIProviderError.missingAPIKey
     }
 
