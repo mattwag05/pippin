@@ -42,6 +42,53 @@ make version        # print current version from Version.swift
 | `pippin-entry/` | Thin `@main` executable target |
 | `Tests/PippinTests/` | Unit tests |
 
+## AI Provider Configuration
+
+Config file: `~/.config/pippin/config.json`
+
+```json
+{
+  "ai": {
+    "provider": "ollama",
+    "ollama": {
+      "model": "gemma4:latest",
+      "url": "http://localhost:11434"
+    },
+    "claude": {
+      "model": "claude-sonnet-4-6"
+    }
+  }
+}
+```
+
+**Supported providers:** `ollama` (default), `claude`
+
+The `provider` field selects the active backend. Both providers can be configured simultaneously — the inactive one is ignored until `provider` is switched or `--provider` overrides it per-command.
+
+**Per-command override:** `pippin memos summarize <id> --provider ollama --model qwen3.5:latest`
+
+### Model comparison (tested 2026-04-03 on MacBook Air M4, 24 GB)
+
+| Model | Size | Response time | Tokens | Notes |
+|-------|------|--------------|--------|-------|
+| `gemma4:latest` (Q4_K_M, 8B) | 9.6 GB | ~22s | 238 | Fast, concise responses. Recommended default for pippin's summarization tasks. |
+| `qwen3.5:latest` (Q4_K_M, 9.7B) | 6.6 GB | ~45s | 589 | Heavy chain-of-thought reasoning overhead — generates extensive internal deliberation even for simple prompts. Better suited for complex analytical tasks, not structured summarization. |
+| `claude-sonnet-4-6` (API) | — | ~2-3s | varies | Fastest option but requires API key and internet. Best quality. |
+
+**Recommendation:** Use **Gemma 4** as the default Ollama model for pippin. It's ~2x faster than Qwen 3.5 for equivalent output quality on summarization tasks. Qwen 3.5's thinking mode adds latency without proportional quality gains for structured extraction work. Fall back to Claude when speed or quality is critical.
+
+### Config resolution order (AIProviderFactory.swift)
+
+1. `--provider` / `--model` CLI flags (highest priority)
+2. `~/.config/pippin/config.json` `ai.provider` / `ai.ollama.model` / `ai.claude.model`
+3. Defaults: provider=`ollama`, model=provider-specific default, Ollama URL=`http://localhost:11434`
+
+### Claude API key resolution
+
+1. `--api-key` CLI flag
+2. `ANTHROPIC_API_KEY` environment variable
+3. Vaultwarden secret lookup via `get-secret "Anthropic API"`
+
 ## Key Patterns
 
 **Compound message ID:** `account||mailbox||numericId`
@@ -129,6 +176,9 @@ Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
 - `pippin calendar agenda --format agent`
 - `pippin reminders list --format agent`
 Don't change these command shapes or agent JSON output structure without updating the task.
+
+**Talia (OpenClaw agent on Pironman):**
+Talia uses pippin indirectly via the `pippin` skill in her workspace TOOLS.md. The `memos summarize` command is the primary AI-powered feature Talia may invoke. Ensure Ollama is running on the MacBook Air before Talia attempts summarization tasks.
 
 ## Issue Tracking
 
