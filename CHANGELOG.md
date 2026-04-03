@@ -11,6 +11,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.14.2] - 2026-04-03
+
+### Added
+
+- [docs] CLAUDE.md: AI Provider Configuration section with model comparison table (Gemma 4 vs Qwen 3.5 vs Claude Sonnet 4.6), config resolution order, Claude API key resolution chain, and Talia as a known consumer
+- [docs] README.md: AI Configuration section with provider setup, config.json format, and per-command override syntax
+- [docs] README.md: updated memos summarize examples to show Ollama model selection
+
+---
+
 ## [0.14.1] - 2026-03-23
 
 ### Changed
@@ -339,7 +349,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.14.2...HEAD
+[0.14.2]: https://github.com/mattwag05/pippin/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/mattwag05/pippin/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/mattwag05/pippin/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/mattwag05/pippin/compare/v0.12.0...v0.13.0
