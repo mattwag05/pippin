@@ -163,8 +163,9 @@ pippin memos export --all --output ~/Desktop/memos
 pippin memos transcribe <uuid> --output ~/Desktop/memos
 pippin memos export <uuid> --output ~/Desktop --transcribe
 
-# Summarize with AI
+# Summarize with AI (uses Ollama by default, or Claude)
 pippin memos summarize <uuid> --output ~/Desktop/memos
+pippin memos summarize <uuid> --provider ollama --model gemma4:latest
 pippin memos summarize <uuid> --provider claude --template meeting-notes
 
 # List prompt templates
@@ -335,6 +336,34 @@ pippin doctor --format json   # Machine-readable check results
 pippin init            # Guided setup with remediation steps
 pippin --version       # Print version
 ```
+
+---
+
+## AI Configuration
+
+`memos summarize` uses a local or cloud LLM to summarize voice memo transcripts. Configure the provider in `~/.config/pippin/config.json`:
+
+```json
+{
+  "ai": {
+    "provider": "ollama",
+    "ollama": {
+      "model": "gemma4:latest",
+      "url": "http://localhost:11434"
+    },
+    "claude": {
+      "model": "claude-sonnet-4-6"
+    }
+  }
+}
+```
+
+| Provider | Setup | Notes |
+|----------|-------|-------|
+| `ollama` (default) | Install [Ollama](https://ollama.com), then `ollama pull gemma4` | Free, private, runs locally. Recommended: Gemma 4 (~22s/summary) over Qwen 3.5 (~45s) — Qwen's chain-of-thought reasoning adds latency without quality gains for summarization. |
+| `claude` | Set `ANTHROPIC_API_KEY` or use Vaultwarden | Fastest (~2-3s), highest quality, requires API key and internet. |
+
+Override per-command: `pippin memos summarize <id> --provider ollama --model qwen3.5:latest`
 
 ---
 
