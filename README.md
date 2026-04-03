@@ -1,347 +1,179 @@
-# pippin
+<p align="center">
+  <img src="docs/AppIcon.jpg" alt="pippin" width="200" />
+</p>
 
-macOS CLI toolkit for Apple app automation. Structured CLI access to sandboxed Apple apps — headless-safe for cron, launchd, and AI agent pipelines.
+<h1 align="center">pippin</h1>
 
-```
-pippin mail list
-pippin memos list
-pippin calendar events
-pippin notes search "meeting"
-pippin contacts search "Alice"
-pippin reminders list "Work"
-pippin audio speak "Hello"
-pippin browser open "https://example.com"
-```
+<p align="center">
+  <strong>Your Apple apps, one CLI away.</strong><br/>
+  Headless automation for Mail, Calendar, Reminders, Notes, Contacts, Voice Memos, and more — built for AI agents and power users.
+</p>
+
+<p align="center">
+  <a href="https://github.com/mattwag05/pippin/releases/latest"><img src="https://img.shields.io/github/v/release/mattwag05/pippin?style=flat-square&color=orange" alt="Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/mattwag05/pippin?style=flat-square" alt="License" /></a>
+  <img src="https://img.shields.io/badge/platform-macOS_15%2B-blue?style=flat-square" alt="macOS 15+" />
+  <img src="https://img.shields.io/badge/arch-arm64-lightgrey?style=flat-square" alt="arm64" />
+</p>
 
 ---
 
+pippin gives AI agents and scripts structured access to sandboxed Apple apps that are normally locked behind GUI-only automation. Every command outputs clean JSON (`--format json`) or token-efficient compact JSON (`--format agent`) — ready to pipe into `jq`, feed to an LLM, or wire into a cron job.
+
+```
+pippin mail list --unread --format agent
+pippin calendar today
+pippin reminders list "Work"
+pippin notes search "meeting"
+pippin memos summarize <id> --provider ollama
+pippin contacts search "Alice"
+pippin browser open "https://example.com"
+pippin audio speak "Hello"
+```
+
 ## Install
 
-### Homebrew (recommended)
+**Homebrew** (recommended):
 
 ```bash
 brew install mattwag05/tap/pippin
 ```
 
-### Pre-built binary (arm64, macOS 15+)
-
-Download from the [Releases](https://github.com/mattwag05/pippin/releases) page:
+**Pre-built binary** (arm64, macOS 15+):
 
 ```bash
-curl -L https://github.com/mattwag05/pippin/releases/download/v0.14.1/pippin-0.14.1-arm64-macos.tar.gz -o pippin.tar.gz
-tar xzf pippin.tar.gz && mv pippin-0.14.1-arm64-macos ~/.local/bin/pippin
-chmod +x ~/.local/bin/pippin
+curl -LO https://github.com/mattwag05/pippin/releases/latest/download/pippin-$(pippin --version 2>/dev/null | awk '{print $2}')-arm64-macos.tar.gz
+# or grab a specific version:
+curl -LO https://github.com/mattwag05/pippin/releases/download/v0.14.2/pippin-0.14.2-arm64-macos.tar.gz
+tar xzf pippin-*.tar.gz && mv pippin-*-arm64-macos ~/.local/bin/pippin
 ```
 
-### Build from source
-
-Requires Xcode 16+ / Swift 6.2+:
+**Build from source** (Xcode 16+ / Swift 6.2+):
 
 ```bash
-git clone https://github.com/mattwag05/pippin.git
-cd pippin
+git clone https://github.com/mattwag05/pippin.git && cd pippin
 make install
 ```
 
----
+## Setup
 
-## First-run setup
-
-pippin accesses sandboxed Apple apps — macOS requires explicit permission grants.
-
-### 1. Run the setup guide
+pippin accesses sandboxed Apple apps — macOS needs explicit permission grants.
 
 ```bash
-pippin init
+pippin init     # Guided setup — walks through each permission
+pippin doctor   # Verify everything works
 ```
 
-This walks through each permission and tells you exactly what to grant.
-
-### 2. Manual permission grants
-
-Open **System Settings → Privacy & Security**:
+You'll need to grant permissions in **System Settings > Privacy & Security**:
 
 | Permission | For |
 |---|---|
-| **Full Disk Access** → Terminal.app | Voice Memos (`pippin memos`) |
-| **Automation → Mail** → Terminal.app | Mail (`pippin mail`) |
-| **Automation → Mail** → pippin binary | Mail under cron/launchd |
-| **Calendars** → Terminal.app / pippin | Calendar (`pippin calendar`) |
-| **Reminders** → Terminal.app / pippin | Reminders (`pippin reminders`) |
-| **Contacts** → Terminal.app / pippin | Contacts (`pippin contacts`) |
-| **Automation → Notes** → Terminal.app | Notes (`pippin notes`) |
+| Full Disk Access > Terminal.app | Voice Memos |
+| Automation > Mail > Terminal.app | Mail |
+| Calendars > Terminal.app / pippin | Calendar |
+| Reminders > Terminal.app / pippin | Reminders |
+| Contacts > Terminal.app / pippin | Contacts |
+| Automation > Notes > Terminal.app | Notes |
 
-After granting, run each subcommand once interactively to trigger the TCC prompt.
+> **Tip:** Permission is per binary path. After a new build or install, run each subcommand once interactively to trigger the TCC prompt.
 
-> **Note:** Permission is per binary path. After each new build or install, re-run commands interactively before scheduling with launchd/cron.
+## Commands
 
-### 3. Check permissions
-
-```bash
-pippin doctor          # Check all permissions and dependencies
-pippin doctor --format json   # Machine-readable check results
-```
-
----
-
-## Usage
-
-### Output formats
-
-Every subcommand supports three output modes:
-
-| Flag | Description |
-|---|---|
-| `--format text` | Human-readable text tables and cards (default) |
-| `--format json` | Pretty-printed JSON for scripting |
-| `--format agent` | Compact JSON for AI agent consumption (minimal whitespace) |
+### Mail
 
 ```bash
-pippin mail list --format json | jq '.[0].subject'
-pippin calendar events --format agent
-```
-
----
-
-### `pippin mail`
-
-```bash
-# List accounts
-pippin mail accounts
-
-# List inbox (text table, limit 20)
-pippin mail list
 pippin mail list --unread --limit 5
-pippin mail list --mailbox Archive --account "Work"
-
-# Search (subject, sender, body)
-pippin mail search "quarterly report"
-pippin mail search "invoice" --account "Work" --after 2026-01-01 --limit 20
-
-# Show a message
+pippin mail search "quarterly report" --after 2026-01-01
 pippin mail show "acct||INBOX||12345"
-pippin mail show --subject "quarterly report"
-
-# Reply / forward
 pippin mail reply "acct||INBOX||12345" --body "Thanks!"
 pippin mail forward "acct||INBOX||12345" --to other@example.com
-
-# Attachments
-pippin mail attachments "acct||INBOX||12345"
+pippin mail send --to user@example.com --subject "Hello" --body "Hi there" --dry-run
 pippin mail attachments "acct||INBOX||12345" --save-dir ~/Downloads
-
-# Mark read/unread
 pippin mail mark "acct||INBOX||12345" --read
-pippin mail mark "acct||INBOX||12345" --unread --dry-run
-
-# Move to another mailbox
 pippin mail move "acct||INBOX||12345" --to Archive
-pippin mail move "acct||INBOX||12345" --to Trash --dry-run
-
-# Send
-pippin mail send --to user@example.com --subject "Hello" --body "Hi there"
-pippin mail send --to user@example.com --subject "Report" --body "See attached" --attach /tmp/report.pdf --dry-run
 ```
 
----
-
-### `pippin memos`
+### Voice Memos
 
 ```bash
-# List recordings
-pippin memos list
-pippin memos list --since 2026-01-01 --limit 10
-
-# Show details
-pippin memos info <uuid>
-
-# Export audio file(s)
-pippin memos export <uuid> --output ~/Desktop/memos
-pippin memos export --all --output ~/Desktop/memos
-
-# Transcribe (uses mlx-audio)
-pippin memos transcribe <uuid> --output ~/Desktop/memos
-pippin memos export <uuid> --output ~/Desktop --transcribe
-
-# Summarize with AI (uses Ollama by default, or Claude)
-pippin memos summarize <uuid> --output ~/Desktop/memos
+pippin memos list --since 2026-01-01
+pippin memos export <uuid> --output ~/Desktop/memos --transcribe
+pippin memos summarize <uuid> --template meeting-notes
 pippin memos summarize <uuid> --provider ollama --model gemma4:latest
-pippin memos summarize <uuid> --provider claude --template meeting-notes
-
-# List prompt templates
-pippin memos templates
+pippin memos templates list
 ```
 
----
-
-### `pippin calendar`
+### Calendar
 
 ```bash
-# List calendars
-pippin calendar list
-pippin calendar list --type calDAV
-
-# List events
-pippin calendar events
-pippin calendar events --from 2026-03-01 --to 2026-03-31 --calendar "Work"
-pippin calendar events --range week
 pippin calendar today
-pippin calendar remaining
-pippin calendar upcoming
-
-# Show a specific event
-pippin calendar show <id>
-
-# Create / edit / delete
-pippin calendar create --title "Team standup" --start "2026-03-20 09:00"
-pippin calendar edit <id> --title "Team standup (new time)" --start "2026-03-20 10:00"
-pippin calendar delete <id> --force
-
-# Natural-language event creation
-pippin calendar smart-create "Coffee with Alice next Tuesday at 2pm"
-pippin calendar smart-create "Coffee with Alice next Tuesday at 2pm" --dry-run
-
-# AI daily/weekly briefing
-pippin calendar agenda
+pippin calendar events --from 2026-04-01 --to 2026-04-30 --calendar "Work"
 pippin calendar agenda --days 3
+pippin calendar smart-create "Coffee with Alice next Tuesday at 2pm" --dry-run
+pippin calendar create --title "Team standup" --start "2026-04-07 09:00"
 ```
 
----
-
-### `pippin reminders`
+### Reminders
 
 ```bash
-# List reminder lists
 pippin reminders lists
-
-# List reminders in a list
-pippin reminders list "Work"
-pippin reminders list "Work" --due-before 2026-03-20
-pippin reminders list "Work" --priority high
-
-# Show a reminder
-pippin reminders show <id>
-
-# Create / edit / complete / delete
-pippin reminders create "Buy milk" --list "Personal"
-pippin reminders create "Submit report" --list "Work" --due "2026-03-20" --priority high
-pippin reminders edit <id> --title "Submit Q1 report" --due "2026-03-21"
+pippin reminders list "Work" --due-before 2026-04-15 --priority high
+pippin reminders create "Submit report" --list "Work" --due "2026-04-10" --priority high
 pippin reminders complete <id>
-pippin reminders delete <id>
-
-# Search across all lists
 pippin reminders search "report"
 ```
 
----
-
-### `pippin notes`
+### Notes
 
 ```bash
-# List notes
-pippin notes list
 pippin notes list --folder "Work"
-
-# Show a note
-pippin notes show <id>
-
-# Search
 pippin notes search "project kickoff"
-pippin notes search "meeting" --folder "Work"
-
-# List folders
-pippin notes folders
-
-# Create / edit / delete
-pippin notes create "My note" --body "Note content here"
-pippin notes create "My note" --body "..." --folder "Work"
-pippin notes edit <id> --body "Updated content"
+pippin notes create "My note" --body "Content here" --folder "Work"
 pippin notes edit <id> --body "Extra line" --append
-pippin notes delete <id> --force
 ```
 
----
-
-### `pippin contacts`
+### Contacts
 
 ```bash
-# List contacts
-pippin contacts list
-pippin contacts list --limit 50
-
-# Search
-pippin contacts search "Alice"
-pippin contacts search "Alice" --fields "name,email"   # token-efficient output
-
-# Show a contact
+pippin contacts search "Alice" --fields "name,email"
 pippin contacts show <id>
-
-# List contact groups
 pippin contacts groups
 ```
 
----
-
-### `pippin audio`
+### Audio
 
 ```bash
-# Text-to-speech
-pippin audio speak "Hello, world"
-pippin audio speak "Hello" --voice af_bella
-
-# Transcribe an audio file (mlx-audio)
+pippin audio speak "Hello, world" --voice af_bella
 pippin audio transcribe ~/recordings/meeting.m4a
-
-# List available voices and models
 pippin audio voices
-pippin audio models
 ```
 
----
-
-### `pippin browser`
+### Browser
 
 Requires Node.js and Playwright WebKit (`npx playwright install webkit`).
 
 ```bash
-# Open a URL
 pippin browser open "https://example.com"
-
-# Get accessibility snapshot (for AI agent interaction)
-pippin browser snapshot
-
-# Take a screenshot
-pippin browser screenshot --output ~/Desktop/screenshot.png
-
-# Interact with the page
+pippin browser snapshot            # Accessibility tree — ideal for AI agents
+pippin browser screenshot --output ~/Desktop/shot.png
 pippin browser click --ref "e12"
 pippin browser fill --ref "e5" --value "search query"
-pippin browser scroll --direction down
-
-# Tab management
-pippin browser tabs
-pippin browser close --tab 1
-
-# Fetch page HTML (no JS rendering)
 pippin browser fetch "https://example.com"
 ```
 
----
+### Output Formats
 
-### Diagnostics
+Every command supports three modes:
 
-```bash
-pippin doctor          # Check all permissions and dependencies
-pippin doctor --format json   # Machine-readable check results
-pippin init            # Guided setup with remediation steps
-pippin --version       # Print version
-```
-
----
+| Flag | Description |
+|---|---|
+| `--format text` | Human-readable tables and cards (default) |
+| `--format json` | Pretty-printed JSON for scripting |
+| `--format agent` | Compact JSON, minimal tokens — built for LLM pipelines |
 
 ## AI Configuration
 
-`memos summarize` uses a local or cloud LLM to summarize voice memo transcripts. Configure the provider in `~/.config/pippin/config.json`:
+`memos summarize` and `calendar smart-create` use an LLM for natural language processing. pippin supports local inference via Ollama and cloud inference via Claude.
 
 ```json
 {
@@ -358,91 +190,71 @@ pippin --version       # Print version
 }
 ```
 
-| Provider | Setup | Notes |
-|----------|-------|-------|
-| `ollama` (default) | Install [Ollama](https://ollama.com), then `ollama pull gemma4` | Free, private, runs locally. Recommended: Gemma 4 (~22s/summary) over Qwen 3.5 (~45s) — Qwen's chain-of-thought reasoning adds latency without quality gains for summarization. |
-| `claude` | Set `ANTHROPIC_API_KEY` or use Vaultwarden | Fastest (~2-3s), highest quality, requires API key and internet. |
-
-Override per-command: `pippin memos summarize <id> --provider ollama --model qwen3.5:latest`
-
----
-
-## Sample workflows
+Save to `~/.config/pippin/config.json`, or override per-command:
 
 ```bash
-# Check everything is working
-pippin doctor
+pippin memos summarize <id> --provider ollama --model qwen3.5:latest
+pippin memos summarize <id> --provider claude
+```
 
-# Find unread emails from a specific sender
-pippin mail list --unread --format json | jq '.[] | select(.from | contains("boss@company.com"))'
+| Provider | Setup | Speed |
+|----------|-------|-------|
+| `ollama` (default) | [Install Ollama](https://ollama.com), then `ollama pull gemma4` | ~22s/summary (Gemma 4) |
+| `claude` | Set `ANTHROPIC_API_KEY` env var | ~2-3s/summary |
+
+> **Model note:** Gemma 4 is recommended over Qwen 3.5 for pippin's summarization tasks — Qwen's chain-of-thought reasoning adds ~2x latency without proportional quality gains on structured extraction.
+
+## Sample Workflows
+
+```bash
+# Morning briefing
+pippin calendar today --format agent
+pippin reminders list "Work" --format agent
+pippin mail list --unread --limit 10 --format agent
 
 # Export and transcribe today's voice memos
 pippin memos list --since $(date +%Y-%m-%d) --format json \
   | jq -r '.[].id' \
   | xargs -I{} pippin memos export {} --output ~/memos --transcribe
 
-# Get today's calendar + active reminders for a morning briefing
-pippin calendar today --format agent
-pippin reminders list "Work" --format agent
-
-# Search notes and contacts together
-pippin notes search "Alice" --format json
-pippin contacts search "Alice" --format json
+# Find unread emails from a specific sender
+pippin mail list --unread --format json \
+  | jq '.[] | select(.from | contains("boss@company.com"))'
 ```
-
----
-
-## Requirements
-
-- **macOS 15+ (Sequoia)** or later (tested on macOS 26 Tahoe)
-- **Swift 6.2+** — source builds only; pre-built binaries are arm64
-- **Node.js + Playwright** — required for `pippin browser` only
-- **mlx-audio** — required for `pippin audio` and `pippin memos transcribe`
-
----
-
-## Development
-
-```bash
-swift build          # Debug build
-swift test           # Run tests
-make build           # Release build
-make test            # Run tests (914 tests, 0 failures)
-make lint            # swiftformat lint
-make install         # Build release + install to ~/.local/bin/pippin
-make release         # Build release binary in .build/release-artifacts/
-make version         # Print current version
-```
-
----
 
 ## Architecture
 
 | Component | Description |
 |---|---|
-| `pippin-entry/` | `@main` entry point — thin executable target |
-| `pippin/Commands/` | ArgumentParser subcommand structs |
-| `pippin/MailBridge/` | JXA script builder and runner for Mail.app |
-| `pippin/MemosBridge/` | GRDB read-only SQLite access to Voice Memos database |
-| `pippin/CalendarBridge/` | EventKit wrapper for Calendar CRUD |
-| `pippin/RemindersBridge/` | EventKit wrapper for Reminders CRUD |
+| `pippin/MailBridge/` | JXA script builder for Mail.app |
+| `pippin/MemosBridge/` | GRDB SQLite access to Voice Memos |
+| `pippin/CalendarBridge/` | EventKit wrapper for Calendar |
+| `pippin/RemindersBridge/` | EventKit wrapper for Reminders |
 | `pippin/NotesBridge/` | JXA subprocess bridge for Notes.app |
 | `pippin/ContactsBridge/` | CNContactStore wrapper (read-only) |
 | `pippin/AudioBridge/` | mlx-audio Python subprocess (TTS/STT) |
-| `pippin/BrowserBridge/` | Playwright WebKit Node.js subprocess with persistent session |
+| `pippin/BrowserBridge/` | Playwright WebKit with persistent sessions |
 | `pippin/AIProvider/` | Ollama + Claude backends for summarization |
-| `pippin/Formatting/` | Text table/card formatters, JSON output, agent compact output |
-| `pippin/Models/` | Shared data models (Codable + Sendable) |
-| `Tests/PippinTests/` | Unit tests |
+| `pippin/Formatting/` | Text tables, JSON output, agent compact output |
 
-Key patterns:
-- **Mail message IDs** use a compound format: `account||mailbox||numericId`
-- **Agent output** (`--format agent`) uses compact JSON via `printAgentJSON<T>()` — no whitespace, minimal tokens
-- **JXA bridges** (Mail, Notes) shell out to `osascript -l JavaScript` with per-operation timeouts
-- **EventKit bridges** (Calendar, Reminders) use EventKit directly via `EKEventStore`
-- **Swift 6 strict concurrency** — fully enforced across the entire codebase
+Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shell out to `osascript`; EventKit bridges use the framework directly.
 
----
+## Requirements
+
+- **macOS 15+** (Sequoia) or later
+- **Swift 6.2+** for source builds; pre-built binaries are arm64
+- **Node.js + Playwright** — `pippin browser` only
+- **mlx-audio** — `pippin audio` and `pippin memos transcribe` only
+- **Ollama** — `pippin memos summarize` with local AI (optional; Claude works without it)
+
+## Development
+
+```bash
+make build      # Release build
+make test       # Run tests (1003 tests, 0 failures)
+make lint       # swiftformat lint
+make install    # Build + install to ~/.local/bin
+```
 
 ## License
 
