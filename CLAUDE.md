@@ -141,7 +141,7 @@ The `provider` field selects the active backend. Both providers can be configure
 
 **CLIIntegrationTests version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` uses `PippinVersion.version` dynamically — no manual update needed on version bumps.
 
-**Dual-remote push divergence:** `forgejo` and `github` can each be ahead independently. If push rejected: `git stash && git pull --rebase <remote> main && git stash pop && git push <remote> main` — repeat for each remote separately.
+**Dual-remote push divergence:** `origin` (Forgejo) and `github` can each be ahead independently. If push rejected: `git stash && git pull --rebase <remote> main && git stash pop && git push <remote> main` — repeat for each remote separately. Note: Forgejo remote is named `origin` in this repo, not `forgejo`.
 
 ## Version + Release
 
@@ -152,7 +152,7 @@ The `provider` field selects the active backend. Both providers can be configure
 3. Update `README.md` if any new commands or subcommands were added
 4. `swift test` — must pass (run `make test`)
 4. `git commit -m "chore: bump to vX.Y.Z"` then `git tag -a vX.Y.Z -m "vX.Y.Z"` (annotated tag required — bare `git tag` fails with "no tag message")
-5. `git push forgejo main --tags`
+5. `git push origin main --tags`
 6. `git push github main --tags` (GitHub mirror must have the tag for Homebrew)
 7. Update tap formula (`tag`, `revision`, `assert_match` version):
    `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb`
@@ -190,3 +190,51 @@ Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown
 - **Merge API returns HTTP 204** (empty body) on success — don't pipe to JSON parser
 - **Existing PRs:** Pushing to a branch with an open PR reuses it. Update title/body via `PATCH .../pulls/{n}` instead of creating a new PR
 - **Action runs API:** Use `title` field (not `name`) for workflow run descriptions
+
+
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+## Beads Issue Tracker
+
+This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+### Quick Reference
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --claim  # Claim work
+bd close <id>         # Complete work
+```
+
+### Rules
+
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Run `bd prime` for detailed command reference and session close protocol
+- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+
+## Session Completion
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   bd dolt push
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds
+<!-- END BEADS INTEGRATION -->
