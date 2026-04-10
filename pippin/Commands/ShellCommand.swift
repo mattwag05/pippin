@@ -37,7 +37,7 @@ public struct ShellCommand: AsyncParsableCommand {
 
     /// The command parser is injected at runtime by Pippin.main().
     /// This avoids PippinLib needing to know about the Pippin root command.
-    public static nonisolated(unsafe) var parser: CommandParser?
+    public nonisolated(unsafe) static var parser: CommandParser?
 
     public init() {}
 
@@ -168,11 +168,11 @@ public func shellSplit(_ input: String) -> [String] {
     var inDouble = false
 
     for char in input {
-        if char == "'" && !inDouble {
+        if char == "'", !inDouble {
             inSingle.toggle()
-        } else if char == "\"" && !inSingle {
+        } else if char == "\"", !inSingle {
             inDouble.toggle()
-        } else if char == " " && !inSingle && !inDouble {
+        } else if char == " ", !inSingle, !inDouble {
             if !current.isEmpty {
                 args.append(current)
                 current = ""

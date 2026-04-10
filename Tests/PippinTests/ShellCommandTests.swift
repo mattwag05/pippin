@@ -2,7 +2,6 @@
 import XCTest
 
 final class ShellCommandTests: XCTestCase {
-
     // MARK: - Shell Argument Splitting
 
     func testShellSplitSimple() {
