@@ -77,26 +77,26 @@ public struct MailIndex: AsyncParsableCommand {
             toIndex.append(PendingItem(id: message.id, subject: message.subject, embedText: embedText, bodyHash: hash))
         }
 
-        // Phase 2: Embed concurrently
+        // Phase 2: Embed in batches (reduces HTTP round-trips vs one-at-a-time)
+        let batchSize = 32
         var embeddings: [(id: String, hash: String, floats: [Float])] = []
-        try await withThrowingTaskGroup(of: (String, String, [Float]).self) { group in
-            for item in toIndex {
-                group.addTask {
-                    let floats = try await withCheckedThrowingContinuation { continuation in
-                        DispatchQueue.global(qos: .background).async {
-                            do {
-                                let result = try embedProvider.embed(text: item.embedText)
-                                continuation.resume(returning: result)
-                            } catch {
-                                continuation.resume(throwing: error)
-                            }
-                        }
+        let batches = stride(from: 0, to: toIndex.count, by: batchSize).map {
+            Array(toIndex[$0 ..< min($0 + batchSize, toIndex.count)])
+        }
+        for batch in batches {
+            let texts = batch.map(\.embedText)
+            let batchFloats = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[[Float]], Error>) in
+                DispatchQueue.global(qos: .background).async {
+                    do {
+                        let result = try embedProvider.embedBatch(texts: texts)
+                        continuation.resume(returning: result)
+                    } catch {
+                        continuation.resume(throwing: error)
                     }
-                    return (item.id, item.bodyHash, floats)
                 }
             }
-            for try await (id, hash, floats) in group {
-                embeddings.append((id: id, hash: hash, floats: floats))
+            for (item, floats) in zip(batch, batchFloats) {
+                embeddings.append((id: item.id, hash: item.bodyHash, floats: floats))
             }
         }
 

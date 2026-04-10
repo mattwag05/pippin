@@ -2,6 +2,14 @@ import Foundation
 
 public protocol EmbeddingProvider: Sendable {
     func embed(text: String) throws -> [Float]
+    /// Embed multiple texts in a single API call. Default implementation falls back to sequential calls.
+    func embedBatch(texts: [String]) throws -> [[Float]]
+}
+
+public extension EmbeddingProvider {
+    func embedBatch(texts: [String]) throws -> [[Float]] {
+        try texts.map { try embed(text: $0) }
+    }
 }
 
 public struct OllamaEmbeddingProvider: EmbeddingProvider {
@@ -45,5 +53,45 @@ public struct OllamaEmbeddingProvider: EmbeddingProvider {
         }
 
         return first.map { Float($0) }
+    }
+
+    /// Batch embed multiple texts in a single Ollama API call.
+    /// Ollama's /api/embed endpoint natively supports array input.
+    public func embedBatch(texts: [String]) throws -> [[Float]] {
+        guard !texts.isEmpty else { return [] }
+
+        guard let url = URL(string: "\(baseURL)/api/embed") else {
+            throw MailAIError.embeddingFailed("Invalid Ollama URL: \(baseURL)")
+        }
+
+        let body: [String: Any] = [
+            "model": model,
+            "input": texts,
+        ]
+
+        var request = URLRequest(url: url, timeoutInterval: 300)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, httpResponse) = try sendSynchronousRequest(request)
+
+        guard httpResponse.statusCode == 200 else {
+            let detail = String(data: data, encoding: .utf8) ?? "(no body)"
+            throw MailAIError.embeddingFailed("HTTP \(httpResponse.statusCode): \(detail)")
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let embeddings = json["embeddings"] as? [[Double]]
+        else {
+            let raw = String(data: data, encoding: .utf8) ?? "(undecodable)"
+            throw MailAIError.embeddingFailed("Could not parse batch embeddings from response: \(raw)")
+        }
+
+        guard embeddings.count == texts.count else {
+            throw MailAIError.embeddingFailed("Batch count mismatch: sent \(texts.count), got \(embeddings.count)")
+        }
+
+        return embeddings.map { $0.map { Float($0) } }
     }
 }

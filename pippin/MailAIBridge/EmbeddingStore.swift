@@ -1,3 +1,4 @@
+import Accelerate
 import Foundation
 import GRDB
 
@@ -131,9 +132,13 @@ public func deserializeEmbedding(_ data: Data) -> [Float] {
 }
 
 public func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
-    let dot = zip(a, b).map(*).reduce(0, +)
-    let magA = a.map { $0 * $0 }.reduce(0, +).squareRoot()
-    let magB = b.map { $0 * $0 }.reduce(0, +).squareRoot()
+    guard a.count == b.count, !a.isEmpty else { return 0 }
+    var dot: Float = 0
+    var magA: Float = 0
+    var magB: Float = 0
+    vDSP_dotpr(a, 1, b, 1, &dot, vDSP_Length(a.count))
+    vDSP_dotpr(a, 1, a, 1, &magA, vDSP_Length(a.count))
+    vDSP_dotpr(b, 1, b, 1, &magB, vDSP_Length(b.count))
     guard magA > 0, magB > 0 else { return 0 }
-    return dot / (magA * magB)
+    return dot / (sqrtf(magA) * sqrtf(magB))
 }
