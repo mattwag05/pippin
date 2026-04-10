@@ -11,6 +11,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.0] - 2026-04-10
+
+### Added
+
+- [feat] ShellCommand: interactive REPL mode — `pippin shell` or bare `pippin` with no subcommand drops into a session where commands are entered without the `pippin` prefix
+- [feat] Session-wide `--format` flag: `pippin shell --format json` injects format into all commands
+- [feat] Non-interactive pipe mode: `echo "calendar agenda" | pippin shell --format agent` for scripting
+- [feat] Quote-aware argument splitting (`shellSplit`) for command lines with quoted strings
+- [test] ShellCommandTests: 13 new tests covering argument splitting and command parsing
+
+### Changed
+
+- [ux] Bare `pippin` now defaults to REPL instead of printing help
+- [docs] README: added Interactive Shell section, REPL sample workflows, architecture table entry
+- [docs] CLAUDE.md: documented REPL shell architecture and parser injection pattern
+
+---
+
 ## [0.14.3] - 2026-04-10
 
 ### Fixed
@@ -371,7 +389,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.14.3...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/mattwag05/pippin/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/mattwag05/pippin/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/mattwag05/pippin/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/mattwag05/pippin/compare/v0.14.0...v0.14.1
