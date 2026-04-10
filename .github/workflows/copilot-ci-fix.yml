@@ -1,13 +1,13 @@
 name: Copilot CI Fix
-permissions:
-  contents: read
-  issues: write
-  copilot: write
 
 on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   open-copilot-issue:
@@ -34,7 +34,6 @@ jobs:
                 repo: context.repo.repo,
                 job_id: job.id,
               });
-              // Extract last 60 lines of log (the tail usually has the error)
               const logLines = logs.data.split('\n');
               const tail = logLines.slice(-60).join('\n');
               summary.push(`### ${job.name}\n\`\`\`\n${tail}\n\`\`\``);
