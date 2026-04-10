@@ -38,18 +38,9 @@ public enum SemanticSearch {
         .prefix(limit)
         .map { $0 }
 
-        nonisolated(unsafe) var loaded: [(index: Int, message: MailMessage)] = []
-        let group = DispatchGroup()
-        let lock = NSLock()
-        for (i, result) in ranked.enumerated() {
-            group.enter()
-            DispatchQueue.global(qos: .userInitiated).async {
-                defer { group.leave() }
-                guard let message = try? loader(result.compoundId) else { return }
-                lock.withLock { loaded.append((index: i, message: message)) }
-            }
+        // Load full messages concurrently, silently dropping any that fail to load
+        return try runConcurrently(ranked) { result in
+            try loader(result.compoundId)
         }
-        group.wait()
-        return loaded.sorted { $0.index < $1.index }.map(\.message)
     }
 }
