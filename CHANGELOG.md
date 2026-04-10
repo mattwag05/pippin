@@ -23,6 +23,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [perf] EmbeddingStore: use Accelerate/vDSP for vectorized cosine similarity (replaces manual loop)
 - [perf] EmbeddingProvider: add `embedBatch` protocol method with native Ollama batch implementation (single HTTP request per batch)
 - [perf] MailAICommand: refactor indexing from individual concurrent embeds to batched embedding (32 per batch, fewer HTTP round-trips)
+- [perf] SemanticSearch: load matched messages concurrently via DispatchGroup instead of sequential JXA calls
+- [perf] TriageEngine: check firstError before each rate-limiter wait to abort dispatch loop early on failure
 
 ### Added
 
