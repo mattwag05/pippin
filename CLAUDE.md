@@ -29,6 +29,7 @@ make version        # print current version from Version.swift
 | `pippin/CalendarBridge/` | EventKit-based Calendar automation |
 | `pippin/AIProvider/` | Ollama + Claude backends for `memos summarize` |
 | `pippin/Commands/` | ArgumentParser command implementations |
+| `pippin/Commands/ShellCommand.swift` | Interactive REPL — `pippin shell` or bare `pippin` |
 | `pippin/Commands/TemplatesCommand.swift` | `memos templates` subcommand |
 | `pippin/Commands/SummarizeCommand.swift` | `memos summarize` subcommand |
 | `pippin/Templates/` | Built-in summarization prompt templates |
@@ -90,6 +91,14 @@ The `provider` field selects the active backend. Both providers can be configure
 3. Vaultwarden secret lookup via `get-secret "Anthropic API"`
 
 ## Key Patterns
+
+**REPL shell architecture (`ShellCommand.swift`):**
+- `ShellCommand` is `AsyncParsableCommand` in PippinLib; bare `pippin` defaults to REPL in `Pippin.main()`
+- Parser injection: `ShellCommand.parser` is a `nonisolated(unsafe)` static var set by `Pippin.main()` to `Pippin.parseAsRoot(_:)` — avoids circular dependency between PippinLib and executable target
+- `--format` session flag: when set, injected into every command's args before parsing
+- Non-interactive (pipe) mode: detected via `isatty(fileno(stdin))`; no prompt, no banner
+- `ExitCode` errors are caught silently (like `CleanExit`) — commands that exit non-zero don't kill the REPL
+- `shellSplit(_:)` handles single/double quote parsing for command lines
 
 **Compound message ID:** `account||mailbox||numericId`
 - Parsed in `MailBridge` and `CompoundId` helpers

@@ -161,6 +161,24 @@ pippin browser fill --ref "e5" --value "search query"
 pippin browser fetch "https://example.com"
 ```
 
+### Interactive Shell (REPL)
+
+```bash
+pippin shell                        # Start interactive session
+pippin                              # Same — bare pippin defaults to REPL
+pippin shell --format json          # All commands in session output JSON
+echo "calendar agenda" | pippin shell --format agent  # Pipe mode for scripting
+```
+
+Inside the REPL, type commands without the `pippin` prefix:
+
+```
+pippin> mail accounts
+pippin> mail list --account Work --unread
+pippin> calendar agenda
+pippin> quit
+```
+
 ### Output Formats
 
 Every command supports three modes:
@@ -207,7 +225,11 @@ pippin memos summarize <id> --provider claude
 ## Sample Workflows
 
 ```bash
-# Morning briefing
+# Morning briefing (REPL mode — one process, multiple commands)
+echo -e "calendar today\nreminders list Work\nmail list --unread --limit 10" \
+  | pippin shell --format agent
+
+# Same thing, one-shot style
 pippin calendar today --format agent
 pippin reminders list "Work" --format agent
 pippin mail list --unread --limit 10 --format agent
@@ -235,6 +257,7 @@ pippin mail list --unread --format json \
 | `pippin/AudioBridge/` | mlx-audio Python subprocess (TTS/STT) |
 | `pippin/BrowserBridge/` | Playwright WebKit with persistent sessions |
 | `pippin/AIProvider/` | Ollama + Claude backends for summarization |
+| `pippin/Commands/ShellCommand.swift` | Interactive REPL with argument parsing and session-wide format |
 | `pippin/Formatting/` | Text tables, JSON output, agent compact output |
 
 Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shell out to `osascript`; EventKit bridges use the framework directly.
