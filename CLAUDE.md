@@ -30,6 +30,7 @@ make version        # print current version from Version.swift
 | `pippin/AIProvider/` | Ollama + Claude backends for `memos summarize` |
 | `pippin/Commands/` | ArgumentParser command implementations |
 | `pippin/Commands/ShellCommand.swift` | Interactive REPL — `pippin shell` or bare `pippin` |
+| `pippin/Commands/StatusCommand.swift` | System dashboard — `pippin status` |
 | `pippin/Commands/TemplatesCommand.swift` | `memos templates` subcommand |
 | `pippin/Commands/SummarizeCommand.swift` | `memos summarize` subcommand |
 | `pippin/Templates/` | Built-in summarization prompt templates |

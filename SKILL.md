@@ -178,6 +178,8 @@ pippin browser fetch "https://api.example.com/data"  # HTTP fetch (no browser)
 ### Utility
 
 ```bash
+pippin status                                 # system dashboard: accounts, events, reminders, permissions
+pippin status --format agent                  # compact JSON for agent consumption
 pippin doctor                                 # check permissions and dependencies
 pippin init                                   # guided first-run setup
 pippin completions --shell zsh                # generate shell completions
