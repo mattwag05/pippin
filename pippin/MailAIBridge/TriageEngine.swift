@@ -86,11 +86,7 @@ public enum TriageEngine {
         let rateLimiter = DispatchSemaphore(value: maxConcurrent)
 
         for (i, batch) in batches.enumerated() {
-            // Stop dispatching new work as soon as an error is recorded.
-            lock.lock()
-            let shouldAbort = firstError != nil
-            lock.unlock()
-            if shouldAbort { break }
+            if lock.withLock({ firstError != nil }) { break }
 
             rateLimiter.wait()
             group.enter()

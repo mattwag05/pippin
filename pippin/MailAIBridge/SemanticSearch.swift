@@ -38,7 +38,6 @@ public enum SemanticSearch {
         .prefix(limit)
         .map { $0 }
 
-        // Load messages concurrently — JXA calls are independent osascript processes.
         nonisolated(unsafe) var loaded: [(index: Int, message: MailMessage)] = []
         let group = DispatchGroup()
         let lock = NSLock()
