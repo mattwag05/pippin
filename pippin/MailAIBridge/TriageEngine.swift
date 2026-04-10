@@ -10,7 +10,9 @@ public enum TriageEngine {
         let batches = stride(from: 0, to: messages.count, by: 10).map {
             Array(messages[$0 ..< min($0 + 10, messages.count)])
         }
-        let responses = try runBatchesConcurrently(batches) { try triageBatch($0, provider: provider) }
+        let responses = try runConcurrently(batches, maxConcurrent: 4, failFast: true) {
+            try triageBatch($0, provider: provider)
+        }
 
         var allTriaged: [TriagedMessage] = []
         var lastSummary = ""
@@ -36,8 +38,10 @@ public enum TriageEngine {
         let batches = stride(from: 0, to: messages.count, by: 10).map {
             Array(messages[$0 ..< min($0 + 10, messages.count)])
         }
-        return try runBatchesConcurrently(batches) { try triageBatch($0, provider: provider) }
-            .flatMap(\.messages)
+        return try runConcurrently(batches, maxConcurrent: 4, failFast: true) {
+            try triageBatch($0, provider: provider)
+        }
+        .flatMap(\.messages)
     }
 
     /// Single message summary (for --summarize on mail show — DOES call readMessage)
@@ -69,47 +73,5 @@ public enum TriageEngine {
         } catch {
             throw MailAIError.malformedAIResponse(response)
         }
-    }
-
-    /// Dispatch `batches` concurrently, collecting results in original order.
-    /// At most `maxConcurrent` batches run in parallel (default: 4).
-    private static func runBatchesConcurrently<T>(
-        _ batches: [[MailMessage]],
-        maxConcurrent: Int = 4,
-        transform: @Sendable @escaping ([MailMessage]) throws -> T
-    ) throws -> [T] {
-        nonisolated(unsafe) var results: [(index: Int, value: T)] = []
-        nonisolated(unsafe) var firstError: Error?
-
-        let group = DispatchGroup()
-        let lock = NSLock()
-        let rateLimiter = DispatchSemaphore(value: maxConcurrent)
-
-        for (i, batch) in batches.enumerated() {
-            if lock.withLock({ firstError != nil }) { break }
-
-            rateLimiter.wait()
-            group.enter()
-            DispatchQueue.global(qos: .userInitiated).async {
-                defer {
-                    rateLimiter.signal()
-                    group.leave()
-                }
-                do {
-                    let value = try transform(batch)
-                    lock.withLock { results.append((index: i, value: value)) }
-                } catch {
-                    lock.withLock { if firstError == nil { firstError = error } }
-                }
-            }
-        }
-
-        group.wait()
-
-        if let error = firstError {
-            throw error
-        }
-
-        return results.sorted { $0.index < $1.index }.map(\.value)
     }
 }
