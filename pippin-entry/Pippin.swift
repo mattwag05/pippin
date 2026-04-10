@@ -13,12 +13,27 @@ struct Pippin: AsyncParsableCommand {
             AudioCommand.self, ContactsCommand.self, BrowserCommand.self,
             RemindersCommand.self, NotesCommand.self,
             DoctorCommand.self, InitCommand.self, CompletionsCommand.self,
+            ShellCommand.self,
         ]
     )
 
     static func main() async {
+        // Inject the parser so ShellCommand can dispatch subcommands
+        // without a circular dependency on the Pippin root command.
+        ShellCommand.parser = { args in
+            try Pippin.parseAsRoot(args)
+        }
+
         do {
             var command = try parseAsRoot(nil)
+
+            // If no subcommand was given, default to the REPL shell
+            if command is Pippin {
+                var shell = ShellCommand()
+                try await shell.run()
+                return
+            }
+
             if var asyncCommand = command as? AsyncParsableCommand {
                 try await asyncCommand.run()
             } else {
