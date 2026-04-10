@@ -1,0 +1,20 @@
+# Copilot Coding Agent environment setup
+# This file defines the steps needed to set up the environment
+# for GitHub Copilot's coding agent to work on this repository.
+
+steps:
+  - name: Setup Xcode
+    uses: maxim-lobanov/setup-xcode@60606e260d2fc5c5ff6b4aa07220ccc78784dc89 # v1
+    with:
+      xcode-version: latest-stable
+
+  - name: Install SwiftFormat
+    run: brew install swiftformat
+
+  - name: Resolve Swift dependencies
+    run: swift package resolve
+    working-directory: ${{ github.workspace }}
+
+  - name: Verify build
+    run: swift build
+    working-directory: ${{ github.workspace }}
