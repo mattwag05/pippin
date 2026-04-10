@@ -12,6 +12,45 @@ bd close <id>         # Complete work
 bd dolt push          # Push beads data to remote
 ```
 
+## GitHub Copilot Coding Agent
+
+This repo has a Copilot coding agent configured for automatic CI troubleshooting.
+
+### How it works
+
+1. CI fails on `main` → `.github/workflows/copilot-ci-fix.yml` triggers
+2. Workflow extracts failed job logs and creates an issue (labels: `ci-fix`, `copilot`)
+3. Copilot agent picks up the issue, reads the logs, and opens a fix PR
+4. Human reviews and merges
+
+### Environment setup
+
+`.github/copilot-setup-steps.yml` defines the agent's build environment:
+- Xcode (latest stable)
+- SwiftFormat (`brew install swiftformat`)
+- Swift package resolution (`swift package resolve`)
+- Build verification (`swift build`)
+
+### Common CI failure patterns for agents
+
+| Symptom | Root cause | Fix |
+|---------|-----------|-----|
+| `swiftformat --lint` errors | Code not formatted | Run `swiftformat pippin/ pippin-entry/ Tests/` |
+| Modifier order errors | Wrong keyword order | `public nonisolated(unsafe) static`, not `public static nonisolated(unsafe)` |
+| `&&` vs `,` in conditions | SwiftFormat `andOperator` rule | Use `,` instead of `&&` in `if`/`guard`/`while` |
+| Trailing space in multiline strings | Blank lines in `"""` blocks | Remove trailing whitespace from blank lines in discussion strings |
+| Build failure | Missing import or type error | Check `swift build` output for the exact file and line |
+| Test failure | Assertion mismatch | Run `swift test --filter <TestName>` to isolate |
+
+### Quality gates (must pass before PR)
+
+```bash
+swift build                                    # Debug build
+swift test                                     # All tests
+swift build -c release                         # Release build
+swiftformat --lint pippin/ pippin-entry/ Tests/ # Lint
+```
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.

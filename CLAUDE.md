@@ -42,6 +42,8 @@ make version        # print current version from Version.swift
 | `pippin/Formatting/AgentOutput.swift` | printAgentJSON<T>() — compact JSON for agent consumers |
 | `pippin-entry/` | Thin `@main` executable target |
 | `Tests/PippinTests/` | Unit tests |
+| `.github/copilot-setup-steps.yml` | Copilot agent environment (Xcode, SwiftFormat, deps) |
+| `.github/workflows/copilot-ci-fix.yml` | Auto-creates Copilot issue on CI failure |
 
 ## AI Provider Configuration
 
@@ -174,8 +176,11 @@ The `provider` field selects the active backend. Both providers can be configure
 - **Forgejo Actions:** `.forgejo/workflows/ci.yaml` — runs on `macbook-air` runner (`com.matthewwagner.act-runner` LaunchAgent, labels: `macos macos-15 arm64`)
 - **Release workflow:** `.forgejo/workflows/release.yaml` — triggers on `v*` tag push; builds tarball, extracts changelog, creates Forgejo release with arm64 asset
 - `.github/workflows/` active on GitHub — actions pinned to full commit SHAs (not `@v4` tags) for supply-chain security; update SHAs when upgrading, don't revert to tag syntax
+- **Copilot CI-fix workflow:** `.github/workflows/copilot-ci-fix.yml` — `workflow_run` trigger fires when CI fails on `main`. Extracts failed job logs via GitHub API, creates an issue with error details and fix instructions, assigns to `copilot`. The Copilot coding agent picks up the issue and opens a PR with the fix. Labels: `ci-fix`, `copilot`.
+- **Copilot environment:** `.github/copilot-setup-steps.yml` — defines Xcode, SwiftFormat, and dependency setup for the Copilot coding agent. Updated when CI toolchain changes.
 - **act_runner + Docker:** Runner checks Docker socket at startup. If Docker is not running, act_runner exits and all CI runs cancel silently. Start Docker first, then `brew services restart act_runner`.
 - **Manual release (when CI is down):** `make tarball` → check if release exists (`GET /releases/tags/vX.Y.Z`) → POST create only if missing → `POST /releases/{id}/assets` to upload tarball. The release workflow may have partially run and already created the release — always check before creating.
+- **SwiftFormat lint in CI:** Runs `swiftformat --lint pippin/ pippin-entry/ Tests/`. Always run `swiftformat` locally before pushing to avoid lint failures. Common issues: trailing spaces in multiline string literals, `&&` vs `,` in conditions, modifier ordering (`public nonisolated(unsafe) static` not `public static nonisolated(unsafe)`).
 
 ## Known Consumers
 
