@@ -77,26 +77,18 @@ public struct MailIndex: AsyncParsableCommand {
             toIndex.append(PendingItem(id: message.id, subject: message.subject, embedText: embedText, bodyHash: hash))
         }
 
-        // Phase 2: Embed concurrently
+        // Phase 2: Embed all pending texts in a single batched request
         var embeddings: [(id: String, hash: String, floats: [Float])] = []
-        try await withThrowingTaskGroup(of: (String, String, [Float]).self) { group in
-            for item in toIndex {
-                group.addTask {
-                    let floats = try await withCheckedThrowingContinuation { continuation in
-                        DispatchQueue.global(qos: .background).async {
-                            do {
-                                let result = try embedProvider.embed(text: item.embedText)
-                                continuation.resume(returning: result)
-                            } catch {
-                                continuation.resume(throwing: error)
-                            }
-                        }
-                    }
-                    return (item.id, item.bodyHash, floats)
-                }
+        if !toIndex.isEmpty {
+            let texts = toIndex.map(\.embedText)
+            let allFloats = try embedProvider.embedBatch(texts: texts)
+            guard allFloats.count == toIndex.count else {
+                throw MailAIError.embeddingFailed(
+                    "Embedding batch returned \(allFloats.count) results for \(toIndex.count) inputs"
+                )
             }
-            for try await (id, hash, floats) in group {
-                embeddings.append((id: id, hash: hash, floats: floats))
+            for (item, floats) in zip(toIndex, allFloats) {
+                embeddings.append((id: item.id, hash: item.bodyHash, floats: floats))
             }
         }
 

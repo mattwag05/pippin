@@ -14,7 +14,7 @@ public enum SemanticSearch {
         limit: Int = 10,
         messageLoader: ((String) throws -> MailMessage)? = nil
     ) throws -> [MailMessage] {
-        let loader: (String) throws -> MailMessage = messageLoader ?? { try MailBridge.readMessage(compoundId: $0) }
+        nonisolated(unsafe) let loader: (String) throws -> MailMessage = messageLoader ?? { try MailBridge.readMessage(compoundId: $0) }
         guard try !store.isEmpty() else {
             throw MailAIError.emptyEmbeddingIndex
         }
@@ -38,8 +38,19 @@ public enum SemanticSearch {
         .prefix(limit)
         .map { $0 }
 
-        return ranked.compactMap { result in
-            try? loader(result.compoundId)
+        // Load messages concurrently — JXA calls are independent osascript processes.
+        nonisolated(unsafe) var loaded: [(index: Int, message: MailMessage)] = []
+        let group = DispatchGroup()
+        let lock = NSLock()
+        for (i, result) in ranked.enumerated() {
+            group.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                defer { group.leave() }
+                guard let message = try? loader(result.compoundId) else { return }
+                lock.withLock { loaded.append((index: i, message: message)) }
+            }
         }
+        group.wait()
+        return loaded.sorted { $0.index < $1.index }.map(\.message)
     }
 }
