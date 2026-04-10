@@ -11,6 +11,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.14.3] - 2026-04-10
+
+### Fixed
+
+- [fix] vault-scan: tighten Basic Auth URL regex to prevent false positives on Google Fonts URLs with @ in query parameters
+- [fix] vault-serve: use correct Vaultwarden item name `Anthropic API` for secret lookup (was `Antropic API`)
+
+### Changed
+
+- [perf] EmbeddingStore: use Accelerate/vDSP for vectorized cosine similarity (replaces manual loop)
+- [perf] EmbeddingProvider: add `embedBatch` protocol method with native Ollama batch implementation (single HTTP request per batch)
+- [perf] MailAICommand: refactor indexing from individual concurrent embeds to batched embedding (32 per batch, fewer HTTP round-trips)
+
+### Added
+
+- [docs] README.md: rebrand with logo, badges, and streamlined copy
+- [tooling] beads issue tracking initialized
+
+---
+
 ## [0.14.2] - 2026-04-03
 
 ### Added
@@ -349,7 +369,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.14.2...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.14.3...HEAD
+[0.14.3]: https://github.com/mattwag05/pippin/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/mattwag05/pippin/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/mattwag05/pippin/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/mattwag05/pippin/compare/v0.13.0...v0.14.0

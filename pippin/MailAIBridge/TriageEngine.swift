@@ -86,6 +86,12 @@ public enum TriageEngine {
         let rateLimiter = DispatchSemaphore(value: maxConcurrent)
 
         for (i, batch) in batches.enumerated() {
+            // Stop dispatching new work as soon as an error is recorded.
+            lock.lock()
+            let shouldAbort = firstError != nil
+            lock.unlock()
+            if shouldAbort { break }
+
             rateLimiter.wait()
             group.enter()
             DispatchQueue.global(qos: .userInitiated).async {
@@ -93,21 +99,11 @@ public enum TriageEngine {
                     rateLimiter.signal()
                     group.leave()
                 }
-                lock.lock()
-                guard firstError == nil else {
-                    lock.unlock()
-                    return
-                }
-                lock.unlock()
                 do {
                     let value = try transform(batch)
-                    lock.lock()
-                    results.append((index: i, value: value))
-                    lock.unlock()
+                    lock.withLock { results.append((index: i, value: value)) }
                 } catch {
-                    lock.lock()
-                    if firstError == nil { firstError = error }
-                    lock.unlock()
+                    lock.withLock { if firstError == nil { firstError = error } }
                 }
             }
         }
