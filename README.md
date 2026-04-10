@@ -62,6 +62,7 @@ pippin accesses sandboxed Apple apps — macOS needs explicit permission grants.
 ```bash
 pippin init     # Guided setup — walks through each permission
 pippin doctor   # Verify everything works
+pippin status   # Dashboard: accounts, events, reminders, permissions
 ```
 
 You'll need to grant permissions in **System Settings > Privacy & Security**:

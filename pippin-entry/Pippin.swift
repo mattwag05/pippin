@@ -12,7 +12,7 @@ struct Pippin: AsyncParsableCommand {
             MailCommand.self, MemosCommand.self, CalendarCommand.self,
             AudioCommand.self, ContactsCommand.self, BrowserCommand.self,
             RemindersCommand.self, NotesCommand.self,
-            DoctorCommand.self, InitCommand.self, CompletionsCommand.self,
+            DoctorCommand.self, StatusCommand.self, InitCommand.self, CompletionsCommand.self,
             ShellCommand.self,
         ]
     )
