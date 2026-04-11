@@ -187,6 +187,18 @@ pippin shell                                  # interactive REPL
 pippin                                        # bare invocation also starts REPL
 ```
 
+### Session State (REPL)
+
+```bash
+pippin> use Work                              # set active mail account
+pippin [Work]> mail list                      # --account Work auto-injected
+pippin [Work]> context                        # show session state
+pippin [Work]> history                        # show command history
+pippin [Work]> use                            # clear active account
+```
+
+Session persists to `~/.config/pippin/session.json` — active account, last-used IDs, and command history survive across REPL sessions.
+
 ## Agent Integration
 
 ### Recommended patterns
