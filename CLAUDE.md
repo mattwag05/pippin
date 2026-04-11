@@ -31,6 +31,7 @@ make version        # print current version from Version.swift
 | `pippin/Commands/` | ArgumentParser command implementations |
 | `pippin/Commands/ShellCommand.swift` | Interactive REPL — `pippin shell` or bare `pippin` |
 | `pippin/Commands/StatusCommand.swift` | System dashboard — `pippin status` |
+| `pippin/SessionState.swift` | Session state persistence for REPL (`~/.config/pippin/session.json`) |
 | `pippin/Commands/TemplatesCommand.swift` | `memos templates` subcommand |
 | `pippin/Commands/SummarizeCommand.swift` | `memos summarize` subcommand |
 | `pippin/Templates/` | Built-in summarization prompt templates |
@@ -102,6 +103,7 @@ The `provider` field selects the active backend. Both providers can be configure
 - Non-interactive (pipe) mode: detected via `isatty(fileno(stdin))`; no prompt, no banner
 - `ExitCode` errors are caught silently (like `CleanExit`) — commands that exit non-zero don't kill the REPL
 - `shellSplit(_:)` handles single/double quote parsing for command lines
+- Session state: `SessionManager` persists active account, last-used IDs, and command history to `~/.config/pippin/session.json`. REPL auto-injects `--account` from session context for mail commands. Built-in commands: `use <account>`, `context`, `history`
 
 **Compound message ID:** `account||mailbox||numericId`
 - Parsed in `MailBridge` and `CompoundId` helpers
