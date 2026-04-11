@@ -150,6 +150,7 @@ public enum ContactsBridge {
             CNContactIdentifierKey as CNKeyDescriptor,
             CNContactGivenNameKey as CNKeyDescriptor,
             CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
             CNContactEmailAddressesKey as CNKeyDescriptor,
             CNContactPhoneNumbersKey as CNKeyDescriptor,
         ]
@@ -161,6 +162,7 @@ public enum ContactsBridge {
             CNContactIdentifierKey as CNKeyDescriptor,
             CNContactGivenNameKey as CNKeyDescriptor,
             CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
             CNContactEmailAddressesKey as CNKeyDescriptor,
             CNContactPhoneNumbersKey as CNKeyDescriptor,
             CNContactOrganizationNameKey as CNKeyDescriptor,
@@ -186,6 +188,7 @@ public enum ContactsBridge {
             CNContactIdentifierKey as CNKeyDescriptor,
             CNContactGivenNameKey as CNKeyDescriptor,
             CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
         ]
         let lowered = fields.map { $0.lowercased() }
         if lowered.contains("emails") || lowered.contains("email") || forceEmails {
@@ -223,10 +226,11 @@ public enum ContactsBridge {
         let fullName = CNContactFormatter.string(from: contact, style: .fullName) ?? ""
 
         // Determine which fields to populate
-        let lowered = fields?.map { $0.lowercased() } ?? []
+        let lowered = fields?.map { $0.lowercased() }
+        let hasExplicitFields = lowered != nil
 
         func include(_ name: String) -> Bool {
-            fullDetail || lowered.isEmpty || lowered.contains(name)
+            fullDetail || (hasExplicitFields && (lowered!.contains(name))) || false
         }
 
         let emails: [LabeledValue]

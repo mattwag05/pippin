@@ -188,8 +188,27 @@ public enum BrowserBridge {
             const page = browser.pages()[0] || await browser.newPage();
             const title = await page.title();
             const url = page.url();
-            const snapshot = await page.accessibility.snapshot({ interestingOnly: false });
-            const children = (snapshot && snapshot.children) ? snapshot.children : [];
+            let children = [];
+            if (page.accessibility && typeof page.accessibility.snapshot === 'function') {
+                const snapshot = await page.accessibility.snapshot({ interestingOnly: false });
+                children = (snapshot && snapshot.children) ? snapshot.children : [];
+            } else {
+                // Fallback: build a basic accessibility tree from DOM elements
+                children = await page.evaluate(() => {
+                    const elements = [];
+                    const interactiveSelector = 'a, button, input, select, textarea, [role], [aria-label], h1, h2, h3, h4, h5, h6, img, table';
+                    let refId = 1;
+                    document.querySelectorAll(interactiveSelector).forEach(el => {
+                        const role = el.getAttribute('role') || el.tagName.toLowerCase();
+                        const name = el.getAttribute('aria-label') || el.textContent?.trim().substring(0, 100) || '';
+                        if (name) {
+                            elements.push({ role: role, name: '@ref' + refId + ' ' + name });
+                            refId++;
+                        }
+                    });
+                    return elements;
+                });
+            }
             console.log(JSON.stringify({ url: url, title: title, snapshot: children }));
             await browser.close();
         })().catch(e => { process.stderr.write(e.message + '\\n'); process.exit(1); });
@@ -362,6 +381,22 @@ public enum BrowserBridge {
         // Use env to pick up PATH-installed node
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["node", tmpFile.path]
+
+        // Inherit current environment and add NODE_PATH for globally-installed npm packages
+        var env = ProcessInfo.processInfo.environment
+        if env["NODE_PATH"] == nil {
+            // Try common global npm module paths
+            let npmGlobalPaths = [
+                "/opt/homebrew/lib/node_modules",
+                "/usr/local/lib/node_modules",
+                "\(FileManager.default.homeDirectoryForCurrentUser.path)/.npm-global/lib/node_modules",
+            ]
+            let existingPaths = npmGlobalPaths.filter { FileManager.default.fileExists(atPath: $0) }
+            if !existingPaths.isEmpty {
+                env["NODE_PATH"] = existingPaths.joined(separator: ":")
+            }
+        }
+        process.environment = env
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

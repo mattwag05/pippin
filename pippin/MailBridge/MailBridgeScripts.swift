@@ -188,6 +188,7 @@ extension MailBridge {
                 _meta.mailboxesScanned++;
                 // Cap messages scanned per mailbox; scan newest first (IMAP order is ascending)
                 var allMsgs = mb.messages();
+                if (!allMsgs) continue;
                 var scanCount = Math.min(allMsgs.length, perMailboxLimit);
                 var startIdx = Math.max(0, allMsgs.length - scanCount);
                 var msgs = allMsgs.slice(startIdx, allMsgs.length);
