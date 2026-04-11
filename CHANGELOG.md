@@ -11,6 +11,34 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.16.0] - 2026-04-10
+
+### Added
+
+- [feat] `pippin status` — system dashboard showing mail accounts, calendar events, reminders, voice memos, notes, contacts, and TCC permission status; supports `--format text|json|agent`
+- [feat] Session state persistence — REPL sessions persist active account, last-used IDs, and command history to `~/.config/pippin/session.json`; built-in commands: `use <account>`, `context`, `history`
+- [feat] `pippin init --format json|agent` — structured output for the init/doctor guided setup
+- [feat] `SKILL.md` — agent discovery manifest with YAML frontmatter and full command reference
+- [feat] `runConcurrently<Input, Output>()` — generic concurrent dispatch helper with optional rate limiting and fail-fast support (`ConcurrencyUtils.swift`)
+- [ci] GitHub Copilot coding agent — `.github/copilot-setup-steps.yml` environment + `.github/workflows/copilot-ci-fix.yml` auto-creates issues on CI failure for Copilot to fix
+
+### Changed
+
+- [refactor] `TriageEngine` — replaced private `runBatchesConcurrently` (~30 lines) with `runConcurrently(batches, maxConcurrent: 4, failFast: true)`
+- [refactor] `SemanticSearch` — replaced inline DispatchGroup+NSLock pattern with `runConcurrently`
+- [docs] `CLAUDE.md` — added session state, status command, Copilot CI-fix workflow, and lint tips
+- [docs] `AGENTS.md` — added Copilot coding agent section with failure patterns and quality gates
+
+### Added (Tests)
+
+- `StatusCommandTests` — 7 tests covering status report building and output formats
+- `ConcurrencyUtilsTests` — 7 tests covering concurrent dispatch, rate limiting, fail-fast, empty input
+- `InitCommandTests` — 8 tests covering init report structure and format options
+- `SessionStateTests` — 11 tests covering persistence, thread safety, atomic writes, history capping
+- 914 → 1049 tests, 0 failures
+
+---
+
 ## [0.15.0] - 2026-04-10
 
 ### Added
@@ -389,7 +417,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/mattwag05/pippin/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/mattwag05/pippin/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/mattwag05/pippin/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/mattwag05/pippin/compare/v0.14.1...v0.14.2
