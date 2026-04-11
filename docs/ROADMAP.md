@@ -4,6 +4,25 @@ Planned features and improvements for pippin. Tracked in [beads](https://github.
 
 ---
 
+## Bugs (from Pi Agent Testing)
+
+### Contacts Search Crash (`pippin-crl`) — P1
+`pippin contacts search` crashes while `contacts list` works fine. Likely CNContactStore query construction issue.
+
+### Browser Snapshot Undefined Page (`pippin-1gb`) — P1
+`pippin browser snapshot` fails with "Cannot read properties of undefined (reading 'snapshot')". Page object not initialized in persistent context. Blocks click/fill (which depend on @ref IDs from snapshot).
+
+### Browser NODE_PATH Resolution (`pippin-izt`) — P1
+Browser commands fail unless `NODE_PATH=/opt/homebrew/lib/node_modules` is set. Node can't find globally-installed Playwright at runtime even though `pippin doctor` reports it as found.
+
+### Mail Search Null allMsgs (`pippin-3sk`) — P2
+`pippin mail search` crashes with TypeError when JXA `allMsgs` is null (mailbox not accessible or not loaded). Needs null guard in generated search script.
+
+### Doctor Doesn't Find pipx Installs (`pippin-6mj`) — P2
+`pippin doctor` checks mlx-audio via system Python import but misses pipx installations. Should also check `pipx list` or common pipx venv paths.
+
+---
+
 ## Next Up
 
 ### MCP Server Mode (`pippin-6dp`)
