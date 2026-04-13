@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.17.0] - 2026-04-12
+
 ### Added
 
 - [feat] `pippin mcp-server` — expose pippin as a Model Context Protocol server over stdio so Claude Code, Claude Desktop, Cursor, and other MCP-compatible clients can attach directly instead of shelling out to the CLI. Ships with 26 tools covering mail, calendar, reminders, contacts, notes, status, and doctor. Each `tools/call` spawns `pippin <cmd> --format agent` as a child process so the MCP path has perfect parity with the existing CLI path. See `docs/mcp-server.md` for wiring details.
@@ -421,7 +425,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/mattwag05/pippin/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/mattwag05/pippin/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/mattwag05/pippin/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/mattwag05/pippin/compare/v0.14.2...v0.14.3
