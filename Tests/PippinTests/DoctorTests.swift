@@ -177,11 +177,12 @@ final class DoctorTests: XCTestCase {
             candidates.contains(where: { $0.path.hasSuffix(".local/pipx/venvs/mlx-audio/bin/python3") }),
             "Default candidates must include the pipx venv path"
         )
-        // System python should come before pipx venv.
-        let systemIdx = candidates.firstIndex(where: { $0.path == "/usr/bin/python3" })
+        // Pipx venv should come before system python — pipx is the recommended install path
+        // on modern macOS where Homebrew Python is externally-managed.
         let pipxIdx = candidates.firstIndex(where: { $0.path.hasSuffix(".local/pipx/venvs/mlx-audio/bin/python3") })
-        if let s = systemIdx, let p = pipxIdx {
-            XCTAssertLessThan(s, p, "System python should be probed before pipx venv")
+        let systemIdx = candidates.firstIndex(where: { $0.path == "/usr/bin/python3" })
+        if let p = pipxIdx, let s = systemIdx {
+            XCTAssertLessThan(p, s, "Pipx venv should be probed before system python")
         }
     }
 }
