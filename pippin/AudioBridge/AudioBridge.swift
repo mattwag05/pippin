@@ -147,35 +147,27 @@ public enum AudioBridge {
     }
 
     /// Check whether the mlx-audio Python package is importable from any known python3 interpreter.
-    public static func isAvailable() -> Bool {
+    static func isAvailable() -> Bool {
         findPythonWithMLXAudio() != nil
     }
 
     // MARK: - mlx-audio Python Discovery
 
-    // Cached result of the default-candidate probe. `mlx-audio` installs rarely change
-    // mid-process, so memoize to avoid paying for 2–3 subprocess launches on every call
-    // into `runPython`. NSLock guards the first-write race between concurrent callers.
-    private nonisolated(unsafe) static var cachedMLXAudioPython: URL?
-    private nonisolated(unsafe) static var mlxAudioPythonCacheLoaded = false
-    private static let mlxAudioPythonCacheLock = NSLock()
+    /// Swift's `static let` gives us thread-safe, zero-cost-after-init memoization —
+    /// no hand-rolled lock needed. First access runs the probe exactly once.
+    private static let cachedMLXAudioPython: URL? =
+        findPythonWithMLXAudio(candidates: defaultMLXAudioPythonCandidates())
 
     /// Find a python3 interpreter that can `import mlx_audio`, searching common install
-    /// locations (system, pipx venv, PATH). Result is memoized per-process.
+    /// locations (pipx venv, system, PATH). Memoized per-process.
     ///
     /// - Returns: URL of the first working interpreter, or `nil` if none have mlx_audio.
-    public static func findPythonWithMLXAudio() -> URL? {
-        mlxAudioPythonCacheLock.lock()
-        defer { mlxAudioPythonCacheLock.unlock() }
-        if !mlxAudioPythonCacheLoaded {
-            cachedMLXAudioPython = findPythonWithMLXAudio(candidates: defaultMLXAudioPythonCandidates())
-            mlxAudioPythonCacheLoaded = true
-        }
-        return cachedMLXAudioPython
+    static func findPythonWithMLXAudio() -> URL? {
+        cachedMLXAudioPython
     }
 
-    /// Probe the given python3 candidate URLs and return the first one that can `import mlx_audio`.
-    /// Non-caching — intended for tests and for the caching wrapper above.
+    /// Probe the given python3 candidate URLs in order and return the first that can
+    /// `import mlx_audio`. Pure function — no caching, suitable for unit tests.
     static func findPythonWithMLXAudio(candidates: [URL]) -> URL? {
         for candidate in candidates where canImportMLXAudio(pythonURL: candidate) {
             return candidate
@@ -184,7 +176,9 @@ public enum AudioBridge {
     }
 
     /// Build the default ordered list of python3 candidates to probe.
-    /// Order: system → pipx venv → PATH-resolved. Duplicates collapsed.
+    /// Order: pipx venv → system → PATH-resolved. Pipx is first because it's the
+    /// recommended install path on modern macOS (Homebrew Python is externally-managed).
+    /// Duplicates collapsed.
     static func defaultMLXAudioPythonCandidates() -> [URL] {
         var candidates: [URL] = []
         var seen = Set<String>()
@@ -195,9 +189,9 @@ public enum AudioBridge {
             }
         }
 
-        add(URL(fileURLWithPath: "/usr/bin/python3"))
         let home = FileManager.default.homeDirectoryForCurrentUser
         add(home.appendingPathComponent(".local/pipx/venvs/mlx-audio/bin/python3"))
+        add(URL(fileURLWithPath: "/usr/bin/python3"))
         if let pathPython = resolvePython3OnPath() {
             add(pathPython)
         }
@@ -225,8 +219,8 @@ public enum AudioBridge {
     }
 
     /// Attempt `python3 -c "import mlx_audio"` with the given interpreter.
+    /// Returns false if the interpreter doesn't exist, can't launch, or exits non-zero.
     private static func canImportMLXAudio(pythonURL: URL) -> Bool {
-        guard FileManager.default.isExecutableFile(atPath: pythonURL.path) else { return false }
         let process = Process()
         process.executableURL = pythonURL
         process.arguments = ["-c", "import mlx_audio"]
