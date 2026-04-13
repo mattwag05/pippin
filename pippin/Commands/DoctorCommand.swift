@@ -439,18 +439,18 @@ func checkPython3() -> DiagnosticCheck {
 }
 
 private func checkMLXAudio() -> DiagnosticCheck {
-    if AudioBridge.isAvailable() {
+    if let pythonURL = AudioBridge.findPythonWithMLXAudio() {
         return DiagnosticCheck(
             name: "mlx-audio",
             status: .ok,
-            detail: "available"
+            detail: "available (\(pythonURL.path))"
         )
     }
     return DiagnosticCheck(
         name: "mlx-audio",
         status: .fail,
         detail: "not found (required for `pippin memos transcribe`)",
-        remediation: "$ pip install mlx-audio"
+        remediation: "$ pipx install mlx-audio"
     )
 }
 
