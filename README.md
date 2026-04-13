@@ -190,6 +190,17 @@ Every command supports three modes:
 | `--format json` | Pretty-printed JSON for scripting |
 | `--format agent` | Compact JSON, minimal tokens — built for LLM pipelines |
 
+### MCP Server Mode
+
+Run pippin as a [Model Context Protocol](https://modelcontextprotocol.io) server so Claude Code, Claude Desktop, Cursor, or any MCP-compatible client can call it as a first-class tool instead of shelling out:
+
+```bash
+pippin mcp-server                    # run the server (stdin/stdout JSON-RPC)
+pippin mcp-server --list-tools       # dump the registered tools as JSON
+```
+
+Ships with 26 tools covering mail, calendar, reminders, contacts, notes, status, and doctor. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+
 ## AI Configuration
 
 `memos summarize` and `calendar smart-create` use an LLM for natural language processing. pippin supports local inference via Ollama and cloud inference via Claude.
