@@ -153,6 +153,8 @@ The `provider` field selects the active backend. Both providers can be configure
 
 **ArgumentParser async `main()` override:** Must cast before dispatching: `if var asyncCommand = command as? AsyncParsableCommand { try await asyncCommand.run() } else { try command.run() }`. Calling `try await command.run()` directly on a `ParsableCommand` existential invokes the sync `run()`, which prints help for command-groups instead of running subcommands.
 
+**Swift 6 `Sendable` auto-synthesis + closure fields:** When a struct is stored in a `static let`, Swift 6 requires it to be `Sendable`. Auto-synthesis works only if all stored properties are `Sendable` — **including closure types, which need the `@Sendable` attribute explicitly**. Error surfaces as "static property 'X' is not concurrency-safe" pointing at the `static let`, not at the offending closure field. Fix at the field (`let buildArgs: @Sendable (JSONValue?) throws -> [String]`), not the struct declaration — SwiftFormat will then strip the redundant `: Sendable` conformance line, which is fine because auto-synthesis is in effect.
+
 **Agent error interception — `ExitCode` passthrough:** Both `CleanExit` (--help/--version) AND `ExitCode` (e.g. `throw ExitCode(1)` from `DoctorCommand`) must pass through to `Pippin.exit(withError:)`, not be treated as agent errors. Check `error is CleanExit || error is ExitCode` before the agent branch.
 
 **`--format` collision with `OutputOptions`:** Commands using `@OptionGroup var output: OutputOptions` must NOT also declare `@Option var format` — ArgumentParser throws "Multiple arguments named --format" at parse time. Rename the command-specific option (e.g. `--transcription-format`).
