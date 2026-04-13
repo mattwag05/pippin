@@ -138,4 +138,50 @@ final class DoctorTests: XCTestCase {
             "Playwright remediation must include a '$ ' command, got: \(remediation)"
         )
     }
+
+    // MARK: - AudioBridge mlx-audio python discovery
+
+    func testFindPythonWithMLXAudioReturnsNilForEmptyCandidates() {
+        let result = AudioBridge.findPythonWithMLXAudio(candidates: [])
+        XCTAssertNil(result, "Empty candidate list must return nil")
+    }
+
+    func testFindPythonWithMLXAudioReturnsNilForBogusCandidates() {
+        let bogus = [
+            URL(fileURLWithPath: "/nonexistent/path/python3"),
+            URL(fileURLWithPath: "/tmp/definitely-not-a-python-\(UUID().uuidString)"),
+        ]
+        let result = AudioBridge.findPythonWithMLXAudio(candidates: bogus)
+        XCTAssertNil(result, "Nonexistent paths must return nil")
+    }
+
+    func testFindPythonWithMLXAudioSystemPythonConsistent() {
+        // Probing just /usr/bin/python3: result must be either that URL (if mlx_audio is
+        // importable from system python) or nil (if not). Tolerates CI/dev machines where
+        // mlx-audio is installed via pipx and not system python.
+        let systemPython = URL(fileURLWithPath: "/usr/bin/python3")
+        let result = AudioBridge.findPythonWithMLXAudio(candidates: [systemPython])
+        if let found = result {
+            XCTAssertEqual(found.path, systemPython.path)
+        }
+    }
+
+    func testDefaultMLXAudioPythonCandidatesIncludesSystemAndPipx() {
+        let candidates = AudioBridge.defaultMLXAudioPythonCandidates()
+        XCTAssertFalse(candidates.isEmpty, "Default candidate list must not be empty")
+        XCTAssertTrue(
+            candidates.contains(where: { $0.path == "/usr/bin/python3" }),
+            "Default candidates must include /usr/bin/python3"
+        )
+        XCTAssertTrue(
+            candidates.contains(where: { $0.path.hasSuffix(".local/pipx/venvs/mlx-audio/bin/python3") }),
+            "Default candidates must include the pipx venv path"
+        )
+        // System python should come before pipx venv.
+        let systemIdx = candidates.firstIndex(where: { $0.path == "/usr/bin/python3" })
+        let pipxIdx = candidates.firstIndex(where: { $0.path.hasSuffix(".local/pipx/venvs/mlx-audio/bin/python3") })
+        if let s = systemIdx, let p = pipxIdx {
+            XCTAssertLessThan(s, p, "System python should be probed before pipx venv")
+        }
+    }
 }

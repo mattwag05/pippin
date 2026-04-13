@@ -146,16 +146,92 @@ public enum AudioBridge {
             .filter { !$0.isEmpty }
     }
 
-    /// Check whether the mlx-audio Python package is importable.
-    ///
-    /// - Returns: `true` if `python3 -c "import mlx_audio"` exits 0.
+    /// Check whether the mlx-audio Python package is importable from any known python3 interpreter.
     public static func isAvailable() -> Bool {
+        findPythonWithMLXAudio() != nil
+    }
+
+    // MARK: - mlx-audio Python Discovery
+
+    // Cached result of the default-candidate probe. `mlx-audio` installs rarely change
+    // mid-process, so memoize to avoid paying for 2–3 subprocess launches on every call
+    // into `runPython`. NSLock guards the first-write race between concurrent callers.
+    private nonisolated(unsafe) static var cachedMLXAudioPython: URL?
+    private nonisolated(unsafe) static var mlxAudioPythonCacheLoaded = false
+    private static let mlxAudioPythonCacheLock = NSLock()
+
+    /// Find a python3 interpreter that can `import mlx_audio`, searching common install
+    /// locations (system, pipx venv, PATH). Result is memoized per-process.
+    ///
+    /// - Returns: URL of the first working interpreter, or `nil` if none have mlx_audio.
+    public static func findPythonWithMLXAudio() -> URL? {
+        mlxAudioPythonCacheLock.lock()
+        defer { mlxAudioPythonCacheLock.unlock() }
+        if !mlxAudioPythonCacheLoaded {
+            cachedMLXAudioPython = findPythonWithMLXAudio(candidates: defaultMLXAudioPythonCandidates())
+            mlxAudioPythonCacheLoaded = true
+        }
+        return cachedMLXAudioPython
+    }
+
+    /// Probe the given python3 candidate URLs and return the first one that can `import mlx_audio`.
+    /// Non-caching — intended for tests and for the caching wrapper above.
+    static func findPythonWithMLXAudio(candidates: [URL]) -> URL? {
+        for candidate in candidates where canImportMLXAudio(pythonURL: candidate) {
+            return candidate
+        }
+        return nil
+    }
+
+    /// Build the default ordered list of python3 candidates to probe.
+    /// Order: system → pipx venv → PATH-resolved. Duplicates collapsed.
+    static func defaultMLXAudioPythonCandidates() -> [URL] {
+        var candidates: [URL] = []
+        var seen = Set<String>()
+
+        func add(_ url: URL) {
+            if seen.insert(url.path).inserted {
+                candidates.append(url)
+            }
+        }
+
+        add(URL(fileURLWithPath: "/usr/bin/python3"))
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        add(home.appendingPathComponent(".local/pipx/venvs/mlx-audio/bin/python3"))
+        if let pathPython = resolvePython3OnPath() {
+            add(pathPython)
+        }
+        return candidates
+    }
+
+    /// Run `/usr/bin/which python3` and return the resolved URL, if any.
+    private static func resolvePython3OnPath() -> URL? {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        process.arguments = ["python3"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let path = (String(data: data, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.isEmpty ? nil : URL(fileURLWithPath: path)
+    }
+
+    /// Attempt `python3 -c "import mlx_audio"` with the given interpreter.
+    private static func canImportMLXAudio(pythonURL: URL) -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: pythonURL.path) else { return false }
+        let process = Process()
+        process.executableURL = pythonURL
         process.arguments = ["-c", "import mlx_audio"]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-
         do {
             try process.run()
             process.waitUntilExit()
@@ -173,8 +249,14 @@ public enum AudioBridge {
     /// (>64 KB pipe buffer). The `nonisolated(unsafe)` vars are each written exactly
     /// once by a single GCD block; `group.wait()` provides the happens-before guarantee.
     private static func runPython(_ arguments: [String], timeoutSeconds: Int) throws -> String {
+        guard let pythonURL = findPythonWithMLXAudio() else {
+            throw AudioBridgeError.processFailed(
+                "mlx-audio not found — install with: pipx install mlx-audio"
+            )
+        }
+
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.executableURL = pythonURL
         process.arguments = arguments
 
         let stdoutPipe = Pipe()
@@ -185,7 +267,7 @@ public enum AudioBridge {
         do {
             try process.run()
         } catch {
-            throw AudioBridgeError.processFailed("Failed to launch python3: \(error.localizedDescription)")
+            throw AudioBridgeError.processFailed("Failed to launch \(pythonURL.path): \(error.localizedDescription)")
         }
 
         // Drain both pipes concurrently to avoid deadlock on large output (>64KB pipe buffer)
