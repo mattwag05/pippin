@@ -22,6 +22,9 @@ archive/**/.build/
 .claude/
 .swiftlint.yml
 
+# MCP client config (machine-local; created per-user to attach clients to pippin mcp-server)
+.mcp.json
+
 # Dolt database files (added by bd init)
 .dolt/
 *.db

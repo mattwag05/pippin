@@ -42,6 +42,8 @@ make version        # print current version from Version.swift
 | `pippin/Models/ReminderModels.swift` | ReminderList, ReminderItem (listTitle), ReminderActionResult |
 | `pippin/Models/NoteModels.swift` | NoteInfo (body HTML + plainText), NoteFolder, NoteActionResult |
 | `pippin/Formatting/AgentOutput.swift` | printAgentJSON<T>() — compact JSON for agent consumers |
+| `pippin/MCP/` | MCP server runtime — `JSONValue`, `JSONRPCTypes`, `ToolRegistry`, `MCPServerRuntime` |
+| `pippin/Commands/McpServerCommand.swift` | `pippin mcp-server` — stdio JSON-RPC loop (see `docs/mcp-server.md`) |
 | `pippin-entry/` | Thin `@main` executable target |
 | `Tests/PippinTests/` | Unit tests |
 | `.github/copilot-setup-steps.yml` | Copilot agent environment (Xcode, SwiftFormat, deps) |
@@ -95,6 +97,8 @@ The `provider` field selects the active backend. Both providers can be configure
 3. Vaultwarden secret lookup via `get-secret "Anthropic API"`
 
 ## Key Patterns
+
+**Default to `internal` visibility.** `PippinLib` is the only module with logic; `pippin-entry` only holds `@main`. Use `public` only if a type is consumed outside PippinLib — currently nothing is. Tests reach internal helpers via `@testable import PippinLib`.
 
 **REPL shell architecture (`ShellCommand.swift`):**
 - `ShellCommand` is `AsyncParsableCommand` in PippinLib; bare `pippin` defaults to REPL in `Pippin.main()`
@@ -194,13 +198,21 @@ Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
 - `pippin reminders list --format agent`
 Don't change these command shapes or agent JSON output structure without updating the task.
 
-**Talia (OpenClaw agent on Pironman):**
+**Talia (OpenClaw agent on Raspberry Pi):**
 Talia uses pippin indirectly via the `pippin` skill in her workspace TOOLS.md. The `memos summarize` command is the primary AI-powered feature Talia may invoke. Ensure Ollama is running on the MacBook Air before Talia attempts summarization tasks.
 
-## Issue Tracking
+**MCP clients via `pippin mcp-server`:**
+Claude Code, Claude Desktop, and any other MCP-compatible client may attach to pippin over stdio and call tools like `mail_list`, `calendar_today`, `reminders_create`, `status`. The MCP server **shells out to `pippin <cmd> --format agent`** for every tool call — so any change to an agent-mode JSON shape propagates automatically, but any change to a CLI flag name or a snake_case tool-level key (like `AgentError.code`) is a breaking change for MCP clients. Tool registry lives in `pippin/MCP/ToolRegistry.swift`; adding a new tool is one entry. See `docs/mcp-server.md` for the full tool list and wiring instructions.
 
-Uses `bd` (beads) — Claude owns this autonomously. See `~/.claude/CLAUDE.md` § Issue Tracking for commands.
-Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists.
+## MCP Server Patterns
+
+**Never use `print()` inside the mcp-server command.** stdout is reserved for JSON-RPC framing — any stray print corrupts the transport. Diagnostics go to stderr via `MCPStdioWriter.log()`.
+
+**Tool argv must always include `--format agent`.** The child `pippin` process produces compact agent JSON that the server wraps verbatim as `content[0].text`. A lint test (`testAllArgvEndWithFormatAgent`) enforces this across the registry.
+
+**Exit-code-to-error mapping:** When the child exits non-zero, stdout contains an `AgentError` JSON (`{"error":{"code":"snake_case","message":"..."}}`) from `printAgentError`. The server passes this through as the tool result text with `isError: true`. Do NOT convert it to a JSON-RPC-level `-326xx` error — those are reserved for protocol-level failures (unknown method, malformed request, launch failure).
+
+**Binary path resolution:** `MCPServerRuntime.resolvePippinPath()` uses `CommandLine.arguments[0]` + `realpath` so the child is the exact same binary as the parent, not whatever `pippin` resolves to on `$PATH`. This matters when pippin is run via a symlink (Homebrew shim).
 
 ## Forgejo API Gotchas
 
