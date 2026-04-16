@@ -179,6 +179,7 @@ The `provider` field selects the active backend. Both providers can be configure
    `revision` = commit SHA — use `git rev-parse vX.Y.Z^{}` (dereference annotated tag to commit; plain `git rev-parse vX.Y.Z` returns the tag object SHA, which will fail Homebrew's integrity check)
 8. `cd /opt/homebrew/Library/Taps/mattwag05/homebrew-tap && git add -A && git commit -m "pippin vX.Y.Z" && git push`
 9. `brew upgrade pippin && pippin --version` to verify
+10. **Dual install shadow:** If this machine has both `/opt/homebrew/bin/pippin` and `~/.local/bin/pippin` (from `make install`), `~/.local/bin` sits earlier on PATH and shadows brew. `brew upgrade pippin` alone leaves `which pippin` pointing at the stale local copy — must run BOTH `brew upgrade pippin` AND `make install`, or verify explicitly with `which pippin && pippin --version`. The claude-plugins `pippin` plugin's `.mcp.json` uses bare `pippin`, so the shadowed version is what Claude Code actually spawns as the MCP server.
 
 ## CI
 
