@@ -10,7 +10,7 @@ import Foundation
 ///   the user re-run diagnostics after remediation.
 /// - `shellCommand`: optional single-line shell command that resolves the
 ///   issue directly, when one exists.
-public struct Remediation: Encodable, Sendable {
+public struct Remediation: Codable, Sendable, Equatable {
     public let humanHint: String
     public let doctorCheck: String
     public let shellCommand: String?
@@ -26,30 +26,36 @@ public struct Remediation: Encodable, Sendable {
         case doctorCheck = "doctor_check"
         case shellCommand = "shell_command"
     }
+    // Synthesized encode(to:) uses encodeIfPresent for Optional → shell_command
+    // is omitted (not null) when nil, matching the prior hand-rolled shape.
+}
 
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(humanHint, forKey: .humanHint)
-        try container.encode(doctorCheck, forKey: .doctorCheck)
-        try container.encodeIfPresent(shellCommand, forKey: .shellCommand)
-    }
+/// Closed set of error codes that have a catalogued remediation. The raw
+/// value is the snake_case string that `agentErrorCode(for:)` produces from
+/// the matching Swift error case — keeping them coupled means a typo on
+/// either side fails to compile rather than silently breaking the lookup.
+public enum ErrorCategory: String, CaseIterable, Sendable {
+    case accessDenied = "access_denied"
+    case databaseNotFound = "database_not_found"
+    case notAvailable = "not_available"
 }
 
 /// Central catalog mapping agent error codes (`AgentError.code`) to
 /// user-facing remediation hints. When a new typed error is added to
-/// `PippinLib`, register its remediation here so it flows through both
-/// agent-mode JSON output and the non-agent stderr error path.
+/// `PippinLib`, add its snake_case code to `ErrorCategory` and register
+/// the remediation in `forCategory(_:)` — the exhaustive switch forces
+/// you to supply text for every case.
 ///
 /// The catalog is intentionally small and hand-curated — it holds the
 /// errors whose remediation is stable and well-understood. Unknown codes
 /// return `nil`, which the callers handle gracefully (no remediation block
 /// in the output).
 public enum RemediationCatalog {
-    /// Look up a remediation by snake_case error code. Returns `nil` when
-    /// the code is not registered.
-    public static func forCode(_ code: String) -> Remediation? {
-        switch code {
-        case "access_denied":
+    /// Type-safe lookup. Every `ErrorCategory` case is guaranteed to have
+    /// text — compile-time enforcement via exhaustive switch.
+    public static func forCategory(_ category: ErrorCategory) -> Remediation {
+        switch category {
+        case .accessDenied:
             return Remediation(
                 humanHint: """
                 Voice Memos requires Full Disk Access. Open System Settings > \
@@ -61,21 +67,26 @@ public enum RemediationCatalog {
                 """,
                 doctorCheck: "Voice Memos access"
             )
-        case "database_not_found":
+        case .databaseNotFound:
             return Remediation(
                 humanHint: "Voice Memos database not found. Open the Voice Memos app once to initialize it.",
                 doctorCheck: "Voice Memos access",
                 shellCommand: "open -a \"Voice Memos\" && sleep 3"
             )
-        case "not_available":
+        case .notAvailable:
             return Remediation(
                 humanHint: "mlx-audio is not installed. Install it with pipx so it lands in an isolated venv and pippin can find the entry-point binary.",
                 doctorCheck: "mlx-audio",
                 shellCommand: "pipx install mlx-audio"
             )
-        default:
-            return nil
         }
+    }
+
+    /// Look up a remediation by snake_case error code. Returns `nil` when
+    /// the code is not a registered `ErrorCategory`. Preserves the
+    /// backward-compatible lookup shape used by `AgentError.from(_:)`.
+    public static func forCode(_ code: String) -> Remediation? {
+        ErrorCategory(rawValue: code).map(forCategory)
     }
 
     /// Resolve a remediation from any `Error` by first reducing it to an

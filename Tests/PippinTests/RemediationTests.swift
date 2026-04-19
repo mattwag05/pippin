@@ -26,6 +26,33 @@ final class RemediationTests: XCTestCase {
         XCTAssertNil(RemediationCatalog.forCode("this_is_not_a_real_code"))
     }
 
+    /// Every `ErrorCategory` case must yield a non-empty hint + doctor pointer.
+    /// Guards against a future case being added to the enum without matching
+    /// text in `forCategory(_:)`.
+    func testEveryErrorCategoryHasText() {
+        for category in ErrorCategory.allCases {
+            let remediation = RemediationCatalog.forCategory(category)
+            XCTAssertFalse(
+                remediation.humanHint.isEmpty,
+                "ErrorCategory.\(category) has empty humanHint"
+            )
+            XCTAssertFalse(
+                remediation.doctorCheck.isEmpty,
+                "ErrorCategory.\(category) has empty doctorCheck"
+            )
+        }
+    }
+
+    /// `forCode(String)` must round-trip through `ErrorCategory.rawValue`.
+    func testForCodeRoundTripsWithRawValue() {
+        for category in ErrorCategory.allCases {
+            XCTAssertNotNil(
+                RemediationCatalog.forCode(category.rawValue),
+                "forCode failed to resolve \(category.rawValue)"
+            )
+        }
+    }
+
     func testForErrorResolvesViaSnakeCaseCode() throws {
         let error = VoiceMemosError.accessDenied("whatever")
         let remediation = try XCTUnwrap(RemediationCatalog.forError(error))

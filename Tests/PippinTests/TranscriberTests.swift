@@ -55,4 +55,31 @@ final class TranscriberTests: XCTestCase {
             "notAvailable error should include install command, got: \(error.errorDescription ?? "nil")"
         )
     }
+
+    // MARK: - mlx-audio STT entry resolution
+
+    func testPinnedMLXAudioVersionIsSet() {
+        XCTAssertFalse(AudioBridge.pinnedMLXAudioVersion.isEmpty)
+    }
+
+    /// `resolveSTTEntry()` must either return `nil` (no mlx-audio installed)
+    /// or an entry whose executable actually exists on disk.
+    func testResolveSTTEntryReturnsUsablePath() {
+        guard let entry = AudioBridge.resolveSTTEntry() else { return }
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: entry.executable.path),
+            "STT entry executable must exist at \(entry.executable.path)"
+        )
+    }
+
+    func testVersionMismatchErrorMessage() {
+        let error = AudioBridgeError.versionMismatch(installed: "0.3.0", pinned: "0.4.2")
+        let description = error.errorDescription ?? ""
+        XCTAssertTrue(description.contains("0.3.0"), "must mention installed version")
+        XCTAssertTrue(description.contains("0.4.2"), "must mention pinned version")
+        XCTAssertTrue(
+            description.contains("pipx install"),
+            "must include pipx install remediation"
+        )
+    }
 }

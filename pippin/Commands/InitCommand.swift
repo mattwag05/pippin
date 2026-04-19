@@ -46,8 +46,11 @@ public struct InitCommand: AsyncParsableCommand {
                 print("  ✗ \(check.detail)")
                 if let remediation = check.remediation {
                     print()
-                    for line in remediation.components(separatedBy: .newlines) {
+                    for line in remediation.humanHint.components(separatedBy: .newlines) {
                         print("  \(line)")
+                    }
+                    if let cmd = remediation.shellCommand {
+                        print("  $ \(cmd)")
                     }
                 }
                 print()
@@ -56,7 +59,10 @@ public struct InitCommand: AsyncParsableCommand {
                 print("Step \(step): \(check.name)")
                 print("  - \(check.detail)")
                 if let remediation = check.remediation {
-                    print("  \(remediation)")
+                    print("  \(remediation.humanHint)")
+                    if let cmd = remediation.shellCommand {
+                        print("  $ \(cmd)")
+                    }
                 }
                 print()
             }

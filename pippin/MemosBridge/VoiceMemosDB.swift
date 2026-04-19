@@ -51,7 +51,7 @@ public enum VoiceMemosError: LocalizedError, Sendable {
         case let .ambiguousId(prefix, matches):
             return "Ambiguous ID prefix '\(prefix)' matches \(matches.count) recordings: \(matches.joined(separator: ", "))"
         case let .accessDenied(detail):
-            return "Voice Memos database access denied (\(detail)). This usually means Full Disk Access is not granted to your terminal."
+            return "Voice Memos database access denied (\(detail)). See `pippin doctor` for remediation."
         }
     }
 }
@@ -358,10 +358,16 @@ public final class VoiceMemosDB: Sendable {
     ///   - id: The memo UUID.
     ///   - transcriber: The transcription backend to use.
     ///   - outputDir: If provided, write a `.txt` file here and return the path in the result.
+    ///   - keepConverted: If `true`, preserve any temp WAV produced by
+    ///     `AudioConverter` (debugging). Default `false` cleans up.
+    ///   - onConvertedPath: Invoked with the temp path when a conversion runs.
+    ///     Lets the CLI print the path to stderr without coupling to output modes.
     public func transcribeMemo(
         id: String,
         transcriber: Transcriber,
-        outputDir: String? = nil
+        outputDir: String? = nil,
+        keepConverted: Bool = false,
+        onConvertedPath: ((String) -> Void)? = nil
     ) throws -> TranscribeResult {
         guard let memo = try getMemo(id: id) else {
             throw VoiceMemosError.memoNotFound(id)
@@ -376,7 +382,26 @@ public final class VoiceMemosDB: Sendable {
             throw VoiceMemosError.fileNotFound(sourcePath)
         }
 
-        let transcribeResult = try transcriber.transcribe(audioPath: sourcePath)
+        // Non-native formats get normalized to 16 kHz mono WAV before the STT
+        // backend sees them. Voice Memos' native `.m4a` skips this entirely.
+        var audioPathForTranscribe = sourcePath
+        var convertedURL: URL?
+        if AudioConverter.needsConversion(path: sourcePath) {
+            let tempURL = try AudioConverter.convertToWAV16kMono(
+                sourcePath: sourcePath,
+                keepOutput: keepConverted
+            )
+            convertedURL = tempURL
+            audioPathForTranscribe = tempURL.path
+            onConvertedPath?(tempURL.path)
+        }
+        defer {
+            if let url = convertedURL, !keepConverted {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+
+        let transcribeResult = try transcriber.transcribe(audioPath: audioPathForTranscribe)
         let text = transcribeResult.text
 
         var outputFile: String?
