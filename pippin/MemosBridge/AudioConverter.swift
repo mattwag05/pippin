@@ -78,22 +78,23 @@ public enum AudioConverter {
             throw AudioConverterError.bufferAllocationFailed
         }
 
+        // Hoist the output buffer: worst-case capacity is
+        // `inputFrameCapacity * sampleRateRatio + headroom`. Reused across
+        // iterations to avoid per-chunk allocation on large files.
+        let ratio = outputFormat.sampleRate / inputFormat.sampleRate
+        let maxOutCapacity = AVAudioFrameCount(Double(inputFrameCapacity) * ratio + 1024)
+        guard let outBuffer = AVAudioPCMBuffer(
+            pcmFormat: outputFormat,
+            frameCapacity: maxOutCapacity
+        ) else {
+            throw AudioConverterError.bufferAllocationFailed
+        }
+
         while inputFile.framePosition < inputFile.length {
             try inputFile.read(into: inputBuffer)
             if inputBuffer.frameLength == 0 { break }
 
-            // Scale output capacity by sample-rate ratio to avoid truncation.
-            let ratio = outputFormat.sampleRate / inputFormat.sampleRate
-            let outCapacity = AVAudioFrameCount(
-                Double(inputBuffer.frameLength) * ratio + 1024
-            )
-            guard let outBuffer = AVAudioPCMBuffer(
-                pcmFormat: outputFormat,
-                frameCapacity: outCapacity
-            ) else {
-                throw AudioConverterError.bufferAllocationFailed
-            }
-
+            outBuffer.frameLength = 0
             var fed = false
             var err: NSError?
             let status = converter.convert(to: outBuffer, error: &err) { _, outStatus in
