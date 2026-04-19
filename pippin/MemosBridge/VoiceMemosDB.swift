@@ -27,6 +27,12 @@ public enum VoiceMemosError: LocalizedError, Sendable {
     case fileNotFound(String)
     case exportFailed(String)
     case ambiguousId(String, [String])
+    /// macOS denied read/write access to the Voice Memos DB.
+    /// Almost always means Full Disk Access is not granted to the terminal
+    /// that launched pippin. The raw SQLite/GRDB message is carried in the
+    /// associated value for display; remediation text is attached by the
+    /// remediation catalog at the CLI boundary.
+    case accessDenied(String)
 
     public var errorDescription: String? {
         switch self {
@@ -44,6 +50,8 @@ public enum VoiceMemosError: LocalizedError, Sendable {
             return "Export failed: \(detail)"
         case let .ambiguousId(prefix, matches):
             return "Ambiguous ID prefix '\(prefix)' matches \(matches.count) recordings: \(matches.joined(separator: ", "))"
+        case let .accessDenied(detail):
+            return "Voice Memos database access denied (\(detail)). This usually means Full Disk Access is not granted to your terminal."
         }
     }
 }
@@ -74,15 +82,36 @@ public final class VoiceMemosDB: Sendable {
 
     /// Open the Voice Memos database at the given path.
     /// Validates schema version on open.
+    ///
+    /// Errors:
+    /// - `VoiceMemosError.databaseNotFound` — file does not exist at `dbPath`.
+    /// - `VoiceMemosError.accessDenied` — macOS TCC (Full Disk Access) or
+    ///   another OS-level permission blocked the read. The raw GRDB/SQLite
+    ///   message is attached for display.
+    /// - `VoiceMemosError.unsupportedSchemaVersion` — the `Z_VERSION` on
+    ///   disk isn't one this build knows about (post macOS upgrade).
     public init(dbPath: String) throws {
         guard FileManager.default.fileExists(atPath: dbPath) else {
             throw VoiceMemosError.databaseNotFound(dbPath)
         }
         var config = Configuration()
         config.readonly = true
-        dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
+        do {
+            dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
+        } catch {
+            // GRDB wraps SQLite errors; TCC denial surfaces here as
+            // "SQLite error 23: authorization denied" before any SQL runs.
+            throw VoiceMemosError.accessDenied(error.localizedDescription)
+        }
         recordingsDir = (dbPath as NSString).deletingLastPathComponent
         try validateSchema()
+    }
+
+    /// Pre-flight check that the Voice Memos DB is readable without keeping
+    /// a handle open. Throws the same typed errors as `init(dbPath:)` — call
+    /// this from diagnostics, or rely on the init wrapping in normal code paths.
+    public static func checkAccess(dbPath: String? = nil) throws {
+        _ = try VoiceMemosDB(dbPath: dbPath ?? defaultDBPath())
     }
 
     /// Init with a pre-created DatabaseQueue (for testing with in-memory databases).
@@ -286,8 +315,13 @@ public final class VoiceMemosDB: Sendable {
         guard FileManager.default.fileExists(atPath: path) else {
             throw VoiceMemosError.databaseNotFound(path)
         }
-        // Open a writable connection
-        let writableQueue = try DatabaseQueue(path: path)
+        // Open a writable connection (TCC denial converts to accessDenied).
+        let writableQueue: DatabaseQueue
+        do {
+            writableQueue = try DatabaseQueue(path: path)
+        } catch {
+            throw VoiceMemosError.accessDenied(error.localizedDescription)
+        }
 
         // Fetch the file path before deleting
         let filePath: String = try writableQueue.read { db in
