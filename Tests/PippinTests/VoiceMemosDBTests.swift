@@ -74,6 +74,35 @@ final class VoiceMemosDBTests: XCTestCase {
         XCTAssertThrowsError(try VoiceMemosDB(dbQueue: dbQueue))
     }
 
+    // MARK: - Access-denied error surface
+
+    /// The `accessDenied` case carries the underlying SQLite/GRDB message and
+    /// surfaces a user-facing description that mentions Full Disk Access.
+    /// We can't exercise the real TCC-denial path in a unit test, but we can
+    /// verify the typed error's description is helpful and its snake_case
+    /// code matches the remediation catalog key.
+    func testAccessDeniedErrorDescribesFDA() {
+        let error = VoiceMemosError.accessDenied("SQLite error 23: authorization denied")
+        let description = error.errorDescription ?? ""
+        XCTAssertTrue(
+            description.contains("Full Disk Access"),
+            "accessDenied should mention Full Disk Access, got: \(description)"
+        )
+        XCTAssertTrue(
+            description.contains("SQLite error 23"),
+            "accessDenied should include the underlying detail, got: \(description)"
+        )
+    }
+
+    func testAccessDeniedProducesSnakeCaseCodeMatchingCatalog() {
+        let error = VoiceMemosError.accessDenied("raw")
+        XCTAssertEqual(agentErrorCode(for: error), "access_denied")
+        XCTAssertNotNil(
+            RemediationCatalog.forCode("access_denied"),
+            "Catalog must have a remediation for access_denied since it's the most user-visible TCC error"
+        )
+    }
+
     // MARK: - Core Data epoch conversion
 
     func testCoreDataEpochConversion() throws {

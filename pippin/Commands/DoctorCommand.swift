@@ -211,6 +211,19 @@ private func checkVoiceMemosDB() -> DiagnosticCheck {
                   This version of pippin may need updating.
                 """
             )
+        case let .accessDenied(reason):
+            return DiagnosticCheck(
+                name: "Voice Memos access",
+                status: .fail,
+                detail: "permission denied (\(reason))",
+                remediation: """
+                → Open System Settings > Privacy & Security > Full Disk Access
+                  Add the terminal app you use to launch pippin (Terminal.app,
+                  iTerm, Warp, Ghostty, etc.), then fully quit and relaunch it.
+                  Note: grant FDA to the terminal, NOT to the pippin binary —
+                  macOS TCC attaches the permission to the launching app.
+                """
+            )
         default:
             return DiagnosticCheck(
                 name: "Voice Memos access",
