@@ -16,7 +16,8 @@ final class InitCommandTests: XCTestCase {
     func testInitReportNotReadyWhenFail() {
         let checks = [
             DiagnosticCheck(name: "macOS", status: .ok, detail: "26.0"),
-            DiagnosticCheck(name: "Mail", status: .fail, detail: "denied", remediation: "fix it"),
+            DiagnosticCheck(name: "Mail", status: .fail, detail: "denied",
+                            remediation: Remediation(humanHint: "fix it", doctorCheck: "Mail")),
         ]
         let report = InitReport(checks: checks)
         XCTAssertFalse(report.ready)
@@ -32,9 +33,10 @@ final class InitCommandTests: XCTestCase {
     }
 
     func testInitReportRoundTrip() throws {
+        let remediation = Remediation(humanHint: "fix it", doctorCheck: "bad")
         let checks = [
             DiagnosticCheck(name: "test", status: .ok, detail: "good"),
-            DiagnosticCheck(name: "bad", status: .fail, detail: "broken", remediation: "fix"),
+            DiagnosticCheck(name: "bad", status: .fail, detail: "broken", remediation: remediation),
         ]
         let report = InitReport(checks: checks)
         let data = try JSONEncoder().encode(report)
@@ -43,7 +45,7 @@ final class InitCommandTests: XCTestCase {
         XCTAssertEqual(decoded.checks.count, 2)
         XCTAssertEqual(decoded.checks[0].name, "test")
         XCTAssertEqual(decoded.checks[1].status, .fail)
-        XCTAssertEqual(decoded.checks[1].remediation, "fix")
+        XCTAssertEqual(decoded.checks[1].remediation, remediation)
     }
 
     // MARK: - Command Configuration

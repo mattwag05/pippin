@@ -5,6 +5,88 @@ import Foundation
 /// Process runner that shells out to the mlx-audio Python package via subprocess.
 /// Follows the same pattern as MailBridge's osascript runner.
 public enum AudioBridge {
+    // MARK: - Version Pinning
+
+    /// The mlx-audio version pippin was built and tested against. Bumped together
+    /// with the Homebrew tap's `post_install` pipx pin. Keep in sync.
+    public static let pinnedMLXAudioVersion = "0.4.2"
+
+    // MARK: - STT Entry Resolution
+
+    /// Describes how to invoke mlx-audio's STT entry point. Three-tier fallback:
+    /// 1. A pipx-exposed console-script binary (`~/.local/bin/mlx_audio.stt.generate`).
+    /// 2. `-m mlx_audio.stt.generate` via the discovered python interpreter (0.4.2+).
+    /// 3. `-m mlx_audio.stt` via the discovered python interpreter (pre-0.4.2 legacy).
+    public struct STTEntry: Sendable {
+        public let executable: URL
+        public let prefixArgs: [String]
+    }
+
+    /// Memoized STT entry resolver — safe initializer, first access runs the probe.
+    private static let cachedSTTEntry: STTEntry? = resolveSTTEntry()
+
+    public static func resolveSTTEntry() -> STTEntry? {
+        // Tier 1: pipx console-script binary.
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let pipxBin = home.appendingPathComponent(".local/bin/mlx_audio.stt.generate")
+        if FileManager.default.isExecutableFile(atPath: pipxBin.path) {
+            return STTEntry(executable: pipxBin, prefixArgs: [])
+        }
+        // Tier 2 / Tier 3: need a Python with mlx_audio importable.
+        guard let python = findPythonWithMLXAudio() else { return nil }
+        if canImportModule("mlx_audio.stt.generate", pythonURL: python) {
+            return STTEntry(executable: python, prefixArgs: ["-m", "mlx_audio.stt.generate"])
+        }
+        if canImportModule("mlx_audio.stt", pythonURL: python) {
+            return STTEntry(executable: python, prefixArgs: ["-m", "mlx_audio.stt"])
+        }
+        return nil
+    }
+
+    /// Read the installed `mlx_audio.__version__` via the given interpreter.
+    /// Returns `nil` if the interpreter can't report a version.
+    public static func installedMLXAudioVersion(python: URL? = nil) -> String? {
+        guard let pythonURL = python ?? findPythonWithMLXAudio() else { return nil }
+        let process = Process()
+        process.executableURL = pythonURL
+        // mlx-audio doesn't expose `__version__`; use importlib.metadata which
+        // reads the installed distribution's pyproject/Egg-Info version.
+        process.arguments = [
+            "-c",
+            "from importlib.metadata import version; print(version('mlx-audio'))",
+        ]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let raw = (String(data: data, encoding: .utf8) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? nil : raw
+    }
+
+    /// Probe whether a given submodule is importable under the supplied python.
+    static func canImportModule(_ module: String, pythonURL: URL) -> Bool {
+        let process = Process()
+        process.executableURL = pythonURL
+        process.arguments = ["-c", "import \(module)"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Public API
 
     /// Synthesize speech from text using the specified TTS model and voice.
@@ -60,14 +142,32 @@ public enum AudioBridge {
         model: String = "parakeet",
         outputFormat: String = "text"
     ) throws -> TranscriptionResult {
-        let args = [
-            "-m", "mlx_audio.stt",
+        guard let entry = cachedSTTEntry else {
+            // No STT path resolves. If mlx_audio itself is importable but
+            // the submodule isn't, this is almost certainly a version skew
+            // (e.g. a stranded pre-0.4.2 install). Surface versionMismatch
+            // so the CLI prints actionable remediation instead of a cryptic
+            // module-not-found trace.
+            if let installed = installedMLXAudioVersion() {
+                throw AudioBridgeError.versionMismatch(
+                    installed: installed,
+                    pinned: pinnedMLXAudioVersion
+                )
+            }
+            throw AudioBridgeError.notAvailable
+        }
+
+        let args = entry.prefixArgs + [
             filePath,
             "--model", model,
             "--format", outputFormat,
         ]
 
-        let stdout = try runPython(args, timeoutSeconds: 300)
+        let stdout = try runProcess(
+            executable: entry.executable,
+            arguments: args,
+            timeoutSeconds: 300
+        )
 
         // Attempt JSON decode first.
         if outputFormat == "json",
@@ -191,6 +291,9 @@ public enum AudioBridge {
 
         let home = FileManager.default.homeDirectoryForCurrentUser
         add(home.appendingPathComponent(".local/pipx/venvs/mlx-audio/bin/python3"))
+        // Homebrew pipx stashes venvs under /opt/homebrew/var/pipx when
+        // `pipx` itself is installed via brew and used in system mode.
+        add(URL(fileURLWithPath: "/opt/homebrew/var/pipx/venvs/mlx-audio/bin/python3"))
         add(URL(fileURLWithPath: "/usr/bin/python3"))
         if let pathPython = resolvePython3OnPath() {
             add(pathPython)
@@ -248,9 +351,19 @@ public enum AudioBridge {
                 "mlx-audio not found — install with: pipx install mlx-audio"
             )
         }
+        return try runProcess(executable: pythonURL, arguments: arguments, timeoutSeconds: timeoutSeconds)
+    }
 
+    /// Core subprocess runner: launch, drain stdout/stderr concurrently,
+    /// apply a SIGTERM→SIGKILL timeout, and return stdout. Callers decide
+    /// how to resolve the executable (python interpreter vs console-script binary).
+    private static func runProcess(
+        executable: URL,
+        arguments: [String],
+        timeoutSeconds: Int
+    ) throws -> String {
         let process = Process()
-        process.executableURL = pythonURL
+        process.executableURL = executable
         process.arguments = arguments
 
         let stdoutPipe = Pipe()
@@ -261,7 +374,7 @@ public enum AudioBridge {
         do {
             try process.run()
         } catch {
-            throw AudioBridgeError.processFailed("Failed to launch \(pythonURL.path): \(error.localizedDescription)")
+            throw AudioBridgeError.processFailed("Failed to launch \(executable.path): \(error.localizedDescription)")
         }
 
         // Drain both pipes concurrently to avoid deadlock on large output (>64KB pipe buffer)

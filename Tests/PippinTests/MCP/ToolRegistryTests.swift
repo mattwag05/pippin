@@ -152,8 +152,46 @@ final class ToolRegistryTests: XCTestCase {
             return .object(["title": .string("X"), "start": .string("2026-04-15")])
         case "reminders_create":
             return .object(["title": .string("X")])
+        case "memos_info":
+            return .object(["id": .string("abc-123")])
+        case "memos_export":
+            return .object(["id": .string("abc-123"), "output": .string("/tmp/out")])
+        case "memos_transcribe", "memos_summarize":
+            return .object(["id": .string("abc-123")])
         default:
             return .object([:])
         }
+    }
+
+    // MARK: - Memos tools
+
+    func testMemosToolsRegistered() {
+        let names = Set(MCPToolRegistry.tools.map { $0.name })
+        XCTAssertTrue(names.contains("memos_list"))
+        XCTAssertTrue(names.contains("memos_info"))
+        XCTAssertTrue(names.contains("memos_export"))
+        XCTAssertTrue(names.contains("memos_transcribe"))
+        XCTAssertTrue(names.contains("memos_summarize"))
+    }
+
+    func testMemosExportRequiresOutput() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "memos_export"))
+        XCTAssertThrowsError(try tool.buildArgs(.object(["id": .string("x")]))) { error in
+            guard case MCPToolArgError.missingRequired("output") = error else {
+                return XCTFail("Expected missingRequired(\"output\"), got \(error)")
+            }
+        }
+    }
+
+    func testMemosTranscribeAcceptsEitherIdOrAll() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "memos_transcribe"))
+        let withID = try tool.buildArgs(.object(["id": .string("abc-123")]))
+        XCTAssertTrue(withID.contains("abc-123"))
+        XCTAssertFalse(withID.contains("--all"))
+
+        let withAll = try tool.buildArgs(.object(["all": .bool(true)]))
+        XCTAssertTrue(withAll.contains("--all"))
+
+        XCTAssertThrowsError(try tool.buildArgs(.object([:])))
     }
 }

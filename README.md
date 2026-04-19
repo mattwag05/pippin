@@ -39,6 +39,11 @@ pippin audio speak "Hello"
 brew install mattwag05/tap/pippin
 ```
 
+Transcription deps: the formula runs `pipx install mlx-audio==<pinned>` as a
+`post_install` step when `pipx` is on PATH. If it isn't, the formula prints a
+one-line install hint — run `brew install pipx && pipx install mlx-audio` and
+verify with `pippin doctor`.
+
 **Pre-built binary** (arm64, macOS 15+):
 
 ```bash

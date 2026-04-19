@@ -77,7 +77,8 @@ final class VoiceMemosDBTests: XCTestCase {
     // MARK: - Access-denied error surface
 
     /// The `accessDenied` case carries the underlying SQLite/GRDB message and
-    /// surfaces a user-facing description that mentions Full Disk Access.
+    /// points the user at `pippin doctor` for the canonical remediation (the
+    /// Full Disk Access text lives once in `RemediationCatalog`).
     /// We can't exercise the real TCC-denial path in a unit test, but we can
     /// verify the typed error's description is helpful and its snake_case
     /// code matches the remediation catalog key.
@@ -85,8 +86,8 @@ final class VoiceMemosDBTests: XCTestCase {
         let error = VoiceMemosError.accessDenied("SQLite error 23: authorization denied")
         let description = error.errorDescription ?? ""
         XCTAssertTrue(
-            description.contains("Full Disk Access"),
-            "accessDenied should mention Full Disk Access, got: \(description)"
+            description.contains("pippin doctor"),
+            "accessDenied should point at `pippin doctor` for remediation, got: \(description)"
         )
         XCTAssertTrue(
             description.contains("SQLite error 23"),

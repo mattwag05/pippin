@@ -11,6 +11,9 @@ public enum AudioBridgeError: LocalizedError, Sendable {
     case timeout
     /// The output could not be decoded into the expected type.
     case decodingFailed(String)
+    /// Installed mlx-audio version doesn't match the pinned version.
+    /// Surfaces installed-vs-pinned so the remediation can be exact.
+    case versionMismatch(installed: String, pinned: String)
 
     public var errorDescription: String? {
         switch self {
@@ -22,6 +25,11 @@ public enum AudioBridgeError: LocalizedError, Sendable {
             return "Audio process timed out"
         case let .decodingFailed(detail):
             return "Failed to decode audio output: \(detail)"
+        case let .versionMismatch(installed, pinned):
+            return """
+            mlx-audio version mismatch: installed \(installed), pippin expects \(pinned). \
+            Run: pipx install 'mlx-audio==\(pinned)' --force
+            """
         }
     }
 

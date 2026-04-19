@@ -533,6 +533,126 @@ enum MCPToolRegistry {
             buildArgs: { _ in pippinArgv("notes", "folders") }
         ),
 
+        // MARK: Memos
+
+        MCPTool(
+            name: "memos_list",
+            description: "List Voice Memos recordings (most recent first).",
+            inputSchema: Schema.object(properties: [
+                "since": Schema.string("Only recordings on or after YYYY-MM-DD."),
+                "limit": Schema.integer("Maximum number of results (default: 20).", default: 20),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("memos", "list")
+                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "memos_info",
+            description: "Show full metadata for a single Voice Memos recording by ID.",
+            inputSchema: Schema.object(
+                properties: ["id": Schema.string("Memo UUID from memos_list output.")],
+                required: ["id"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("memos", "info")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "memos_export",
+            description: "Copy Voice Memos recording(s) to a directory, optionally with transcript sidecars.",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Memo UUID (omit with all=true)."),
+                    "all": Schema.boolean("Export every recording.", default: false),
+                    "output": Schema.string("Destination directory (created if absent)."),
+                    "transcribe": Schema.boolean("Transcribe audio and write sidecar.", default: false),
+                    "sidecarFormat": Schema.string("Sidecar format: txt (default), srt, markdown, rtf."),
+                    "forceTranscribe": Schema.boolean("Bypass transcript cache.", default: false),
+                    "jobs": Schema.integer("Parallel transcription jobs (default: 2).", default: 2),
+                ],
+                required: ["output"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("memos", "export")
+                let all = ArgHelpers.bool(args, "all") == true
+                if let id = ArgHelpers.string(args, "id") {
+                    argv.append(id)
+                } else if !all {
+                    throw MCPToolArgError.missingRequired("id (or all=true)")
+                }
+                if all { argv.append("--all") }
+                try argv += ["--output", ArgHelpers.requiredString(args, "output")]
+                argv += ArgHelpers.flagIfTrue(args, "transcribe", flagName: "--transcribe")
+                argv += ArgHelpers.optionIfString(args, "sidecarFormat", flagName: "--sidecar-format")
+                argv += ArgHelpers.flagIfTrue(args, "forceTranscribe", flagName: "--force-transcribe")
+                argv += ArgHelpers.optionIfInt(args, "jobs", flagName: "--jobs")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "memos_transcribe",
+            description: "Transcribe Voice Memos audio to text. Requires mlx-audio (see `pippin doctor`).",
+            inputSchema: Schema.object(properties: [
+                "id": Schema.string("Memo UUID (omit with all=true)."),
+                "all": Schema.boolean("Transcribe every recording.", default: false),
+                "output": Schema.string("Directory to write .txt files (default: inline in JSON)."),
+                "force": Schema.boolean("Bypass transcript cache.", default: false),
+                "jobs": Schema.integer("Parallel transcription jobs (default: 2).", default: 2),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("memos", "transcribe")
+                let all = ArgHelpers.bool(args, "all") == true
+                if let id = ArgHelpers.string(args, "id") {
+                    argv.append(id)
+                } else if !all {
+                    throw MCPToolArgError.missingRequired("id (or all=true)")
+                }
+                if all { argv.append("--all") }
+                argv += ArgHelpers.optionIfString(args, "output", flagName: "--output")
+                argv += ArgHelpers.flagIfTrue(args, "force", flagName: "--force")
+                argv += ArgHelpers.optionIfInt(args, "jobs", flagName: "--jobs")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "memos_summarize",
+            description: "Summarize a Voice Memos recording using an AI provider (ollama or claude).",
+            inputSchema: Schema.object(properties: [
+                "id": Schema.string("Memo UUID (omit with all=true)."),
+                "all": Schema.boolean("Summarize every recording.", default: false),
+                "template": Schema.string("Template name (e.g. meeting-notes, summary, action-items)."),
+                "prompt": Schema.string("Free-form prompt (overrides template)."),
+                "provider": Schema.string("AI provider: ollama or claude (default: ollama)."),
+                "model": Schema.string("Model name (provider-specific default)."),
+                "since": Schema.string("With all=true, only memos on or after YYYY-MM-DD."),
+                "output": Schema.string("Write output to a directory instead of inline JSON."),
+                "jobs": Schema.integer("Parallel summarization jobs (default: 2).", default: 2),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("memos", "summarize")
+                let all = ArgHelpers.bool(args, "all") == true
+                if let id = ArgHelpers.string(args, "id") {
+                    argv.append(id)
+                } else if !all {
+                    throw MCPToolArgError.missingRequired("id (or all=true)")
+                }
+                if all { argv.append("--all") }
+                argv += ArgHelpers.optionIfString(args, "template", flagName: "--template")
+                argv += ArgHelpers.optionIfString(args, "prompt", flagName: "--prompt")
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
+                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
+                argv += ArgHelpers.optionIfString(args, "output", flagName: "--output")
+                argv += ArgHelpers.optionIfInt(args, "jobs", flagName: "--jobs")
+                return argv
+            }
+        ),
+
         // MARK: System
 
         MCPTool(

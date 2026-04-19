@@ -247,6 +247,12 @@ public struct MemosCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Parallel transcription jobs (default: 2).")
         public var jobs: Int = 2
 
+        @Flag(
+            name: .customLong("keep-converted"),
+            help: "Preserve any temp WAV produced by AudioConverter and print its path (debug)."
+        )
+        public var keepConverted: Bool = false
+
         @OptionGroup public var outputOptions: OutputOptions
 
         public init() {}
@@ -265,6 +271,14 @@ public struct MemosCommand: AsyncParsableCommand {
             let transcriber = MLXAudioTranscriber()
             let cache = try TranscriptCache()
             var results: [TranscribeResult] = []
+            let keep = keepConverted
+            let shouldLogConvertedPath = keep && !outputOptions.isStructured
+            let convertedPathLogger: (@Sendable (String) -> Void)? = {
+                guard shouldLogConvertedPath else { return nil }
+                return { path in
+                    FileHandle.standardError.write(Data("[converted] \(path)\n".utf8))
+                }
+            }()
 
             if all {
                 let memos = try db.listMemos(limit: allMemosLimit)
@@ -295,7 +309,11 @@ public struct MemosCommand: AsyncParsableCommand {
                                         )))
                                     }
                                     let r = try db.transcribeMemo(
-                                        id: memoId, transcriber: transcriber, outputDir: outputDir
+                                        id: memoId,
+                                        transcriber: transcriber,
+                                        outputDir: outputDir,
+                                        keepConverted: keep,
+                                        onConvertedPath: convertedPathLogger
                                     )
                                     try cache.set(memoId: memoId, transcript: r.transcription, provider: "mlx-audio")
                                     return (i, .success(r))
@@ -330,7 +348,13 @@ public struct MemosCommand: AsyncParsableCommand {
                         transcription: cached.transcript, outputFile: nil
                     ))
                 } else {
-                    let result = try db.transcribeMemo(id: memo.id, transcriber: transcriber, outputDir: output)
+                    let result = try db.transcribeMemo(
+                        id: memo.id,
+                        transcriber: transcriber,
+                        outputDir: output,
+                        keepConverted: keepConverted,
+                        onConvertedPath: convertedPathLogger
+                    )
                     try cache.set(memoId: memo.id, transcript: result.transcription, provider: "mlx-audio")
                     results.append(result)
                 }

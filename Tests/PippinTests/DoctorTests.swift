@@ -7,18 +7,19 @@ final class DoctorTests: XCTestCase {
     func testClassifyMailErrorTCC() {
         let check = classifyMailError("not authorized to send Apple events")
         XCTAssertEqual(check.status, .fail)
-        XCTAssertFalse(
-            check.remediation?.contains("$ ") ?? false,
-            "TCC remediation must be human-only (no $ command), got: \(check.remediation ?? "nil")"
+        XCTAssertNil(
+            check.remediation?.shellCommand,
+            "TCC remediation must be human-only (no shellCommand), got: \(String(describing: check.remediation?.shellCommand))"
         )
     }
 
     func testClassifyMailErrorNotRunning() {
         let check = classifyMailError("")
         XCTAssertEqual(check.status, .fail)
-        XCTAssertTrue(
-            check.remediation?.contains("$ open -a Mail") ?? false,
-            "Not-running remediation must include '$ open -a Mail', got: \(check.remediation ?? "nil")"
+        XCTAssertEqual(
+            check.remediation?.shellCommand,
+            "open -a Mail && sleep 4",
+            "Not-running remediation must set shellCommand to open Mail"
         )
     }
 
@@ -29,9 +30,9 @@ final class DoctorTests: XCTestCase {
             check.detail.contains("socket timeout"),
             "Unknown error detail should pass through, got: \(check.detail)"
         )
-        XCTAssertFalse(
-            check.remediation?.contains("$ ") ?? false,
-            "Unknown remediation must not contain runnable '$ ' command, got: \(check.remediation ?? "nil")"
+        XCTAssertNil(
+            check.remediation?.shellCommand,
+            "Unknown remediation must not carry a shellCommand"
         )
     }
 
@@ -49,10 +50,7 @@ final class DoctorTests: XCTestCase {
     func testClassifyPython3OutputFailure() {
         let check = classifyPython3Output(exitCode: 1, output: "")
         XCTAssertEqual(check.status, .fail)
-        XCTAssertTrue(
-            check.remediation?.contains("$ brew install python3") ?? false,
-            "Failure remediation must include '$ brew install python3', got: \(check.remediation ?? "nil")"
-        )
+        XCTAssertEqual(check.remediation?.shellCommand, "brew install python3")
     }
 
     // MARK: - checkPython3 live call
@@ -68,9 +66,9 @@ final class DoctorTests: XCTestCase {
         let checks = runAllChecks()
         guard let check = checks.first(where: { $0.name == "Calendar access" }),
               check.status == .fail else { return }
-        XCTAssertFalse(
-            check.remediation?.contains("$ ") ?? false,
-            "Calendar permission-denied remediation must not contain runnable '$ ' command"
+        XCTAssertNil(
+            check.remediation?.shellCommand,
+            "Calendar permission-denied remediation must not carry a shellCommand"
         )
     }
 
@@ -78,9 +76,9 @@ final class DoctorTests: XCTestCase {
         let checks = runAllChecks()
         guard let check = checks.first(where: { $0.name == "Reminders access" }),
               check.status == .fail else { return }
-        XCTAssertFalse(
-            check.remediation?.contains("$ ") ?? false,
-            "Reminders permission-denied remediation must not contain runnable '$ ' command"
+        XCTAssertNil(
+            check.remediation?.shellCommand,
+            "Reminders permission-denied remediation must not carry a shellCommand"
         )
     }
 
@@ -88,9 +86,9 @@ final class DoctorTests: XCTestCase {
         let checks = runAllChecks()
         guard let check = checks.first(where: { $0.name == "Contacts access" }),
               check.status == .fail else { return }
-        XCTAssertFalse(
-            check.remediation?.contains("$ ") ?? false,
-            "Contacts permission-denied remediation must not contain runnable '$ ' command"
+        XCTAssertNil(
+            check.remediation?.shellCommand,
+            "Contacts permission-denied remediation must not carry a shellCommand"
         )
     }
 
@@ -113,9 +111,9 @@ final class DoctorTests: XCTestCase {
         let checks = runAllChecks()
         guard let check = checks.first(where: { $0.name == "mlx-audio" }),
               let remediation = check.remediation else { return }
-        XCTAssertTrue(
-            remediation.contains("$ "),
-            "mlx-audio remediation must include a '$ ' command, got: \(remediation)"
+        XCTAssertNotNil(
+            remediation.shellCommand,
+            "mlx-audio remediation must carry a shellCommand"
         )
     }
 
@@ -123,9 +121,9 @@ final class DoctorTests: XCTestCase {
         let checks = runAllChecks()
         guard let check = checks.first(where: { $0.name == "Node.js" }),
               let remediation = check.remediation else { return }
-        XCTAssertTrue(
-            remediation.contains("$ "),
-            "Node.js remediation must include a '$ ' command, got: \(remediation)"
+        XCTAssertNotNil(
+            remediation.shellCommand,
+            "Node.js remediation must carry a shellCommand"
         )
     }
 
@@ -133,9 +131,9 @@ final class DoctorTests: XCTestCase {
         let checks = runAllChecks()
         guard let check = checks.first(where: { $0.name == "Playwright" }),
               let remediation = check.remediation else { return }
-        XCTAssertTrue(
-            remediation.contains("$ "),
-            "Playwright remediation must include a '$ ' command, got: \(remediation)"
+        XCTAssertNotNil(
+            remediation.shellCommand,
+            "Playwright remediation must carry a shellCommand"
         )
     }
 

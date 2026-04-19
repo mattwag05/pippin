@@ -4,7 +4,7 @@
 
 ## What you get
 
-26 tools spanning the commonly scripted pippin surfaces:
+31 tools spanning the commonly scripted pippin surfaces:
 
 | Area | Tools |
 |---|---|
@@ -13,11 +13,12 @@
 | Reminders | `reminders_lists`, `reminders_list`, `reminders_show`, `reminders_search`, `reminders_create`, `reminders_complete` |
 | Contacts | `contacts_search`, `contacts_show` |
 | Notes | `notes_list`, `notes_search`, `notes_show`, `notes_folders` |
+| Memos | `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_summarize` |
 | System | `status`, `doctor` |
 
-Destructive actions (`mail send`, `reminders delete`, `calendar delete`) are **not exposed** over MCP yet — they need a confirmation UX story first.
+Destructive actions (`mail send`, `reminders delete`, `calendar delete`, `memos delete`) are **not exposed** over MCP yet — they need a confirmation UX story first.
 
-Heavy AI subsystems (`mail index`, `mail triage`, `memos summarize`, `audio transcribe`, browser automation) are also out of scope for the MCP surface. They remain available via the CLI.
+Heavy AI subsystems (`mail index`, `mail triage`, `audio transcribe`, browser automation) remain out of scope — they need longer-running or streaming UX than the one-shot `tools/call` flow supports. Memos transcription/summarization are exposed because they're single-shot per memo and agents reach for them often enough that the heavyweight cost is worth the ergonomics.
 
 ## How it works
 

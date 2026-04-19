@@ -14,9 +14,13 @@ public struct DiagnosticCheck: Codable, Sendable {
     public let name: String
     public let status: Status
     public let detail: String
-    public let remediation: String? // nil when status is .ok
+    /// Structured remediation — `nil` when status is `.ok` or there is
+    /// nothing useful to say. JSON mode emits the `Remediation` shape
+    /// (`human_hint`, `doctor_check`, optional `shell_command`); text
+    /// mode renders the hint prose plus a `$ <cmd>` line when present.
+    public let remediation: Remediation?
 
-    public init(name: String, status: Status, detail: String, remediation: String? = nil) {
+    public init(name: String, status: Status, detail: String, remediation: Remediation? = nil) {
         self.name = name
         self.status = status
         self.detail = detail
@@ -51,8 +55,11 @@ public struct DoctorCommand: AsyncParsableCommand {
                 }
                 print("[\(icon)]  \(check.name): \(check.detail)")
                 if let remediation = check.remediation {
-                    for line in remediation.components(separatedBy: .newlines) {
+                    for line in remediation.humanHint.components(separatedBy: .newlines) {
                         print("       \(line)")
+                    }
+                    if let cmd = remediation.shellCommand {
+                        print("       $ \(cmd)")
                     }
                 }
             }
@@ -76,11 +83,14 @@ func classifyMailError(_ detail: String) -> DiagnosticCheck {
             name: "Mail automation",
             status: .fail,
             detail: "permission denied",
-            remediation: """
-            Open System Settings > Privacy & Security > Automation
-            Grant Terminal.app (or pippin binary) access to Mail.
-            Then run: pippin mail list
-            """
+            remediation: Remediation(
+                humanHint: """
+                Open System Settings > Privacy & Security > Automation
+                Grant Terminal.app (or pippin binary) access to Mail.
+                Then run: pippin mail list
+                """,
+                doctorCheck: "Mail automation"
+            )
         )
     }
     if detail.isEmpty {
@@ -88,17 +98,24 @@ func classifyMailError(_ detail: String) -> DiagnosticCheck {
             name: "Mail automation",
             status: .fail,
             detail: "Mail.app is not running",
-            remediation: "$ open -a Mail && sleep 4"
+            remediation: Remediation(
+                humanHint: "Mail.app is not running. Open it and retry.",
+                doctorCheck: "Mail automation",
+                shellCommand: "open -a Mail && sleep 4"
+            )
         )
     }
     return DiagnosticCheck(
         name: "Mail automation",
         status: .fail,
         detail: detail,
-        remediation: """
-        Ensure Mail.app is installed and has at least one account configured.
-        Then run: pippin mail list
-        """
+        remediation: Remediation(
+            humanHint: """
+            Ensure Mail.app is installed and has at least one account configured.
+            Then run: pippin mail list
+            """,
+            doctorCheck: "Mail automation"
+        )
     )
 }
 
@@ -117,7 +134,11 @@ func classifyPython3Output(exitCode: Int32, output: String) -> DiagnosticCheck {
         name: "Python3",
         status: .fail,
         detail: "not found",
-        remediation: "$ brew install python3"
+        remediation: Remediation(
+            humanHint: "python3 is not installed. Install it via Homebrew.",
+            doctorCheck: "Python3",
+            shellCommand: "brew install python3"
+        )
     )
 }
 
@@ -161,7 +182,10 @@ private func checkMacOSVersion() -> DiagnosticCheck {
             name: "macOS version",
             status: .fail,
             detail: "\(versionStr) (requires macOS 15+)",
-            remediation: "Update to macOS 15 (Sequoia) or later."
+            remediation: Remediation(
+                humanHint: "Update to macOS 15 (Sequoia) or later.",
+                doctorCheck: "macOS version"
+            )
         )
     }
 }
@@ -195,44 +219,34 @@ private func checkVoiceMemosDB() -> DiagnosticCheck {
                 name: "Voice Memos access",
                 status: .fail,
                 detail: "database not found",
-                remediation: """
-                Voice Memos database not found at expected path.
-                $ open -a "Voice Memos" && sleep 3
-                Then run: pippin memos list
-                """
+                remediation: RemediationCatalog.forCategory(.databaseNotFound)
             )
         case let .unsupportedSchemaVersion(v):
             return DiagnosticCheck(
                 name: "Voice Memos access",
                 status: .fail,
                 detail: "unsupported schema version \(v)",
-                remediation: """
-                → The Voice Memos database schema has changed (version \(v)).
-                  This version of pippin may need updating.
-                """
+                remediation: Remediation(
+                    humanHint: """
+                    The Voice Memos database schema has changed (version \(v)). \
+                    This version of pippin may need updating.
+                    """,
+                    doctorCheck: "Voice Memos access"
+                )
             )
         case let .accessDenied(reason):
             return DiagnosticCheck(
                 name: "Voice Memos access",
                 status: .fail,
                 detail: "permission denied (\(reason))",
-                remediation: """
-                → Open System Settings > Privacy & Security > Full Disk Access
-                  Add the terminal app you use to launch pippin (Terminal.app,
-                  iTerm, Warp, Ghostty, etc.), then fully quit and relaunch it.
-                  Note: grant FDA to the terminal, NOT to the pippin binary —
-                  macOS TCC attaches the permission to the launching app.
-                """
+                remediation: RemediationCatalog.forCategory(.accessDenied)
             )
         default:
             return DiagnosticCheck(
                 name: "Voice Memos access",
                 status: .fail,
                 detail: error.localizedDescription,
-                remediation: """
-                → Open System Settings > Privacy & Security > Full Disk Access
-                  Add Terminal.app, then restart your terminal.
-                """
+                remediation: RemediationCatalog.forCategory(.accessDenied)
             )
         }
     } catch {
@@ -240,10 +254,7 @@ private func checkVoiceMemosDB() -> DiagnosticCheck {
             name: "Voice Memos access",
             status: .fail,
             detail: "permission denied",
-            remediation: """
-            → Open System Settings > Privacy & Security > Full Disk Access
-              Add Terminal.app, then restart your terminal.
-            """
+            remediation: RemediationCatalog.forCategory(.accessDenied)
         )
     }
 }
@@ -268,11 +279,14 @@ private func checkCalendarAccess() -> DiagnosticCheck {
             name: "Calendar access",
             status: .fail,
             detail: "permission denied",
-            remediation: """
-            Open System Settings > Privacy & Security > Calendars
-            Grant access to Terminal.app (or the pippin binary).
-            Then run: pippin calendar list
-            """
+            remediation: Remediation(
+                humanHint: """
+                Open System Settings > Privacy & Security > Calendars
+                Grant access to Terminal.app (or the pippin binary).
+                Then run: pippin calendar list
+                """,
+                doctorCheck: "Calendar access"
+            )
         )
     default:
         return DiagnosticCheck(
@@ -299,11 +313,14 @@ private func checkRemindersAccess() -> DiagnosticCheck {
             name: "Reminders access",
             status: .fail,
             detail: "permission denied",
-            remediation: """
-            Open System Settings > Privacy & Security > Reminders
-            Grant access to Terminal.app (or the pippin binary).
-            Then run: pippin reminders list
-            """
+            remediation: Remediation(
+                humanHint: """
+                Open System Settings > Privacy & Security > Reminders
+                Grant access to Terminal.app (or the pippin binary).
+                Then run: pippin reminders list
+                """,
+                doctorCheck: "Reminders access"
+            )
         )
     default:
         return DiagnosticCheck(
@@ -328,7 +345,11 @@ private func checkNotesAccess() -> DiagnosticCheck {
                 name: "Notes automation",
                 status: .fail,
                 detail: "Notes.app is not running",
-                remediation: "$ open -a Notes && sleep 2"
+                remediation: Remediation(
+                    humanHint: "Notes.app is not running. Open it and retry.",
+                    doctorCheck: "Notes automation",
+                    shellCommand: "open -a Notes && sleep 2"
+                )
             )
         }
     }
@@ -347,7 +368,11 @@ private func checkNotesAccess() -> DiagnosticCheck {
                 name: "Notes automation",
                 status: .fail,
                 detail: "Notes.app is not running or timed out",
-                remediation: "$ open -a Notes && sleep 2"
+                remediation: Remediation(
+                    humanHint: "Notes.app is not running or the JXA bridge timed out. Open the app and retry.",
+                    doctorCheck: "Notes automation",
+                    shellCommand: "open -a Notes && sleep 2"
+                )
             )
         default:
             let detail = error.localizedDescription
@@ -358,22 +383,25 @@ private func checkNotesAccess() -> DiagnosticCheck {
                     name: "Notes automation",
                     status: .fail,
                     detail: "permission denied",
-                    remediation: """
-                    Open System Settings > Privacy & Security > Automation
-                    Grant Terminal.app (or pippin binary) access to Notes.
-                    Then run: pippin notes folders
-                    """
+                    remediation: Remediation(
+                        humanHint: """
+                        Open System Settings > Privacy & Security > Automation
+                        Grant Terminal.app (or pippin binary) access to Notes.
+                        Then run: pippin notes folders
+                        """,
+                        doctorCheck: "Notes automation"
+                    )
                 )
             }
             return DiagnosticCheck(
                 name: "Notes automation",
                 status: .fail,
                 detail: detail,
-                remediation: """
-                Ensure Notes.app is installed and open.
-                $ open -a Notes && sleep 2
-                Then run: pippin notes folders
-                """
+                remediation: Remediation(
+                    humanHint: "Ensure Notes.app is installed and open, then run: pippin notes folders",
+                    doctorCheck: "Notes automation",
+                    shellCommand: "open -a Notes && sleep 2"
+                )
             )
         }
     } catch {
@@ -381,11 +409,11 @@ private func checkNotesAccess() -> DiagnosticCheck {
             name: "Notes automation",
             status: .fail,
             detail: error.localizedDescription,
-            remediation: """
-            Ensure Notes.app is installed and open.
-            $ open -a Notes && sleep 2
-            Then run: pippin notes folders
-            """
+            remediation: Remediation(
+                humanHint: "Ensure Notes.app is installed and open, then run: pippin notes folders",
+                doctorCheck: "Notes automation",
+                shellCommand: "open -a Notes && sleep 2"
+            )
         )
     }
 }
@@ -406,11 +434,14 @@ private func checkContactsAccess() -> DiagnosticCheck {
             name: "Contacts access",
             status: .fail,
             detail: "permission denied",
-            remediation: """
-            Open System Settings > Privacy & Security > Contacts
-            Grant access to Terminal.app (or the pippin binary).
-            Then run: pippin contacts list
-            """
+            remediation: Remediation(
+                humanHint: """
+                Open System Settings > Privacy & Security > Contacts
+                Grant access to Terminal.app (or the pippin binary).
+                Then run: pippin contacts list
+                """,
+                doctorCheck: "Contacts access"
+            )
         )
     default:
         return DiagnosticCheck(
@@ -452,19 +483,80 @@ func checkPython3() -> DiagnosticCheck {
 }
 
 private func checkMLXAudio() -> DiagnosticCheck {
-    if let pythonURL = AudioBridge.findPythonWithMLXAudio() {
+    let pinned = AudioBridge.pinnedMLXAudioVersion
+    guard let entry = AudioBridge.resolveSTTEntry() else {
+        // mlx_audio itself might still be importable (version skew) — prefer
+        // the versionMismatch-shaped hint when we can read a version.
+        if let installed = AudioBridge.installedMLXAudioVersion() {
+            return DiagnosticCheck(
+                name: "mlx-audio",
+                status: .fail,
+                detail: "installed \(installed), expected \(pinned) (STT entry not resolvable)",
+                remediation: Remediation(
+                    humanHint: "mlx-audio \(installed) is installed but the expected STT entry point is missing. Reinstall pinned version.",
+                    doctorCheck: "mlx-audio",
+                    shellCommand: "pipx install 'mlx-audio==\(pinned)' --force"
+                )
+            )
+        }
         return DiagnosticCheck(
             name: "mlx-audio",
-            status: .ok,
-            detail: "available (\(pythonURL.path))"
+            status: .fail,
+            detail: "not found (required for `pippin memos transcribe`)",
+            remediation: RemediationCatalog.forCategory(.notAvailable)
         )
     }
-    return DiagnosticCheck(
-        name: "mlx-audio",
-        status: .fail,
-        detail: "not found (required for `pippin memos transcribe`)",
-        remediation: "$ pipx install mlx-audio"
-    )
+
+    // Entry resolves — record installed version + run a dry invocation to
+    // catch broken installs beyond the version string.
+    let installedVersion = AudioBridge.installedMLXAudioVersion() ?? "unknown"
+    let dryOK = runSTTDryInvocation(entry: entry)
+
+    if !dryOK {
+        return DiagnosticCheck(
+            name: "mlx-audio",
+            status: .fail,
+            detail: "installed \(installedVersion), dry invocation failed",
+            remediation: Remediation(
+                humanHint: "mlx-audio is installed but `--help` on the STT entry fails. Reinstall the pinned version.",
+                doctorCheck: "mlx-audio",
+                shellCommand: "pipx install 'mlx-audio==\(pinned)' --force"
+            )
+        )
+    }
+
+    let detail: String
+    if installedVersion == pinned {
+        detail = "available, version \(installedVersion) (\(entry.executable.path))"
+    } else {
+        detail = "available, installed \(installedVersion), pinned \(pinned) (\(entry.executable.path))"
+    }
+    return DiagnosticCheck(name: "mlx-audio", status: .ok, detail: detail)
+}
+
+/// Runs `<entry> --help` with a short timeout; true iff exit status 0.
+private func runSTTDryInvocation(entry: AudioBridge.STTEntry) -> Bool {
+    let process = Process()
+    process.executableURL = entry.executable
+    process.arguments = entry.prefixArgs + ["--help"]
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    do {
+        try process.run()
+    } catch {
+        return false
+    }
+    let deadline = DispatchTime.now() + .seconds(10)
+    let sem = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async {
+        process.waitUntilExit()
+        sem.signal()
+    }
+    if sem.wait(timeout: deadline) == .timedOut {
+        process.terminate()
+        return false
+    }
+    return process.terminationStatus == 0
 }
 
 private func checkOllama() -> DiagnosticCheck {
@@ -480,7 +572,11 @@ private func checkOllama() -> DiagnosticCheck {
         name: "Ollama",
         status: .skip,
         detail: "not reachable — optional, required for `mail index`, `mail triage`, `mail extract`",
-        remediation: "$ brew install ollama && ollama serve"
+        remediation: Remediation(
+            humanHint: "Ollama is not reachable on localhost:11434. It is optional — only `mail index`, `mail triage`, and `mail extract` need it.",
+            doctorCheck: "Ollama",
+            shellCommand: "brew install ollama && ollama serve"
+        )
     )
 }
 
@@ -492,7 +588,11 @@ private func checkNodeJS() -> DiagnosticCheck {
         name: "Node.js",
         status: .skip,
         detail: "not found (optional — required for `pippin browser`)",
-        remediation: "$ brew install node"
+        remediation: Remediation(
+            humanHint: "Node.js is optional — install it only if you plan to use `pippin browser`.",
+            doctorCheck: "Node.js",
+            shellCommand: "brew install node"
+        )
     )
 }
 
@@ -507,7 +607,11 @@ private func checkPlaywright() -> DiagnosticCheck {
         name: "Playwright",
         status: .skip,
         detail: "not found (optional — required for `pippin browser`)",
-        remediation: "$ npx playwright install webkit"
+        remediation: Remediation(
+            humanHint: "Playwright is optional — install it only if you plan to use `pippin browser`.",
+            doctorCheck: "Playwright",
+            shellCommand: "npx playwright install webkit"
+        )
     )
 }
 
