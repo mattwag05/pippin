@@ -272,13 +272,11 @@ public struct MemosCommand: AsyncParsableCommand {
             let cache = try TranscriptCache()
             var results: [TranscribeResult] = []
             let keep = keepConverted
-            let shouldLogConvertedPath = keep && !outputOptions.isStructured
-            let convertedPathLogger: (@Sendable (String) -> Void)? = {
-                guard shouldLogConvertedPath else { return nil }
-                return { path in
-                    FileHandle.standardError.write(Data("[converted] \(path)\n".utf8))
-                }
-            }()
+            let logConverted: @Sendable (String) -> Void = { path in
+                FileHandle.standardError.write(Data("[converted] \(path)\n".utf8))
+            }
+            let convertedPathLogger: (@Sendable (String) -> Void)? =
+                (keep && !outputOptions.isStructured) ? logConverted : nil
 
             if all {
                 let memos = try db.listMemos(limit: allMemosLimit)

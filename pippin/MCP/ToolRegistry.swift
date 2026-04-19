@@ -37,6 +37,20 @@ private func pippinArgv(_ parts: String...) -> [String] {
 }
 
 enum ArgHelpers {
+    /// Shared "id-or-all" decoder for tools that accept a single positional
+    /// target or `--all`. Appends the positional id (if any) and `--all`
+    /// (if set) to `argv` in place. Throws `missingRequired("id (or all=true)")`
+    /// when neither is supplied.
+    static func appendIDOrAll(_ args: JSONValue?, into argv: inout [String]) throws {
+        let all = bool(args, "all") == true
+        if let id = string(args, "id") {
+            argv.append(id)
+        } else if !all {
+            throw MCPToolArgError.missingRequired("id (or all=true)")
+        }
+        if all { argv.append("--all") }
+    }
+
     static func string(_ args: JSONValue?, _ key: String) -> String? {
         args?[key]?.stringValue
     }
@@ -579,13 +593,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("memos", "export")
-                let all = ArgHelpers.bool(args, "all") == true
-                if let id = ArgHelpers.string(args, "id") {
-                    argv.append(id)
-                } else if !all {
-                    throw MCPToolArgError.missingRequired("id (or all=true)")
-                }
-                if all { argv.append("--all") }
+                try ArgHelpers.appendIDOrAll(args, into: &argv)
                 try argv += ["--output", ArgHelpers.requiredString(args, "output")]
                 argv += ArgHelpers.flagIfTrue(args, "transcribe", flagName: "--transcribe")
                 argv += ArgHelpers.optionIfString(args, "sidecarFormat", flagName: "--sidecar-format")
@@ -606,13 +614,7 @@ enum MCPToolRegistry {
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("memos", "transcribe")
-                let all = ArgHelpers.bool(args, "all") == true
-                if let id = ArgHelpers.string(args, "id") {
-                    argv.append(id)
-                } else if !all {
-                    throw MCPToolArgError.missingRequired("id (or all=true)")
-                }
-                if all { argv.append("--all") }
+                try ArgHelpers.appendIDOrAll(args, into: &argv)
                 argv += ArgHelpers.optionIfString(args, "output", flagName: "--output")
                 argv += ArgHelpers.flagIfTrue(args, "force", flagName: "--force")
                 argv += ArgHelpers.optionIfInt(args, "jobs", flagName: "--jobs")
@@ -635,13 +637,7 @@ enum MCPToolRegistry {
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("memos", "summarize")
-                let all = ArgHelpers.bool(args, "all") == true
-                if let id = ArgHelpers.string(args, "id") {
-                    argv.append(id)
-                } else if !all {
-                    throw MCPToolArgError.missingRequired("id (or all=true)")
-                }
-                if all { argv.append("--all") }
+                try ArgHelpers.appendIDOrAll(args, into: &argv)
                 argv += ArgHelpers.optionIfString(args, "template", flagName: "--template")
                 argv += ArgHelpers.optionIfString(args, "prompt", flagName: "--prompt")
                 argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
