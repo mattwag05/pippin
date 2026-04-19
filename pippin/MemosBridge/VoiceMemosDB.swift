@@ -94,15 +94,7 @@ public final class VoiceMemosDB: Sendable {
         guard FileManager.default.fileExists(atPath: dbPath) else {
             throw VoiceMemosError.databaseNotFound(dbPath)
         }
-        var config = Configuration()
-        config.readonly = true
-        do {
-            dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
-        } catch {
-            // GRDB wraps SQLite errors; TCC denial surfaces here as
-            // "SQLite error 23: authorization denied" before any SQL runs.
-            throw VoiceMemosError.accessDenied(error.localizedDescription)
-        }
+        dbQueue = try Self.openQueue(path: dbPath, readonly: true)
         recordingsDir = (dbPath as NSString).deletingLastPathComponent
         try validateSchema()
     }
@@ -112,6 +104,21 @@ public final class VoiceMemosDB: Sendable {
     /// this from diagnostics, or rely on the init wrapping in normal code paths.
     public static func checkAccess(dbPath: String? = nil) throws {
         _ = try VoiceMemosDB(dbPath: dbPath ?? defaultDBPath())
+    }
+
+    /// Open a GRDB queue and convert any failure into `VoiceMemosError.accessDenied`.
+    /// The typical failure mode here is macOS TCC denying Full Disk Access, which
+    /// GRDB surfaces as "SQLite error 23: authorization denied" before any SQL
+    /// runs. Other SQLite errors (locked, malformed, I/O) also route through
+    /// this case — the raw GRDB message is preserved for support.
+    private static func openQueue(path: String, readonly: Bool) throws -> DatabaseQueue {
+        var config = Configuration()
+        config.readonly = readonly
+        do {
+            return try DatabaseQueue(path: path, configuration: config)
+        } catch {
+            throw VoiceMemosError.accessDenied(error.localizedDescription)
+        }
     }
 
     /// Init with a pre-created DatabaseQueue (for testing with in-memory databases).
@@ -315,13 +322,7 @@ public final class VoiceMemosDB: Sendable {
         guard FileManager.default.fileExists(atPath: path) else {
             throw VoiceMemosError.databaseNotFound(path)
         }
-        // Open a writable connection (TCC denial converts to accessDenied).
-        let writableQueue: DatabaseQueue
-        do {
-            writableQueue = try DatabaseQueue(path: path)
-        } catch {
-            throw VoiceMemosError.accessDenied(error.localizedDescription)
-        }
+        let writableQueue = try openQueue(path: path, readonly: false)
 
         // Fetch the file path before deleting
         let filePath: String = try writableQueue.read { db in

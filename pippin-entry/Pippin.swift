@@ -47,11 +47,9 @@ struct Pippin: AsyncParsableCommand {
                 printAgentError(error)
                 Darwin.exit(1)
             } else if let remediation = RemediationCatalog.forError(error) {
-                // Typed error with a registered remediation: print the error
-                // ourselves (ArgumentParser's default format), then append a
-                // human hint + optional shell command + pointer to `pippin doctor`.
+                // Catalogued errors print ourselves so we can append remediation.
                 // Uncatalogued errors (ValidationError, etc.) fall through to
-                // ArgumentParser's default error handling, which renders usage help.
+                // ArgumentParser so its usage-help formatting is preserved.
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 fputs("Error: \(message)\n\n", stderr)
                 fputs("\(remediation.humanHint)\n", stderr)
