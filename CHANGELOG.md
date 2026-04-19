@@ -11,6 +11,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.18.0] - 2026-04-18
+
+### Added
+
+- [feat] `ErrorCategory` enum — closed set of snake_case error codes backs `RemediationCatalog`, so a typo fails to compile instead of silently returning `nil`. Agent JSON shape is unchanged.
+- [feat] mlx-audio STT three-tier entry resolution — prefers the pipx-installed `mlx_audio.stt.generate` binary, falls back to `-m mlx_audio.stt.generate` (0.4.2+), then `-m mlx_audio.stt` (legacy). Pinned version `0.4.2` lives in `AudioBridge.pinnedMLXAudioVersion`. `AudioBridgeError.versionMismatch` surfaces skew with install-vs-pinned remediation.
+- [feat] `pippin doctor` mlx-audio check now reports installed version via `importlib.metadata`, runs a dry `--help` invocation, and calls out version mismatches with an exact `pipx install 'mlx-audio==<pinned>' --force` remediation.
+- [feat] 5 new MCP tools — `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_summarize`. Brings the registry to 31 tools. `docs/mcp-server.md` updated.
+- [feat] `AudioConverter` — AVFoundation-based transcoder that normalizes non-native audio formats to 16 kHz mono PCM WAV before STT. `memos transcribe --keep-converted` preserves the temp WAV and prints its path for debugging. `.wav` and `.m4a` (Voice Memos native) skip conversion.
+- [feat] Homebrew formula `post_install` runs `pipx install mlx-audio==<pinned>` when `pipx` is on PATH (falls back with a hint otherwise). Homebrew-pipx venv path added to `AudioBridge`'s candidate list.
+
+### Changed
+
+- [refactor] `DiagnosticCheck.remediation` is now `Remediation?` (was `String?`). `pippin doctor --format json` emits structured `{human_hint, doctor_check, shell_command}` instead of a free-form string. Text rendering still groups the hint prose with a `$ <cmd>` suffix line, so non-JSON output reads the same or better.
+- [refactor] All FDA remediation text unified into one catalog entry in `Remediation.swift` — previously duplicated across three Doctor branches + the catalog. Grep `Full Disk Access` across `pippin/` now returns the single canonical home plus docstring references.
+
+---
+
 ## [0.17.0] - 2026-04-12
 
 ### Added
@@ -425,7 +443,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/mattwag05/pippin/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/mattwag05/pippin/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/mattwag05/pippin/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/mattwag05/pippin/compare/v0.14.3...v0.15.0
