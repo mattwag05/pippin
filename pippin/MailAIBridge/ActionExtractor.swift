@@ -15,6 +15,8 @@ public enum ActionExtractor {
         }
     }
 
+    private static let batchSize = 10
+
     public static func extract(
         items: [Item],
         provider: any AIProvider,
@@ -22,11 +24,12 @@ public enum ActionExtractor {
     ) throws -> [ExtractedAction] {
         guard !items.isEmpty else { return [] }
 
-        let batches = stride(from: 0, to: items.count, by: 10).map {
-            Array(items[$0 ..< min($0 + 10, items.count)])
+        let systemPrompt = renderSystemPrompt(now: Date())
+        let batches = stride(from: 0, to: items.count, by: batchSize).map {
+            Array(items[$0 ..< min($0 + batchSize, items.count)])
         }
         let responses = try runConcurrently(batches, maxConcurrent: 4, failFast: true) { batch in
-            try extractBatch(batch, provider: provider)
+            try extractBatch(batch, provider: provider, systemPrompt: systemPrompt)
         }
 
         var all: [ExtractedAction] = []
@@ -73,22 +76,31 @@ public enum ActionExtractor {
         let text: String
     }
 
-    private static func extractBatch(_ batch: [Item], provider: any AIProvider) throws -> BatchResponse {
-        let now = Date()
-        let dateFmt = DateFormatter()
-        dateFmt.locale = Locale(identifier: "en_US_POSIX")
-        dateFmt.dateFormat = "yyyy-MM-dd"
-        let today = dateFmt.string(from: now)
+    private static let dateFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyy-MM-dd"
+        return fmt
+    }()
 
-        let timeFmt = DateFormatter()
-        timeFmt.locale = Locale(identifier: "en_US_POSIX")
-        timeFmt.dateFormat = "HH:mm"
-        let currentTime = timeFmt.string(from: now)
+    private static let timeFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "HH:mm"
+        return fmt
+    }()
 
-        let systemPrompt = BuiltInTemplates.extractActions.content
-            .replacingOccurrences(of: "{{CURRENT_DATE}}", with: today)
-            .replacingOccurrences(of: "{{CURRENT_TIME}}", with: currentTime)
+    private static func renderSystemPrompt(now: Date) -> String {
+        BuiltInTemplates.extractActions.content
+            .replacingOccurrences(of: "{{CURRENT_DATE}}", with: dateFormatter.string(from: now))
+            .replacingOccurrences(of: "{{CURRENT_TIME}}", with: timeFormatter.string(from: now))
+    }
 
+    private static func extractBatch(
+        _ batch: [Item],
+        provider: any AIProvider,
+        systemPrompt: String
+    ) throws -> BatchResponse {
         let promptItems = batch.enumerated().map { index, item in
             PromptItem(
                 sourceIndex: index,
