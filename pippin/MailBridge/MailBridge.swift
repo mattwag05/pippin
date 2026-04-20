@@ -109,7 +109,9 @@ enum MailBridge {
     static func listAttachments(compoundId: String, saveDir: String? = nil) throws -> [Attachment] {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         let script = buildSaveAttachmentsScript(account: account, mailbox: mailboxName, messageId: msgId, saveDir: saveDir)
-        let json = try runScript(script, timeoutSeconds: 30)
+        // Gmail label fallback scans every mailbox for the id + IMAP body download for
+        // attachment enumeration; 30s was insufficient on large accounts.
+        let json = try runScript(script, timeoutSeconds: 90)
         return try decode([Attachment].self, from: json)
     }
 

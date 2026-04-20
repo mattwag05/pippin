@@ -536,4 +536,62 @@ final class JXAScriptBuilderTests: XCTestCase {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
         XCTAssertTrue(script.contains("_meta.messagesExamined++"))
     }
+
+    // MARK: - buildSaveAttachmentsScript (pippin-20v regression)
+
+    func testSaveAttachmentsScriptFallsBackToAllMailboxesOnLabel() {
+        // Gmail labels like "Important" return -1728 from resolveMailbox; the script must fall
+        // back to collectAllMailboxes and scan every mailbox by id before giving up.
+        let script = MailBridge.buildSaveAttachmentsScript(
+            account: "matthewwagner038@gmail.com", mailbox: "Important", messageId: "6442", saveDir: "/tmp/out"
+        )
+        XCTAssertTrue(script.contains("function collectAllMailboxes"))
+        XCTAssertTrue(script.contains("collectAllMailboxes(acct.mailboxes(), [])"))
+        XCTAssertTrue(script.contains("function findMessageById"))
+        XCTAssertFalse(
+            script.contains("MAILBRIDGE_ERR_MAILBOX_NOT_FOUND"),
+            "Must not throw on mailbox lookup failure — fallback scans all mailboxes"
+        )
+    }
+
+    func testSaveAttachmentsScriptPreTouchesSaveTarget() {
+        // att.save({to: Path(dest)}) returns -10000 unless the target file already exists.
+        // The script must pre-create (touch) the destination before calling save().
+        let script = MailBridge.buildSaveAttachmentsScript(
+            account: "acc", mailbox: "INBOX", messageId: "123", saveDir: "/tmp/out"
+        )
+        XCTAssertTrue(script.contains("function prepareSaveTarget"))
+        XCTAssertTrue(script.contains("/usr/bin/touch "))
+        XCTAssertTrue(script.contains("prepareSaveTarget(dest)"))
+        // {in: Path(dest)} — JXA preposition maps to AppleScript 'save a in POSIX file ...';
+        // {to: ...} raises -10000.
+        XCTAssertTrue(script.contains("att.save({in: Path(dest)})"))
+        XCTAssertFalse(script.contains("att.save({to: Path(dest)})"))
+        let touchIdx = script.range(of: "prepareSaveTarget(dest)")?.lowerBound
+        let saveIdx = script.range(of: "att.save({in: Path(dest)})")?.lowerBound
+        XCTAssertNotNil(touchIdx)
+        XCTAssertNotNil(saveIdx)
+        if let t = touchIdx, let s = saveIdx { XCTAssertLessThan(t, s, "Touch must precede save") }
+    }
+
+    func testSaveAttachmentsScriptHandlesMimeTypeFailure() {
+        // att.mimeType() throws "AppleEvent handler failed" (-10000) on some IMAP-backed
+        // attachments; an unhandled throw propagates as a top-level script failure. The script
+        // must fall back to a generic MIME instead of crashing.
+        let script = MailBridge.buildSaveAttachmentsScript(
+            account: "acc", mailbox: "INBOX", messageId: "123", saveDir: "/tmp/out"
+        )
+        XCTAssertTrue(script.contains("application/octet-stream"))
+        XCTAssertTrue(script.contains("try { var m = att.mimeType();"))
+    }
+
+    func testSaveAttachmentsScriptNoSaveDirStillSafe() {
+        // Metadata-only call (saveDir=nil): script builds cleanly and the touch is gated by
+        // saveDir !== null at runtime so nothing gets created.
+        let script = MailBridge.buildSaveAttachmentsScript(
+            account: "acc", mailbox: "INBOX", messageId: "123", saveDir: nil
+        )
+        XCTAssertTrue(script.contains("var saveDir = null;"))
+        XCTAssertTrue(script.contains("if (saveDir !== null)"))
+    }
 }
