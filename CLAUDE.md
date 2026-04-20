@@ -122,6 +122,13 @@ The `provider` field selects the active backend. Both providers can be configure
 - Always call `msg.content()` before `msg.htmlContent()` — `content()` triggers the IMAP body download
 - Retry `htmlContent()` once after `delay(0.5)` if still null
 
+**JXA `att.save()` attachment gotchas (pippin-20v, 2026-04-20):**
+- Key is `{in: Path(dest)}`, **not** `{to: ...}` — JXA maps the AppleScript preposition (`save a in POSIX file path`). `{to:}` raises -10000 "Some data was the wrong type."
+- Pre-touch the save target before `att.save()`. `Path(dest)` coercion doesn't create the file; saving into a nonexistent path errors -10000. Use `Application.currentApplication().doShellScript('/usr/bin/touch ' + shellQuote(dest))`.
+- Prefer `msg.source()` over `msg.content()` to trigger IMAP fetch for attachments. `content()` only guarantees the text body — attachment binaries can stay as metadata stubs. Fall back to `content()` if `source()` throws.
+- Wrap `att.mimeType()` in try/catch with a fallback (e.g. `'application/octet-stream'`). It raises "AppleEvent handler failed" (-10000) on some IMAP-backed attachments even when the attachment is fully usable.
+- Gmail label'd compound ids (e.g. `||Important||`) may not resolve cleanly via `resolveMailbox`; when the message isn't in the resolved mailbox, fall back to `collectAllMailboxes` + `.messages.whose({id})()` across every mailbox (skip the already-tried one).
+
 **ArgumentParser `ValidationError` from `run()`:** Shows full usage-help footer — use a custom `LocalizedError` struct for runtime errors instead.
 
 **`TextFormatter.actionResult` dict overload:** Use `TextFormatter.actionResult(success:action:details:[String:String])` — never hand-roll `.map { "\($0.key)=\($0.value)" }.sorted().joined()` inline.
