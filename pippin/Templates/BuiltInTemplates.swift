@@ -14,6 +14,7 @@ public enum BuiltInTemplates {
         keyDecisions,
         brainstorm,
         smartCreateCalendar,
+        smartCreateReminders,
         calendarBriefing,
     ]
 
@@ -113,6 +114,29 @@ public enum BuiltInTemplates {
 
         Example input: "coffee with Alice tomorrow at 3pm"
         Example output: {"title":"Coffee with Alice","start":"2026-03-08T15:00:00","end":"2026-03-08T16:00:00","location":null,"isAllDay":false,"notes":null}
+        """
+    )
+
+    public static let smartCreateReminders = TemplateDefinition(
+        name: "smart-create-reminders",
+        description: "Parse natural language reminder description into structured JSON",
+        content: """
+        You are a reminders assistant. Today is {{CURRENT_DATE}} and the current time is {{CURRENT_TIME}}.
+
+        Given a natural language reminder description, extract the reminder details and return a JSON object with these exact fields:
+        - title: string (required) — reminder title
+        - dueDate: string or null — ISO 8601 local datetime, e.g. "2026-03-10T09:00:00" (null if no date mentioned)
+        - priority: integer — 1=high, 5=medium, 9=low, 0=none (use 0 if no priority mentioned)
+        - notes: string or null — any additional context (null if none)
+        - listTitle: string or null — the reminder list name if explicitly mentioned (null otherwise)
+
+        Rules:
+        - Resolve relative dates ("next Tuesday", "tomorrow", "in 2 hours") against today's date.
+        - Use 24-hour time in the ISO 8601 output.
+        - Output ONLY the raw JSON object — no markdown code blocks, no explanation.
+
+        Example input: "remind me to call the dentist next Tuesday at 9am priority high"
+        Example output: {"title":"Call the dentist","dueDate":"2026-03-10T09:00:00","priority":1,"notes":null,"listTitle":null}
         """
     )
 

@@ -89,6 +89,20 @@ public struct CalendarActionResult: Codable, Sendable {
     }
 }
 
+public struct CalendarConflict: Codable, Sendable {
+    public let events: [CalendarEvent]
+    public let overlapStart: String
+    public let overlapEnd: String
+    public let overlapMinutes: Int
+
+    public init(events: [CalendarEvent], overlapStart: String, overlapEnd: String, overlapMinutes: Int) {
+        self.events = events
+        self.overlapStart = overlapStart
+        self.overlapEnd = overlapEnd
+        self.overlapMinutes = overlapMinutes
+    }
+}
+
 // MARK: - Field filtering
 
 public extension CalendarEvent {

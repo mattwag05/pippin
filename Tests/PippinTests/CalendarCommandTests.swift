@@ -412,4 +412,76 @@ final class CalendarCommandTests: XCTestCase {
         let cmd = try CalendarCommand.Upcoming.parse(["--fields", "id,title,startDate"])
         XCTAssertEqual(cmd.fields, "id,title,startDate")
     }
+
+    // MARK: - Conflicts subcommand
+
+    func testConflictsCommandName() {
+        XCTAssertEqual(CalendarCommand.Conflicts.configuration.commandName, "conflicts")
+    }
+
+    func testConflictsNoArgsPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Conflicts.parse([]))
+    }
+
+    func testConflictsValidFromToPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Conflicts.parse([
+            "--from", "2026-03-07", "--to", "2026-03-08",
+        ]))
+    }
+
+    func testConflictsInvalidFromFails() {
+        XCTAssertThrowsError(try CalendarCommand.Conflicts.parse(["--from", "not-a-date"]))
+    }
+
+    func testConflictsInvalidToFails() {
+        XCTAssertThrowsError(try CalendarCommand.Conflicts.parse(["--to", "not-a-date"]))
+    }
+
+    func testConflictsValidRangePasses() {
+        XCTAssertNoThrow(try CalendarCommand.Conflicts.parse(["--range", "today"]))
+    }
+
+    func testConflictsInvalidRangeFails() {
+        XCTAssertThrowsError(try CalendarCommand.Conflicts.parse(["--range", "yesterday"]))
+    }
+
+    func testConflictsJsonFormatPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Conflicts.parse(["--format", "json"]))
+    }
+
+    func testConflictsAgentFormatPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Conflicts.parse(["--format", "agent"]))
+    }
+
+    func testConflictsRangeWeekPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Conflicts.parse(["--range", "week"]))
+    }
+
+    func testConflictsRangeMonthPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Conflicts.parse(["--range", "month"]))
+    }
+
+    func testConflictsRangeTodayPlusPasses() {
+        XCTAssertNoThrow(try CalendarCommand.Conflicts.parse(["--range", "today+3"]))
+    }
+
+    // MARK: - SmartCreate --allow-conflicts flag
+
+    func testSmartCreateAllowConflictsDefaultFalse() throws {
+        let cmd = try CalendarCommand.SmartCreate.parse(["coffee with Alice tomorrow at 3pm"])
+        XCTAssertFalse(cmd.allowConflicts)
+    }
+
+    func testSmartCreateAllowConflictsFlagPasses() throws {
+        let cmd = try CalendarCommand.SmartCreate.parse([
+            "coffee with Alice tomorrow at 3pm", "--allow-conflicts",
+        ])
+        XCTAssertTrue(cmd.allowConflicts)
+    }
+
+    func testSmartCreateIsInCalendarSubcommands() {
+        let names = CalendarCommand.configuration.subcommands.map { $0.configuration.commandName }
+        XCTAssertTrue(names.contains("conflicts"))
+        XCTAssertTrue(names.contains("smart-create"))
+    }
 }

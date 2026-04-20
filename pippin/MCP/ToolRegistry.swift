@@ -649,6 +649,25 @@ enum MCPToolRegistry {
             }
         ),
 
+        // MARK: Digest
+
+        MCPTool(
+            name: "digest",
+            description: "Aggregated daily digest: unread mail, today's calendar events, due and overdue reminders, and recently modified notes.",
+            inputSchema: Schema.object(properties: [
+                "mailLimit": Schema.integer("Max unread messages per mail account (default: 5).", default: 5),
+                "notesLimit": Schema.integer("Max recent notes (default: 5).", default: 5),
+                "calendarDays": Schema.integer("Days of upcoming events beyond today (default: 7).", default: 7),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("digest")
+                argv += ArgHelpers.optionIfInt(args, "mailLimit", flagName: "--mail-limit")
+                argv += ArgHelpers.optionIfInt(args, "notesLimit", flagName: "--notes-limit")
+                argv += ArgHelpers.optionIfInt(args, "calendarDays", flagName: "--calendar-days")
+                return argv
+            }
+        ),
+
         // MARK: System
 
         MCPTool(

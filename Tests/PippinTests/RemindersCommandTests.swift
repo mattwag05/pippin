@@ -15,6 +15,7 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertTrue(subcommandNames.contains("complete"), "Expected 'complete' subcommand, got: \(subcommandNames)")
         XCTAssertTrue(subcommandNames.contains("delete"), "Expected 'delete' subcommand, got: \(subcommandNames)")
         XCTAssertTrue(subcommandNames.contains("search"), "Expected 'search' subcommand, got: \(subcommandNames)")
+        XCTAssertTrue(subcommandNames.contains("smart-create"), "Expected 'smart-create' subcommand, got: \(subcommandNames)")
     }
 
     func testRemindersCommandName() {
@@ -286,5 +287,110 @@ final class RemindersCommandTests: XCTestCase {
     func testSearchFieldsOptionPasses() throws {
         let cmd = try RemindersCommand.Search.parse(["test query", "--fields", "id,dueDate"])
         XCTAssertEqual(cmd.fields, "id,dueDate")
+    }
+
+    // MARK: - SmartCreate subcommand
+
+    func testSmartCreateCommandName() {
+        XCTAssertEqual(RemindersCommand.SmartCreate.configuration.commandName, "smart-create")
+    }
+
+    func testSmartCreateRequiresDescription() {
+        XCTAssertThrowsError(try RemindersCommand.SmartCreate.parse([]))
+    }
+
+    func testSmartCreateWithDescriptionPasses() {
+        XCTAssertNoThrow(try RemindersCommand.SmartCreate.parse(["call dentist next Tuesday"]))
+    }
+
+    func testSmartCreateDryRunDefaultFalse() throws {
+        let cmd = try RemindersCommand.SmartCreate.parse(["call dentist"])
+        XCTAssertFalse(cmd.dryRun)
+    }
+
+    func testSmartCreateDryRunFlag() throws {
+        let cmd = try RemindersCommand.SmartCreate.parse(["call dentist", "--dry-run"])
+        XCTAssertTrue(cmd.dryRun)
+    }
+
+    func testSmartCreateProviderOption() throws {
+        let cmd = try RemindersCommand.SmartCreate.parse(["call dentist", "--provider", "claude"])
+        XCTAssertEqual(cmd.provider, "claude")
+    }
+
+    func testSmartCreateListOption() throws {
+        let cmd = try RemindersCommand.SmartCreate.parse(["call dentist", "--list", "Work"])
+        XCTAssertEqual(cmd.list, "Work")
+    }
+
+    func testSmartCreateAgentFormatPasses() {
+        XCTAssertNoThrow(try RemindersCommand.SmartCreate.parse([
+            "call dentist next Tuesday",
+            "--format", "agent",
+        ]))
+    }
+
+    func testSmartCreateAllOptionsPasses() {
+        XCTAssertNoThrow(try RemindersCommand.SmartCreate.parse([
+            "remind me to submit report by Friday",
+            "--provider", "claude",
+            "--model", "claude-sonnet-4-6",
+            "--list", "Work",
+            "--dry-run",
+            "--format", "json",
+        ]))
+    }
+
+    // MARK: - smartCreateReminders template
+
+    func testSmartCreateRemindersTemplateExists() {
+        let names = BuiltInTemplates.all.map { $0.name }
+        XCTAssertTrue(names.contains("smart-create-reminders"))
+    }
+
+    func testSmartCreateRemindersTemplateHasCurrentDatePlaceholder() {
+        XCTAssertTrue(BuiltInTemplates.smartCreateReminders.content.contains("{{CURRENT_DATE}}"))
+    }
+
+    func testSmartCreateRemindersTemplateHasCurrentTimePlaceholder() {
+        XCTAssertTrue(BuiltInTemplates.smartCreateReminders.content.contains("{{CURRENT_TIME}}"))
+    }
+
+    func testSmartCreateRemindersTemplateRequiresJSONOnlyOutput() {
+        XCTAssertTrue(BuiltInTemplates.smartCreateReminders.content.contains("ONLY the raw JSON"))
+    }
+
+    // MARK: - extractJSON helper
+
+    func testExtractJSONFromBareObject() throws {
+        let raw = #"{"title":"Call dentist","priority":1}"#
+        let data = extractJSON(from: raw)
+        XCTAssertNotNil(data)
+        let dict = try JSONSerialization.jsonObject(with: XCTUnwrap(data)) as? [String: Any]
+        XCTAssertEqual(dict?["title"] as? String, "Call dentist")
+    }
+
+    func testExtractJSONStripsCodeFences() throws {
+        let raw = """
+        Sure! Here is the JSON:
+        ```json
+        {"title":"Buy milk","priority":0}
+        ```
+        """
+        let data = extractJSON(from: raw)
+        XCTAssertNotNil(data)
+        let dict = try JSONSerialization.jsonObject(with: XCTUnwrap(data)) as? [String: Any]
+        XCTAssertEqual(dict?["title"] as? String, "Buy milk")
+    }
+
+    func testExtractJSONWithProsePrefix() {
+        let raw = "Here you go: {\"title\":\"meeting\",\"dueDate\":null}"
+        let data = extractJSON(from: raw)
+        XCTAssertNotNil(data)
+    }
+
+    func testExtractJSONReturnsNilForPlainText() {
+        let data = extractJSON(from: "No JSON here at all.")
+        XCTAssertNil(data)
     }
 }
