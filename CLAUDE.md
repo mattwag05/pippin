@@ -241,6 +241,12 @@ bd close <id>         # Complete work
 - Run `bd prime` for detailed command reference and session close protocol
 - Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
 
+### Operating principles (learned the hard way)
+
+- **`export.path` must be `.beads/issues.jsonl`, not the default `issues.jsonl`.** The pre-commit hook runs `bd` with `export.git-add=true`, which re-exports the JSONL on every commit and `git add`s it — if `export.path` is the default (repo root), every commit silently stages a duplicate `/issues.jsonl` alongside the canonical `.beads/issues.jsonl`, bloating history. Fix: `bd config set export.path .beads/issues.jsonl` (both main repo and every worktree's `.beads/config.yaml`). `/issues.jsonl` is also in `.gitignore` as belt-and-suspenders, but the hook's `git add` bypasses gitignore so the config setting is the real fix.
+- **Worktrees have their own `.beads/` state.** `bd update --claim` / `bd close` run in the main repo do NOT propagate to a worktree's `.beads/issues.jsonl` until a commit triggers the hook's export. Run `bd` commands from whichever repo's history the change should land in. For cross-repo operations (claim in main, commit in worktree), expect the worktree's `.beads/issues.jsonl` to diff on first commit — that's the hook catching up, not data loss.
+- **`bd config set` writes to `.beads/config.yaml`**, which is tracked — fixes propagate via commit to every clone and worktree.
+
 ## Session Completion
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
