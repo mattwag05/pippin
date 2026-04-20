@@ -808,7 +808,7 @@ private struct SmartEventSpec: Codable {
 }
 
 /// Extract the first complete JSON object from a text response.
-private func extractJSON(from text: String) -> Data? {
+func extractJSON(from text: String) -> Data? {
     guard
         let startIdx = text.firstIndex(of: "{"),
         let endIdx = text.lastIndex(of: "}"),
