@@ -816,25 +816,28 @@ public struct CalendarCommand: AsyncParsableCommand {
             let bridge = CalendarBridge()
             let events = try await bridge.listEvents(from: startDate, to: endDate)
 
+            // Pre-parse dates once; events with unparseable dates are skipped
+            let parsedEvents = events.compactMap { event -> (event: CalendarEvent, start: Date, end: Date)? in
+                guard
+                    let start = parseCalendarDate(event.startDate),
+                    let end = parseCalendarDate(event.endDate)
+                else { return nil }
+                return (event, start, end)
+            }
+
             // Find all pairwise overlapping events
+            // Two ranges overlap iff a starts before b ends and b starts before a ends
             var conflicts: [CalendarConflict] = []
-            for i in 0 ..< events.count {
-                for j in (i + 1) ..< events.count {
-                    let a = events[i]
-                    let b = events[j]
-                    guard
-                        let aStart = parseCalendarDate(a.startDate),
-                        let aEnd = parseCalendarDate(a.endDate),
-                        let bStart = parseCalendarDate(b.startDate),
-                        let bEnd = parseCalendarDate(b.endDate)
-                    else { continue }
-                    // Two ranges overlap iff a starts before b ends and b starts before a ends
-                    guard aStart < bEnd, bStart < aEnd else { continue }
-                    let overlapStart = max(aStart, bStart)
-                    let overlapEnd = min(aEnd, bEnd)
+            for i in 0 ..< parsedEvents.count {
+                for j in (i + 1) ..< parsedEvents.count {
+                    let a = parsedEvents[i]
+                    let b = parsedEvents[j]
+                    guard a.start < b.end, b.start < a.end else { continue }
+                    let overlapStart = max(a.start, b.start)
+                    let overlapEnd = min(a.end, b.end)
                     let overlapMinutes = max(0, Int(overlapEnd.timeIntervalSince(overlapStart) / 60))
                     conflicts.append(CalendarConflict(
-                        events: [a, b],
+                        events: [a.event, b.event],
                         overlapStart: formatEventDate(overlapStart),
                         overlapEnd: formatEventDate(overlapEnd),
                         overlapMinutes: overlapMinutes

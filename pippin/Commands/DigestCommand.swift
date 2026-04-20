@@ -44,8 +44,11 @@ public struct DigestCommand: AsyncParsableCommand {
     public mutating func run() async throws {
         var warnings: [String] = []
         let skipSet = Set(skip)
+        let cal = Calendar.current
+        let startOfDay = cal.startOfDay(for: Date())
+        let endOfDay = cal.date(byAdding: .day, value: 1, to: startOfDay)!
 
-        // MARK: Mail
+        // Mail
 
         var mailSection = DigestPayload.MailSection(totalUnread: 0, perAccount: [])
         if !skipSet.contains("mail") {
@@ -76,34 +79,29 @@ public struct DigestCommand: AsyncParsableCommand {
             }
         }
 
-        // MARK: Calendar
+        // Calendar
 
         var calendarSection = DigestPayload.CalendarSection(today: [], upcoming: [])
         if !skipSet.contains("calendar") {
             do {
                 let bridge = CalendarBridge()
-                let cal = Calendar.current
-                let startOfDay = cal.startOfDay(for: Date())
-                let endOfDay = cal.date(byAdding: .day, value: 1, to: startOfDay)!
                 let upcomingEnd = cal.date(byAdding: .day, value: calendarDays, to: startOfDay)!
-                let todayEvents = try await bridge.listEvents(from: startOfDay, to: endOfDay)
-                let upcomingEvents = try await bridge.listEvents(from: endOfDay, to: upcomingEnd)
-                calendarSection = DigestPayload.CalendarSection(today: todayEvents, upcoming: upcomingEvents)
+                async let todayEvents = bridge.listEvents(from: startOfDay, to: endOfDay)
+                async let upcomingEvents = bridge.listEvents(from: endOfDay, to: upcomingEnd)
+                let (today, upcoming) = try await (todayEvents, upcomingEvents)
+                calendarSection = DigestPayload.CalendarSection(today: today, upcoming: upcoming)
             } catch {
                 warnings.append("calendar: \(error.localizedDescription)")
             }
         }
 
-        // MARK: Reminders
+        // Reminders
 
         var remindersSection = DigestPayload.RemindersSection(dueToday: [], overdue: [])
         if !skipSet.contains("reminders") {
             do {
                 let bridge = RemindersBridge()
                 let allReminders = try await bridge.listReminders(completed: false, limit: 500)
-                let cal = Calendar.current
-                let startOfDay = cal.startOfDay(for: Date())
-                let endOfDay = cal.date(byAdding: .day, value: 1, to: startOfDay)!
                 let dueToday = allReminders.filter { r in
                     guard let due = r.dueDate, let date = parseCalendarDate(due) else { return false }
                     return date >= startOfDay && date < endOfDay
@@ -118,7 +116,7 @@ public struct DigestCommand: AsyncParsableCommand {
             }
         }
 
-        // MARK: Notes
+        // Notes
 
         var notesSection = DigestPayload.NotesSection(recent: [])
         if !skipSet.contains("notes") {
@@ -129,8 +127,6 @@ public struct DigestCommand: AsyncParsableCommand {
                 warnings.append("notes: \(error.localizedDescription)")
             }
         }
-
-        // MARK: Output
 
         let generatedAt = ISO8601DateFormatter().string(from: Date())
         let payload = DigestPayload(
