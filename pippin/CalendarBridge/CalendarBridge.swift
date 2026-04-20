@@ -92,6 +92,22 @@ public final class CalendarBridge: @unchecked Sendable {
             .map { mapEvent($0) }
     }
 
+    /// Returns existing events that overlap with [from, to), excluding an optional event ID.
+    /// Cancelled events are excluded. Uses the same predicate-based lookup as `listEvents`.
+    public func findConflicts(from: Date, to: Date, excludingEventId: String? = nil) async throws -> [CalendarEvent] {
+        try await ensureAccess()
+        let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
+        return store.events(matching: predicate)
+            .filter { event in
+                event.status != .canceled
+                    && event.startDate < to
+                    && from < event.endDate
+                    && (excludingEventId == nil || event.calendarItemIdentifier != excludingEventId)
+            }
+            .sorted { $0.startDate < $1.startDate }
+            .map { mapEvent($0) }
+    }
+
     public func getEvent(id: String) async throws -> CalendarEvent {
         try await ensureAccess()
         guard let event = findEventByPrefix(id: id) else {

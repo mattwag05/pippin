@@ -207,4 +207,112 @@ final class CalendarModelsTests: XCTestCase {
         XCTAssertEqual(decoded.startDate, startISO)
         XCTAssertEqual(decoded.endDate, endISO)
     }
+
+    // MARK: - CalendarConflict
+
+    func testCalendarConflictRoundTrip() throws {
+        let a = CalendarEvent(
+            id: "a", calendarId: "cal", calendarTitle: "Work",
+            title: "Meeting A", startDate: "2026-03-07T10:00:00Z", endDate: "2026-03-07T11:00:00Z", isAllDay: false
+        )
+        let b = CalendarEvent(
+            id: "b", calendarId: "cal", calendarTitle: "Work",
+            title: "Meeting B", startDate: "2026-03-07T10:30:00Z", endDate: "2026-03-07T11:30:00Z", isAllDay: false
+        )
+        let conflict = CalendarConflict(
+            events: [a, b],
+            overlapStart: "2026-03-07T10:30:00Z",
+            overlapEnd: "2026-03-07T11:00:00Z",
+            overlapMinutes: 30
+        )
+        let data = try JSONEncoder().encode(conflict)
+        let decoded = try JSONDecoder().decode(CalendarConflict.self, from: data)
+        XCTAssertEqual(decoded.events.count, 2)
+        XCTAssertEqual(decoded.events[0].title, "Meeting A")
+        XCTAssertEqual(decoded.events[1].title, "Meeting B")
+        XCTAssertEqual(decoded.overlapStart, "2026-03-07T10:30:00Z")
+        XCTAssertEqual(decoded.overlapEnd, "2026-03-07T11:00:00Z")
+        XCTAssertEqual(decoded.overlapMinutes, 30)
+    }
+
+    func testCalendarConflictSendable() {
+        let event = CalendarEvent(
+            id: "x", calendarId: "c", calendarTitle: "C",
+            title: "E", startDate: "2026-03-07T10:00:00Z", endDate: "2026-03-07T11:00:00Z", isAllDay: false
+        )
+        let conflict = CalendarConflict(events: [event], overlapStart: "s", overlapEnd: "e", overlapMinutes: 0)
+        let _: any Sendable = conflict
+    }
+
+    // MARK: - Overlap math (pure function, no EventKit)
+
+    func testOverlapIdenticalRanges() {
+        // [10, 11) and [10, 11) — full overlap
+        let aStart = date("2026-03-07T10:00:00")
+        let aEnd = date("2026-03-07T11:00:00")
+        let bStart = date("2026-03-07T10:00:00")
+        let bEnd = date("2026-03-07T11:00:00")
+        XCTAssertTrue(aStart < bEnd && bStart < aEnd)
+    }
+
+    func testOverlapPartialRanges() {
+        // [10, 11) and [10:30, 11:30) — 30-min overlap
+        let aStart = date("2026-03-07T10:00:00")
+        let aEnd = date("2026-03-07T11:00:00")
+        let bStart = date("2026-03-07T10:30:00")
+        let bEnd = date("2026-03-07T11:30:00")
+        XCTAssertTrue(aStart < bEnd && bStart < aEnd)
+        let overlapSeconds = min(aEnd, bEnd).timeIntervalSince(max(aStart, bStart))
+        XCTAssertEqual(Int(overlapSeconds / 60), 30)
+    }
+
+    func testOverlapAbutting() {
+        // [10, 11) and [11, 12) — abut, no overlap
+        let aStart = date("2026-03-07T10:00:00")
+        let aEnd = date("2026-03-07T11:00:00")
+        let bStart = date("2026-03-07T11:00:00")
+        let bEnd = date("2026-03-07T12:00:00")
+        // a < d: aStart(10) < bEnd(12) ✓, but c < b: bStart(11) < aEnd(11) ✗
+        XCTAssertFalse(bStart < aEnd) // no overlap for abutting ranges
+    }
+
+    func testOverlapContained() {
+        // [10, 12) contains [10:30, 11:30) — full inner overlap
+        let aStart = date("2026-03-07T10:00:00")
+        let aEnd = date("2026-03-07T12:00:00")
+        let bStart = date("2026-03-07T10:30:00")
+        let bEnd = date("2026-03-07T11:30:00")
+        XCTAssertTrue(aStart < bEnd && bStart < aEnd)
+        let overlapSeconds = min(aEnd, bEnd).timeIntervalSince(max(aStart, bStart))
+        XCTAssertEqual(Int(overlapSeconds / 60), 60) // 60-min overlap
+    }
+
+    func testOverlapDisjoint() {
+        // [10, 11) and [12, 13) — no overlap
+        let aStart = date("2026-03-07T10:00:00")
+        let aEnd = date("2026-03-07T11:00:00")
+        let bStart = date("2026-03-07T12:00:00")
+        let bEnd = date("2026-03-07T13:00:00")
+        XCTAssertFalse(aStart < bEnd && bStart < aEnd)
+    }
+
+    func testOverlapOneMinute() {
+        // [10:00, 11:00) and [10:59, 12:00) — 1-min overlap
+        let aStart = date("2026-03-07T10:00:00")
+        let aEnd = date("2026-03-07T11:00:00")
+        let bStart = date("2026-03-07T10:59:00")
+        let bEnd = date("2026-03-07T12:00:00")
+        XCTAssertTrue(aStart < bEnd && bStart < aEnd)
+        let overlapSeconds = min(aEnd, bEnd).timeIntervalSince(max(aStart, bStart))
+        XCTAssertEqual(Int(overlapSeconds / 60), 1)
+    }
+
+    // MARK: - Helpers
+
+    private func date(_ s: String) -> Date {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return f.date(from: s)!
+    }
 }
