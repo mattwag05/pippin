@@ -473,6 +473,7 @@ extension MailBridge {
             }
             var all = collectAllMailboxes(acct.mailboxes(), []);
             for (var i = 0; i < all.length; i++) {
+                if (mb !== null && all[i] === mb) continue; // already tried
                 try {
                     var found = all[i].messages.whose({id: msgId})();
                     if (found.length > 0) return found[0];
@@ -510,8 +511,8 @@ extension MailBridge {
 
             for (var i = 0; i < atts.length; i++) {
                 var att = atts[i];
-                var attName = null;
-                try { attName = att.name(); } catch(e) { attName = 'attachment_' + i; }
+                var attName = 'attachment_' + i;
+                try { attName = att.name(); } catch(e) {}
                 // mimeType() raises "AppleEvent handler failed" (-10000) on some IMAP-backed
                 // attachments (e.g. Gmail PDFs) even when the attachment is otherwise usable.
                 var attMime = 'application/octet-stream';
