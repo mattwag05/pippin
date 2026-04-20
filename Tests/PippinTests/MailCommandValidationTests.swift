@@ -287,6 +287,26 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertThrowsError(try MailCommand.List.parse(["--page", "0"]))
     }
 
+    // MARK: - List --preview
+
+    func testListPreviewDefaultIsNil() throws {
+        let cmd = try MailCommand.List.parse([])
+        XCTAssertNil(cmd.preview)
+    }
+
+    func testListPreviewValidPasses() throws {
+        let cmd = try MailCommand.List.parse(["--preview", "200"])
+        XCTAssertEqual(cmd.preview, 200)
+    }
+
+    func testListPreviewZeroFails() {
+        XCTAssertThrowsError(try MailCommand.List.parse(["--preview", "0"]))
+    }
+
+    func testListPreviewNegativeFails() {
+        XCTAssertThrowsError(try MailCommand.List.parse(["--preview", "-1"]))
+    }
+
     // MARK: - Search --page
 
     func testSearchPageDefault() throws {
