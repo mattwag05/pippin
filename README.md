@@ -167,6 +167,18 @@ pippin browser fill --ref "e5" --value "search query"
 pippin browser fetch "https://example.com"
 ```
 
+### Action Extraction
+
+Scan recent Sent mail and recently-modified Notes for commitments you made and surface them as draft reminders.
+
+```bash
+pippin actions extract                          # Dry-run: list extracted commitments
+pippin actions extract --days 14 --format json  # Last 2 weeks, structured output
+pippin actions extract --create --list "Work"   # Write reminders directly to Reminders.app
+pippin actions extract --no-notes               # Mail only
+pippin actions extract --provider claude        # Use Claude instead of Ollama
+```
+
 ### Interactive Shell (REPL)
 
 ```bash

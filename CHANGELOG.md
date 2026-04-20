@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.19.0] - 2026-04-20
+
+### Added
+
+- [feat] `pippin actions extract` — scans recent Sent mail and recently-modified Notes for first-person commitments ("I'll send Q3 numbers by Friday") and emits a structured list of draft reminders. Batches items 10 per AI call, 4 concurrent (mirrors `TriageEngine`). `--create` flag chains into `RemindersBridge` to write reminders directly. Supports `--days`, `--no-mail`, `--no-notes`, `--account`, `--limit`, `--min-confidence`, `--provider`, `--model`, `--list`, and `--format text|json|agent`.
+
+---
+
 ## [0.18.0] - 2026-04-18
 
 ### Added
@@ -444,6 +452,7 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 ---
 
 [Unreleased]: https://github.com/mattwag05/pippin/compare/v0.18.0...HEAD
+[0.19.0]: https://github.com/mattwag05/pippin/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/mattwag05/pippin/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/mattwag05/pippin/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/mattwag05/pippin/compare/v0.15.0...v0.16.0
