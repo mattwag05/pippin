@@ -54,3 +54,5 @@
 # - github.repo
 
 sync.remote: "git+https://github.com/mattwag05/pippin.git"
+
+export.path: ".beads/issues.jsonl"

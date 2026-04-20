@@ -103,6 +103,22 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertThrowsError(try RemindersCommand.List.parse(["--due-after", "bad"]))
     }
 
+    func testListValidCreatedAfterPasses() {
+        XCTAssertNoThrow(try RemindersCommand.List.parse(["--created-after", "2026-04-13"]))
+    }
+
+    func testListInvalidCreatedAfterFails() {
+        XCTAssertThrowsError(try RemindersCommand.List.parse(["--created-after", "yesterday"]))
+    }
+
+    func testListValidModifiedAfterPasses() {
+        XCTAssertNoThrow(try RemindersCommand.List.parse(["--modified-after", "2026-04-13T00:00:00Z"]))
+    }
+
+    func testListInvalidModifiedAfterFails() {
+        XCTAssertThrowsError(try RemindersCommand.List.parse(["--modified-after", "not-a-date"]))
+    }
+
     func testListValidPriorityHighPasses() {
         XCTAssertNoThrow(try RemindersCommand.List.parse(["--priority", "high"]))
     }

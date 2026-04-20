@@ -370,6 +370,8 @@ enum MCPToolRegistry {
                 "completed": Schema.boolean("Include completed reminders.", default: false),
                 "dueBefore": Schema.string("Due before date (YYYY-MM-DD or ISO 8601)."),
                 "dueAfter": Schema.string("Due after date (YYYY-MM-DD or ISO 8601)."),
+                "createdAfter": Schema.string("Only reminders created on or after this date (YYYY-MM-DD or ISO 8601)."),
+                "modifiedAfter": Schema.string("Only reminders modified on or after this date (YYYY-MM-DD or ISO 8601)."),
                 "priority": Schema.string("Filter by priority: high, medium, low, none."),
                 "limit": Schema.integer("Max reminders (default: 50).", default: 50),
             ]),
@@ -379,6 +381,8 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.flagIfTrue(args, "completed", flagName: "--completed")
                 argv += ArgHelpers.optionIfString(args, "dueBefore", flagName: "--due-before")
                 argv += ArgHelpers.optionIfString(args, "dueAfter", flagName: "--due-after")
+                argv += ArgHelpers.optionIfString(args, "createdAfter", flagName: "--created-after")
+                argv += ArgHelpers.optionIfString(args, "modifiedAfter", flagName: "--modified-after")
                 argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv

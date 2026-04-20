@@ -68,6 +68,12 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Only show reminders due after this date: YYYY-MM-DD or ISO 8601.")
         public var dueAfter: String?
 
+        @Option(name: .long, help: "Only show reminders created on or after this date: YYYY-MM-DD or ISO 8601.")
+        public var createdAfter: String?
+
+        @Option(name: .long, help: "Only show reminders modified on or after this date: YYYY-MM-DD or ISO 8601.")
+        public var modifiedAfter: String?
+
         @Option(name: .long, help: "Filter by priority: high, medium, low, none (or 1, 5, 9, 0).")
         public var priority: String?
 
@@ -88,6 +94,12 @@ public struct RemindersCommand: AsyncParsableCommand {
             if let dueAfter, parseCalendarDate(dueAfter) == nil {
                 throw ValidationError("--due-after must be in YYYY-MM-DD or ISO 8601 format.")
             }
+            if let createdAfter, parseCalendarDate(createdAfter) == nil {
+                throw ValidationError("--created-after must be in YYYY-MM-DD or ISO 8601 format.")
+            }
+            if let modifiedAfter, parseCalendarDate(modifiedAfter) == nil {
+                throw ValidationError("--modified-after must be in YYYY-MM-DD or ISO 8601 format.")
+            }
             if let priority, parseReminderPriority(priority) == nil {
                 throw ValidationError("--priority must be: high, medium, low, none (or 0, 1, 5, 9).")
             }
@@ -103,6 +115,8 @@ public struct RemindersCommand: AsyncParsableCommand {
                 completed: completed,
                 dueBefore: dueBefore.flatMap { parseCalendarDate($0) },
                 dueAfter: dueAfter.flatMap { parseCalendarDate($0) },
+                createdAfter: createdAfter.flatMap { parseCalendarDate($0) },
+                modifiedAfter: modifiedAfter.flatMap { parseCalendarDate($0) },
                 priority: priority.flatMap { parseReminderPriority($0) },
                 limit: limit
             )

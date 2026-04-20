@@ -50,6 +50,8 @@ public final class RemindersBridge: @unchecked Sendable {
         completed: Bool = false,
         dueBefore: Date? = nil,
         dueAfter: Date? = nil,
+        createdAfter: Date? = nil,
+        modifiedAfter: Date? = nil,
         priority: Int? = nil,
         limit: Int = 50
     ) async throws -> [ReminderItem] {
@@ -80,6 +82,18 @@ public final class RemindersBridge: @unchecked Sendable {
                 guard let components = reminder.dueDateComponents,
                       let date = Calendar.current.date(from: components) else { return true }
                 return date > dueAfter
+            }
+        }
+        if let createdAfter {
+            filtered = filtered.filter { reminder in
+                guard let created = reminder.creationDate else { return false }
+                return created >= createdAfter
+            }
+        }
+        if let modifiedAfter {
+            filtered = filtered.filter { reminder in
+                guard let modified = reminder.lastModifiedDate else { return false }
+                return modified >= modifiedAfter
             }
         }
         if let priority {
