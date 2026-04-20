@@ -155,6 +155,30 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("mailAttachments()"))
     }
 
+    // MARK: - buildListScript (preview)
+
+    func testListScriptPreviewDisabledByDefault() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("var previewChars = 0;"))
+    }
+
+    func testListScriptPreviewInterpolatesValue() {
+        let script = MailBridge.buildListScript(
+            account: nil, mailbox: "INBOX", unread: false, limit: 10, preview: 200
+        )
+        XCTAssertTrue(script.contains("var previewChars = 200;"))
+        // msg.content() is required to trigger the IMAP body fetch per CLAUDE.md.
+        XCTAssertTrue(script.contains("msg.content()"), "preview branch must call msg.content() to force IMAP fetch")
+        XCTAssertTrue(script.contains("row.bodyPreview"), "preview values should be attached as bodyPreview key")
+    }
+
+    func testListScriptPreviewClampsAbove4000() {
+        let script = MailBridge.buildListScript(
+            account: nil, mailbox: "INBOX", unread: false, limit: 10, preview: 99999
+        )
+        XCTAssertTrue(script.contains("var previewChars = 4000;"), "preview should clamp at 4000")
+    }
+
     // MARK: - buildSearchScript (offset/pagination + metadata)
 
     func testSearchScriptDefaultOffsetZero() {

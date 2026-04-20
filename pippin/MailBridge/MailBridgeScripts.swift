@@ -8,10 +8,13 @@ extension MailBridge {
         mailbox: String,
         unread: Bool,
         limit: Int,
-        offset: Int = 0
+        offset: Int = 0,
+        preview: Int? = nil
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
         let mbName = jsEscape(mailbox)
+        // 0 means "preview disabled"; positive value is clamped chars for the preview.
+        let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
 
         return """
         var mail = Application('Mail');
@@ -23,6 +26,7 @@ extension MailBridge {
         var unreadOnly = \(unread ? "true" : "false");
         var limit = \(limit);
         var offset = \(offset);
+        var previewChars = \(previewChars);
         var results = [];
 
         var accounts = mail.accounts();
@@ -49,9 +53,22 @@ extension MailBridge {
             var readFlags = slice.map(function(msg) { return msg.readStatus(); });
             var sizes     = slice.map(function(msg) { try { return msg.messageSize(); } catch(e) { return null; } });
             var hasAtts   = slice.map(function(msg) { try { return msg.mailAttachments().length > 0; } catch(e) { return false; } });
+            // msg.content() triggers the IMAP body fetch per CLAUDE.md — only called when previewChars > 0.
+            var previews = slice.map(function(msg) {
+                if (previewChars <= 0) return null;
+                try {
+                    var raw = msg.content();
+                    if (raw == null || raw === '') return null;
+                    var s = String(raw);
+                    if (s.length > previewChars) return s.substring(0, previewChars) + '…';
+                    return s;
+                } catch (e) {
+                    return null;
+                }
+            });
 
             for (var i = 0; i < count; i++) {
-                results.push({
+                var row = {
                     id: acctName + '||' + resolvedMbName + '||' + ids[i],
                     account: acctName,
                     mailbox: resolvedMbName,
@@ -63,7 +80,11 @@ extension MailBridge {
                     body: null,
                     size: sizes[i],
                     hasAttachment: hasAtts[i]
-                });
+                };
+                if (previewChars > 0 && previews[i] != null) {
+                    row.bodyPreview = previews[i];
+                }
+                results.push(row);
             }
         }
 

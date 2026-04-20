@@ -170,13 +170,14 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_list",
-            description: "List messages in a mailbox. Defaults to INBOX, limit 20.",
+            description: "List messages in a mailbox. Defaults to INBOX, limit 20. Set preview to ~200 for agent scan workflows to avoid N+1 mail_show calls.",
             inputSchema: Schema.object(properties: [
                 "account": Schema.string("Mail account name."),
                 "mailbox": Schema.string("Mailbox name (default: INBOX)."),
                 "unread": Schema.boolean("Only return unread messages.", default: false),
                 "limit": Schema.integer("Maximum messages to return (default: 20).", default: 20),
                 "page": Schema.integer("Page number (1-based).", default: 1),
+                "preview": Schema.integer("Include a plain-text body preview of up to N chars per message (forces per-message IMAP fetch; use ~200 for scan workflows)."),
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "list")
@@ -185,6 +186,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.flagIfTrue(args, "unread", flagName: "--unread")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 argv += ArgHelpers.optionIfInt(args, "page", flagName: "--page")
+                argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
                 return argv
             }
         ),

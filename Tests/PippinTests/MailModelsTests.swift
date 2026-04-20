@@ -215,6 +215,56 @@ final class MailModelsTests: XCTestCase {
         XCTAssertEqual(attachments?.first?["name"] as? String, "file.pdf")
     }
 
+    func testMailMessageBodyPreviewAbsentWhenNil() throws {
+        let msg = MailMessage(
+            id: "a||b||10",
+            account: "Work",
+            mailbox: "INBOX",
+            subject: "No preview",
+            from: "x@x.com",
+            to: [],
+            date: "2024-01-01T00:00:00Z",
+            read: false
+        )
+        let data = try encoder.encode(msg)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertFalse(json.keys.contains("bodyPreview"), "bodyPreview should be absent when nil")
+    }
+
+    func testMailMessageWithBodyPreview() throws {
+        let msg = MailMessage(
+            id: "a||b||11",
+            account: "Work",
+            mailbox: "INBOX",
+            subject: "Has preview",
+            from: "x@x.com",
+            to: [],
+            date: "2024-01-01T00:00:00Z",
+            read: false,
+            bodyPreview: "Short summary of the email body…"
+        )
+        let data = try encoder.encode(msg)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["bodyPreview"] as? String, "Short summary of the email body…")
+    }
+
+    func testMailMessageBodyPreviewRoundTrip() throws {
+        let original = MailMessage(
+            id: "a||b||12",
+            account: "Work",
+            mailbox: "INBOX",
+            subject: "Round trip",
+            from: "x@x.com",
+            to: [],
+            date: "2024-01-01T00:00:00Z",
+            read: true,
+            bodyPreview: "preview text"
+        )
+        let data = try encoder.encode(original)
+        let decoded = try decode(MailMessage.self, from: data)
+        XCTAssertEqual(decoded.bodyPreview, "preview text")
+    }
+
     func testMailMessageDecodesWithoutNewFields() throws {
         // JSON without new fields should decode cleanly (all new fields = nil)
         let jsonStr = """
@@ -234,6 +284,7 @@ final class MailModelsTests: XCTestCase {
         let msg = try decode(MailMessage.self, from: data)
         XCTAssertNil(msg.size)
         XCTAssertNil(msg.hasAttachment)
+        XCTAssertNil(msg.bodyPreview)
         XCTAssertNil(msg.htmlBody)
         XCTAssertNil(msg.headers)
         XCTAssertNil(msg.attachments)
