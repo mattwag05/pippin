@@ -12,6 +12,8 @@ extension MailBridge {
             throw MailBridgeError.scriptFailed(msg)
         } catch let ScriptRunnerError.stderrOnSuccess(msg) {
             throw MailBridgeError.scriptFailed(msg)
+        } catch let ScriptRunnerError.launchFailed(msg) {
+            throw MailBridgeError.scriptFailed("osascript launch failed: \(msg)")
         }
     }
 

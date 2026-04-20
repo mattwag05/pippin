@@ -301,6 +301,8 @@ enum NotesBridge {
             throw NotesBridgeError.scriptFailed(msg)
         } catch let ScriptRunnerError.stderrOnSuccess(msg) {
             throw NotesBridgeError.scriptFailed(msg)
+        } catch let ScriptRunnerError.launchFailed(msg) {
+            throw NotesBridgeError.scriptFailed("osascript launch failed: \(msg)")
         }
     }
 

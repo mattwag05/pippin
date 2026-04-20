@@ -6,6 +6,7 @@ public enum ScriptRunnerError: Error, Sendable {
     case timeout
     case nonZeroExit(String) // raw stderr when osascript exits non-zero
     case stderrOnSuccess(String) // filtered stderr lines emitted even when exit=0 (e.g. TCC denial)
+    case launchFailed(String) // process.run() threw before osascript started
 }
 
 /// Shared osascript runner used by NotesBridge and MailBridge. Extracted to
@@ -61,7 +62,11 @@ public enum ScriptRunner {
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            throw ScriptRunnerError.launchFailed(error.localizedDescription)
+        }
 
         // Drain both pipes concurrently to avoid deadlock on large output (>64KB pipe buffer).
         // nonisolated(unsafe): each var is written once by one GCD block; group.wait() provides happens-before.
