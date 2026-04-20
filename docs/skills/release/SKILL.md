@@ -63,11 +63,7 @@ Wait for CI to go green on GitHub before continuing — release artifacts depend
 
 ### 7. Update the Homebrew tap formula
 
-```bash
-EDIT /opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb
-```
-
-Update three fields:
+Edit `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb`. Update three fields:
 - `tag` → `vX.Y.Z`
 - `revision` → output of `git rev-parse vX.Y.Z^{}` (the `^{}` dereferences the annotated tag to a commit SHA — plain `git rev-parse vX.Y.Z` returns the tag object SHA, which fails Homebrew's integrity check)
 - `assert_match` version string → the new version
