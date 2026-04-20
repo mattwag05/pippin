@@ -455,32 +455,67 @@ extension MailBridge {
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 8))
         \(jsFindMailboxByName())
+        \(jsCollectAllMailboxes())
         \(jsResolveMailbox())
         var saveDir = \(safeSaveDir);
         var result = [];
+
+        // Gmail labels (e.g. "Important", "Starred") are not addressable as mailboxes in Mail.app
+        // — a message whose compound id embeds a label returns -1728 from the label lookup, but
+        // lives in INBOX or [Gmail]/All Mail. Scan all mailboxes by id as a fallback.
+        function findMessageById(acct, mbHint, msgId) {
+            var mb = resolveMailbox(acct, mbHint);
+            if (mb !== null) {
+                try {
+                    var direct = mb.messages.whose({id: msgId})();
+                    if (direct.length > 0) return direct[0];
+                } catch(e) {}
+            }
+            var all = collectAllMailboxes(acct.mailboxes(), []);
+            for (var i = 0; i < all.length; i++) {
+                try {
+                    var found = all[i].messages.whose({id: msgId})();
+                    if (found.length > 0) return found[0];
+                } catch(e) {}
+            }
+            return null;
+        }
+
+        // 'save {to: Path(dest)}' errors -10000 ("Can't get POSIX file ...") unless the target
+        // file already exists. Pre-create an empty file so AppleScript can resolve the path.
+        var _sa = Application.currentApplication();
+        _sa.includeStandardAdditions = true;
+        function prepareSaveTarget(path) {
+            var escaped = "'" + path.replace(/'/g, "'\\\\''") + "'";
+            _sa.doShellScript('/usr/bin/touch ' + escaped);
+        }
 
         var accounts = mail.accounts();
         for (var a = 0; a < accounts.length; a++) {
             var acct = accounts[a];
             if (acct.name() !== '\(safeAccount)') continue;
 
-            var mb = resolveMailbox(acct, '\(safeMailbox)');
-            if (mb === null) throw new Error('MAILBRIDGE_ERR_MAILBOX_NOT_FOUND');
+            var msg = findMessageById(acct, '\(safeMailbox)', \(safeMsgId));
+            if (msg === null) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
 
-            var msgs = mb.messages.whose({id: \(safeMsgId)})();
-            if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
-
-            var msg = msgs[0];
-            // Trigger IMAP body download
-            try { msg.content(); } catch(e) {}
+            // Reading .source() forces Mail to fetch the full RFC822 body from IMAP, which pulls
+            // in attachment binaries. .content() only guarantees the text body — mail attachments
+            // can stay as metadata stubs, causing 'save' to fail with -10000.
+            try { msg.source(); } catch(e) {
+                try { msg.content(); } catch(e2) {}
+            }
 
             var atts = [];
             try { atts = msg.mailAttachments(); } catch(e) {}
 
             for (var i = 0; i < atts.length; i++) {
                 var att = atts[i];
-                var attName = att.name();
-                var attMime = att.mimeType();
+                var attName = null;
+                try { attName = att.name(); } catch(e) { attName = 'attachment_' + i; }
+                // mimeType() raises "AppleEvent handler failed" (-10000) on some IMAP-backed
+                // attachments (e.g. Gmail PDFs) even when the attachment is otherwise usable.
+                var attMime = 'application/octet-stream';
+                try { var m = att.mimeType(); if (m) attMime = m; } catch(e) {}
                 var attSize = 0;
                 try { attSize = att.fileSize(); } catch(e) {
                     try { attSize = att.downloadedSize(); } catch(e2) {}
@@ -488,7 +523,10 @@ extension MailBridge {
                 var savedPath = null;
                 if (saveDir !== null) {
                     var dest = saveDir + '/' + attName;
-                    att.save({to: Path(dest)});
+                    prepareSaveTarget(dest);
+                    // AppleScript 'save a in POSIX file path' → JXA uses the preposition as the
+                    // key: {in: Path(dest)}. {to: ...} errors 'Some data was the wrong type' (-10000).
+                    att.save({in: Path(dest)});
                     savedPath = dest;
                 }
                 result.push({name: attName, mimeType: attMime, size: attSize, savedPath: savedPath});
