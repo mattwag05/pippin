@@ -8,7 +8,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         subcommands: [
             Lists.self, List.self, Show.self,
             Create.self, Edit.self, Complete.self,
-            Delete.self, Search.self,
+            Delete.self, Search.self, SmartCreate.self,
         ]
     )
 
@@ -384,6 +384,125 @@ public struct RemindersCommand: AsyncParsableCommand {
                 printRemindersTable(reminders)
             }
         }
+    }
+
+    // MARK: - SmartCreate
+
+    public struct SmartCreate: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "smart-create",
+            abstract: "Create a reminder from a natural language description using AI."
+        )
+
+        @Argument(help: "Natural language description, e.g. 'call dentist next Tuesday at 9am priority high'.")
+        public var description: String
+
+        @Option(name: .long, help: "AI provider: ollama or claude (default: ollama).")
+        public var provider: String?
+
+        @Option(name: .long, help: "Model name (provider-specific default).")
+        public var model: String?
+
+        @Option(name: .long, help: "API key for Claude provider.")
+        public var apiKey: String?
+
+        @Option(name: .long, help: "Reminder list name to create in (overrides AI-parsed list).")
+        public var list: String?
+
+        @Flag(name: .long, help: "Print parsed reminder JSON without creating it.")
+        public var dryRun: Bool = false
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let aiProvider = try AIProviderFactory.make(
+                providerFlag: provider,
+                modelFlag: model,
+                apiKeyFlag: apiKey
+            )
+
+            let now = Date()
+            let dateFormatter = DateFormatter()
+            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            let today = dateFormatter.string(from: now)
+
+            let timeFormatter = DateFormatter()
+            timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+            timeFormatter.dateFormat = "HH:mm"
+            let currentTime = timeFormatter.string(from: now)
+
+            let systemPrompt = BuiltInTemplates.smartCreateReminders.content
+                .replacingOccurrences(of: "{{CURRENT_DATE}}", with: today)
+                .replacingOccurrences(of: "{{CURRENT_TIME}}", with: currentTime)
+
+            let jsonStr = try aiProvider.complete(prompt: description, system: systemPrompt)
+
+            guard
+                let specData = extractJSON(from: jsonStr),
+                let parsed = try? JSONDecoder().decode(SmartReminderSpec.self, from: specData)
+            else {
+                throw SmartReminderError("Failed to parse AI response as reminder spec. Raw: \(jsonStr)")
+            }
+
+            if dryRun {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                if let data = try? encoder.encode(parsed) {
+                    print(String(data: data, encoding: .utf8)!)
+                }
+                return
+            }
+
+            let bridge = RemindersBridge()
+
+            // Resolve list name to ID (CLI flag takes precedence over AI-parsed name)
+            var resolvedListId: String? = nil
+            if let name = list ?? parsed.listTitle {
+                let lists = try await bridge.listReminderLists()
+                if let match = lists.first(where: { $0.title.lowercased() == name.lowercased() }) {
+                    resolvedListId = match.id
+                } else if !output.isAgent {
+                    fputs("Warning: list '\(name)' not found — using default list.\n", stderr)
+                }
+            }
+
+            let result = try await bridge.createReminder(
+                title: parsed.title,
+                listId: resolvedListId,
+                dueDate: parsed.dueDate.flatMap { parseCalendarDate($0) },
+                priority: parsed.priority ?? 0,
+                notes: parsed.notes,
+                url: nil
+            )
+
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
+            }
+        }
+    }
+}
+
+// MARK: - SmartCreate helpers
+
+private struct SmartReminderSpec: Codable {
+    let title: String
+    let notes: String?
+    let dueDate: String?
+    let priority: Int?
+    let listTitle: String?
+}
+
+private struct SmartReminderError: LocalizedError {
+    let errorDescription: String?
+    init(_ message: String) {
+        errorDescription = message
     }
 }
 

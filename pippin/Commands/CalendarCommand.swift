@@ -8,7 +8,7 @@ public struct CalendarCommand: AsyncParsableCommand {
         subcommands: [
             ListCalendars.self, Events.self, Show.self,
             Create.self, Edit.self, Delete.self,
-            SmartCreate.self, Agenda.self, Search.self,
+            SmartCreate.self, Conflicts.self, Agenda.self, Search.self,
             Today.self, Remaining.self, Upcoming.self,
         ]
     )
@@ -438,6 +438,9 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Print parsed event JSON without creating it.")
         public var dryRun: Bool = false
 
+        @Flag(name: .long, help: "Create even if conflicting events exist.")
+        public var allowConflicts: Bool = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -473,15 +476,6 @@ public struct CalendarCommand: AsyncParsableCommand {
                 throw CalendarBridgeError.aiParseError(jsonStr)
             }
 
-            if dryRun {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                if let data = try? encoder.encode(parsed) {
-                    print(String(data: data, encoding: .utf8)!)
-                }
-                return
-            }
-
             guard let startDate = parseCalendarDate(parsed.start) else {
                 throw CalendarBridgeError.dateParseError(parsed.start)
             }
@@ -493,6 +487,33 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
 
             let bridge = CalendarBridge()
+
+            // Check for conflicts (skipped when --allow-conflicts is set)
+            var existingConflicts: [CalendarEvent] = []
+            if !allowConflicts {
+                existingConflicts = try await bridge.findConflicts(from: startDate, to: endDate)
+            }
+
+            if dryRun {
+                let dryRunResult = SmartCreateDryRunResult(spec: parsed, conflicts: existingConflicts)
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                try print(String(data: encoder.encode(dryRunResult), encoding: .utf8)!)
+                return
+            }
+
+            if !existingConflicts.isEmpty {
+                if output.isAgent {
+                    let titles = existingConflicts.map { $0.title }.joined(separator: ", ")
+                    throw SmartCalendarError.calendarConflict(
+                        "Event conflicts with \(existingConflicts.count) existing event(s): \(titles)"
+                    )
+                } else {
+                    let titles = existingConflicts.map { $0.title }.joined(separator: ", ")
+                    fputs("Warning: \(existingConflicts.count) conflict(s) with: \(titles)\n", stderr)
+                }
+            }
+
             let result = try await bridge.createEvent(
                 title: parsed.title,
                 start: startDate,
@@ -745,6 +766,103 @@ public struct CalendarCommand: AsyncParsableCommand {
         }
     }
 
+    // MARK: - Conflicts
+
+    public struct Conflicts: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "conflicts",
+            abstract: "Find overlapping calendar events in a time window."
+        )
+
+        @Option(name: .long, help: "Start date/time (default: start of today).")
+        public var from: String?
+
+        @Option(name: .long, help: "End date/time (default: end of today).")
+        public var to: String?
+
+        @Option(name: .long, help: "Date range shorthand: today, today+N, week, month. Overrides --from/--to.")
+        public var range: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func validate() throws {
+            if let from, parseCalendarDate(from) == nil {
+                throw ValidationError("--from must be in YYYY-MM-DD or ISO 8601 format.")
+            }
+            if let to, parseCalendarDate(to) == nil {
+                throw ValidationError("--to must be in YYYY-MM-DD or ISO 8601 format.")
+            }
+            if let range, parseRange(range) == nil {
+                throw ValidationError("--range must be: today, today+N, week, or month.")
+            }
+        }
+
+        public mutating func run() async throws {
+            let startDate: Date
+            let endDate: Date
+            if let range, let (rangeStart, rangeEnd) = parseRange(range) {
+                startDate = rangeStart
+                endDate = rangeEnd
+            } else {
+                let cal = Calendar.current
+                startDate = from.flatMap { parseCalendarDate($0) }
+                    ?? cal.startOfDay(for: Date())
+                endDate = to.flatMap { parseCalendarDate($0) }
+                    ?? cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: Date()))!
+            }
+
+            let bridge = CalendarBridge()
+            let events = try await bridge.listEvents(from: startDate, to: endDate)
+
+            // Pre-parse dates once; events with unparseable dates are skipped
+            let parsedEvents = events.compactMap { event -> (event: CalendarEvent, start: Date, end: Date)? in
+                guard
+                    let start = parseCalendarDate(event.startDate),
+                    let end = parseCalendarDate(event.endDate)
+                else { return nil }
+                return (event, start, end)
+            }
+
+            // Find all pairwise overlapping events
+            // Two ranges overlap iff a starts before b ends and b starts before a ends
+            var conflicts: [CalendarConflict] = []
+            for i in 0 ..< parsedEvents.count {
+                for j in (i + 1) ..< parsedEvents.count {
+                    let a = parsedEvents[i]
+                    let b = parsedEvents[j]
+                    guard a.start < b.end, b.start < a.end else { continue }
+                    let overlapStart = max(a.start, b.start)
+                    let overlapEnd = min(a.end, b.end)
+                    let overlapMinutes = max(0, Int(overlapEnd.timeIntervalSince(overlapStart) / 60))
+                    conflicts.append(CalendarConflict(
+                        events: [a.event, b.event],
+                        overlapStart: formatEventDate(overlapStart),
+                        overlapEnd: formatEventDate(overlapEnd),
+                        overlapMinutes: overlapMinutes
+                    ))
+                }
+            }
+
+            if output.isJSON {
+                try printJSON(conflicts)
+            } else if output.isAgent {
+                try printAgentJSON(conflicts)
+            } else {
+                if conflicts.isEmpty {
+                    print("No conflicts found.")
+                } else {
+                    print("Found \(conflicts.count) conflict\(conflicts.count == 1 ? "" : "s"):")
+                    for conflict in conflicts {
+                        let titles = conflict.events.map { $0.title }.joined(separator: " ↔ ")
+                        print("  • \(titles) [\(conflict.overlapMinutes) min overlap]")
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Upcoming
 
     public struct Upcoming: AsyncParsableCommand {
@@ -808,13 +926,29 @@ private struct SmartEventSpec: Codable {
 }
 
 /// Extract the first complete JSON object from a text response.
-private func extractJSON(from text: String) -> Data? {
+func extractJSON(from text: String) -> Data? {
     guard
         let startIdx = text.firstIndex(of: "{"),
         let endIdx = text.lastIndex(of: "}"),
         startIdx <= endIdx
     else { return nil }
     return String(text[startIdx ... endIdx]).data(using: .utf8)
+}
+
+/// Dry-run output for `calendar smart-create`: parsed spec + any detected conflicts.
+private struct SmartCreateDryRunResult: Encodable {
+    let spec: SmartEventSpec
+    let conflicts: [CalendarEvent]
+}
+
+/// Error thrown by `calendar smart-create` in agent mode when conflicts are detected.
+private enum SmartCalendarError: LocalizedError {
+    case calendarConflict(String)
+
+    var errorDescription: String? {
+        if case let .calendarConflict(msg) = self { return msg }
+        return nil
+    }
 }
 
 // MARK: - Text output helpers

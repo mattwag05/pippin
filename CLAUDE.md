@@ -267,3 +267,21 @@ bd close <id>         # Complete work
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
+
+## Codebase Gotchas (session learnings)
+
+**Nested subcommand struct placement:** When inserting a new `ParsableCommand` subcommand into an existing parent, the Edit `old_string` must start *before* the parent's closing `}` — replacing text that begins after the `}` puts the struct at file scope (compiles but is not a subcommand of the parent).
+
+**`BuiltInTemplates.all` count is hardcoded in tests:** Adding any template breaks three assertions in `Tests/PippinTests/TemplateTests.swift` — bump `testBuiltInTemplatesCount`, `testAllTemplatesReturnsBuiltIns`, and `testUserTemplatePlainContent` counts by 1 each.
+
+**`swiftformat --lint` needs project root:** Run as `cd /Users/matthewwagner/Desktop/Projects/pippin && /opt/homebrew/bin/swiftformat --lint pippin/ Tests/` — running from a worktree or with absolute paths skips the `.swiftformat` config and reports "0 eligible files".
+
+**`extractJSON(from:)` is `internal`:** Top-level function in `pippin/Commands/CalendarCommand.swift`. Access is `internal` (not private) — callable from any PippinLib file without importing or redeclaring.
+
+**beads in worktrees:** The `.beads/` dir in a linked worktree is empty (synced export, not the live DB). Run all `bd` commands from the main repo: `cd /Users/matthewwagner/Desktop/Projects/pippin && bd ...`.
+
+**Beads pre-commit hook re-exports root `issues.jsonl`:** `.beads/hooks/pre-commit` runs `bd hooks run pre-commit` which restages the stray root-level `issues.jsonl` on every commit. `git rm issues.jsonl` is silently reverted. Treat it as cosmetic churn; don't fight it.
+
+**`// MARK:` inside function bodies is a no-op:** Xcode's jump bar and SwiftFormat only index `// MARK:` at type/file scope. In-function MARKs look like section headers but add nothing — use plain `//` comments for inline section breaks.
+
+**`CalendarBridge` is `@unchecked Sendable` — parallelize read-only queries with `async let`:** Multiple `bridge.listEvents(from:to:)` calls in the same command can run concurrently (see `DigestCommand.swift` for today/upcoming pattern). Same applies anywhere you need a day-scoped + range-scoped read together.
