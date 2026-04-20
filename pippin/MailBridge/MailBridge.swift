@@ -33,7 +33,6 @@ enum MailBridge {
         let script = buildActivityScript(
             account: account, mailboxes: mailboxes, since: since, limit: limit, preview: preview
         )
-        // Preview forces per-message IMAP fetches across multiple mailboxes — generous timeout.
         let timeout = (preview ?? 0) > 0 ? 120 : 30
         let json = try runScript(script, timeoutSeconds: timeout)
         return try decode([MailMessage].self, from: json)

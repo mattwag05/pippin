@@ -300,13 +300,7 @@ extension MailBridge {
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
         let mbNamesJS = jsStringArray(mailboxes)
-        let sinceJS: String = {
-            guard let since else { return "null" }
-            // Emit as ISO 8601 for `new Date(...)` on the JXA side.
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime]
-            return "'\(f.string(from: since))'"
-        }()
+        let sinceJS = since.map { "'\(formatEventDate($0))'" } ?? "null"
         let safeLimit = max(1, min(limit, 500))
         let perMailboxLimit = 500
         let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
@@ -337,7 +331,6 @@ extension MailBridge {
                 var targetName = targetNames[t];
                 var mb = resolveMailbox(acct, targetName);
                 if (mb === null) {
-                    // Fall back to case-insensitive search through all mailboxes.
                     var all = collectAllMailboxes(acct.mailboxes(), []);
                     for (var k = 0; k < all.length; k++) {
                         if (all[k].name().toLowerCase() === targetName.toLowerCase()) { mb = all[k]; break; }
@@ -350,16 +343,18 @@ extension MailBridge {
                 if (!allMsgs) continue;
                 var scanCount = Math.min(allMsgs.length, perMailboxLimit);
                 var startIdx = Math.max(0, allMsgs.length - scanCount);
-                // Iterate newest → oldest; break once past the since window.
                 for (var i = allMsgs.length - 1; i >= startIdx; i--) {
                     var msg = allMsgs[i];
                     var msgDate = msg.dateSent();
-                    if (sinceDate !== null && msgDate < sinceDate) break;
+                    if (sinceDate !== null && msgDate < sinceDate) continue;
+
+                    var subject = msg.subject() || '';
+                    var sender = msg.sender() || '';
 
                     var dedupKey = null;
                     try { dedupKey = msg.messageId(); } catch(e) {}
                     if (!dedupKey) {
-                        dedupKey = (msg.subject() || '') + '\\x00' + (msg.sender() || '') + '\\x00' + msgDate.toISOString();
+                        dedupKey = subject + '\\x00' + sender + '\\x00' + msgDate.toISOString();
                     }
                     if (seenMsgKeys[dedupKey]) continue;
                     seenMsgKeys[dedupKey] = true;
@@ -375,36 +370,42 @@ extension MailBridge {
                         id: acctName + '||' + resolvedMbName + '||' + msg.id(),
                         account: acctName,
                         mailbox: resolvedMbName,
-                        subject: msg.subject() || '',
-                        from: msg.sender() || '',
+                        subject: subject,
+                        from: sender,
                         to: toAddrs,
                         date: msgDate.toISOString(),
                         read: msg.readStatus(),
                         body: null,
                         size: msgSize,
-                        hasAttachment: msgHasAtt
+                        hasAttachment: msgHasAtt,
+                        __msg: msg
                     };
-                    if (previewChars > 0) {
-                        try {
-                            var raw = msg.content();
-                            if (raw != null && raw !== '') {
-                                var s = String(raw);
-                                row.bodyPreview = s.length > previewChars ? s.substring(0, previewChars) + '…' : s;
-                            }
-                        } catch (e) {}
-                    }
                     results.push(row);
                 }
             }
         }
 
-        // Sort newest → oldest (ISO 8601 lexicographic order matches chronological order).
+        // ISO 8601 lexicographic sort == chronological (descending).
         results.sort(function(a, b) {
             if (a.date < b.date) return 1;
             if (a.date > b.date) return -1;
             return 0;
         });
         if (results.length > limit) results = results.slice(0, limit);
+
+        // Preview fetch runs AFTER slice so msg.content() only fires for survivors.
+        if (previewChars > 0) {
+            for (var p = 0; p < results.length; p++) {
+                try {
+                    var raw = results[p].__msg.content();
+                    if (raw != null && raw !== '') {
+                        var s = String(raw);
+                        results[p].bodyPreview = s.length > previewChars ? s.substring(0, previewChars) + '…' : s;
+                    }
+                } catch (e) {}
+            }
+        }
+        for (var p2 = 0; p2 < results.length; p2++) { delete results[p2].__msg; }
 
         JSON.stringify(results);
         """

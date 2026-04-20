@@ -2,10 +2,6 @@ import ArgumentParser
 import Foundation
 
 public extension MailCommand {
-    /// Combined recent-activity scan across multiple mailboxes (INBOX + Sent by
-    /// default). Intended for agent scan workflows as a single-call replacement
-    /// for N calls to `mail list`. Returns newest-first, deduped across
-    /// mailboxes, with an opt-in body preview.
     struct Activity: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
             commandName: "activity",
@@ -42,22 +38,18 @@ public extension MailCommand {
             if let since, parseCalendarDate(since) == nil {
                 throw ValidationError("--since must be YYYY-MM-DD or ISO 8601 (e.g. 2026-04-13).")
             }
-            let names = Self.parseMailboxList(mailboxes)
-            guard !names.isEmpty else {
+            guard !Self.parseMailboxList(mailboxes).isEmpty else {
                 throw ValidationError("--mailboxes must contain at least one name (e.g. INBOX,Sent).")
             }
         }
 
         public mutating func run() async throws {
-            let names = Self.parseMailboxList(mailboxes)
-            let sinceDate = since.flatMap { parseCalendarDate($0) }
-            let previewN: Int? = preview > 0 ? preview : nil
             let messages = try MailBridge.listActivity(
                 account: account,
-                mailboxes: names,
-                since: sinceDate,
+                mailboxes: Self.parseMailboxList(mailboxes),
+                since: since.flatMap { parseCalendarDate($0) },
                 limit: limit,
-                preview: previewN
+                preview: preview > 0 ? preview : nil
             )
             if output.isJSON {
                 try printJSON(messages)

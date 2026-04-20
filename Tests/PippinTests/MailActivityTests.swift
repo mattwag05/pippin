@@ -1,8 +1,6 @@
 @testable import PippinLib
 import XCTest
 
-/// Tests for `MailCommand.Activity` — the combined multi-mailbox recent scan.
-/// Assertions target the generated JXA script string; no osascript execution.
 final class MailActivityTests: XCTestCase {
     // MARK: - Subcommand wiring
 
@@ -122,8 +120,8 @@ final class MailActivityTests: XCTestCase {
             account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 200
         )
         XCTAssertTrue(script.contains("var previewChars = 200;"))
-        XCTAssertTrue(script.contains("msg.content()"), "preview path must call msg.content() to force IMAP fetch")
-        XCTAssertTrue(script.contains("row.bodyPreview"), "preview path must attach bodyPreview key")
+        XCTAssertTrue(script.contains(".content()"), "preview path must call content() to force IMAP fetch")
+        XCTAssertTrue(script.contains(".bodyPreview"), "preview path must attach bodyPreview key")
     }
 
     func testBuildActivityScriptPreviewClampsAbove4000() {

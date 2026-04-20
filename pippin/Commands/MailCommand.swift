@@ -872,7 +872,6 @@ private func validateAttachmentPaths(_ paths: [String]) throws {
     }
 }
 
-/// Print a table of messages in text format (used by List and Search).
 func printMessageTable(_ messages: [MailMessage]) {
     let rows = messages.map { msg in
         [
