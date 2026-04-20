@@ -5,7 +5,7 @@ public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, MailIndex.self, MailSanitize.self, MailExtract.self, MailTriage.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Activity.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, MailIndex.self, MailSanitize.self, MailExtract.self, MailTriage.self]
     )
 
     public init() {}
@@ -209,6 +209,12 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Page number (1-based, with --limit as page size).")
         public var page: Int = 1
 
+        @Option(
+            name: .long,
+            help: "Include a plain-text body preview of up to N chars per message (e.g. --preview 200 for agent scan workflows to avoid N+1 mail_show calls). Forces a per-message IMAP fetch — bumps the timeout to 60s."
+        )
+        public var preview: Int?
+
         @Flag(name: .long, help: "Include AI-generated one-liner summaries per message (uses batch AI calls).")
         public var summarize: Bool = false
 
@@ -229,6 +235,9 @@ public struct MailCommand: AsyncParsableCommand {
             guard page >= 1 else {
                 throw ValidationError("--page must be 1 or greater.")
             }
+            if let preview, preview <= 0 {
+                throw ValidationError("--preview must be a positive integer (chars).")
+            }
         }
 
         public mutating func run() async throws {
@@ -237,7 +246,8 @@ public struct MailCommand: AsyncParsableCommand {
                 mailbox: mailbox,
                 unread: unread,
                 limit: limit,
-                offset: (page - 1) * limit
+                offset: (page - 1) * limit,
+                preview: preview
             )
 
             if summarize {
@@ -862,8 +872,7 @@ private func validateAttachmentPaths(_ paths: [String]) throws {
     }
 }
 
-/// Print a table of messages in text format (used by List and Search).
-private func printMessageTable(_ messages: [MailMessage]) {
+func printMessageTable(_ messages: [MailMessage]) {
     let rows = messages.map { msg in
         [
             TextFormatter.truncate(msg.id, to: 8),

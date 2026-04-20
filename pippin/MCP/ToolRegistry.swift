@@ -170,13 +170,14 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_list",
-            description: "List messages in a mailbox. Defaults to INBOX, limit 20.",
+            description: "List messages in a mailbox. Defaults to INBOX, limit 20. Set preview to ~200 for agent scan workflows to avoid N+1 mail_show calls.",
             inputSchema: Schema.object(properties: [
                 "account": Schema.string("Mail account name."),
                 "mailbox": Schema.string("Mailbox name (default: INBOX)."),
                 "unread": Schema.boolean("Only return unread messages.", default: false),
                 "limit": Schema.integer("Maximum messages to return (default: 20).", default: 20),
                 "page": Schema.integer("Page number (1-based).", default: 1),
+                "preview": Schema.integer("Include a plain-text body preview of up to N chars per message (forces per-message IMAP fetch; use ~200 for scan workflows)."),
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "list")
@@ -185,6 +186,27 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.flagIfTrue(args, "unread", flagName: "--unread")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 argv += ArgHelpers.optionIfInt(args, "page", flagName: "--page")
+                argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "mail_activity",
+            description: "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default) with body previews. Use this for scan workflows instead of N calls to mail_list.",
+            inputSchema: Schema.object(properties: [
+                "account": Schema.string("Mail account name."),
+                "mailboxes": Schema.string("Comma-separated mailbox names (default: INBOX,Sent)."),
+                "since": Schema.string("Only include messages on or after this date: YYYY-MM-DD or ISO 8601."),
+                "limit": Schema.integer("Maximum messages to return (default: 50).", default: 50),
+                "preview": Schema.integer("Plain-text preview length in chars (default: 200; 0 to disable).", default: 200),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "activity")
+                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
+                argv += ArgHelpers.optionIfString(args, "mailboxes", flagName: "--mailboxes")
+                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
                 return argv
             }
         ),
@@ -370,6 +392,8 @@ enum MCPToolRegistry {
                 "completed": Schema.boolean("Include completed reminders.", default: false),
                 "dueBefore": Schema.string("Due before date (YYYY-MM-DD or ISO 8601)."),
                 "dueAfter": Schema.string("Due after date (YYYY-MM-DD or ISO 8601)."),
+                "createdAfter": Schema.string("Only reminders created on or after this date (YYYY-MM-DD or ISO 8601)."),
+                "modifiedAfter": Schema.string("Only reminders modified on or after this date (YYYY-MM-DD or ISO 8601)."),
                 "priority": Schema.string("Filter by priority: high, medium, low, none."),
                 "limit": Schema.integer("Max reminders (default: 50).", default: 50),
             ]),
@@ -379,6 +403,8 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.flagIfTrue(args, "completed", flagName: "--completed")
                 argv += ArgHelpers.optionIfString(args, "dueBefore", flagName: "--due-before")
                 argv += ArgHelpers.optionIfString(args, "dueAfter", flagName: "--due-after")
+                argv += ArgHelpers.optionIfString(args, "createdAfter", flagName: "--created-after")
+                argv += ArgHelpers.optionIfString(args, "modifiedAfter", flagName: "--modified-after")
                 argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv

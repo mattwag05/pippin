@@ -8,10 +8,13 @@ extension MailBridge {
         mailbox: String,
         unread: Bool,
         limit: Int,
-        offset: Int = 0
+        offset: Int = 0,
+        preview: Int? = nil
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
         let mbName = jsEscape(mailbox)
+        // 0 means "preview disabled"; positive value is clamped chars for the preview.
+        let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
 
         return """
         var mail = Application('Mail');
@@ -23,6 +26,7 @@ extension MailBridge {
         var unreadOnly = \(unread ? "true" : "false");
         var limit = \(limit);
         var offset = \(offset);
+        var previewChars = \(previewChars);
         var results = [];
 
         var accounts = mail.accounts();
@@ -49,9 +53,22 @@ extension MailBridge {
             var readFlags = slice.map(function(msg) { return msg.readStatus(); });
             var sizes     = slice.map(function(msg) { try { return msg.messageSize(); } catch(e) { return null; } });
             var hasAtts   = slice.map(function(msg) { try { return msg.mailAttachments().length > 0; } catch(e) { return false; } });
+            // msg.content() triggers the IMAP body fetch per CLAUDE.md — only called when previewChars > 0.
+            var previews = slice.map(function(msg) {
+                if (previewChars <= 0) return null;
+                try {
+                    var raw = msg.content();
+                    if (raw == null || raw === '') return null;
+                    var s = String(raw);
+                    if (s.length > previewChars) return s.substring(0, previewChars) + '…';
+                    return s;
+                } catch (e) {
+                    return null;
+                }
+            });
 
             for (var i = 0; i < count; i++) {
-                results.push({
+                var row = {
                     id: acctName + '||' + resolvedMbName + '||' + ids[i],
                     account: acctName,
                     mailbox: resolvedMbName,
@@ -63,7 +80,11 @@ extension MailBridge {
                     body: null,
                     size: sizes[i],
                     hasAttachment: hasAtts[i]
-                });
+                };
+                if (previewChars > 0 && previews[i] != null) {
+                    row.bodyPreview = previews[i];
+                }
+                results.push(row);
             }
         }
 
@@ -265,6 +286,128 @@ extension MailBridge {
         }
 
         JSON.stringify({results: results, meta: _meta});
+        """
+    }
+
+    // MARK: - Activity Script (combined multi-mailbox recent scan)
+
+    static func buildActivityScript(
+        account: String?,
+        mailboxes: [String],
+        since: Date?,
+        limit: Int,
+        preview: Int?
+    ) -> String {
+        let acctFilter = jsEscapeOptional(account)
+        let mbNamesJS = jsStringArray(mailboxes)
+        let sinceJS = since.map { "'\(formatEventDate($0))'" } ?? "null"
+        let safeLimit = max(1, min(limit, 500))
+        let perMailboxLimit = 500
+        let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
+
+        return """
+        var mail = Application('Mail');
+        \(jsMailReadyPoll(maxAttempts: 20))
+        \(jsFindMailboxByName())
+        \(jsCollectAllMailboxes())
+        \(jsResolveMailbox())
+        var acctFilter = \(acctFilter);
+        var targetNames = \(mbNamesJS);
+        var sinceRaw = \(sinceJS);
+        var sinceDate = sinceRaw !== null ? new Date(sinceRaw) : null;
+        var limit = \(safeLimit);
+        var perMailboxLimit = \(perMailboxLimit);
+        var previewChars = \(previewChars);
+        var results = [];
+        var seenMsgKeys = {};
+
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            var acctName = acct.name();
+            if (acctFilter !== null && acctName !== acctFilter) continue;
+
+            for (var t = 0; t < targetNames.length; t++) {
+                var targetName = targetNames[t];
+                var mb = resolveMailbox(acct, targetName);
+                if (mb === null) {
+                    var all = collectAllMailboxes(acct.mailboxes(), []);
+                    for (var k = 0; k < all.length; k++) {
+                        if (all[k].name().toLowerCase() === targetName.toLowerCase()) { mb = all[k]; break; }
+                    }
+                    if (mb === null) continue;
+                }
+                var resolvedMbName = mb.name();
+
+                var allMsgs = mb.messages();
+                if (!allMsgs) continue;
+                var scanCount = Math.min(allMsgs.length, perMailboxLimit);
+                var startIdx = Math.max(0, allMsgs.length - scanCount);
+                for (var i = allMsgs.length - 1; i >= startIdx; i--) {
+                    var msg = allMsgs[i];
+                    var msgDate = msg.dateSent();
+                    if (sinceDate !== null && msgDate < sinceDate) continue;
+
+                    var subject = msg.subject() || '';
+                    var sender = msg.sender() || '';
+
+                    var dedupKey = null;
+                    try { dedupKey = msg.messageId(); } catch(e) {}
+                    if (!dedupKey) {
+                        dedupKey = subject + '\\x00' + sender + '\\x00' + msgDate.toISOString();
+                    }
+                    if (seenMsgKeys[dedupKey]) continue;
+                    seenMsgKeys[dedupKey] = true;
+
+                    var msgSize = null;
+                    try { msgSize = msg.messageSize(); } catch(e) {}
+                    var msgHasAtt = false;
+                    try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {}
+                    var toAddrs = [];
+                    try { toAddrs = msg.toRecipients().map(function(r) { return r.address(); }); } catch(e) {}
+
+                    var row = {
+                        id: acctName + '||' + resolvedMbName + '||' + msg.id(),
+                        account: acctName,
+                        mailbox: resolvedMbName,
+                        subject: subject,
+                        from: sender,
+                        to: toAddrs,
+                        date: msgDate.toISOString(),
+                        read: msg.readStatus(),
+                        body: null,
+                        size: msgSize,
+                        hasAttachment: msgHasAtt,
+                        __msg: msg
+                    };
+                    results.push(row);
+                }
+            }
+        }
+
+        // ISO 8601 lexicographic sort == chronological (descending).
+        results.sort(function(a, b) {
+            if (a.date < b.date) return 1;
+            if (a.date > b.date) return -1;
+            return 0;
+        });
+        if (results.length > limit) results = results.slice(0, limit);
+
+        // Preview fetch runs AFTER slice so msg.content() only fires for survivors.
+        if (previewChars > 0) {
+            for (var p = 0; p < results.length; p++) {
+                try {
+                    var raw = results[p].__msg.content();
+                    if (raw != null && raw !== '') {
+                        var s = String(raw);
+                        results[p].bodyPreview = s.length > previewChars ? s.substring(0, previewChars) + '…' : s;
+                    }
+                } catch (e) {}
+            }
+        }
+        for (var p2 = 0; p2 < results.length; p2++) { delete results[p2].__msg; }
+
+        JSON.stringify(results);
         """
     }
 

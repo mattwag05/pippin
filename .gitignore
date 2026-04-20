@@ -31,3 +31,6 @@ archive/**/.build/
 
 # Beads / Dolt files (added by bd init)
 .beads-credential-key
+
+# Bead pre-commit hook's spurious root export (only /issues.jsonl — .beads/issues.jsonl stays tracked)
+/issues.jsonl

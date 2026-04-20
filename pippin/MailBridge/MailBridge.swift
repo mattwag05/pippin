@@ -8,12 +8,33 @@ enum MailBridge {
         mailbox: String = "INBOX",
         unread: Bool = false,
         limit: Int = 50,
-        offset: Int = 0
+        offset: Int = 0,
+        preview: Int? = nil
     ) throws -> [MailMessage] {
         let clampedLimit = max(1, min(limit, 500))
         let clampedOffset = max(0, offset)
-        let script = buildListScript(account: account, mailbox: mailbox, unread: unread, limit: clampedLimit, offset: clampedOffset)
-        let json = try runScript(script)
+        let script = buildListScript(
+            account: account, mailbox: mailbox, unread: unread,
+            limit: clampedLimit, offset: clampedOffset, preview: preview
+        )
+        // msg.content() forces an IMAP fetch per message — bump the timeout when preview is on.
+        let timeout = (preview ?? 0) > 0 ? 60 : 10
+        let json = try runScript(script, timeoutSeconds: timeout)
+        return try decode([MailMessage].self, from: json)
+    }
+
+    static func listActivity(
+        account: String? = nil,
+        mailboxes: [String] = ["INBOX", "Sent"],
+        since: Date? = nil,
+        limit: Int = 50,
+        preview: Int? = 200
+    ) throws -> [MailMessage] {
+        let script = buildActivityScript(
+            account: account, mailboxes: mailboxes, since: since, limit: limit, preview: preview
+        )
+        let timeout = (preview ?? 0) > 0 ? 120 : 30
+        let json = try runScript(script, timeoutSeconds: timeout)
         return try decode([MailMessage].self, from: json)
     }
 

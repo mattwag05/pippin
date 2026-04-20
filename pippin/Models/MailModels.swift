@@ -43,6 +43,7 @@ public struct MailMessage: Codable, Sendable {
     public let body: String? // only populated by `show` command
     public let size: Int? // bytes; available in list/search
     public let hasAttachment: Bool? // quick flag; available in list/search
+    public let bodyPreview: String? // populated by `list --preview N` for agent scan workflows
     public let htmlBody: String? // only populated by `show`
     public let headers: [String: String]? // only populated by `show`
     public let attachments: [Attachment]? // only populated by `show`
@@ -59,6 +60,7 @@ public struct MailMessage: Codable, Sendable {
         body: String? = nil,
         size: Int? = nil,
         hasAttachment: Bool? = nil,
+        bodyPreview: String? = nil,
         htmlBody: String? = nil,
         headers: [String: String]? = nil,
         attachments: [Attachment]? = nil
@@ -74,6 +76,7 @@ public struct MailMessage: Codable, Sendable {
         self.body = body
         self.size = size
         self.hasAttachment = hasAttachment
+        self.bodyPreview = bodyPreview
         self.htmlBody = htmlBody
         self.headers = headers
         self.attachments = attachments
@@ -92,6 +95,7 @@ public struct MailMessage: Codable, Sendable {
         try container.encode(body, forKey: .body) // encodes nil as JSON null
         try container.encodeIfPresent(size, forKey: .size)
         try container.encodeIfPresent(hasAttachment, forKey: .hasAttachment)
+        try container.encodeIfPresent(bodyPreview, forKey: .bodyPreview)
         try container.encodeIfPresent(htmlBody, forKey: .htmlBody)
         try container.encodeIfPresent(headers, forKey: .headers)
         try container.encodeIfPresent(attachments, forKey: .attachments)
