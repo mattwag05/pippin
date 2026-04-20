@@ -43,7 +43,9 @@ clean:
 link-skills:
 	@mkdir -p .claude/skills
 	@for skill in docs/skills/*/; do \
-		name=$$(basename $$skill); \
-		ln -sfn "../../$$skill" ".claude/skills/$$name"; \
-		echo "Linked: .claude/skills/$$name -> $$skill"; \
+		[ -d "$$skill" ] || continue; \
+		name=$$(basename "$$skill"); \
+		target="../../docs/skills/$$name"; \
+		ln -sfn "$$target" ".claude/skills/$$name" || exit 1; \
+		echo "Linked: .claude/skills/$$name -> $$target"; \
 	done

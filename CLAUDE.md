@@ -114,10 +114,9 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 
 ## CI
 
-- GitHub Actions in `.github/workflows/` are pinned to full commit SHAs (not `@v4` tags) for supply-chain security.
 - `copilot-ci-fix.yml` — `workflow_run` trigger fires when CI fails on `main`, files an issue, assigns to `copilot`. Copilot opens a PR with the fix.
 - `copilot-setup-steps.yml` — Xcode/SwiftFormat/deps for the Copilot coding agent.
-- Always run `swiftformat` locally before pushing — see [docs/gotchas/build.md](docs/gotchas/build.md) for common lint failures.
+- Workflow pinning, swiftformat traps, and other CI/build gotchas: [docs/gotchas/build.md](docs/gotchas/build.md).
 
 ## Known Consumers
 
