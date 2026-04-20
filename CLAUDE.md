@@ -2,9 +2,8 @@
 
 macOS CLI toolkit for Apple app automation (Mail, Voice Memos, Calendar, Reminders, Notes, Contacts, Audio, Browser). Swift 6, SPM build system, macOS 15+.
 
-Repo: `https://forgejo.tail6e035b.ts.net/matthewwagner/pippin` (primary)
-GitHub mirror: `https://github.com/mattwag05/pippin` (public — required for Homebrew formula source)
-Remotes: `forgejo` (primary, CI/releases), `github` (public mirror for Homebrew)
+Repo: `https://github.com/mattwag05/pippin` (canonical — GitHub is source of truth since 2026-04-17)
+Remote: `origin` → GitHub
 Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb`
 
 ## Commands
@@ -161,7 +160,9 @@ The `provider` field selects the active backend. Both providers can be configure
 
 **CLIIntegrationTests version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` uses `PippinVersion.version` dynamically — no manual update needed on version bumps.
 
-**Dual-remote push divergence:** `origin` (Forgejo) and `github` can each be ahead independently. If push rejected: `git stash && git pull --rebase <remote> main && git stash pop && git push <remote> main` — repeat for each remote separately. Note: Forgejo remote is named `origin` in this repo, not `forgejo`.
+**`swift test` / XCTest module missing:** if `xcode-select -p` points at `/Library/Developer/CommandLineTools`, `swift test` fails with `no such module 'XCTest'`. Prefix every invocation with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun`, or switch the active dev dir with `sudo xcode-select -s /Applications/Xcode.app`. `make test` and `make lint` inherit the same defect.
+
+**mlx-audio has no `__version__` attribute:** `import mlx_audio; mlx_audio.__version__` raises `AttributeError`. Use `from importlib.metadata import version; version('mlx-audio')` — what `AudioBridge.installedMLXAudioVersion` already does.
 
 ## Version + Release
 
@@ -173,8 +174,7 @@ The `provider` field selects the active backend. Both providers can be configure
 4. `swift test` — must pass (run `make test`)
 4. `git commit -m "chore: bump to vX.Y.Z"` then `git tag -a vX.Y.Z -m "vX.Y.Z"` (annotated tag required — bare `git tag` fails with "no tag message")
 5. `git push origin main --tags`
-6. `git push github main --tags` (GitHub mirror must have the tag for Homebrew)
-7. Update tap formula (`tag`, `revision`, `assert_match` version):
+6. Update tap formula (`tag`, `revision`, `assert_match` version):
    `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb`
    `revision` = commit SHA — use `git rev-parse vX.Y.Z^{}` (dereference annotated tag to commit; plain `git rev-parse vX.Y.Z` returns the tag object SHA, which will fail Homebrew's integrity check)
 8. `cd /opt/homebrew/Library/Taps/mattwag05/homebrew-tap && git add -A && git commit -m "pippin vX.Y.Z" && git push`
@@ -183,14 +183,11 @@ The `provider` field selects the active backend. Both providers can be configure
 
 ## CI
 
-- **Forgejo Actions:** `.forgejo/workflows/ci.yaml` — runs on `macbook-air` runner (`com.matthewwagner.act-runner` LaunchAgent, labels: `macos macos-15 arm64`)
-- **Release workflow:** `.forgejo/workflows/release.yaml` — triggers on `v*` tag push; builds tarball, extracts changelog, creates Forgejo release with arm64 asset
-- `.github/workflows/` active on GitHub — actions pinned to full commit SHAs (not `@v4` tags) for supply-chain security; update SHAs when upgrading, don't revert to tag syntax
+- **GitHub Actions:** `.github/workflows/` — actions pinned to full commit SHAs (not `@v4` tags) for supply-chain security; update SHAs when upgrading, don't revert to tag syntax
 - **Copilot CI-fix workflow:** `.github/workflows/copilot-ci-fix.yml` — `workflow_run` trigger fires when CI fails on `main`. Extracts failed job logs via GitHub API, creates an issue with error details and fix instructions, assigns to `copilot`. The Copilot coding agent picks up the issue and opens a PR with the fix. Labels: `ci-fix`, `copilot`.
 - **Copilot environment:** `.github/copilot-setup-steps.yml` — defines Xcode, SwiftFormat, and dependency setup for the Copilot coding agent. Updated when CI toolchain changes.
-- **act_runner + Docker:** Runner checks Docker socket at startup. If Docker is not running, act_runner exits and all CI runs cancel silently. Start Docker first, then `brew services restart act_runner`.
-- **Manual release (when CI is down):** `make tarball` → check if release exists (`GET /releases/tags/vX.Y.Z`) → POST create only if missing → `POST /releases/{id}/assets` to upload tarball. The release workflow may have partially run and already created the release — always check before creating.
 - **SwiftFormat lint in CI:** Runs `swiftformat --lint pippin/ pippin-entry/ Tests/`. Always run `swiftformat` locally before pushing to avoid lint failures. Common issues: trailing spaces in multiline string literals, `&&` vs `,` in conditions, modifier ordering (`public nonisolated(unsafe) static` not `public static nonisolated(unsafe)`).
+- **Legacy `.forgejo/workflows/`:** retained on disk but the Forgejo instance was retired 2026-04-17 — these workflows no longer run. Safe to delete when convenient.
 
 ## Known Consumers
 
@@ -216,13 +213,6 @@ Claude Code, Claude Desktop, and any other MCP-compatible client may attach to p
 **Exit-code-to-error mapping:** When the child exits non-zero, stdout contains an `AgentError` JSON (`{"error":{"code":"snake_case","message":"..."}}`) from `printAgentError`. The server passes this through as the tool result text with `isError: true`. Do NOT convert it to a JSON-RPC-level `-326xx` error — those are reserved for protocol-level failures (unknown method, malformed request, launch failure).
 
 **Binary path resolution:** `MCPServerRuntime.resolvePippinPath()` uses `CommandLine.arguments[0]` + `realpath` so the child is the exact same binary as the parent, not whatever `pippin` resolves to on `$PATH`. This matters when pippin is run via a symlink (Homebrew shim).
-
-## Forgejo API Gotchas
-
-- **Merge API returns HTTP 204** (empty body) on success — don't pipe to JSON parser
-- **Existing PRs:** Pushing to a branch with an open PR reuses it. Update title/body via `PATCH .../pulls/{n}` instead of creating a new PR
-- **Action runs API:** Use `title` field (not `name`) for workflow run descriptions
-
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
