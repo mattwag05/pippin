@@ -164,4 +164,76 @@ final class ActionsCommandTests: XCTestCase {
         XCTAssertEqual(ActionSource.mail.rawValue, "mail")
         XCTAssertEqual(ActionSource.note.rawValue, "note")
     }
+
+    // MARK: - ActionExtractor engine
+
+    func testExtractReturnsActionsAboveMinConfidence() throws {
+        let json = """
+        {"actions":[
+          {"sourceIndex":0,"snippet":"I'll send you Q3.","proposedTitle":"Send Q3","proposedDueDate":null,"proposedPriority":0,"confidence":0.9},
+          {"sourceIndex":1,"snippet":"Maybe later.","proposedTitle":"Follow up","proposedDueDate":null,"proposedPriority":0,"confidence":0.2}
+        ]}
+        """
+        let provider = FakeActionProvider(response: json)
+        let items = [
+            ActionExtractor.Item(source: .mail, sourceId: "1", sourceTitle: "Email", text: "I'll send you Q3."),
+            ActionExtractor.Item(source: .note, sourceId: "2", sourceTitle: "Note", text: "Maybe later."),
+        ]
+        let results = try ActionExtractor.extract(items: items, provider: provider, minConfidence: 0.5)
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].proposedTitle, "Send Q3")
+        XCTAssertEqual(results[0].source, .mail)
+    }
+
+    func testExtractMapsSourceIndexToCorrectItem() throws {
+        let json = """
+        {"actions":[
+          {"sourceIndex":1,"snippet":"I'll draft the report.","proposedTitle":"Draft report","proposedDueDate":null,"proposedPriority":0,"confidence":0.85}
+        ]}
+        """
+        let provider = FakeActionProvider(response: json)
+        let items = [
+            ActionExtractor.Item(source: .mail, sourceId: "a", sourceTitle: "Mail", text: "Nothing here."),
+            ActionExtractor.Item(source: .note, sourceId: "b", sourceTitle: "Note", text: "I'll draft the report."),
+        ]
+        let results = try ActionExtractor.extract(items: items, provider: provider, minConfidence: 0.5)
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].source, .note)
+        XCTAssertEqual(results[0].sourceId, "b")
+    }
+
+    func testExtractHandlesMarkdownFencedJSON() throws {
+        let json = """
+        ```json
+        {"actions":[
+          {"sourceIndex":0,"snippet":"I'll follow up.","proposedTitle":"Follow up","proposedDueDate":null,"proposedPriority":0,"confidence":0.75}
+        ]}
+        ```
+        """
+        let provider = FakeActionProvider(response: json)
+        let items = [ActionExtractor.Item(source: .mail, sourceId: "1", sourceTitle: nil, text: "I'll follow up.")]
+        let results = try ActionExtractor.extract(items: items, provider: provider, minConfidence: 0.5)
+        XCTAssertEqual(results.count, 1)
+    }
+
+    func testExtractThrowsOnMalformedResponse() throws {
+        let provider = FakeActionProvider(response: "not json at all")
+        let items = [ActionExtractor.Item(source: .mail, sourceId: "1", sourceTitle: nil, text: "body")]
+        XCTAssertThrowsError(try ActionExtractor.extract(items: items, provider: provider)) { error in
+            XCTAssertTrue(error is ActionExtractorError)
+        }
+    }
+
+    func testExtractReturnsEmptyForEmptyItems() throws {
+        let provider = FakeActionProvider(response: "{\"actions\":[]}")
+        let results = try ActionExtractor.extract(items: [], provider: provider)
+        XCTAssertTrue(results.isEmpty)
+    }
+}
+
+private struct FakeActionProvider: AIProvider {
+    let response: String
+    func complete(prompt _: String, system _: String) throws -> String {
+        response
+    }
 }

@@ -95,11 +95,11 @@ public struct ActionsCommand: AsyncParsableCommand {
 
             if create {
                 let results = try await createReminders(from: actions)
-                emitResults(results)
+                try emitResults(results)
                 return
             }
 
-            emitActions(actions)
+            try emitActions(actions)
         }
 
         // MARK: - Source collection
@@ -128,10 +128,13 @@ public struct ActionsCommand: AsyncParsableCommand {
             let all = try NotesBridge.listNotes(folder: nil, limit: limit)
             let filtered: [NoteInfo]
             if let since {
+                let isoFrac = ISO8601DateFormatter()
+                isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                 let iso = ISO8601DateFormatter()
                 iso.formatOptions = [.withInternetDateTime]
                 filtered = all.filter { note in
-                    guard let modDate = iso.date(from: note.modificationDate) else { return true }
+                    guard let modDate = isoFrac.date(from: note.modificationDate)
+                        ?? iso.date(from: note.modificationDate) else { return true }
                     return modDate >= since
                 }
             } else {
@@ -179,13 +182,13 @@ public struct ActionsCommand: AsyncParsableCommand {
 
         // MARK: - Output
 
-        private func emitActions(_ actions: [ExtractedAction]) {
+        private func emitActions(_ actions: [ExtractedAction]) throws {
             if output.isJSON {
-                try? printJSON(actions)
+                try printJSON(actions)
                 return
             }
             if output.isAgent {
-                try? printAgentJSON(actions)
+                try printAgentJSON(actions)
                 return
             }
             if actions.isEmpty {
@@ -207,13 +210,13 @@ public struct ActionsCommand: AsyncParsableCommand {
             print(TextFormatter.table(headers: headers, rows: rows, columnWidths: widths))
         }
 
-        private func emitResults(_ results: [ReminderActionResult]) {
+        private func emitResults(_ results: [ReminderActionResult]) throws {
             if output.isJSON {
-                try? printJSON(results)
+                try printJSON(results)
                 return
             }
             if output.isAgent {
-                try? printAgentJSON(results)
+                try printAgentJSON(results)
                 return
             }
             if results.isEmpty {

@@ -149,9 +149,14 @@ public enum BuiltInTemplates {
 
         Today is {{CURRENT_DATE}} and the current time is {{CURRENT_TIME}}.
 
-        Input is a JSON array of items. Each item is text the user wrote (either an email
-        they sent or a note they authored). For each first-person commitment the user made
-        to a future action (phrases like "I'll send", "I'll draft", "I'll follow up",
+        Input is a JSON array of items. Each item has these fields:
+        - sourceIndex: integer index (use this in your output to identify which item the commitment came from)
+        - kind: "mail" or "note"
+        - title: optional subject or note title
+        - text: the content the user wrote (email body or note text)
+
+        For each first-person commitment the user made to a future action
+        (phrases like "I'll send", "I'll draft", "I'll follow up",
         "will circle back", "I'll get you X by Friday"), emit one entry.
 
         Return ONLY a raw JSON object (no markdown code blocks, no prose) in this exact shape:
