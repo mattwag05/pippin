@@ -148,12 +148,13 @@ extension MailBridge {
         let toFilter = jsEscapeOptional(to)
         // Clamp limit to prevent runaway scans; per-mailbox cap bounds scan time
         let safeLimitVal = max(1, min(limit, 500))
-        let perMailboxLimit = 200
+        let perMailboxLimit = 500
 
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 20))
         \(jsFindMailboxByName())
+        \(jsCollectAllMailboxes())
         \(jsResolveMailbox())
         var query = '\(safeQuery)'.toLowerCase();
         var acctFilter = \(acctFilter);
@@ -170,6 +171,7 @@ extension MailBridge {
         var results = [];
         var skipped = 0;
         var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0};
+        var seenMsgKeys = {};
 
         var accounts = mail.accounts();
         for (var a = 0; a < accounts.length && results.length < limit; a++) {
@@ -178,10 +180,12 @@ extension MailBridge {
             if (acctFilter !== null && acctName !== acctFilter) continue;
             _meta.accountsScanned++;
 
-            var mbList = acct.mailboxes();
+            var mbList;
             if (mbFilter !== null) {
                 var resolvedMb = resolveMailbox(acct, mbFilter);
                 mbList = resolvedMb !== null ? [resolvedMb] : [];
+            } else {
+                mbList = collectAllMailboxes(acct.mailboxes(), []);
             }
             for (var m = 0; m < mbList.length && results.length < limit; m++) {
                 var mb = mbList[m];
@@ -228,6 +232,13 @@ extension MailBridge {
                     }
 
                     if (matched) {
+                        // Gmail lists the same message in both INBOX and [Gmail]/All Mail.
+                        var dedupKey = null;
+                        try { dedupKey = msg.messageId(); } catch(e) {}
+                        if (!dedupKey) dedupKey = subject + '\\x00' + sender + '\\x00' + msgDate.toISOString();
+                        if (seenMsgKeys[dedupKey]) continue;
+                        seenMsgKeys[dedupKey] = true;
+
                         if (skipped < offset) { skipped++; continue; }
                         var msgSize = null;
                         try { msgSize = msg.messageSize(); } catch(e) {}

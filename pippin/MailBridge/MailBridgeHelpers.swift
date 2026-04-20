@@ -56,6 +56,23 @@ extension MailBridge {
         """
     }
 
+    /// Gmail IMAP nests message-bearing mailboxes (`[Gmail]/All Mail`, `[Gmail]/Sent Mail`) under
+    /// a top-level `[Gmail]` container, so `acct.mailboxes()` alone misses them.
+    static func jsCollectAllMailboxes() -> String {
+        """
+        function collectAllMailboxes(mailboxes, accum) {
+            for (var i = 0; i < mailboxes.length; i++) {
+                accum.push(mailboxes[i]);
+                try {
+                    var sub = mailboxes[i].mailboxes();
+                    if (sub && sub.length > 0) collectAllMailboxes(sub, accum);
+                } catch(e) {}
+            }
+            return accum;
+        }
+        """
+    }
+
     static func jsResolveMailbox() -> String {
         """
         function resolveMailbox(acct, name) {

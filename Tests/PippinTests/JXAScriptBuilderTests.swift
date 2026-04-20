@@ -107,9 +107,30 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("var searchBody = true;"))
     }
 
-    func testSearchScriptPerMailboxLimitIs200() {
+    func testSearchScriptPerMailboxLimitIs500() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
-        XCTAssertTrue(script.contains("var perMailboxLimit = 200;"))
+        XCTAssertTrue(script.contains("var perMailboxLimit = 500;"))
+    }
+
+    func testSearchScriptFlattensNestedMailboxes() {
+        // When no mailbox filter is set, the script must recurse into sub-mailboxes so Gmail's
+        // [Gmail]/All Mail, Sent, Trash are scanned — not just the top-level INBOX + [Gmail] container.
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: nil, limit: 10)
+        XCTAssertTrue(script.contains("function collectAllMailboxes"))
+        XCTAssertTrue(script.contains("collectAllMailboxes(acct.mailboxes(), [])"))
+    }
+
+    func testSearchScriptDedupesAcrossMailboxes() {
+        // Gmail duplicates messages across INBOX and [Gmail]/All Mail — results must dedupe.
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("seenMsgKeys"))
+        XCTAssertTrue(script.contains("msg.messageId()"))
+    }
+
+    func testSearchScriptSkipsFlattenWhenMailboxFilterSet() {
+        // When a mailbox is explicitly requested, resolveMailbox is still used (not the flatten helper).
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: "INBOX", limit: 10)
+        XCTAssertTrue(script.contains("resolveMailbox(acct, mbFilter)"))
     }
 
     // MARK: - buildListScript (offset/pagination)
@@ -356,7 +377,7 @@ final class JXAScriptBuilderTests: XCTestCase {
 
     func testSearchScriptBuildsmbListFromResolveMailbox() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: "Sent", limit: 10)
-        XCTAssertTrue(script.contains("var mbList ="))
+        XCTAssertTrue(script.contains("var mbList"))
         XCTAssertTrue(script.contains("resolveMailbox(acct, mbFilter)"))
     }
 
