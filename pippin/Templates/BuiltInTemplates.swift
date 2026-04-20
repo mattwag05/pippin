@@ -16,6 +16,7 @@ public enum BuiltInTemplates {
         smartCreateCalendar,
         smartCreateReminders,
         calendarBriefing,
+        extractActions,
     ]
 
     // MARK: - Built-in template definitions
@@ -137,6 +138,51 @@ public enum BuiltInTemplates {
 
         Example input: "remind me to call the dentist next Tuesday at 9am priority high"
         Example output: {"title":"Call the dentist","dueDate":"2026-03-10T09:00:00","priority":1,"notes":null,"listTitle":null}
+        """
+    )
+
+    public static let extractActions = TemplateDefinition(
+        name: "extract-actions",
+        description: "Find unfulfilled commitments the user made in a batch of mail/note items",
+        content: """
+        You are an assistant that finds unfulfilled commitments the user made.
+
+        Today is {{CURRENT_DATE}} and the current time is {{CURRENT_TIME}}.
+
+        Input is a JSON array of items. Each item is text the user wrote (either an email
+        they sent or a note they authored). For each first-person commitment the user made
+        to a future action (phrases like "I'll send", "I'll draft", "I'll follow up",
+        "will circle back", "I'll get you X by Friday"), emit one entry.
+
+        Return ONLY a raw JSON object (no markdown code blocks, no prose) in this exact shape:
+        {
+          "actions": [
+            {
+              "sourceIndex": 0,
+              "snippet": "<commitment sentence, verbatim from the item>",
+              "proposedTitle": "<short reminder title>",
+              "proposedDueDate": "<ISO 8601 local datetime or null>",
+              "proposedPriority": 0,
+              "confidence": 0.0
+            }
+          ]
+        }
+
+        Field rules:
+        - sourceIndex: integer — 0-based index of the item in the input array
+        - snippet: verbatim quote from the item — do not paraphrase
+        - proposedTitle: short imperative reminder title ("Send Q3 numbers to Alex")
+        - proposedDueDate: ISO 8601 local datetime like "2026-04-24T17:00:00" if a date is implied, otherwise null
+        - proposedPriority: 1=high, 5=medium, 9=low, 0=none
+        - confidence: number between 0.0 and 1.0 — how confident this is a real commitment
+
+        Extraction rules:
+        - Ignore past-tense acknowledgements ("I sent the draft yesterday").
+        - Ignore speculative or conditional statements ("we might follow up").
+        - Only include first-person commitments by the author of the item.
+        - Resolve relative dates ("Friday", "next week", "tomorrow") against today's date.
+        - If an item has no commitments, emit no entries for that sourceIndex.
+        - If no items have commitments, return {"actions": []}.
         """
     )
 
