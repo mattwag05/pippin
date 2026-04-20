@@ -1,7 +1,7 @@
 INSTALL_DIR := $(HOME)/.local/bin
 VERSION := $(shell grep 'static let version' pippin/Version.swift | sed 's/.*"\(.*\)"/\1/')
 
-.PHONY: build test lint install completions version release tarball clean
+.PHONY: build test lint install completions version release tarball clean link-skills
 
 build:
 	swift build -c release
@@ -39,3 +39,11 @@ tarball: release
 clean:
 	swift package clean
 	rm -rf .build/release-artifacts
+
+link-skills:
+	@mkdir -p .claude/skills
+	@for skill in docs/skills/*/; do \
+		name=$$(basename $$skill); \
+		ln -sfn "../../$$skill" ".claude/skills/$$name"; \
+		echo "Linked: .claude/skills/$$name -> $$skill"; \
+	done
