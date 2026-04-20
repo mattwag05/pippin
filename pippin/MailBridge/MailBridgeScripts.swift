@@ -289,6 +289,127 @@ extension MailBridge {
         """
     }
 
+    // MARK: - Activity Script (combined multi-mailbox recent scan)
+
+    static func buildActivityScript(
+        account: String?,
+        mailboxes: [String],
+        since: Date?,
+        limit: Int,
+        preview: Int?
+    ) -> String {
+        let acctFilter = jsEscapeOptional(account)
+        let mbNamesJS = jsStringArray(mailboxes)
+        let sinceJS: String = {
+            guard let since else { return "null" }
+            // Emit as ISO 8601 for `new Date(...)` on the JXA side.
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime]
+            return "'\(f.string(from: since))'"
+        }()
+        let safeLimit = max(1, min(limit, 500))
+        let perMailboxLimit = 500
+        let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
+
+        return """
+        var mail = Application('Mail');
+        \(jsMailReadyPoll(maxAttempts: 20))
+        \(jsFindMailboxByName())
+        \(jsCollectAllMailboxes())
+        \(jsResolveMailbox())
+        var acctFilter = \(acctFilter);
+        var targetNames = \(mbNamesJS);
+        var sinceRaw = \(sinceJS);
+        var sinceDate = sinceRaw !== null ? new Date(sinceRaw) : null;
+        var limit = \(safeLimit);
+        var perMailboxLimit = \(perMailboxLimit);
+        var previewChars = \(previewChars);
+        var results = [];
+        var seenMsgKeys = {};
+
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            var acctName = acct.name();
+            if (acctFilter !== null && acctName !== acctFilter) continue;
+
+            for (var t = 0; t < targetNames.length; t++) {
+                var targetName = targetNames[t];
+                var mb = resolveMailbox(acct, targetName);
+                if (mb === null) {
+                    // Fall back to case-insensitive search through all mailboxes.
+                    var all = collectAllMailboxes(acct.mailboxes(), []);
+                    for (var k = 0; k < all.length; k++) {
+                        if (all[k].name().toLowerCase() === targetName.toLowerCase()) { mb = all[k]; break; }
+                    }
+                    if (mb === null) continue;
+                }
+                var resolvedMbName = mb.name();
+
+                var allMsgs = mb.messages();
+                if (!allMsgs) continue;
+                var scanCount = Math.min(allMsgs.length, perMailboxLimit);
+                var startIdx = Math.max(0, allMsgs.length - scanCount);
+                // Iterate newest → oldest; break once past the since window.
+                for (var i = allMsgs.length - 1; i >= startIdx; i--) {
+                    var msg = allMsgs[i];
+                    var msgDate = msg.dateSent();
+                    if (sinceDate !== null && msgDate < sinceDate) break;
+
+                    var dedupKey = null;
+                    try { dedupKey = msg.messageId(); } catch(e) {}
+                    if (!dedupKey) {
+                        dedupKey = (msg.subject() || '') + '\\x00' + (msg.sender() || '') + '\\x00' + msgDate.toISOString();
+                    }
+                    if (seenMsgKeys[dedupKey]) continue;
+                    seenMsgKeys[dedupKey] = true;
+
+                    var msgSize = null;
+                    try { msgSize = msg.messageSize(); } catch(e) {}
+                    var msgHasAtt = false;
+                    try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {}
+                    var toAddrs = [];
+                    try { toAddrs = msg.toRecipients().map(function(r) { return r.address(); }); } catch(e) {}
+
+                    var row = {
+                        id: acctName + '||' + resolvedMbName + '||' + msg.id(),
+                        account: acctName,
+                        mailbox: resolvedMbName,
+                        subject: msg.subject() || '',
+                        from: msg.sender() || '',
+                        to: toAddrs,
+                        date: msgDate.toISOString(),
+                        read: msg.readStatus(),
+                        body: null,
+                        size: msgSize,
+                        hasAttachment: msgHasAtt
+                    };
+                    if (previewChars > 0) {
+                        try {
+                            var raw = msg.content();
+                            if (raw != null && raw !== '') {
+                                var s = String(raw);
+                                row.bodyPreview = s.length > previewChars ? s.substring(0, previewChars) + '…' : s;
+                            }
+                        } catch (e) {}
+                    }
+                    results.push(row);
+                }
+            }
+        }
+
+        // Sort newest → oldest (ISO 8601 lexicographic order matches chronological order).
+        results.sort(function(a, b) {
+            if (a.date < b.date) return 1;
+            if (a.date > b.date) return -1;
+            return 0;
+        });
+        if (results.length > limit) results = results.slice(0, limit);
+
+        JSON.stringify(results);
+        """
+    }
+
     // MARK: - Move Script
 
     static func buildMoveScript(

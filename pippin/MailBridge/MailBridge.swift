@@ -23,6 +23,22 @@ enum MailBridge {
         return try decode([MailMessage].self, from: json)
     }
 
+    static func listActivity(
+        account: String? = nil,
+        mailboxes: [String] = ["INBOX", "Sent"],
+        since: Date? = nil,
+        limit: Int = 50,
+        preview: Int? = 200
+    ) throws -> [MailMessage] {
+        let script = buildActivityScript(
+            account: account, mailboxes: mailboxes, since: since, limit: limit, preview: preview
+        )
+        // Preview forces per-message IMAP fetches across multiple mailboxes — generous timeout.
+        let timeout = (preview ?? 0) > 0 ? 120 : 30
+        let json = try runScript(script, timeoutSeconds: timeout)
+        return try decode([MailMessage].self, from: json)
+    }
+
     static func searchMessages(
         query: String,
         account: String? = nil,

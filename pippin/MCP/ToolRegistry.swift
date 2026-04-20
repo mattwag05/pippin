@@ -191,6 +191,26 @@ enum MCPToolRegistry {
             }
         ),
         MCPTool(
+            name: "mail_activity",
+            description: "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default) with body previews. Use this for scan workflows instead of N calls to mail_list.",
+            inputSchema: Schema.object(properties: [
+                "account": Schema.string("Mail account name."),
+                "mailboxes": Schema.string("Comma-separated mailbox names (default: INBOX,Sent)."),
+                "since": Schema.string("Only include messages on or after this date: YYYY-MM-DD or ISO 8601."),
+                "limit": Schema.integer("Maximum messages to return (default: 50).", default: 50),
+                "preview": Schema.integer("Plain-text preview length in chars (default: 200; 0 to disable).", default: 200),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "activity")
+                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
+                argv += ArgHelpers.optionIfString(args, "mailboxes", flagName: "--mailboxes")
+                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
+                return argv
+            }
+        ),
+        MCPTool(
             name: "mail_show",
             description: "Show a single mail message by compound ID (account||mailbox||numericId).",
             inputSchema: Schema.object(
