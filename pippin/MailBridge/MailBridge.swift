@@ -34,8 +34,9 @@ enum MailBridge {
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
             limit: limit, offset: clampedOffset, after: after, before: before, to: to
         )
-        // Search scans all mailboxes — use 60s timeout to accommodate large inboxes
-        let json = try runScript(script, timeoutSeconds: 60)
+        // Search recurses through nested mailboxes (Gmail's [Gmail]/All Mail etc.);
+        // 90s accommodates multi-mailbox IMAP accounts.
+        let json = try runScript(script, timeoutSeconds: 90)
         let wrapper = try decode(SearchResponse.self, from: json)
         if verbose {
             let stderr = FileHandle.standardError
@@ -184,7 +185,9 @@ enum MailBridge {
     static func readMessage(compoundId: String) throws -> MailMessage {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         let script = buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
-        let json = try runScript(script)
+        // Large messages with attachments trigger a full IMAP body download via msg.content();
+        // 10s default times out on multi-hundred-KB messages. 45s matches send/move timeouts.
+        let json = try runScript(script, timeoutSeconds: 45)
         return try decode(MailMessage.self, from: json)
     }
 
