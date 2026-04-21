@@ -1,0 +1,79 @@
+import ArgumentParser
+import Foundation
+
+public extension MailCommand {
+    struct Watch: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "watch",
+            abstract: "Poll for new mail and emit events as newline-delimited JSON.",
+            discussion: "Emits one JSON object per line for each new message detected. Press Ctrl-C to stop."
+        )
+
+        @Option(name: .long, help: "Filter by account name.")
+        public var account: String?
+
+        @Option(name: .long, help: "Mailbox to watch (default: INBOX).")
+        public var mailbox: String = "INBOX"
+
+        @Option(name: .long, help: "Poll interval in seconds (default: 30).")
+        public var interval: Int = 30
+
+        @Option(name: .long, help: "Maximum messages to fetch per poll (default: 50).")
+        public var limit: Int = 50
+
+        public init() {}
+
+        public mutating func validate() throws {
+            guard interval >= 5 else {
+                throw ValidationError("--interval must be at least 5 seconds.")
+            }
+            guard limit >= 1, limit <= 500 else {
+                throw ValidationError("--limit must be between 1 and 500.")
+            }
+        }
+
+        public mutating func run() async throws {
+            var seen = Set<String>()
+
+            // Seed seen set with current messages so we only emit truly new arrivals.
+            let initial = try MailBridge.listMessages(
+                account: account, mailbox: mailbox, unread: false, limit: limit
+            )
+            for msg in initial {
+                seen.insert(msg.id)
+            }
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = []
+
+            fputs("Watching \(mailbox)\(account.map { " (\($0))" } ?? "") — polling every \(interval)s. Ctrl-C to stop.\n", stderr)
+
+            while true {
+                try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
+
+                let messages: [MailMessage]
+                do {
+                    messages = try MailBridge.listMessages(
+                        account: account, mailbox: mailbox, unread: false, limit: limit
+                    )
+                } catch {
+                    fputs("poll error: \(error.localizedDescription)\n", stderr)
+                    continue
+                }
+
+                for msg in messages where !seen.contains(msg.id) {
+                    seen.insert(msg.id)
+                    struct WatchEvent: Encodable {
+                        let event: String
+                        let message: MailMessage
+                    }
+                    let event = WatchEvent(event: "new_message", message: msg)
+                    if let data = try? encoder.encode(event), let line = String(data: data, encoding: .utf8) {
+                        print(line)
+                        fflush(stdout)
+                    }
+                }
+            }
+        }
+    }
+}
