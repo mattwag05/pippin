@@ -148,6 +148,29 @@ final class CalendarCommandTests: XCTestCase {
         XCTAssertFalse(cmd.pagination.isActive)
     }
 
+    // MARK: - Upcoming pagination flags (pippin-a9m)
+
+    func testUpcomingParsesPageSize() throws {
+        let cmd = try CalendarCommand.Upcoming.parse(["--page-size", "9"])
+        XCTAssertEqual(cmd.pagination.pageSize, 9)
+        XCTAssertTrue(cmd.pagination.isActive)
+    }
+
+    func testUpcomingParsesCursor() throws {
+        let token = try Pagination.encode(Cursor(offset: 9, filterHash: "upcoming-hash"))
+        let cmd = try CalendarCommand.Upcoming.parse(["--cursor", token])
+        XCTAssertEqual(cmd.pagination.cursor, token)
+    }
+
+    func testUpcomingPaginationInactiveByDefault() throws {
+        let cmd = try CalendarCommand.Upcoming.parse([])
+        XCTAssertFalse(cmd.pagination.isActive)
+    }
+
+    func testUpcomingLimitZeroFails() {
+        XCTAssertThrowsError(try CalendarCommand.Upcoming.parse(["--limit", "0"]))
+    }
+
     // MARK: - Edit: argument validation
 
     func testEditRequiresId() {

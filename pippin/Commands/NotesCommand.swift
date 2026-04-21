@@ -24,11 +24,13 @@ public struct NotesCommand: ParsableCommand {
         @Option(name: .long, help: "Filter by folder name.")
         public var folder: String?
 
-        @Option(name: .long, help: "Maximum notes to return (default: 50).")
+        @Option(name: .long, help: "Maximum notes to return (default: 50). Ignored when --cursor or --page-size is set.")
         public var limit: Int = 50
 
         @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,title). JSON output only.")
         public var fields: String?
+
+        @OptionGroup public var pagination: PaginationOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -41,6 +43,10 @@ public struct NotesCommand: ParsableCommand {
         }
 
         public mutating func run() throws {
+            if pagination.isActive {
+                try runPaginated()
+                return
+            }
             let notes = try NotesBridge.listNotes(folder: folder, limit: limit)
             if output.isJSON {
                 try printFilteredNotes(notes, fields: fields)
@@ -52,6 +58,34 @@ public struct NotesCommand: ParsableCommand {
                     return
                 }
                 print(printNotesTable(notes))
+            }
+        }
+
+        private func runPaginated() throws {
+            let hash = Pagination.filterHash(["folder": folder])
+            let (offset, pageSize) = try Pagination.resolve(
+                pagination, defaultPageSize: limit, filterHash: hash
+            )
+            // Bridge has no offset; over-fetch and slice in-memory.
+            let all = try NotesBridge.listNotes(
+                folder: folder, limit: offset + pageSize + 1
+            )
+            let page = try Pagination.paginate(
+                all: all, offset: offset, pageSize: pageSize, filterHash: hash
+            )
+            if output.isJSON {
+                try printFilteredNotesPage(page, fields: fields)
+            } else if output.isAgent {
+                try output.printAgent(page)
+            } else {
+                if page.items.isEmpty {
+                    print("No notes found.")
+                } else {
+                    print(printNotesTable(page.items))
+                }
+                if let cursor = page.nextCursor {
+                    print("(more — re-run with --cursor \(cursor))")
+                }
             }
         }
     }
@@ -337,9 +371,29 @@ private func printFilteredNotes(_ notes: [NoteInfo], fields: String?) throws {
         return
     }
     let fieldList = fields.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+    let allDicts = try filteredNoteDicts(notes, fieldList: fieldList)
+    let data = try JSONSerialization.data(withJSONObject: allDicts, options: [.prettyPrinted, .sortedKeys])
+    print(String(data: data, encoding: .utf8)!)
+}
+
+private func printFilteredNotesPage(_ page: Page<NoteInfo>, fields: String?) throws {
+    var dict: [String: Any] = [:]
+    if let fields {
+        let fieldList = fields.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        dict["items"] = try filteredNoteDicts(page.items, fieldList: fieldList)
+    } else {
+        let itemsData = try JSONEncoder().encode(page.items)
+        dict["items"] = try JSONSerialization.jsonObject(with: itemsData)
+    }
+    if let cursor = page.nextCursor { dict["next_cursor"] = cursor }
+    let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
+    print(String(data: data, encoding: .utf8)!)
+}
+
+private func filteredNoteDicts(_ notes: [NoteInfo], fieldList: [String]) throws -> [[String: Any]] {
     let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    let allDicts: [[String: Any]] = try notes.map { note in
+    encoder.outputFormatting = [.sortedKeys]
+    return try notes.map { note in
         let noteData = try encoder.encode(note)
         guard let dict = try JSONSerialization.jsonObject(with: noteData) as? [String: Any] else {
             throw EncodingError.invalidValue(note, .init(codingPath: [], debugDescription: "Expected JSON object"))
@@ -348,6 +402,4 @@ private func printFilteredNotes(_ notes: [NoteInfo], fields: String?) throws {
             if let val = dict[field] { result[field] = val }
         }
     }
-    let data = try JSONSerialization.data(withJSONObject: allDicts, options: [.prettyPrinted, .sortedKeys])
-    print(String(data: data, encoding: .utf8)!)
 }
