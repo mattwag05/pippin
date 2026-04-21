@@ -120,18 +120,25 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 
 ## Known Consumers
 
+**Agent-mode envelope v1 (2026-04-20, breaking):**
+Every `pippin <cmd> --format agent` response is wrapped in a versioned envelope. Both success and error shapes are documented in [docs/mcp-server.md § Envelope v1](docs/mcp-server.md#envelope-v1-breaking-change-2026-04-20). Summary:
+- Success: `{"v":1,"status":"ok","duration_ms":N,"data":<payload>}`
+- Error: `{"v":1,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","remediation":{…}?}}`
+- `data` carries the previous raw payload shape unchanged, so single-field extractions like `.error.code` still work; iterations like `jq 'length'` must be rewritten as `jq '.data | length'`.
+- Schema version bumps on any future breaking change. Canonical constant is `AGENT_SCHEMA_VERSION` in [pippin/Formatting/AgentOutput.swift](pippin/Formatting/AgentOutput.swift).
+
 **Morning briefing scheduled task** (`~/.claude/scheduled-tasks/morning-briefing/SKILL.md`):
 Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
 - `pippin mail list --account <acc> --format agent` (all 5 accounts)
 - `pippin calendar agenda --format agent`
 - `pippin reminders list --format agent`
-Don't change these command shapes or agent JSON output structure without updating the task.
+Don't change these command shapes or agent JSON output structure without updating the task. After envelope v1, the task reads the payload from `.data` instead of the top level.
 
 **Talia (OpenClaw agent on Raspberry Pi):**
-Talia uses pippin indirectly via the `pippin` skill in her workspace TOOLS.md. The `memos summarize` command is the primary AI-powered feature Talia may invoke. Ensure Ollama is running on the MacBook Air before Talia attempts summarization tasks.
+Talia uses pippin indirectly via the `pippin` skill in her workspace TOOLS.md. The `memos summarize` command is the primary AI-powered feature Talia may invoke. Ensure Ollama is running on the MacBook Air before Talia attempts summarization tasks. Envelope v1 applies — Talia's `memos summarize --format agent` result now lives under `.data`.
 
 **MCP clients via `pippin mcp-server`:**
-Claude Code, Claude Desktop, and any other MCP-compatible client may attach to pippin over stdio and call tools like `mail_list`, `calendar_today`, `reminders_create`, `status`. The MCP server **shells out to `pippin <cmd> --format agent`** for every tool call — so any change to an agent-mode JSON shape propagates automatically, but any change to a CLI flag name or a snake_case tool-level key (like `AgentError.code`) is a breaking change for MCP clients. Tool registry lives in `pippin/MCP/ToolRegistry.swift`; adding a new tool is one entry. See `docs/mcp-server.md` for the full tool list and wiring instructions.
+Claude Code, Claude Desktop, and any other MCP-compatible client may attach to pippin over stdio and call tools like `mail_list`, `calendar_today`, `reminders_create`, `status`. The MCP server **shells out to `pippin <cmd> --format agent`** for every tool call — so any change to an agent-mode JSON shape propagates automatically (including envelope v1), but any change to a CLI flag name or a snake_case tool-level key (like `AgentError.code`) is a breaking change for MCP clients. Tool registry lives in `pippin/MCP/ToolRegistry.swift`; adding a new tool is one entry. See `docs/mcp-server.md` for the full tool list and wiring instructions.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker

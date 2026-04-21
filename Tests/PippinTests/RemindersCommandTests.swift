@@ -149,6 +149,25 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertEqual(cmd.fields, "id,title")
     }
 
+    // MARK: - List pagination flags (pippin-gb3)
+
+    func testListParsesPageSize() throws {
+        let cmd = try RemindersCommand.List.parse(["--page-size", "5"])
+        XCTAssertEqual(cmd.pagination.pageSize, 5)
+        XCTAssertTrue(cmd.pagination.isActive)
+    }
+
+    func testListParsesCursor() throws {
+        let token = try Pagination.encode(Cursor(offset: 3, filterHash: "hh"))
+        let cmd = try RemindersCommand.List.parse(["--cursor", token])
+        XCTAssertEqual(cmd.pagination.cursor, token)
+    }
+
+    func testListPaginationInactiveByDefault() throws {
+        let cmd = try RemindersCommand.List.parse([])
+        XCTAssertFalse(cmd.pagination.isActive)
+    }
+
     // MARK: - Show subcommand
 
     func testShowRequiresId() {

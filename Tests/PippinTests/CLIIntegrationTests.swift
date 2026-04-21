@@ -173,15 +173,15 @@ final class CLIIntegrationTests: XCTestCase {
     func testInvalidCommandAgentError() {
         guard requireBinary() else { return }
         let result = run(["mail", "mark", "--format", "agent", "invalid-id"])
-        // Should produce a structured error on stdout (agent mode catches errors)
-        // The command may fail because Mail.app isn't available in CI, but the
-        // output shape must be correct.
+        // Envelope v1: {"v":1,"status":"error","duration_ms":N,"error":{code,message,...}}
         let combined = result.stdout + result.stderr
-        // If agent error is output, verify the shape
         if let data = result.stdout.data(using: .utf8),
            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let errorDict = dict["error"] as? [String: Any]
         {
+            XCTAssertEqual(dict["v"] as? Int, 1, "Envelope must have v:1")
+            XCTAssertEqual(dict["status"] as? String, "error", "Envelope status must be 'error'")
+            XCTAssertNotNil(dict["duration_ms"], "Envelope must include duration_ms")
             XCTAssertNotNil(errorDict["code"], "Agent error must have 'code' field")
             XCTAssertNotNil(errorDict["message"], "Agent error must have 'message' field")
         } else if result.exitCode != 0 {
@@ -196,14 +196,21 @@ final class CLIIntegrationTests: XCTestCase {
     func testDoctorFormatAgent() throws {
         guard requireBinary() else { return }
         let result = run(["doctor", "--format", "agent"])
-        // doctor may exit 0 or 1 depending on system state — both are valid
+        // Envelope v1: {"v":1,"status":"ok","duration_ms":N,"data":[...checks...]}
         let data = try XCTUnwrap(result.stdout.data(using: .utf8))
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            XCTFail("doctor --format agent must output a valid JSON array, got: \(result.stdout)")
+        guard let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            XCTFail("doctor --format agent must output a JSON envelope, got: \(result.stdout)")
             return
         }
-        XCTAssertGreaterThan(json.count, 0, "Expected at least one check in output")
-        for check in json {
+        XCTAssertEqual(envelope["v"] as? Int, 1, "Envelope must have v:1")
+        XCTAssertEqual(envelope["status"] as? String, "ok", "Envelope status must be 'ok'")
+        XCTAssertNotNil(envelope["duration_ms"], "Envelope must include duration_ms")
+        guard let checks = envelope["data"] as? [[String: Any]] else {
+            XCTFail("envelope.data must be a JSON array of checks, got: \(envelope["data"] ?? "nil")")
+            return
+        }
+        XCTAssertGreaterThan(checks.count, 0, "Expected at least one check in data")
+        for check in checks {
             XCTAssertNotNil(check["name"], "Each check must have a 'name' field")
             XCTAssertNotNil(check["status"], "Each check must have a 'status' field")
             XCTAssertNotNil(check["detail"], "Each check must have a 'detail' field")

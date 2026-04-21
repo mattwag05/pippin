@@ -120,7 +120,7 @@ public struct MailIndex: AsyncParsableCommand {
         if output.isJSON {
             try printJSON(result)
         } else if output.isAgent {
-            try printAgentJSON(result)
+            try output.printAgent(result)
         } else {
             print("Indexed \(indexed) messages, skipped \(skipped) (total \(messages.count))")
         }
@@ -171,7 +171,7 @@ public struct MailSanitize: AsyncParsableCommand {
         if output.isJSON {
             try printJSON(scanResult)
         } else if output.isAgent {
-            try printAgentJSON(scanResult)
+            try output.printAgent(scanResult)
         } else {
             print("Risk level: \(scanResult.riskLevel.rawValue.uppercased())")
             print("Threats found: \(scanResult.threats.count)")
@@ -253,7 +253,7 @@ public struct MailTriage: AsyncParsableCommand {
         if output.isJSON {
             try printJSON(result)
         } else if output.isAgent {
-            try printAgentJSON(result)
+            try output.printAgent(result)
         } else {
             let rows = result.messages.map { m in
                 [m.category.rawValue, "\(m.urgency)", TextFormatter.truncate(m.subject, to: 35), m.oneLiner]
@@ -316,7 +316,7 @@ public struct MailExtract: AsyncParsableCommand {
         if output.isJSON {
             try printJSON(result)
         } else if output.isAgent {
-            try printAgentJSON(result)
+            try output.printAgent(result)
         } else {
             if !result.dates.isEmpty {
                 print("Dates:")

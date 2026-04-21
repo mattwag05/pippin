@@ -708,6 +708,46 @@ enum MCPToolRegistry {
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("doctor") }
         ),
+
+        // MARK: Batch (parallel sub-command dispatch)
+
+        MCPTool(
+            name: "batch",
+            description: "Run multiple pippin commands concurrently in one call. Use this to fan out (e.g. fetch mail + calendar + reminders simultaneously) instead of sequential tool calls. Each entry's response is its own envelope.",
+            inputSchema: Schema.object(
+                properties: [
+                    "entries": .object([
+                        "type": .string("array"),
+                        "description": .string("Array of {cmd, args} entries — each runs as `pippin <cmd> [args...] --format agent`."),
+                        "items": Schema.object(
+                            properties: [
+                                "cmd": Schema.string("Top-level pippin subcommand (e.g. mail, calendar, reminders)."),
+                                "args": .object([
+                                    "type": .string("array"),
+                                    "description": .string("Argv tail passed to the sub-command (e.g. [\"list\", \"--account\", \"icloud\"])."),
+                                    "items": .object(["type": .string("string")]),
+                                ]),
+                            ],
+                            required: ["cmd"]
+                        ),
+                    ]),
+                    "concurrency": Schema.integer("Maximum concurrent sub-commands (default: 4).", default: 4),
+                ],
+                required: ["entries"]
+            ),
+            buildArgs: { args in
+                guard let entriesValue = args?["entries"] else {
+                    throw MCPToolArgError.missingRequired("entries")
+                }
+                let data = try JSONEncoder().encode(entriesValue)
+                guard let json = String(data: data, encoding: .utf8) else {
+                    throw MCPToolArgError.wrongType(field: "entries", expected: "JSON-encodable array")
+                }
+                var argv = pippinArgv("batch", "--entries", json)
+                argv += ArgHelpers.optionIfInt(args, "concurrency", flagName: "--concurrency")
+                return argv
+            }
+        ),
     ]
 
     /// Look up a tool by name. Returns nil if unknown.

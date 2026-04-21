@@ -139,7 +139,7 @@ public struct DigestCommand: AsyncParsableCommand {
         )
 
         if output.isAgent {
-            try printAgentJSON(payload)
+            try output.printAgent(payload)
         } else if output.isJSON {
             try printJSON(payload)
         } else {

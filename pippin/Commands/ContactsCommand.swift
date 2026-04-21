@@ -37,7 +37,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(contacts)
             } else if output.isAgent {
-                try printAgentJSON(contacts)
+                try output.printAgent(contacts)
             } else {
                 if contacts.isEmpty {
                     print("No contacts found.")
@@ -82,7 +82,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(contacts)
             } else if output.isAgent {
-                try printAgentJSON(contacts)
+                try output.printAgent(contacts)
             } else {
                 if contacts.isEmpty {
                     print("No contacts found.")
@@ -115,7 +115,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(contact)
             } else if output.isAgent {
-                try printAgentJSON(contact)
+                try output.printAgent(contact)
             } else {
                 printContactCard(contact)
             }
@@ -139,7 +139,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(groups)
             } else if output.isAgent {
-                try printAgentJSON(groups)
+                try output.printAgent(groups)
             } else {
                 if groups.isEmpty {
                     print("No contact groups found.")

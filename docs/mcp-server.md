@@ -4,7 +4,7 @@
 
 ## What you get
 
-31 tools spanning the commonly scripted pippin surfaces:
+32 tools spanning the commonly scripted pippin surfaces:
 
 | Area | Tools |
 |---|---|
@@ -15,6 +15,33 @@
 | Notes | `notes_list`, `notes_search`, `notes_show`, `notes_folders` |
 | Memos | `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_summarize` |
 | System | `status`, `doctor` |
+| Batch | `batch` — fan out N pippin commands concurrently in one tool call (see below) |
+
+### `batch` — parallel sub-command dispatch
+
+MCP serializes `tools/call` (one tool runs at a time per session). The `batch` tool is the only way to run several pippin commands in parallel from one MCP call. Useful for "fetch mail + calendar + reminders simultaneously" patterns where the alternative is N sequential round-trips.
+
+Input shape:
+
+```json
+{
+  "entries": [
+    {"cmd": "mail",      "args": ["list", "--account", "icloud", "--limit", "5"]},
+    {"cmd": "calendar",  "args": ["today"]},
+    {"cmd": "reminders", "args": ["lists"]}
+  ],
+  "concurrency": 4
+}
+```
+
+Output is an envelope whose `data` is an array of per-entry envelopes (each child runs with `--format agent`, so each entry has its own `{v, status, duration_ms, data|error}`). Order matches the input array.
+
+Same shape is available from the CLI — pipe a JSON array into `pippin batch`:
+
+```bash
+echo '[{"cmd":"calendar","args":["today"]},{"cmd":"reminders","args":["lists"]}]' \
+  | pippin batch --format agent --concurrency 2
+```
 
 Destructive actions (`mail send`, `reminders delete`, `calendar delete`, `memos delete`) are **not exposed** over MCP yet — they need a confirmation UX story first.
 
@@ -30,6 +57,38 @@ Each `tools/call` spawns `pippin <subcommand> --format agent` as a child process
 - Unknown tool name → JSON-RPC `-32601 method not found`
 
 Diagnostics (startup banner, warnings) go to stderr and do not pollute the JSON-RPC transport.
+
+## Envelope v1 (breaking change, 2026-04-20)
+
+Every `--format agent` stdout is now wrapped in a versioned envelope. The MCP tool-result text field carries the envelope verbatim — clients that parse pippin JSON must reach one level deeper.
+
+**Ok shape:**
+```json
+{"v":1,"status":"ok","duration_ms":234,"data":<original payload>}
+```
+
+**Error shape:**
+```json
+{"v":1,"status":"error","duration_ms":12,"error":{"code":"access_denied","message":"…","remediation":{…}?}}
+```
+
+Fields:
+- `v` — envelope schema version. `1` is the first enveloped shape, introduced in [pippin-xy0](https://github.com/mattwag05/pippin/issues). Future breakage bumps this.
+- `status` — `"ok"` or `"error"`.
+- `duration_ms` — wall-clock milliseconds from command construction to JSON serialization.
+- `data` — the previous raw payload, shape unchanged.
+- `error` — the `AgentError.ErrorPayload` (`code`, `message`, optional `remediation`), previously emitted at the top level.
+
+**Migration for MCP/CLI consumers:**
+
+| Before envelope v1 | After envelope v1 |
+|---|---|
+| `jq '.' <output>` → array/object | `jq '.data' <output>` → same array/object |
+| `jq '.error.code' <output>` | Same path — `error` is still the child key, just nested in the envelope |
+| `jq 'length' on a list command` | `jq '.data \| length'` |
+| Parser asserts top-level array | Parse top-level object, then read `.data` |
+
+The inner `data` / `error` shapes are unchanged, so single-field extractions like `.error.code` and `.error.message` keep working unchanged. Only consumers that iterate the top-level response (expecting a bare array or a specific object shape) need to rebind one level deeper.
 
 ## Wire into Claude Code
 
@@ -94,3 +153,5 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 ## Known consumers
 
 The morning-briefing scheduled task and Talia (on Raspberry Pi) still shell out to the pippin CLI for now — they have not been migrated to MCP. Both paths will continue to work; MCP is additive.
+
+All CLI and MCP consumers receive envelope v1 responses (see above) as of 2026-04-20.

@@ -158,6 +158,10 @@ final class ToolRegistryTests: XCTestCase {
             return .object(["id": .string("abc-123"), "output": .string("/tmp/out")])
         case "memos_transcribe", "memos_summarize":
             return .object(["id": .string("abc-123")])
+        case "batch":
+            return .object(["entries": .array([
+                .object(["cmd": .string("doctor")]),
+            ])])
         default:
             return .object([:])
         }

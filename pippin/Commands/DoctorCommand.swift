@@ -42,7 +42,7 @@ public struct DoctorCommand: AsyncParsableCommand {
         let checks = runAllChecks()
 
         if output.isAgent {
-            try printAgentJSON(checks)
+            try output.printAgent(checks)
         } else if output.isJSON {
             try printJSON(checks)
         } else {
