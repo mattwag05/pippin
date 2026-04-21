@@ -62,9 +62,13 @@ enum ReplCompleter {
         if parts.count == 2 {
             let partial = parts[1].lowercased()
             if partial.hasPrefix("-") {
-                // Suggest top-level flags for this command (when no subcommand yet)
-                let matchingFlags = flags.values.flatMap { $0 }.filter { $0.hasPrefix(partial) }
-                return Array(Set(matchingFlags)).sorted()
+                // Suggest command-level flags (before a subcommand is chosen)
+                // Look for common flags keyed as "command._" or default to empty
+                let key = "\(command)._"
+                if let cmdFlags = flags[key] {
+                    return cmdFlags.filter { $0.hasPrefix(partial) }
+                }
+                return []
             } else {
                 // Suggest subcommands
                 if let subs = subcommands[command] {
