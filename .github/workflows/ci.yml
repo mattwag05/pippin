@@ -16,6 +16,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@60606e260d2fc5c5ff6b4aa07220ccc78784dc89 # v1
+        with:
+          xcode-version: latest-stable
+
       - name: Build (debug)
         run: swift build
 
