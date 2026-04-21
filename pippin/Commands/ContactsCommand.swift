@@ -7,6 +7,7 @@ public struct ContactsCommand: AsyncParsableCommand {
         abstract: "Interact with Apple Contacts.",
         subcommands: [
             ListContacts.self, SearchContacts.self, ShowContact.self, ListGroups.self,
+            CreateContact.self, EditContact.self, DeleteContact.self,
         ]
     )
 
@@ -147,6 +148,147 @@ public struct ContactsCommand: AsyncParsableCommand {
                 for group in groups {
                     print("\(group.name) (\(group.contactCount) contacts)")
                 }
+            }
+        }
+    }
+
+    // MARK: - Create
+
+    public struct CreateContact: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "create",
+            abstract: "Create a new contact."
+        )
+
+        @Option(name: .long, help: "Given (first) name.")
+        public var first: String?
+
+        @Option(name: .long, help: "Family (last) name.")
+        public var last: String?
+
+        @Option(name: .long, help: "Email address.")
+        public var email: String?
+
+        @Option(name: .long, help: "Phone number.")
+        public var phone: String?
+
+        @Option(name: .long, help: "Organization name.")
+        public var organization: String?
+
+        @Option(name: .long, help: "Job title.")
+        public var jobTitle: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            guard (first != nil && !(first!.isEmpty)) || (last != nil && !(last!.isEmpty)) else {
+                throw ValidationError("At least one of --first or --last is required.")
+            }
+            let result = try ContactsBridge.createContact(
+                givenName: first ?? "",
+                familyName: last ?? "",
+                email: email,
+                phone: phone,
+                organization: organization,
+                jobTitle: jobTitle
+            )
+            if output.isJSON || output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
+            }
+        }
+    }
+
+    // MARK: - Edit
+
+    public struct EditContact: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "edit",
+            abstract: "Edit an existing contact by identifier."
+        )
+
+        @Argument(help: "Contact identifier (from `pippin contacts show` or `list --format json`).")
+        public var identifier: String
+
+        @Option(name: .long, help: "New given (first) name.")
+        public var first: String?
+
+        @Option(name: .long, help: "New family (last) name.")
+        public var last: String?
+
+        @Option(name: .long, help: "New email address (replaces all existing emails).")
+        public var email: String?
+
+        @Option(name: .long, help: "New phone number (replaces all existing phones).")
+        public var phone: String?
+
+        @Option(name: .long, help: "New organization name.")
+        public var organization: String?
+
+        @Option(name: .long, help: "New job title.")
+        public var jobTitle: String?
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let hasChanges = [first, last, email, phone, organization, jobTitle].contains { $0 != nil }
+            guard hasChanges else {
+                throw ValidationError("At least one field to update is required.")
+            }
+            let result = try ContactsBridge.updateContact(
+                identifier: identifier,
+                givenName: first,
+                familyName: last,
+                email: email,
+                phone: phone,
+                organization: organization,
+                jobTitle: jobTitle
+            )
+            if output.isJSON || output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
+            }
+        }
+    }
+
+    // MARK: - Delete
+
+    public struct DeleteContact: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "delete",
+            abstract: "Delete a contact by identifier."
+        )
+
+        @Argument(help: "Contact identifier (from `pippin contacts show` or `list --format json`).")
+        public var identifier: String
+
+        @Flag(name: .long, help: "Skip confirmation prompt.")
+        public var force: Bool = false
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func run() async throws {
+            if !force {
+                print("Delete contact \(identifier)? [y/N] ", terminator: "")
+                let response = readLine() ?? ""
+                guard response.lowercased() == "y" || response.lowercased() == "yes" else {
+                    print("Aborted.")
+                    return
+                }
+            }
+            let result = try ContactsBridge.deleteContact(identifier: identifier)
+            if output.isJSON || output.isAgent {
+                try printAgentJSON(result)
+            } else {
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }

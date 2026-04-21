@@ -32,8 +32,26 @@ final class ContactsCommandTests: XCTestCase {
         XCTAssertTrue(names.contains("groups"))
     }
 
-    func testContactsCommandHasExactlyFourSubcommands() {
-        XCTAssertEqual(ContactsCommand.configuration.subcommands.count, 4)
+    func testContactsCommandHasCreateSubcommand() {
+        let subcommands = ContactsCommand.configuration.subcommands
+        let names = subcommands.map { $0.configuration.commandName }
+        XCTAssertTrue(names.contains("create"))
+    }
+
+    func testContactsCommandHasEditSubcommand() {
+        let subcommands = ContactsCommand.configuration.subcommands
+        let names = subcommands.map { $0.configuration.commandName }
+        XCTAssertTrue(names.contains("edit"))
+    }
+
+    func testContactsCommandHasDeleteSubcommand() {
+        let subcommands = ContactsCommand.configuration.subcommands
+        let names = subcommands.map { $0.configuration.commandName }
+        XCTAssertTrue(names.contains("delete"))
+    }
+
+    func testContactsCommandHasExactlySevenSubcommands() {
+        XCTAssertEqual(ContactsCommand.configuration.subcommands.count, 7)
     }
 
     // MARK: - Subcommand Names
@@ -147,5 +165,149 @@ final class ContactsCommandTests: XCTestCase {
 
     func testListGroupsParseNoArgs() {
         XCTAssertNoThrow(try ContactsCommand.ListGroups.parse([]))
+    }
+
+    // MARK: - CreateContact Parse Tests
+
+    func testCreateContactCommandName() {
+        XCTAssertEqual(ContactsCommand.CreateContact.configuration.commandName, "create")
+    }
+
+    func testCreateContactParseNoArgs() {
+        XCTAssertNoThrow(try ContactsCommand.CreateContact.parse([]))
+    }
+
+    func testCreateContactFirstOption() throws {
+        let cmd = try ContactsCommand.CreateContact.parse(["--first", "Alice"])
+        XCTAssertEqual(cmd.first, "Alice")
+    }
+
+    func testCreateContactLastOption() throws {
+        let cmd = try ContactsCommand.CreateContact.parse(["--last", "Smith"])
+        XCTAssertEqual(cmd.last, "Smith")
+    }
+
+    func testCreateContactEmailOption() throws {
+        let cmd = try ContactsCommand.CreateContact.parse(["--first", "Alice", "--email", "alice@example.com"])
+        XCTAssertEqual(cmd.email, "alice@example.com")
+    }
+
+    func testCreateContactPhoneOption() throws {
+        let cmd = try ContactsCommand.CreateContact.parse(["--first", "Alice", "--phone", "+15551234567"])
+        XCTAssertEqual(cmd.phone, "+15551234567")
+    }
+
+    func testCreateContactOrganizationOption() throws {
+        let cmd = try ContactsCommand.CreateContact.parse(["--first", "Alice", "--organization", "Acme"])
+        XCTAssertEqual(cmd.organization, "Acme")
+    }
+
+    func testCreateContactJobTitleOption() throws {
+        let cmd = try ContactsCommand.CreateContact.parse(["--first", "Alice", "--job-title", "Engineer"])
+        XCTAssertEqual(cmd.jobTitle, "Engineer")
+    }
+
+    func testCreateContactEmailDefaultNil() throws {
+        let cmd = try ContactsCommand.CreateContact.parse(["--first", "Alice"])
+        XCTAssertNil(cmd.email)
+    }
+
+    func testCreateContactFirstDefaultNil() throws {
+        let cmd = try ContactsCommand.CreateContact.parse([])
+        XCTAssertNil(cmd.first)
+    }
+
+    func testCreateContactLastDefaultNil() throws {
+        let cmd = try ContactsCommand.CreateContact.parse([])
+        XCTAssertNil(cmd.last)
+    }
+
+    // MARK: - EditContact Parse Tests
+
+    func testEditContactCommandName() {
+        XCTAssertEqual(ContactsCommand.EditContact.configuration.commandName, "edit")
+    }
+
+    func testEditContactRequiresIdentifier() {
+        XCTAssertThrowsError(try ContactsCommand.EditContact.parse([]))
+    }
+
+    func testEditContactParseWithIdentifier() {
+        XCTAssertNoThrow(try ContactsCommand.EditContact.parse(["abc-123", "--first", "Bob"]))
+    }
+
+    func testEditContactIdentifierValue() throws {
+        let cmd = try ContactsCommand.EditContact.parse(["contact-xyz", "--last", "Jones"])
+        XCTAssertEqual(cmd.identifier, "contact-xyz")
+    }
+
+    func testEditContactFirstOption() throws {
+        let cmd = try ContactsCommand.EditContact.parse(["id-1", "--first", "Carol"])
+        XCTAssertEqual(cmd.first, "Carol")
+    }
+
+    func testEditContactAllOptionsNilByDefault() throws {
+        let cmd = try ContactsCommand.EditContact.parse(["id-1", "--first", "Carol"])
+        XCTAssertNil(cmd.last)
+        XCTAssertNil(cmd.email)
+        XCTAssertNil(cmd.phone)
+        XCTAssertNil(cmd.organization)
+        XCTAssertNil(cmd.jobTitle)
+    }
+
+    // MARK: - DeleteContact Parse Tests
+
+    func testDeleteContactCommandName() {
+        XCTAssertEqual(ContactsCommand.DeleteContact.configuration.commandName, "delete")
+    }
+
+    func testDeleteContactRequiresIdentifier() {
+        XCTAssertThrowsError(try ContactsCommand.DeleteContact.parse([]))
+    }
+
+    func testDeleteContactParseWithIdentifier() {
+        XCTAssertNoThrow(try ContactsCommand.DeleteContact.parse(["abc-123"]))
+    }
+
+    func testDeleteContactIdentifierValue() throws {
+        let cmd = try ContactsCommand.DeleteContact.parse(["contact-to-delete"])
+        XCTAssertEqual(cmd.identifier, "contact-to-delete")
+    }
+
+    func testDeleteContactForceFlagDefaultFalse() throws {
+        let cmd = try ContactsCommand.DeleteContact.parse(["some-id"])
+        XCTAssertFalse(cmd.force)
+    }
+
+    func testDeleteContactForceFlagSetTrue() throws {
+        let cmd = try ContactsCommand.DeleteContact.parse(["some-id", "--force"])
+        XCTAssertTrue(cmd.force)
+    }
+
+    // MARK: - ContactActionResult Tests
+
+    func testContactActionResultRoundTrip() throws {
+        let result = ContactActionResult(
+            success: true,
+            action: "create",
+            details: ["id": "abc-123", "fullName": "Alice Smith"]
+        )
+        let data = try JSONEncoder().encode(result)
+        let decoded = try JSONDecoder().decode(ContactActionResult.self, from: data)
+
+        XCTAssertTrue(decoded.success)
+        XCTAssertEqual(decoded.action, "create")
+        XCTAssertEqual(decoded.details["id"], "abc-123")
+        XCTAssertEqual(decoded.details["fullName"], "Alice Smith")
+    }
+
+    func testContactActionResultDeleteAction() {
+        let result = ContactActionResult(
+            success: true,
+            action: "delete",
+            details: ["id": "xyz-789", "fullName": "Bob Jones"]
+        )
+        XCTAssertEqual(result.action, "delete")
+        XCTAssertTrue(result.success)
     }
 }

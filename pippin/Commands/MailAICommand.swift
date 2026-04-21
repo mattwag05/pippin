@@ -210,6 +210,12 @@ public struct MailTriage: AsyncParsableCommand {
     @Option(name: .customLong("api-key"), help: "API key for Claude provider.")
     public var apiKey: String?
 
+    @Flag(name: .long, help: "Skip rule-based pre-pass; send all messages to AI.")
+    public var noRules: Bool = false
+
+    @Option(name: .long, help: "Path to triage-rules.json (default: ~/.config/pippin/triage-rules.json).")
+    public var rulesFile: String?
+
     @OptionGroup public var output: OutputOptions
 
     public init() {}
@@ -228,10 +234,21 @@ public struct MailTriage: AsyncParsableCommand {
             limit: limit,
             offset: 0
         )
+
+        // Apply persistent rules before the AI pass to skip token usage on predictable patterns.
+        let rules = noRules ? [] : TriageRulesEngine.loadRules(path: rulesFile)
+        let (remaining, ruleTriaged) = TriageRulesEngine.apply(rules: rules, to: messages)
+
         let aiProvider = try AIProviderFactory.make(
             providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
         )
-        let result = try TriageEngine.triage(messages: messages, provider: aiProvider)
+        let aiResult = try TriageEngine.triage(messages: remaining, provider: aiProvider)
+
+        let result = TriageResult(
+            messages: ruleTriaged + aiResult.messages,
+            summary: aiResult.summary,
+            actionItems: aiResult.actionItems
+        )
 
         if output.isJSON {
             try printJSON(result)
@@ -246,6 +263,9 @@ public struct MailTriage: AsyncParsableCommand {
                 rows: rows,
                 columnWidths: [15, 4, 36, 40]
             ))
+            if !ruleTriaged.isEmpty {
+                print("\n\(ruleTriaged.count) message(s) classified by rules (skipped AI)")
+            }
             if !result.summary.isEmpty {
                 print("\nSummary: \(result.summary)")
             }

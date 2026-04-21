@@ -101,6 +101,157 @@ public enum ContactsBridge {
         }
     }
 
+    // MARK: - Create
+
+    /// Create a new contact. Returns a ContactActionResult with the new contact's identifier.
+    public static func createContact(
+        givenName: String,
+        familyName: String,
+        email: String? = nil,
+        phone: String? = nil,
+        organization: String? = nil,
+        jobTitle: String? = nil
+    ) throws -> ContactActionResult {
+        let store = CNContactStore()
+        try checkAuthorization(store: store)
+
+        let contact = CNMutableContact()
+        contact.givenName = givenName
+        contact.familyName = familyName
+        if let email {
+            contact.emailAddresses = [
+                CNLabeledValue(label: CNLabelWork, value: email as NSString),
+            ]
+        }
+        if let phone {
+            contact.phoneNumbers = [
+                CNLabeledValue(label: CNLabelPhoneNumberMobile, value: CNPhoneNumber(stringValue: phone)),
+            ]
+        }
+        if let organization {
+            contact.organizationName = organization
+        }
+        if let jobTitle {
+            contact.jobTitle = jobTitle
+        }
+
+        let request = CNSaveRequest()
+        request.add(contact, toContainerWithIdentifier: nil)
+        do {
+            try store.execute(request)
+        } catch {
+            throw ContactsBridgeError.saveFailed(error.localizedDescription)
+        }
+        let fullName = CNContactFormatter.string(from: contact, style: .fullName) ?? "\(givenName) \(familyName)"
+        return ContactActionResult(
+            success: true,
+            action: "create",
+            details: ["id": contact.identifier, "fullName": fullName]
+        )
+    }
+
+    // MARK: - Update
+
+    /// Update fields on an existing contact by identifier. Only non-nil parameters are changed.
+    public static func updateContact(
+        identifier: String,
+        givenName: String? = nil,
+        familyName: String? = nil,
+        email: String? = nil,
+        phone: String? = nil,
+        organization: String? = nil,
+        jobTitle: String? = nil
+    ) throws -> ContactActionResult {
+        let store = CNContactStore()
+        try checkAuthorization(store: store)
+
+        let keysToFetch: [CNKeyDescriptor] = [
+            CNContactIdentifierKey as CNKeyDescriptor,
+            CNContactGivenNameKey as CNKeyDescriptor,
+            CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
+            CNContactEmailAddressesKey as CNKeyDescriptor,
+            CNContactPhoneNumbersKey as CNKeyDescriptor,
+            CNContactOrganizationNameKey as CNKeyDescriptor,
+            CNContactJobTitleKey as CNKeyDescriptor,
+        ]
+        let immutable: CNContact
+        do {
+            immutable = try store.unifiedContact(withIdentifier: identifier, keysToFetch: keysToFetch)
+        } catch let error as CNError where error.code == .recordDoesNotExist {
+            throw ContactsBridgeError.contactNotFound(identifier)
+        } catch {
+            throw ContactsBridgeError.fetchFailed(error.localizedDescription)
+        }
+
+        let contact = immutable.mutableCopy() as! CNMutableContact
+        if let givenName { contact.givenName = givenName }
+        if let familyName { contact.familyName = familyName }
+        if let email {
+            contact.emailAddresses = [
+                CNLabeledValue(label: CNLabelWork, value: email as NSString),
+            ]
+        }
+        if let phone {
+            contact.phoneNumbers = [
+                CNLabeledValue(label: CNLabelPhoneNumberMobile, value: CNPhoneNumber(stringValue: phone)),
+            ]
+        }
+        if let organization { contact.organizationName = organization }
+        if let jobTitle { contact.jobTitle = jobTitle }
+
+        let request = CNSaveRequest()
+        request.update(contact)
+        do {
+            try store.execute(request)
+        } catch {
+            throw ContactsBridgeError.saveFailed(error.localizedDescription)
+        }
+        let fullName = CNContactFormatter.string(from: contact, style: .fullName) ?? ""
+        return ContactActionResult(
+            success: true,
+            action: "update",
+            details: ["id": identifier, "fullName": fullName]
+        )
+    }
+
+    // MARK: - Delete
+
+    /// Delete a contact by identifier.
+    public static func deleteContact(identifier: String) throws -> ContactActionResult {
+        let store = CNContactStore()
+        try checkAuthorization(store: store)
+
+        let keysToFetch: [CNKeyDescriptor] = [
+            CNContactIdentifierKey as CNKeyDescriptor,
+            // .fullName descriptor includes givenName and familyName automatically
+            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
+        ]
+        let immutable: CNContact
+        do {
+            immutable = try store.unifiedContact(withIdentifier: identifier, keysToFetch: keysToFetch)
+        } catch let error as CNError where error.code == .recordDoesNotExist {
+            throw ContactsBridgeError.contactNotFound(identifier)
+        } catch {
+            throw ContactsBridgeError.fetchFailed(error.localizedDescription)
+        }
+
+        let fullName = CNContactFormatter.string(from: immutable, style: .fullName) ?? ""
+        let contact = immutable.mutableCopy() as! CNMutableContact
+        let request = CNSaveRequest()
+        request.delete(contact)
+        do {
+            try store.execute(request)
+        } catch {
+            throw ContactsBridgeError.deleteFailed(error.localizedDescription)
+        }
+        return ContactActionResult(
+            success: true,
+            action: "delete",
+            details: ["id": identifier, "fullName": fullName]
+        )
+    }
+
     // MARK: - Groups
 
     /// List all contact groups with contact counts.
