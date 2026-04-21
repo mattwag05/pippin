@@ -58,10 +58,12 @@ final class JobCommandTests: XCTestCase {
 
     func testListStatusFilter() throws {
         let cmd = try JobCommand.List.parse(["--status", "running"])
-        XCTAssertEqual(cmd.status, "running")
+        XCTAssertEqual(cmd.status, .running)
     }
 
     func testListInvalidStatusFails() {
+        // JobStatus conforms to ExpressibleByArgument; ArgumentParser rejects
+        // unknown rawValues before validate() even runs.
         XCTAssertThrowsError(try JobCommand.List.parse(["--status", "frobnicated"]))
     }
 

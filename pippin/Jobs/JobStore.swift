@@ -101,9 +101,16 @@ public final class JobStore: @unchecked Sendable {
         }
     }
 
-    public func read(_ id: String) throws -> Job {
-        let resolved = try resolve(id)
-        let path = statusPath(resolved)
+    public func read(_ idOrPrefix: String) throws -> Job {
+        let resolved = try resolve(idOrPrefix)
+        return try readCanonical(resolved)
+    }
+
+    /// Read by full canonical id, skipping prefix resolution. Callers that
+    /// poll (`job wait`, `job logs --stream`) should resolve once up front
+    /// and then use this to avoid re-scanning the job dir every tick.
+    public func readCanonical(_ id: String) throws -> Job {
+        let path = statusPath(id)
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
             throw JobStoreError.statusReadFailed("no status.json at \(path)")
         }
@@ -166,7 +173,10 @@ public final class JobStore: @unchecked Sendable {
         let offset = size > UInt64(maxBytes) ? size - UInt64(maxBytes) : 0
         try? handle.seek(toOffset: offset)
         let data = handle.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8) ?? ""
+        // `String(decoding:as:)` substitutes replacement chars for invalid
+        // UTF-8, so a tail that lands mid-codepoint degrades gracefully
+        // instead of returning empty.
+        return String(decoding: data, as: UTF8.self)
     }
 
     // MARK: GC
@@ -179,10 +189,16 @@ public final class JobStore: @unchecked Sendable {
         var removed: [String] = []
         for job in all() {
             guard let ended = job.endedAt, job.status.isTerminal else { continue }
-            if ended < cutoff {
-                let dir = jobDir(job.id)
-                try? FileManager.default.removeItem(atPath: dir)
+            guard ended < cutoff else { continue }
+            let dir = jobDir(job.id)
+            do {
+                try FileManager.default.removeItem(atPath: dir)
                 removed.append(job.id)
+            } catch {
+                // Skip — permission denied, busy, or already removed by a
+                // concurrent gc. The caller sees only directories actually
+                // pruned, not ones we asked to prune.
+                continue
             }
         }
         return removed

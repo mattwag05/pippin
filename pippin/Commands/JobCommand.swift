@@ -58,9 +58,12 @@ public struct JobCommand: AsyncParsableCommand {
             let id = JobId.generate()
             try store.createDir(id)
 
-            // Seed status.json before fork so `pippin job show <id>` is
-            // immediately queryable even if the runner's own write races.
-            var seed = Job(id: id, argv: argv, status: .running, startedAt: Date())
+            // The parent writes status.json exactly once; the runner owns
+            // all subsequent writes (pid, terminal state). Avoids a race
+            // where a fast-exiting inner command terminates before the
+            // parent's second write lands, which would otherwise clobber
+            // the runner's terminal write with `status:"running"`.
+            let seed = Job(id: id, argv: argv, status: .running, startedAt: Date())
             try store.write(seed)
 
             let pippinPath = MCPServerRuntime.resolvePippinPath()
@@ -71,13 +74,14 @@ public struct JobCommand: AsyncParsableCommand {
                 stdoutPath: store.stdoutPath(id),
                 stderrPath: store.stderrPath(id)
             )
-            seed.pid = pid
-            try store.write(seed)
+
+            var display = seed
+            display.pid = pid
 
             if output.isAgent {
-                try output.printAgent(seed)
+                try output.printAgent(display)
             } else if output.isJSON {
-                try printJSON(seed)
+                try printJSON(display)
             } else {
                 print("job_id: \(id)")
                 print("pid:    \(pid)")
@@ -141,7 +145,7 @@ public struct JobCommand: AsyncParsableCommand {
         public var limit: Int = 20
 
         @Option(name: .long, help: "Filter by status: running, done, error, killed.")
-        public var status: String?
+        public var status: JobStatus?
 
         @OptionGroup public var output: OutputOptions
 
@@ -149,15 +153,12 @@ public struct JobCommand: AsyncParsableCommand {
 
         public mutating func validate() throws {
             guard limit > 0 else { throw ValidationError("--limit must be positive.") }
-            if let s = status, JobStatus(rawValue: s) == nil {
-                throw ValidationError("--status must be one of: running, done, error, killed.")
-            }
         }
 
         public mutating func run() async throws {
             let store = JobStore()
             var jobs = store.all().sorted { $0.startedAt > $1.startedAt }
-            if let filter = status.flatMap({ JobStatus(rawValue: $0) }) {
+            if let filter = status {
                 jobs = jobs.filter { $0.status == filter }
             }
             jobs = Array(jobs.prefix(limit))
@@ -200,11 +201,14 @@ public struct JobCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let store = JobStore()
+            // Resolve prefix once; subsequent reads use the canonical id
+            // so we don't re-scan the job dir on every 200ms tick.
+            let canonicalId = try store.resolve(id)
             let deadline: Date? = timeout > 0 ? Date().addingTimeInterval(Double(timeout)) : nil
             let pollDelayNs = UInt64(max(10, pollMs)) * 1_000_000
 
             while true {
-                let job = try store.read(id)
+                let job = try store.readCanonical(canonicalId)
                 if job.status.isTerminal {
                     if output.isAgent {
                         try output.printAgent(job)
@@ -351,15 +355,20 @@ public struct JobRunnerInternalCommand: AsyncParsableCommand {
     public mutating func run() async throws {
         if argv.first == "--" { argv.removeFirst() }
         let store = JobStore()
-        var job = try store.read(id)
+        var job = try store.readCanonical(id)
+
+        // Runner is the sole author of pid + terminal state in status.json
+        // — see the note in JobCommand.Run.run for the race this avoids.
+        job.pid = ProcessInfo.processInfo.processIdentifier
+        try store.write(job)
 
         let pippinPath = MCPServerRuntime.resolvePippinPath()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: pippinPath)
         process.arguments = argv
-        // stdout/stderr were already redirected to the log files by the
-        // parent (via fileHandle dup). Let the inner process inherit — its
-        // bytes will land in the same file.
+        // stdout/stderr were redirected to the log files by the parent
+        // (via dup). The inner pippin child inherits those fds — its
+        // bytes land in the same files.
         process.standardInput = FileHandle.nullDevice
 
         do {
@@ -368,16 +377,13 @@ public struct JobRunnerInternalCommand: AsyncParsableCommand {
             job.status = .error
             job.exitCode = -1
             job.endedAt = Date()
-            job.durationMs = Int(job.endedAt!.timeIntervalSince(job.startedAt) * 1000)
             try? store.write(job)
             Darwin.exit(1)
         }
 
         process.waitUntilExit()
 
-        let endedAt = Date()
-        job.endedAt = endedAt
-        job.durationMs = Int(endedAt.timeIntervalSince(job.startedAt) * 1000)
+        job.endedAt = Date()
         job.exitCode = process.terminationStatus
         switch process.terminationReason {
         case .exit:
@@ -429,12 +435,16 @@ enum JobLauncher {
     }
 
     private static func openAppend(_ path: String) throws -> FileHandle {
-        FileManager.default.createFile(atPath: path, contents: nil)
-        let fd = open(path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
-        guard fd >= 0 else {
-            throw JobCommandError.launchFailed("could not open \(path) for appending")
+        if !FileManager.default.fileExists(atPath: path) {
+            FileManager.default.createFile(atPath: path, contents: nil)
         }
-        return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        do {
+            let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
+            try handle.seekToEnd()
+            return handle
+        } catch {
+            throw JobCommandError.launchFailed("could not open \(path) for appending: \(error.localizedDescription)")
+        }
     }
 }
 
@@ -534,9 +544,9 @@ private func printJobHeader(_ job: Job) {
     print("status:     \(job.status.rawValue)")
     print("argv:       \(job.argv.joined(separator: " "))")
     if let pid = job.pid { print("pid:        \(pid)") }
-    print("started:    \(ISO8601DateFormatter().string(from: job.startedAt))")
+    print("started:    \(TextFormatter.compactDate(job.startedAt))")
     if let endedAt = job.endedAt {
-        print("ended:      \(ISO8601DateFormatter().string(from: endedAt))")
+        print("ended:      \(TextFormatter.compactDate(endedAt))")
     }
     if let exitCode = job.exitCode { print("exit_code:  \(exitCode)") }
     if let durationMs = job.durationMs { print("duration:   \(durationMs)ms") }
@@ -546,6 +556,6 @@ private func printJobLine(_ job: Job) {
     let shortId = String(job.id.prefix(12))
     let statusStr = job.status.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0)
     let argvStr = job.argv.joined(separator: " ")
-    let when = ISO8601DateFormatter().string(from: job.startedAt)
+    let when = TextFormatter.compactDate(job.startedAt)
     print("\(shortId)  \(statusStr)  \(when)  \(argvStr)")
 }

@@ -47,8 +47,7 @@ final class JobStoreTests: XCTestCase {
             status: .done,
             exitCode: 0,
             startedAt: now.addingTimeInterval(-2),
-            endedAt: now,
-            durationMs: 2000
+            endedAt: now
         )
         try store.write(job)
         let loaded = try store.read(id)
@@ -139,8 +138,7 @@ final class JobStoreTests: XCTestCase {
             status: .done,
             exitCode: 0,
             startedAt: ended.addingTimeInterval(-1),
-            endedAt: ended,
-            durationMs: 1000
+            endedAt: ended
         ))
         let cutoff = Date().addingTimeInterval(-7 * 86400)
         let removed = try store.gc(olderThan: cutoff)
@@ -172,8 +170,7 @@ final class JobStoreTests: XCTestCase {
             status: .done,
             exitCode: 0,
             startedAt: ended.addingTimeInterval(-1),
-            endedAt: ended,
-            durationMs: 1000
+            endedAt: ended
         ))
         let cutoff = Date().addingTimeInterval(-86400) // 1 day cutoff
         let removed = try store.gc(olderThan: cutoff)
