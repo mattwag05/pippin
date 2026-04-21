@@ -719,18 +719,17 @@ enum MCPToolRegistry {
                     "entries": .object([
                         "type": .string("array"),
                         "description": .string("Array of {cmd, args} entries — each runs as `pippin <cmd> [args...] --format agent`."),
-                        "items": .object([
-                            "type": .string("object"),
-                            "properties": .object([
+                        "items": Schema.object(
+                            properties: [
                                 "cmd": Schema.string("Top-level pippin subcommand (e.g. mail, calendar, reminders)."),
                                 "args": .object([
                                     "type": .string("array"),
                                     "description": .string("Argv tail passed to the sub-command (e.g. [\"list\", \"--account\", \"icloud\"])."),
                                     "items": .object(["type": .string("string")]),
                                 ]),
-                            ]),
-                            "required": .array([.string("cmd")]),
-                        ]),
+                            ],
+                            required: ["cmd"]
+                        ),
                     ]),
                     "concurrency": Schema.integer("Maximum concurrent sub-commands (default: 4).", default: 4),
                 ],

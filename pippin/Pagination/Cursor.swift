@@ -5,7 +5,7 @@ import Foundation
 // MARK: - Cursor
 
 /// Opaque pagination state. Encoded as base64url(JSON) for `--cursor` tokens.
-public struct Cursor: Codable, Equatable {
+public struct Cursor: Codable, Equatable, Sendable {
     public let offset: Int
     public let filterHash: String
 
@@ -24,7 +24,7 @@ public struct Cursor: Codable, Equatable {
 
 /// Wrapped list response when pagination is active.
 /// Shape: `{"items": [...], "next_cursor": "..."}` (next_cursor omitted when exhausted).
-public struct Page<T: Encodable>: Encodable {
+public struct Page<T: Encodable & Sendable>: Encodable, Sendable {
     public let items: [T]
     public let nextCursor: String?
 
@@ -47,7 +47,7 @@ public struct Page<T: Encodable>: Encodable {
 
 // MARK: - Errors
 
-public enum CursorError: LocalizedError {
+public enum CursorError: LocalizedError, Sendable {
     case cursorMismatch
     case invalidCursor
     case invalidPageSize
@@ -139,7 +139,7 @@ public enum Pagination {
     }
 
     /// Slice an in-memory array into a Page<T>.
-    public static func paginate<T: Encodable>(
+    public static func paginate<T: Encodable & Sendable>(
         all: [T],
         offset: Int,
         pageSize: Int,
@@ -160,7 +160,7 @@ public enum Pagination {
     /// Build a Page<T> when the bridge already pushed offset/limit down.
     /// Caller fetched `pageSize + 1` items at `offset`; the +1 sentinel signals
     /// whether more pages exist.
-    public static func pageFromPushdown<T: Encodable>(
+    public static func pageFromPushdown<T: Encodable & Sendable>(
         fetched: [T],
         offset: Int,
         pageSize: Int,

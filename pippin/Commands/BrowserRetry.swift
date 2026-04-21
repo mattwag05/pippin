@@ -2,10 +2,12 @@ import Foundation
 
 /// Idempotent retry helper for `pippin browser` subcommands.
 ///
-/// Re-invokes `operation` up to `retry + 1` times. Stops early when:
-/// - `expectField` is `nil` and the operation returned a value, OR
-/// - the field at `expectField` (dot-separated path into the encoded payload)
-///   is non-empty.
+/// Re-invokes `operation` up to `retry + 1` times when it returns a value
+/// whose `expectField` is empty. Errors thrown by `operation` propagate
+/// immediately — retrying "Node not installed" or "session not active" wastes
+/// time and obscures the real failure. The `--retry` knob exists for the
+/// "page not yet loaded" case (script ran, returned an empty title), not
+/// transport failures.
 ///
 /// `--expect-field` is evaluated against the raw payload (PageInfo, SnapshotResult, …),
 /// not the agent-mode envelope. So for `browser open`, the path is `title`, not
@@ -20,31 +22,20 @@ public enum BrowserRetry {
         let maxAttempts = max(1, retry + 1)
         let delayNs = UInt64(max(0, delayMs)) * 1_000_000
         var attempt = 0
-        var lastResult: T?
-        var lastError: Error?
+        var lastResult: T!
 
         while attempt < maxAttempts {
             attempt += 1
-            do {
-                let result = try operation()
-                if try expectFieldSatisfied(result, path: expectField) {
-                    return (result, attempt)
-                }
-                lastResult = result
-                lastError = nil
-            } catch {
-                lastError = error
-                lastResult = nil
+            let result = try operation() // throws propagate; retry is only for empty expect-field
+            if try expectFieldSatisfied(result, path: expectField) {
+                return (result, attempt)
             }
+            lastResult = result
             if attempt < maxAttempts, delayNs > 0 {
                 try? await Task.sleep(nanoseconds: delayNs)
             }
         }
-
-        if let result = lastResult {
-            return (result, attempt)
-        }
-        throw lastError!
+        return (lastResult, attempt)
     }
 
     static func expectFieldSatisfied(_ value: some Encodable, path: String?) throws -> Bool {

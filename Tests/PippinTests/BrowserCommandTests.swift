@@ -468,7 +468,8 @@ final class BrowserCommandTests: XCTestCase {
         XCTAssertEqual(r.result.title, "loaded")
     }
 
-    func testRetryRethrowsLastErrorWhenAllAttemptsThrow() async {
+    func testRetryPropagatesFirstErrorImmediately() async {
+        // Errors are non-retryable: the first throw propagates, no further attempts.
         var calls = 0
         do {
             _ = try await BrowserRetry.run(retry: 2, delayMs: 0, expectField: nil) { () -> PageInfo in
@@ -481,7 +482,7 @@ final class BrowserCommandTests: XCTestCase {
         } catch {
             XCTFail("expected scriptFailed, got \(error)")
         }
-        XCTAssertEqual(calls, 3)
+        XCTAssertEqual(calls, 1, "errors should not trigger retries")
     }
 
     func testRetryReturnsPartialOnExhaustedExpectFail() async throws {

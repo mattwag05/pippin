@@ -165,11 +165,12 @@ public struct CalendarCommand: AsyncParsableCommand {
                 )
                 if output.isJSON {
                     let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                    let data = try page.items.jsonData(fields: fieldList)
-                    print(String(data: data, encoding: .utf8)!)
-                    if let cursor = page.nextCursor {
-                        FileHandle.standardError.write(Data("(more — re-run with --cursor \(cursor))\n".utf8))
-                    }
+                    let itemsData = try page.items.jsonData(fields: fieldList)
+                    let itemsJSON = try JSONSerialization.jsonObject(with: itemsData)
+                    var dict: [String: Any] = ["items": itemsJSON]
+                    if let cursor = page.nextCursor { dict["next_cursor"] = cursor }
+                    let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
+                    print(String(data: out, encoding: .utf8)!)
                 } else if output.isAgent {
                     try output.printAgent(page)
                 } else {

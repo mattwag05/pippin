@@ -197,12 +197,15 @@ public struct BatchEntry: Decodable, Equatable, Sendable {
     }
 
     /// Final argv passed to the child `pippin` process. Always ends with
-    /// `--format agent` so children produce envelope JSON. If the caller
-    /// already supplied --format, we don't double-add it.
+    /// `--format agent` so children produce envelope JSON. Skips the inject
+    /// when the caller already passed --format in either form
+    /// (`--format X` or `--format=X`).
     public var resolvedArgv: [String] {
         var argv = [cmd]
         if let args { argv.append(contentsOf: args) }
-        if !argv.contains("--format") {
+        let hasFormat = argv.contains("--format")
+            || argv.contains(where: { $0.hasPrefix("--format=") })
+        if !hasFormat {
             argv.append("--format")
             argv.append("agent")
         }
