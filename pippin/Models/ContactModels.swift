@@ -99,11 +99,25 @@ public struct ContactGroup: Codable, Sendable {
     }
 }
 
+public struct ContactActionResult: Codable, Sendable {
+    public let success: Bool
+    public let action: String
+    public let details: [String: String]
+
+    public init(success: Bool, action: String, details: [String: String]) {
+        self.success = success
+        self.action = action
+        self.details = details
+    }
+}
+
 public enum ContactsBridgeError: LocalizedError, Sendable {
     case accessDenied
     case contactNotFound(String)
     case fetchFailed(String)
     case groupNotFound(String)
+    case saveFailed(String)
+    case deleteFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -119,6 +133,10 @@ public enum ContactsBridgeError: LocalizedError, Sendable {
             return "Failed to fetch contacts: \(msg)"
         case let .groupNotFound(name):
             return "Contact group not found: \(name)"
+        case let .saveFailed(msg):
+            return "Failed to save contact: \(msg)"
+        case let .deleteFailed(msg):
+            return "Failed to delete contact: \(msg)"
         }
     }
 }
