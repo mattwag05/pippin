@@ -59,7 +59,7 @@ public struct ShellCommand: AsyncParsableCommand {
 
         if isInteractive {
             fputs("pippin \(PippinVersion.version) — interactive mode\n", stderr)
-            fputs("Type 'help' for commands, 'quit' to exit.\n", stderr)
+            fputs("Type 'help' for commands, 'quit' to exit. Use 'complete <partial-input>' to see completions.\n", stderr)
             if let acct = session.activeAccount {
                 fputs("Active account: \(acct)\n", stderr)
             }
@@ -88,6 +88,10 @@ public struct ShellCommand: AsyncParsableCommand {
             if lower == "help" { printHelp(); continue }
             if lower == "context" { printContext(session: session); continue }
             if lower == "history" { printHistory(session: session); continue }
+            if lower.hasPrefix("complete") {
+                handleComplete(trimmed)
+                continue
+            }
             if lower.hasPrefix("use") {
                 handleUse(trimmed, session: session)
                 continue
@@ -154,6 +158,28 @@ public struct ShellCommand: AsyncParsableCommand {
 
     // MARK: - Built-in REPL Commands
 
+    private func handleComplete(_ input: String) {
+        let parts = shellSplit(input)
+        if parts.count < 2 {
+            fputs("Usage: complete <partial-input>\nExample: complete mail li\n", stderr)
+            return
+        }
+
+        let partial = parts[1...].joined(separator: " ")
+        let suggestions = ReplCompleter.completions(for: partial)
+
+        if suggestions.isEmpty {
+            fputs("No completions found.\n", stderr)
+            return
+        }
+
+        fputs("\nCompletions for '\(partial)':\n", stderr)
+        for suggestion in suggestions {
+            fputs("  \(suggestion)\n", stderr)
+        }
+        fputs("\n", stderr)
+    }
+
     private func handleUse(_ input: String, session: SessionManager) {
         let parts = shellSplit(input)
         if parts.count < 2 {
@@ -214,6 +240,7 @@ public struct ShellCommand: AsyncParsableCommand {
             ("", ""),
             ("use <account>", "Set active mail account"),
             ("use", "Clear active account"),
+            ("complete <input>", "Show command completions for partial input"),
             ("context", "Show session context"),
             ("history", "Show command history"),
             ("help", "Show this help"),
