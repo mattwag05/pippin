@@ -28,16 +28,35 @@ public struct BrowserCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Browser session directory (default: ~/.local/share/pippin/browser-session).")
         public var sessionDir: String?
 
+        @Option(name: .long, help: "Retry up to N times when --expect-field check fails (default: 0).")
+        public var retry: Int = 0
+
+        @Option(name: .long, help: "Dot-path into the payload (e.g. 'title') that must be non-empty for success.")
+        public var expectField: String?
+
+        @Option(name: .long, help: "Delay between retry attempts in milliseconds (default: 500).")
+        public var retryDelayMs: Int = 500
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
         public mutating func run() async throws {
-            let info = try BrowserBridge.open(url: url, sessionDir: sessionDir)
+            let (info, attempts) = try BrowserRetry.run(
+                retry: retry,
+                delayMs: retryDelayMs,
+                expectField: expectField
+            ) {
+                try BrowserBridge.open(url: url, sessionDir: sessionDir)
+            }
             if output.isJSON {
                 try printJSON(info)
             } else if output.isAgent {
-                try output.printAgent(info)
+                if retry > 0 {
+                    try output.printAgent(WithAttempts(payload: info, attempts: attempts))
+                } else {
+                    try output.printAgent(info)
+                }
             } else {
                 print("URL:   \(info.url)")
                 print("Title: \(info.title)")
@@ -59,16 +78,35 @@ public struct BrowserCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Browser session directory (default: ~/.local/share/pippin/browser-session).")
         public var sessionDir: String?
 
+        @Option(name: .long, help: "Retry up to N times when --expect-field check fails (default: 0).")
+        public var retry: Int = 0
+
+        @Option(name: .long, help: "Dot-path into the payload (e.g. 'snapshot.0.ref') that must be non-empty for success.")
+        public var expectField: String?
+
+        @Option(name: .long, help: "Delay between retry attempts in milliseconds (default: 500).")
+        public var retryDelayMs: Int = 500
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
         public mutating func run() async throws {
-            let result = try BrowserBridge.snapshot(sessionDir: sessionDir)
+            let (result, attempts) = try BrowserRetry.run(
+                retry: retry,
+                delayMs: retryDelayMs,
+                expectField: expectField
+            ) {
+                try BrowserBridge.snapshot(sessionDir: sessionDir)
+            }
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try output.printAgent(result)
+                if retry > 0 {
+                    try output.printAgent(WithAttempts(payload: result, attempts: attempts))
+                } else {
+                    try output.printAgent(result)
+                }
             } else {
                 print("URL:   \(result.url)")
                 print("Title: \(result.title)")
