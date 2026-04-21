@@ -4,7 +4,7 @@
 
 ## What you get
 
-31 tools spanning the commonly scripted pippin surfaces:
+32 tools spanning the commonly scripted pippin surfaces:
 
 | Area | Tools |
 |---|---|
@@ -15,6 +15,33 @@
 | Notes | `notes_list`, `notes_search`, `notes_show`, `notes_folders` |
 | Memos | `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_summarize` |
 | System | `status`, `doctor` |
+| Batch | `batch` — fan out N pippin commands concurrently in one tool call (see below) |
+
+### `batch` — parallel sub-command dispatch
+
+MCP serializes `tools/call` (one tool runs at a time per session). The `batch` tool is the only way to run several pippin commands in parallel from one MCP call. Useful for "fetch mail + calendar + reminders simultaneously" patterns where the alternative is N sequential round-trips.
+
+Input shape:
+
+```json
+{
+  "entries": [
+    {"cmd": "mail",      "args": ["list", "--account", "icloud", "--limit", "5"]},
+    {"cmd": "calendar",  "args": ["today"]},
+    {"cmd": "reminders", "args": ["lists"]}
+  ],
+  "concurrency": 4
+}
+```
+
+Output is an envelope whose `data` is an array of per-entry envelopes (each child runs with `--format agent`, so each entry has its own `{v, status, duration_ms, data|error}`). Order matches the input array.
+
+Same shape is available from the CLI — pipe a JSON array into `pippin batch`:
+
+```bash
+echo '[{"cmd":"calendar","args":["today"]},{"cmd":"reminders","args":["lists"]}]' \
+  | pippin batch --format agent --concurrency 2
+```
 
 Destructive actions (`mail send`, `reminders delete`, `calendar delete`, `memos delete`) are **not exposed** over MCP yet — they need a confirmation UX story first.
 
