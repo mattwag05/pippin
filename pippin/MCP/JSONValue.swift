@@ -3,6 +3,7 @@ import Foundation
 /// Minimal typed JSON value used where we need to round-trip arbitrary JSON
 /// (MCP tool input schemas, JSON-RPC `params`, generic results). Built for
 /// readability, not performance — schemas are small and infrequent.
+// swiftformat:disable:next redundantSendable
 enum JSONValue: Codable, Equatable, Sendable {
     case null
     case bool(Bool)
