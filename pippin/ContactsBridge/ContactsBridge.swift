@@ -224,6 +224,7 @@ public enum ContactsBridge {
 
         let keysToFetch: [CNKeyDescriptor] = [
             CNContactIdentifierKey as CNKeyDescriptor,
+            // .fullName descriptor includes givenName and familyName automatically
             CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
         ]
         let immutable: CNContact

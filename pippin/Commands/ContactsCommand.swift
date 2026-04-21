@@ -236,9 +236,8 @@ public struct ContactsCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            guard first != nil || last != nil || email != nil || phone != nil
-                || organization != nil || jobTitle != nil
-            else {
+            let hasChanges = [first, last, email, phone, organization, jobTitle].contains { $0 != nil }
+            guard hasChanges else {
                 throw ValidationError("At least one field to update is required.")
             }
             let result = try ContactsBridge.updateContact(

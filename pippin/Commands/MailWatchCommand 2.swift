@@ -1,11 +1,6 @@
 import ArgumentParser
 import Foundation
 
-private struct WatchEvent: Encodable {
-    let event: String
-    let message: MailMessage
-}
-
 public extension MailCommand {
     struct Watch: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
@@ -40,6 +35,7 @@ public extension MailCommand {
         public mutating func run() async throws {
             var seen = Set<String>()
 
+            // Seed seen set with current messages so we only emit truly new arrivals.
             let initial = try MailBridge.listMessages(
                 account: account, mailbox: mailbox, unread: false, limit: limit
             )
@@ -48,12 +44,12 @@ public extension MailCommand {
             }
 
             let encoder = JSONEncoder()
-            let sleepNs = UInt64(min(interval, 3600)) * 1_000_000_000
+            encoder.outputFormatting = []
 
             fputs("Watching \(mailbox)\(account.map { " (\($0))" } ?? "") — polling every \(interval)s. Ctrl-C to stop.\n", stderr)
 
             while true {
-                try await Task.sleep(nanoseconds: sleepNs)
+                try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
 
                 let messages: [MailMessage]
                 do {
@@ -67,17 +63,14 @@ public extension MailCommand {
 
                 for msg in messages where !seen.contains(msg.id) {
                     seen.insert(msg.id)
-                    let watchEvent = WatchEvent(event: "new_message", message: msg)
-                    do {
-                        let data = try encoder.encode(watchEvent)
-                        guard let line = String(data: data, encoding: .utf8) else {
-                            fputs("Failed to convert message to UTF-8 string\n", stderr)
-                            continue
-                        }
+                    struct WatchEvent: Encodable {
+                        let event: String
+                        let message: MailMessage
+                    }
+                    let event = WatchEvent(event: "new_message", message: msg)
+                    if let data = try? encoder.encode(event), let line = String(data: data, encoding: .utf8) {
                         print(line)
                         fflush(stdout)
-                    } catch {
-                        fputs("encode error: \(error.localizedDescription)\n", stderr)
                     }
                 }
             }
