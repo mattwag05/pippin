@@ -118,14 +118,21 @@ final class BatchCommandTests: XCTestCase {
     // MARK: - entryEnvelopeError shape
 
     func testEntryEnvelopeErrorHasExpectedShape() throws {
-        let envelope = BatchCommand.entryEnvelopeError(code: "test_code", message: "msg")
+        let envelope = BatchCommand.entryEnvelopeError(code: .invalidJSON, message: "msg")
         let data = try JSONEncoder().encode(envelope)
         let dict = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(dict["status"] as? String, "error")
         XCTAssertEqual(dict["v"] as? Int, AGENT_SCHEMA_VERSION)
+        XCTAssertEqual(dict["duration_ms"] as? Int, 0)
         let err = try XCTUnwrap(dict["error"] as? [String: Any])
-        XCTAssertEqual(err["code"] as? String, "test_code")
+        XCTAssertEqual(err["code"] as? String, "invalid_json")
         XCTAssertEqual(err["message"] as? String, "msg")
+    }
+
+    func testBatchEntryErrorCodesAreSnakeCase() {
+        XCTAssertEqual(BatchEntryErrorCode.emptyOutput.rawValue, "empty_output")
+        XCTAssertEqual(BatchEntryErrorCode.invalidJSON.rawValue, "invalid_json")
+        XCTAssertEqual(BatchEntryErrorCode.childLaunchFailed.rawValue, "child_launch_failed")
     }
 
     // MARK: - Bad-child runOne path (synthetic envelope on launch failure)

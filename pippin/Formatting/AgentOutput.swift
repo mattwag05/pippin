@@ -1,8 +1,7 @@
 import Foundation
 
-/// Schema version for the agent-mode JSON envelope.
-/// Introduced 2026-04-20 in pippin-xy0 (Envelope v2 rollout). Bumps on any
-/// breaking change to the envelope shape.
+/// Schema version for the agent-mode JSON envelope. Bumps on any breaking
+/// change to the envelope shape; consumers gate on this field.
 public let AGENT_SCHEMA_VERSION = 1
 
 // MARK: - Envelope types

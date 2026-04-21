@@ -16,9 +16,9 @@ public enum BrowserRetry {
         delayMs: Int,
         expectField: String?,
         operation: () throws -> T
-    ) throws -> (result: T, attempts: Int) {
+    ) async throws -> (result: T, attempts: Int) {
         let maxAttempts = max(1, retry + 1)
-        let delay = max(0, delayMs)
+        let delayNs = UInt64(max(0, delayMs)) * 1_000_000
         var attempt = 0
         var lastResult: T?
         var lastError: Error?
@@ -36,18 +36,18 @@ public enum BrowserRetry {
                 lastError = error
                 lastResult = nil
             }
-            if attempt < maxAttempts, delay > 0 {
-                Thread.sleep(forTimeInterval: Double(delay) / 1000.0)
+            if attempt < maxAttempts, delayNs > 0 {
+                try? await Task.sleep(nanoseconds: delayNs)
             }
         }
 
         if let result = lastResult {
             return (result, attempt)
         }
-        throw lastError ?? BrowserRetryError.exhausted
+        throw lastError!
     }
 
-    public static func expectFieldSatisfied(_ value: some Encodable, path: String?) throws -> Bool {
+    static func expectFieldSatisfied(_ value: some Encodable, path: String?) throws -> Bool {
         guard let path, !path.isEmpty else { return true }
         let data = try JSONEncoder().encode(value)
         let json = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
@@ -55,7 +55,7 @@ public enum BrowserRetry {
         return isNonEmpty(leaf)
     }
 
-    public static func walkJSONPath(_ root: Any, path: String) -> Any? {
+    static func walkJSONPath(_ root: Any, path: String) -> Any? {
         var current: Any? = root
         for token in path.split(separator: ".").map(String.init) {
             guard let node = current else { return nil }
@@ -70,19 +70,12 @@ public enum BrowserRetry {
         return current
     }
 
-    public static func isNonEmpty(_ value: Any) -> Bool {
+    static func isNonEmpty(_ value: Any) -> Bool {
         if value is NSNull { return false }
         if let s = value as? String { return !s.isEmpty }
         if let arr = value as? [Any] { return !arr.isEmpty }
         if let dict = value as? [String: Any] { return !dict.isEmpty }
         return true
-    }
-}
-
-public enum BrowserRetryError: LocalizedError {
-    case exhausted
-    public var errorDescription: String? {
-        "Browser retry exhausted with no successful result"
     }
 }
 

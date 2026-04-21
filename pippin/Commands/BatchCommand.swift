@@ -60,7 +60,7 @@ public struct BatchCommand: AsyncParsableCommand {
         }
     }
 
-    // MARK: - Helpers (internal-visible for tests)
+    // MARK: - Helpers
 
     static func readEntries(entries: String?, input: String?) throws -> [BatchEntry] {
         let data: Data
@@ -129,7 +129,7 @@ public struct BatchCommand: AsyncParsableCommand {
             let trimmed = stdoutText.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty {
                 return entryEnvelopeError(
-                    code: "empty_output",
+                    code: .emptyOutput,
                     message: "Child produced no output (exit \(result.exitCode))"
                 )
             }
@@ -137,34 +137,51 @@ public struct BatchCommand: AsyncParsableCommand {
                 return json
             }
             return entryEnvelopeError(
-                code: "invalid_json",
+                code: .invalidJSON,
                 message: "Child stdout was not valid JSON: \(String(trimmed.prefix(200)))"
             )
         } catch {
             return entryEnvelopeError(
-                code: "child_launch_failed",
+                code: .childLaunchFailed,
                 message: error.localizedDescription
             )
         }
     }
 
-    /// Build a synthetic envelope-shaped JSON for a per-entry failure that
-    /// happened in the parent process (couldn't even run the child).
-    static func entryEnvelopeError(code: String, message: String) -> JSONValue {
-        .object([
-            "v": .int(Int64(AGENT_SCHEMA_VERSION)),
-            "status": .string("error"),
-            "duration_ms": .int(0),
-            "error": .object([
-                "code": .string(code),
-                "message": .string(message),
-            ]),
-        ])
+    /// Build an envelope-shaped JSON for a per-entry failure that happened in
+    /// the parent process. Routes through `AgentErrorEnvelope` so the shape
+    /// can't drift from the canonical `--format agent` envelope.
+    static func entryEnvelopeError(code: BatchEntryErrorCode, message: String) -> JSONValue {
+        let payload = AgentError(code: code.rawValue, message: message).error
+        let envelope = AgentErrorEnvelope(
+            v: AGENT_SCHEMA_VERSION,
+            status: "error",
+            durationMs: 0,
+            error: payload
+        )
+        guard
+            let data = try? JSONEncoder().encode(envelope),
+            let value = try? JSONDecoder().decode(JSONValue.self, from: data)
+        else {
+            return .object(["status": .string("error")])
+        }
+        return value
     }
 
     static func statusString(_ envelope: JSONValue) -> String? {
         envelope["status"]?.stringValue
     }
+}
+
+// MARK: - Error codes
+
+/// Snake-case error codes emitted in per-entry envelopes when the parent
+/// process couldn't run or read the child. Sub-command-level errors come
+/// straight from each child's own `printAgentError` and are passed through.
+public enum BatchEntryErrorCode: String, Sendable {
+    case emptyOutput = "empty_output"
+    case invalidJSON = "invalid_json"
+    case childLaunchFailed = "child_launch_failed"
 }
 
 // MARK: - Entry decoding

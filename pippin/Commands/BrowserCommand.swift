@@ -42,7 +42,7 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let (info, attempts) = try BrowserRetry.run(
+            let (info, attempts) = try await BrowserRetry.run(
                 retry: retry,
                 delayMs: retryDelayMs,
                 expectField: expectField
@@ -92,7 +92,7 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let (result, attempts) = try BrowserRetry.run(
+            let (result, attempts) = try await BrowserRetry.run(
                 retry: retry,
                 delayMs: retryDelayMs,
                 expectField: expectField

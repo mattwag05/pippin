@@ -50,8 +50,6 @@ public struct MemosCommand: AsyncParsableCommand {
                 let (offset, pageSize) = try Pagination.resolve(
                     pagination, defaultPageSize: limit, filterHash: hash
                 )
-                // Fetch enough to fill (offset + pageSize + 1) — the +1 is a sentinel
-                // for whether there are more pages.
                 let fetched = try db.listMemos(since: sinceDate, limit: offset + pageSize + 1)
                 let page = try Pagination.paginate(
                     all: fetched, offset: offset, pageSize: pageSize, filterHash: hash

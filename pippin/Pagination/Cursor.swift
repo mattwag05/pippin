@@ -102,9 +102,9 @@ public enum Pagination {
         }
     }
 
-    /// Stable hash over normalized filter args.
-    /// Args are sorted by key, lowercased, empty/nil values dropped.
-    /// Truncated to 16 hex chars — enough to detect query changes; full SHA-256 is overkill.
+    /// Stable hash over normalized filter args (sorted, lowercased, nils/empties
+    /// dropped). Truncated to 16 hex chars — change-detection only, no security
+    /// surface, so a partial digest is sufficient.
     public static func filterHash(_ args: [String: String?]) -> String {
         let normalized = args
             .compactMapValues { value -> String? in

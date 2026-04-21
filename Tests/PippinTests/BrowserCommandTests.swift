@@ -436,9 +436,9 @@ final class BrowserCommandTests: XCTestCase {
 
     // MARK: - BrowserRetry — retry mechanics
 
-    func testRetryStopsOnFirstSuccessNoExpect() throws {
+    func testRetryStopsOnFirstSuccessNoExpect() async throws {
         var calls = 0
-        let r = try BrowserRetry.run(retry: 3, delayMs: 0, expectField: nil) {
+        let r = try await BrowserRetry.run(retry: 3, delayMs: 0, expectField: nil) {
             calls += 1
             return PageInfo(url: "x", title: "y")
         }
@@ -446,9 +446,9 @@ final class BrowserCommandTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
-    func testRetryRunsAllAttemptsWhenExpectFails() throws {
+    func testRetryRunsAllAttemptsWhenExpectFails() async throws {
         var calls = 0
-        let r = try BrowserRetry.run(retry: 2, delayMs: 0, expectField: "title") {
+        let r = try await BrowserRetry.run(retry: 2, delayMs: 0, expectField: "title") {
             calls += 1
             return PageInfo(url: "x", title: "")
         }
@@ -457,9 +457,9 @@ final class BrowserCommandTests: XCTestCase {
         XCTAssertEqual(r.result.title, "")
     }
 
-    func testRetryStopsOnExpectSatisfied() throws {
+    func testRetryStopsOnExpectSatisfied() async throws {
         var calls = 0
-        let r = try BrowserRetry.run(retry: 5, delayMs: 0, expectField: "title") { () -> PageInfo in
+        let r = try await BrowserRetry.run(retry: 5, delayMs: 0, expectField: "title") { () -> PageInfo in
             calls += 1
             return PageInfo(url: "x", title: calls >= 3 ? "loaded" : "")
         }
@@ -468,24 +468,26 @@ final class BrowserCommandTests: XCTestCase {
         XCTAssertEqual(r.result.title, "loaded")
     }
 
-    func testRetryRethrowsLastErrorWhenAllAttemptsThrow() {
+    func testRetryRethrowsLastErrorWhenAllAttemptsThrow() async {
         var calls = 0
-        XCTAssertThrowsError(try BrowserRetry.run(retry: 2, delayMs: 0, expectField: nil) { () -> PageInfo in
-            calls += 1
-            throw BrowserBridgeError.scriptFailed("boom")
-        }) { error in
-            guard case BrowserBridgeError.scriptFailed = error else {
-                XCTFail("expected scriptFailed, got \(error)")
-                return
+        do {
+            _ = try await BrowserRetry.run(retry: 2, delayMs: 0, expectField: nil) { () -> PageInfo in
+                calls += 1
+                throw BrowserBridgeError.scriptFailed("boom")
             }
+            XCTFail("expected throw")
+        } catch BrowserBridgeError.scriptFailed {
+            // expected
+        } catch {
+            XCTFail("expected scriptFailed, got \(error)")
         }
         XCTAssertEqual(calls, 3)
     }
 
-    func testRetryReturnsPartialOnExhaustedExpectFail() throws {
+    func testRetryReturnsPartialOnExhaustedExpectFail() async throws {
         // Operation always returns (no throw), expect-field never satisfied;
         // helper should return last seen value, not throw.
-        let r = try BrowserRetry.run(retry: 1, delayMs: 0, expectField: "title") {
+        let r = try await BrowserRetry.run(retry: 1, delayMs: 0, expectField: "title") {
             PageInfo(url: "x", title: "")
         }
         XCTAssertEqual(r.attempts, 2)
