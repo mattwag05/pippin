@@ -31,6 +31,38 @@ Each `tools/call` spawns `pippin <subcommand> --format agent` as a child process
 
 Diagnostics (startup banner, warnings) go to stderr and do not pollute the JSON-RPC transport.
 
+## Envelope v1 (breaking change, 2026-04-20)
+
+Every `--format agent` stdout is now wrapped in a versioned envelope. The MCP tool-result text field carries the envelope verbatim — clients that parse pippin JSON must reach one level deeper.
+
+**Ok shape:**
+```json
+{"v":1,"status":"ok","duration_ms":234,"data":<original payload>}
+```
+
+**Error shape:**
+```json
+{"v":1,"status":"error","duration_ms":12,"error":{"code":"access_denied","message":"…","remediation":{…}?}}
+```
+
+Fields:
+- `v` — envelope schema version. `1` is the first enveloped shape, introduced in [pippin-xy0](https://github.com/mattwag05/pippin/issues). Future breakage bumps this.
+- `status` — `"ok"` or `"error"`.
+- `duration_ms` — wall-clock milliseconds from command construction to JSON serialization.
+- `data` — the previous raw payload, shape unchanged.
+- `error` — the `AgentError.ErrorPayload` (`code`, `message`, optional `remediation`), previously emitted at the top level.
+
+**Migration for MCP/CLI consumers:**
+
+| Before envelope v1 | After envelope v1 |
+|---|---|
+| `jq '.' <output>` → array/object | `jq '.data' <output>` → same array/object |
+| `jq '.error.code' <output>` | Same path — `error` is still the child key, just nested in the envelope |
+| `jq 'length' on a list command` | `jq '.data \| length'` |
+| Parser asserts top-level array | Parse top-level object, then read `.data` |
+
+The inner `data` / `error` shapes are unchanged, so single-field extractions like `.error.code` and `.error.message` keep working unchanged. Only consumers that iterate the top-level response (expecting a bare array or a specific object shape) need to rebind one level deeper.
+
 ## Wire into Claude Code
 
 Create or edit a `.mcp.json` file in the project root (machine-local, gitignored):
@@ -94,3 +126,5 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 ## Known consumers
 
 The morning-briefing scheduled task and Talia (on Raspberry Pi) still shell out to the pippin CLI for now — they have not been migrated to MCP. Both paths will continue to work; MCP is additive.
+
+All CLI and MCP consumers receive envelope v1 responses (see above) as of 2026-04-20.

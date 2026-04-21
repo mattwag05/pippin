@@ -188,7 +188,7 @@ public struct ActionsCommand: AsyncParsableCommand {
                 return
             }
             if output.isAgent {
-                try printAgentJSON(actions)
+                try output.printAgent(actions)
                 return
             }
             if actions.isEmpty {
@@ -216,7 +216,7 @@ public struct ActionsCommand: AsyncParsableCommand {
                 return
             }
             if output.isAgent {
-                try printAgentJSON(results)
+                try output.printAgent(results)
                 return
             }
             if results.isEmpty {

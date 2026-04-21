@@ -27,7 +27,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(accounts)
             } else if output.isAgent {
-                try printAgentJSON(accounts)
+                try output.printAgent(accounts)
             } else {
                 let rows = accounts.map { [$0.name, $0.email] }
                 print(TextFormatter.table(headers: ["NAME", "EMAIL"], rows: rows, columnWidths: [25, 50]))
@@ -55,7 +55,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(mailboxes)
             } else if output.isAgent {
-                try printAgentJSON(mailboxes)
+                try output.printAgent(mailboxes)
             } else {
                 let rows = mailboxes.map { [$0.account, $0.name, "\($0.messageCount)", "\($0.unreadCount)"] }
                 print(TextFormatter.table(
@@ -157,7 +157,7 @@ public struct MailCommand: AsyncParsableCommand {
                 if output.isJSON {
                     try printJSON(messages)
                 } else if output.isAgent {
-                    try printAgentJSON(messages)
+                    try output.printAgent(messages)
                 } else {
                     printMessageTable(messages)
                 }
@@ -179,7 +179,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(messages)
             } else if output.isAgent {
-                try printAgentJSON(messages)
+                try output.printAgent(messages)
             } else {
                 printMessageTable(messages)
             }
@@ -271,7 +271,7 @@ public struct MailCommand: AsyncParsableCommand {
                 if output.isJSON {
                     try printJSON(withSummaries)
                 } else if output.isAgent {
-                    try printAgentJSON(withSummaries)
+                    try output.printAgent(withSummaries)
                 } else {
                     let rows = messages.map { msg in
                         [
@@ -292,7 +292,7 @@ public struct MailCommand: AsyncParsableCommand {
             } else if output.isJSON {
                 try printJSON(messages)
             } else if output.isAgent {
-                try printAgentJSON(messages)
+                try output.printAgent(messages)
             } else {
                 printMessageTable(messages)
             }
@@ -382,7 +382,7 @@ public struct MailCommand: AsyncParsableCommand {
                     if output.isJSON {
                         try printJSON(combined)
                     } else {
-                        try printAgentJSON(combined)
+                        try output.printAgent(combined)
                     }
                 } else {
                     var fields: [(String, String)] = [
@@ -426,7 +426,7 @@ public struct MailCommand: AsyncParsableCommand {
                     if output.isJSON {
                         try printJSON(combined)
                     } else {
-                        try printAgentJSON(combined)
+                        try output.printAgent(combined)
                     }
                 } else {
                     var fields: [(String, String)] = [
@@ -459,7 +459,7 @@ public struct MailCommand: AsyncParsableCommand {
                 if output.isJSON {
                     try printJSON(message)
                 } else if output.isAgent {
-                    try printAgentJSON(message)
+                    try output.printAgent(message)
                 } else {
                     var fields: [(String, String)] = [
                         ("From", message.from),
@@ -546,7 +546,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -583,7 +583,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -650,7 +650,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -692,7 +692,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(attachments)
             } else if output.isAgent {
-                try printAgentJSON(attachments)
+                try output.printAgent(attachments)
             } else if attachments.isEmpty {
                 print("No attachments.")
             } else {
@@ -766,7 +766,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -833,7 +833,7 @@ public struct MailCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }

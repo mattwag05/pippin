@@ -47,7 +47,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(memos)
             } else if output.isAgent {
-                try printAgentJSON(memos)
+                try output.printAgent(memos)
             } else {
                 printMemosTable(memos)
             }
@@ -78,7 +78,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(memo)
             } else if output.isAgent {
-                try printAgentJSON(memo)
+                try output.printAgent(memo)
             } else {
                 printMemoCard(memo)
             }
@@ -216,7 +216,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if outputOptions.isJSON {
                 try printJSON(results)
             } else if outputOptions.isAgent {
-                try printAgentJSON(results)
+                try outputOptions.printAgent(results)
             } else {
                 let noun = results.count == 1 ? "recording" : "recordings"
                 print("\nExported \(results.count) \(noun) to \(output)")
@@ -361,7 +361,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if outputOptions.isJSON {
                 try printJSON(results)
             } else if outputOptions.isAgent {
-                try printAgentJSON(results)
+                try outputOptions.printAgent(results)
             } else if !all {
                 if let result = results.first {
                     print(result.transcription)
@@ -422,7 +422,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print("Deleted: \(memo.title)")
                 print("  Audio: \(audioPath)")

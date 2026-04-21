@@ -32,7 +32,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(lists)
             } else if output.isAgent {
-                try printAgentJSON(lists)
+                try output.printAgent(lists)
             } else {
                 if lists.isEmpty {
                     print("No reminder lists found.")
@@ -125,7 +125,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try printAgentJSON(reminders)
+                try output.printAgent(reminders)
             } else {
                 printRemindersTable(reminders)
             }
@@ -153,7 +153,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(reminder)
             } else if output.isAgent {
-                try printAgentJSON(reminder)
+                try output.printAgent(reminder)
             } else {
                 printReminderCard(reminder)
             }
@@ -212,7 +212,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -275,7 +275,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -303,7 +303,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -340,7 +340,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -393,7 +393,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try printAgentJSON(reminders)
+                try output.printAgent(reminders)
             } else {
                 printRemindersTable(reminders)
             }
@@ -495,7 +495,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }

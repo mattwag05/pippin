@@ -40,7 +40,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(calendars)
             } else if output.isAgent {
-                try printAgentJSON(calendars)
+                try output.printAgent(calendars)
             } else {
                 if calendars.isEmpty {
                     print("No calendars found.")
@@ -155,7 +155,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try printAgentJSON(events)
+                try output.printAgent(events)
             } else {
                 printEventsTable(events)
             }
@@ -183,7 +183,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(event)
             } else if output.isAgent {
-                try printAgentJSON(event)
+                try output.printAgent(event)
             } else {
                 printEventCard(event)
             }
@@ -268,7 +268,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -361,7 +361,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -405,7 +405,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -527,7 +527,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -622,7 +622,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(briefing)
             }
@@ -696,7 +696,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(events)
             } else if output.isAgent {
-                try printAgentJSON(events)
+                try output.printAgent(events)
             } else {
                 printEventsTable(events)
             }
@@ -727,7 +727,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try printAgentJSON(events)
+                try output.printAgent(events)
             } else {
                 printEventsTable(events)
             }
@@ -759,7 +759,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try printAgentJSON(events)
+                try output.printAgent(events)
             } else {
                 printEventsTable(events)
             }
@@ -848,7 +848,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(conflicts)
             } else if output.isAgent {
-                try printAgentJSON(conflicts)
+                try output.printAgent(conflicts)
             } else {
                 if conflicts.isEmpty {
                     print("No conflicts found.")
@@ -887,7 +887,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try printAgentJSON(events)
+                try output.printAgent(events)
             } else {
                 printEventsTable(events)
             }

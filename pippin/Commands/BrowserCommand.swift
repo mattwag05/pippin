@@ -37,7 +37,7 @@ public struct BrowserCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(info)
             } else if output.isAgent {
-                try printAgentJSON(info)
+                try output.printAgent(info)
             } else {
                 print("URL:   \(info.url)")
                 print("Title: \(info.title)")
@@ -68,7 +68,7 @@ public struct BrowserCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print("URL:   \(result.url)")
                 print("Title: \(result.title)")
@@ -115,7 +115,7 @@ public struct BrowserCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print("Screenshot saved to: \(savedPath)")
             }
@@ -146,7 +146,7 @@ public struct BrowserCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print("Clicked \(ref)")
             }
@@ -180,7 +180,7 @@ public struct BrowserCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print("Filled \(ref)")
             }
@@ -217,7 +217,7 @@ public struct BrowserCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print("Scrolled \(direction)")
             }
@@ -244,7 +244,7 @@ public struct BrowserCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(tabs)
             } else if output.isAgent {
-                try printAgentJSON(tabs)
+                try output.printAgent(tabs)
             } else {
                 if tabs.isEmpty {
                     print("No open tabs.")
@@ -281,7 +281,7 @@ public struct BrowserCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print("Browser session closed.")
             }
