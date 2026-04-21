@@ -49,7 +49,9 @@ public func runConcurrently<Input, Output>(
 
     group.wait()
 
-    if let error = firstError {
+    // group.wait() establishes happens-before with all group.leave() calls,
+    // but read under the lock for consistency with all other accesses.
+    if let error = lock.withLock({ firstError }) {
         throw error
     }
 
