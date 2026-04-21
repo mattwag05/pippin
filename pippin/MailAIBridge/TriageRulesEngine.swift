@@ -19,17 +19,19 @@ public enum TriageRulesEngine {
     /// - remaining: messages that didn't match any rule (need AI pass)
     /// - ruleTriaged: messages already classified by rules (no AI needed)
     /// Messages whose matched rule has skip=true are excluded from both lists.
+    /// Disabled rules (enabled=false) are always ignored.
     public static func apply(
         rules: [TriageRule],
         to messages: [MailMessage]
     ) -> (remaining: [MailMessage], ruleTriaged: [TriagedMessage]) {
-        guard !rules.isEmpty else { return (messages, []) }
+        let activeRules = rules.filter(\.enabled)
+        guard !activeRules.isEmpty else { return (messages, []) }
 
         var remaining: [MailMessage] = []
         var ruleTriaged: [TriagedMessage] = []
 
         for message in messages {
-            if let match = firstMatch(rules: rules, message: message) {
+            if let match = firstMatch(rules: activeRules, message: message) {
                 if match.action.skip == true { continue }
                 ruleTriaged.append(TriagedMessage(
                     compoundId: message.id,
