@@ -107,19 +107,21 @@ final class JobE2ETests: XCTestCase {
     // MARK: - Lifecycle
 
     /// Smoke test: run a short job, poll via `job show`, verify it transitions
-    /// to `done`. Uses `pippin doctor` as the workload — fast and no side effects.
+    /// to `done`. Uses `pippin completions zsh` as the workload — fast,
+    /// deterministic, and free of OS permission prompts (doctor triggers
+    /// CoreData/AddressBook XPC timeouts on CI sandboxes).
     func testRunPollDoneLifecycle() throws {
         guard requireBinary() else { return }
 
-        // Launch a short job. `doctor` runs quickly.
-        let runResult = runPippin(["job", "run", "--format", "agent", "--", "doctor"])
+        // Launch a short job. `completions zsh` prints a shell script and exits.
+        let runResult = runPippin(["job", "run", "--format", "agent", "--", "completions", "zsh"])
         XCTAssertEqual(runResult.exitCode, 0, "run failed: \(runResult.stderr)")
         let runData = try parseEnvelopeData(runResult.stdout)
         let jobId = try XCTUnwrap(runData["id"] as? String)
         XCTAssertFalse(jobId.isEmpty)
 
-        // Poll show until terminal.
-        let deadline = Date().addingTimeInterval(10)
+        // Poll show until terminal. 30s headroom covers CI slowness.
+        let deadline = Date().addingTimeInterval(30)
         var final: [String: Any]?
         while Date() < deadline {
             let show = runPippin(["job", "show", jobId, "--format", "agent"])
@@ -132,7 +134,7 @@ final class JobE2ETests: XCTestCase {
             }
             Thread.sleep(forTimeInterval: 0.2)
         }
-        let payload = try XCTUnwrap(final, "job did not reach terminal state within 10s")
+        let payload = try XCTUnwrap(final, "job did not reach terminal state within 30s")
         XCTAssertNotEqual(payload["status"] as? String, "running")
         XCTAssertNotNil(payload["ended_at"], "terminal job should have ended_at")
         XCTAssertNotNil(payload["duration_ms"], "terminal job should have duration_ms")
@@ -148,7 +150,7 @@ final class JobE2ETests: XCTestCase {
     /// `pippin job list` returns the newly-created job alongside its id.
     func testListIncludesNewJob() throws {
         guard requireBinary() else { return }
-        let runResult = runPippin(["job", "run", "--format", "agent", "--", "doctor"])
+        let runResult = runPippin(["job", "run", "--format", "agent", "--", "completions", "zsh"])
         let runData = try parseEnvelopeData(runResult.stdout)
         let jobId = try XCTUnwrap(runData["id"] as? String)
 
