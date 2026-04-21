@@ -45,7 +45,7 @@ public struct NotesCommand: ParsableCommand {
             if output.isJSON {
                 try printFilteredNotes(notes, fields: fields)
             } else if output.isAgent {
-                try printAgentJSON(notes)
+                try output.printAgent(notes)
             } else {
                 if notes.isEmpty {
                     print("No notes found.")
@@ -77,7 +77,7 @@ public struct NotesCommand: ParsableCommand {
                 try printJSON(note)
             } else if output.isAgent {
                 // Agent mode: exclude large HTML body, include plainText instead
-                try printAgentJSON(NoteAgentView(note: note))
+                try output.printAgent(NoteAgentView(note: note))
             } else {
                 print(printNoteCard(note))
             }
@@ -119,7 +119,7 @@ public struct NotesCommand: ParsableCommand {
             if output.isJSON {
                 try printFilteredNotes(notes, fields: fields)
             } else if output.isAgent {
-                try printAgentJSON(notes)
+                try output.printAgent(notes)
             } else {
                 if notes.isEmpty {
                     print("No notes matching \"\(query)\".")
@@ -147,7 +147,7 @@ public struct NotesCommand: ParsableCommand {
             if output.isJSON {
                 try printJSON(folders)
             } else if output.isAgent {
-                try printAgentJSON(folders)
+                try output.printAgent(folders)
             } else {
                 if folders.isEmpty {
                     print("No folders found.")
@@ -184,7 +184,7 @@ public struct NotesCommand: ParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -226,7 +226,7 @@ public struct NotesCommand: ParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
@@ -262,7 +262,7 @@ public struct NotesCommand: ParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }

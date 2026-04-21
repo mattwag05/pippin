@@ -47,7 +47,7 @@ public struct AudioCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 if let path = result.outputPath {
                     print("Saved to: \(path)")
@@ -97,7 +97,7 @@ public struct AudioCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print(result.text)
                 if let language = result.language {
@@ -133,7 +133,7 @@ public struct AudioCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(voices)
             } else if output.isAgent {
-                try printAgentJSON(voices)
+                try output.printAgent(voices)
             } else {
                 if voices.isEmpty {
                     print("No voices found for model '\(model)'.")
@@ -170,7 +170,7 @@ public struct AudioCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(models)
             } else if output.isAgent {
-                try printAgentJSON(models)
+                try output.printAgent(models)
             } else {
                 if models.isEmpty {
                     print("No models found.")

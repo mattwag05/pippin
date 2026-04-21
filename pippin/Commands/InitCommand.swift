@@ -15,7 +15,7 @@ public struct InitCommand: AsyncParsableCommand {
         let checks = runAllChecks()
 
         if output.isAgent {
-            try printAgentJSON(InitReport(checks: checks))
+            try output.printAgent(InitReport(checks: checks))
             return
         }
 

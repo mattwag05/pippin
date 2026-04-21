@@ -69,7 +69,7 @@ public struct StatusCommand: AsyncParsableCommand {
         let report = buildStatusReport()
 
         if output.isAgent {
-            try printAgentJSON(report)
+            try output.printAgent(report)
         } else if output.isJSON {
             try printJSON(report)
         } else {

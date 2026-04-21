@@ -37,7 +37,7 @@ public struct TemplatesCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(items)
             } else if output.isAgent {
-                try printAgentJSON(items)
+                try output.printAgent(items)
             } else {
                 printTemplatesTable(templates)
             }

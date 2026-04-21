@@ -1,19 +1,83 @@
 import Foundation
 
-/// Prints compact (non-pretty-printed) JSON for agent consumption.
-/// Agents consume token-efficiently; no whitespace, no sorted keys.
-public func printAgentJSON<T: Encodable>(_ value: T) throws {
+/// Schema version for the agent-mode JSON envelope. Bumps on any breaking
+/// change to the envelope shape; consumers gate on this field.
+public let AGENT_SCHEMA_VERSION = 1
+
+// MARK: - Envelope types
+
+/// Success envelope — wraps the original payload under `data`.
+/// Shape: {"v":1,"status":"ok","duration_ms":234,"data":<payload>}
+public struct AgentOkEnvelope<T: Encodable>: Encodable {
+    public let v: Int
+    public let status: String
+    public let durationMs: Int
+    public let data: T
+
+    enum CodingKeys: String, CodingKey {
+        case v, status
+        case durationMs = "duration_ms"
+        case data
+    }
+
+    public init(v: Int, status: String, durationMs: Int, data: T) {
+        self.v = v
+        self.status = status
+        self.durationMs = durationMs
+        self.data = data
+    }
+}
+
+/// Error envelope — wraps the `AgentError.ErrorPayload` under `error`.
+/// Shape: {"v":1,"status":"error","duration_ms":12,"error":{"code":"…","message":"…","remediation":{…}?}}
+public struct AgentErrorEnvelope: Encodable {
+    public let v: Int
+    public let status: String
+    public let durationMs: Int
+    public let error: AgentError.ErrorPayload
+
+    enum CodingKeys: String, CodingKey {
+        case v, status
+        case durationMs = "duration_ms"
+        case error
+    }
+
+    public init(v: Int, status: String, durationMs: Int, error: AgentError.ErrorPayload) {
+        self.v = v
+        self.status = status
+        self.durationMs = durationMs
+        self.error = error
+    }
+}
+
+// MARK: - Print helpers
+
+/// Prints compact (non-pretty-printed) JSON for agent consumption, wrapped in
+/// envelope v1.
+///
+/// - Parameters:
+///   - value: the original payload (becomes `.data`).
+///   - startedAt: wall-clock time when the command began; used to compute
+///     `duration_ms`. Defaults to `Date()` (≈0ms) — callers should thread
+///     their own `OutputOptions.startedAt` via `output.printAgent(_:)` for
+///     accurate timing.
+public func printAgentJSON<T: Encodable>(_ value: T, startedAt: Date = Date()) throws {
+    let envelope = AgentOkEnvelope(
+        v: AGENT_SCHEMA_VERSION,
+        status: "ok",
+        durationMs: durationMs(from: startedAt),
+        data: value
+    )
     let encoder = JSONEncoder()
-    // No outputFormatting — compact by default
-    let data = try encoder.encode(value)
+    let data = try encoder.encode(envelope)
     print(String(data: data, encoding: .utf8)!)
 }
 
 // MARK: - Agent Error Output
 
 /// Structured error payload for agent mode.
-/// Output shape:
-///   {"error":{"code":"snake_case_code","message":"...","remediation":{...}?}}
+/// Output shape inside envelope:
+///   {"code":"snake_case_code","message":"...","remediation":{...}?}
 /// The `remediation` field is omitted (not null) when no catalog entry exists
 /// for the error's code, so unchanged error shapes remain backward-compatible.
 public struct AgentError: Encodable {
@@ -52,14 +116,30 @@ public struct AgentError: Encodable {
     }
 }
 
-/// Print a structured JSON error to stdout for agent consumers.
-public func printAgentError(_ error: Error) {
+/// Print a structured JSON error to stdout for agent consumers, wrapped in
+/// envelope v1.
+///
+/// - Parameters:
+///   - error: the underlying Swift error.
+///   - startedAt: wall-clock start time; defaults to `Date()` (duration_ms ≈ 0).
+public func printAgentError(_ error: Error, startedAt: Date = Date()) {
     let agentError = AgentError.from(error)
-    if let data = try? JSONEncoder().encode(agentError),
+    let envelope = AgentErrorEnvelope(
+        v: AGENT_SCHEMA_VERSION,
+        status: "error",
+        durationMs: durationMs(from: startedAt),
+        error: agentError.error
+    )
+    if let data = try? JSONEncoder().encode(envelope),
        let str = String(data: data, encoding: .utf8)
     {
         print(str)
     }
+}
+
+/// Compute elapsed milliseconds from `start` to now, clamped to non-negative.
+private func durationMs(from start: Date) -> Int {
+    max(0, Int(Date().timeIntervalSince(start) * 1000))
 }
 
 /// Derive a snake_case error code from an error's case name.

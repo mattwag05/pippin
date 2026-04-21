@@ -73,6 +73,28 @@ final class MemosCommandTests: XCTestCase {
         XCTAssertNoThrow(try MemosCommand.List.parse(["--format", "agent"]))
     }
 
+    // MARK: - List pagination flags (pippin-gb3)
+
+    func testListParsesPageSize() throws {
+        let cmd = try MemosCommand.List.parse(["--page-size", "10"])
+        XCTAssertEqual(cmd.pagination.pageSize, 10)
+        XCTAssertTrue(cmd.pagination.isActive)
+    }
+
+    func testListParsesCursor() throws {
+        let token = try Pagination.encode(Cursor(offset: 5, filterHash: "abc"))
+        let cmd = try MemosCommand.List.parse(["--cursor", token])
+        XCTAssertEqual(cmd.pagination.cursor, token)
+        XCTAssertTrue(cmd.pagination.isActive)
+    }
+
+    func testListPaginationInactiveByDefault() throws {
+        let cmd = try MemosCommand.List.parse([])
+        XCTAssertFalse(cmd.pagination.isActive)
+        XCTAssertNil(cmd.pagination.cursor)
+        XCTAssertNil(cmd.pagination.pageSize)
+    }
+
     // MARK: - Info
 
     func testInfoCommandName() {

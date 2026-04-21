@@ -357,4 +357,187 @@ final class BrowserCommandTests: XCTestCase {
         let result = BrowserActionResult(success: true, action: "close")
         XCTAssertTrue(result.details.isEmpty)
     }
+
+    // MARK: - BrowserRetry — JSON path walker
+
+    func testWalkJSONPathSimpleKey() {
+        let json: Any = ["title": "Hello"]
+        XCTAssertEqual(BrowserRetry.walkJSONPath(json, path: "title") as? String, "Hello")
+    }
+
+    func testWalkJSONPathNested() {
+        let json: Any = ["data": ["title": "X"]]
+        XCTAssertEqual(BrowserRetry.walkJSONPath(json, path: "data.title") as? String, "X")
+    }
+
+    func testWalkJSONPathArrayIndex() {
+        let json: Any = ["items": ["a", "b", "c"]]
+        XCTAssertEqual(BrowserRetry.walkJSONPath(json, path: "items.1") as? String, "b")
+    }
+
+    func testWalkJSONPathMissingKey() {
+        let json: Any = ["a": 1]
+        XCTAssertNil(BrowserRetry.walkJSONPath(json, path: "b"))
+    }
+
+    func testWalkJSONPathOutOfBoundsIndex() {
+        let json: Any = ["items": ["a"]]
+        XCTAssertNil(BrowserRetry.walkJSONPath(json, path: "items.5"))
+    }
+
+    // MARK: - BrowserRetry — isNonEmpty
+
+    func testIsNonEmptyString() {
+        XCTAssertTrue(BrowserRetry.isNonEmpty("x"))
+        XCTAssertFalse(BrowserRetry.isNonEmpty(""))
+    }
+
+    func testIsNonEmptyArray() {
+        XCTAssertTrue(BrowserRetry.isNonEmpty([1, 2]))
+        XCTAssertFalse(BrowserRetry.isNonEmpty([Any]()))
+    }
+
+    func testIsNonEmptyDict() {
+        XCTAssertTrue(BrowserRetry.isNonEmpty(["a": 1]))
+        XCTAssertFalse(BrowserRetry.isNonEmpty([String: Any]()))
+    }
+
+    func testIsNonEmptyNull() {
+        XCTAssertFalse(BrowserRetry.isNonEmpty(NSNull()))
+    }
+
+    func testIsNonEmptyZero() {
+        // Numbers/bools count as present — only null/empty-string/empty-collection fail.
+        XCTAssertTrue(BrowserRetry.isNonEmpty(0))
+        XCTAssertTrue(BrowserRetry.isNonEmpty(false))
+    }
+
+    // MARK: - BrowserRetry — expectFieldSatisfied
+
+    func testExpectFieldNilReturnsTrue() throws {
+        let v = PageInfo(url: "x", title: "y")
+        XCTAssertTrue(try BrowserRetry.expectFieldSatisfied(v, path: nil))
+    }
+
+    func testExpectFieldEmptyTitleFalse() throws {
+        let v = PageInfo(url: "x", title: "")
+        XCTAssertFalse(try BrowserRetry.expectFieldSatisfied(v, path: "title"))
+    }
+
+    func testExpectFieldPresentTitleTrue() throws {
+        let v = PageInfo(url: "x", title: "Hello")
+        XCTAssertTrue(try BrowserRetry.expectFieldSatisfied(v, path: "title"))
+    }
+
+    func testExpectFieldNullStatusFalse() throws {
+        let v = PageInfo(url: "x", title: "t", status: nil)
+        XCTAssertFalse(try BrowserRetry.expectFieldSatisfied(v, path: "status"))
+    }
+
+    // MARK: - BrowserRetry — retry mechanics
+
+    func testRetryStopsOnFirstSuccessNoExpect() async throws {
+        var calls = 0
+        let r = try await BrowserRetry.run(retry: 3, delayMs: 0, expectField: nil) {
+            calls += 1
+            return PageInfo(url: "x", title: "y")
+        }
+        XCTAssertEqual(r.attempts, 1)
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testRetryRunsAllAttemptsWhenExpectFails() async throws {
+        var calls = 0
+        let r = try await BrowserRetry.run(retry: 2, delayMs: 0, expectField: "title") {
+            calls += 1
+            return PageInfo(url: "x", title: "")
+        }
+        XCTAssertEqual(r.attempts, 3)
+        XCTAssertEqual(calls, 3)
+        XCTAssertEqual(r.result.title, "")
+    }
+
+    func testRetryStopsOnExpectSatisfied() async throws {
+        var calls = 0
+        let r = try await BrowserRetry.run(retry: 5, delayMs: 0, expectField: "title") { () -> PageInfo in
+            calls += 1
+            return PageInfo(url: "x", title: calls >= 3 ? "loaded" : "")
+        }
+        XCTAssertEqual(r.attempts, 3)
+        XCTAssertEqual(calls, 3)
+        XCTAssertEqual(r.result.title, "loaded")
+    }
+
+    func testRetryPropagatesFirstErrorImmediately() async {
+        // Errors are non-retryable: the first throw propagates, no further attempts.
+        var calls = 0
+        do {
+            _ = try await BrowserRetry.run(retry: 2, delayMs: 0, expectField: nil) { () -> PageInfo in
+                calls += 1
+                throw BrowserBridgeError.scriptFailed("boom")
+            }
+            XCTFail("expected throw")
+        } catch BrowserBridgeError.scriptFailed {
+            // expected
+        } catch {
+            XCTFail("expected scriptFailed, got \(error)")
+        }
+        XCTAssertEqual(calls, 1, "errors should not trigger retries")
+    }
+
+    func testRetryReturnsPartialOnExhaustedExpectFail() async throws {
+        // Operation always returns (no throw), expect-field never satisfied;
+        // helper should return last seen value, not throw.
+        let r = try await BrowserRetry.run(retry: 1, delayMs: 0, expectField: "title") {
+            PageInfo(url: "x", title: "")
+        }
+        XCTAssertEqual(r.attempts, 2)
+        XCTAssertEqual(r.result.url, "x")
+    }
+
+    // MARK: - WithAttempts encoding
+
+    func testWithAttemptsEncoding() throws {
+        let v = PageInfo(url: "https://x", title: "T")
+        let wrapped = WithAttempts(payload: v, attempts: 2)
+        let data = try JSONEncoder().encode(wrapped)
+        let dict = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(dict["url"] as? String, "https://x")
+        XCTAssertEqual(dict["title"] as? String, "T")
+        XCTAssertEqual(dict["_attempts"] as? Int, 2)
+    }
+
+    // MARK: - Open / Snapshot retry-flag parsing
+
+    func testOpenParsesRetryFlags() throws {
+        let cmd = try BrowserCommand.Open.parse([
+            "https://x", "--retry", "3", "--expect-field", "title", "--retry-delay-ms", "100",
+        ])
+        XCTAssertEqual(cmd.retry, 3)
+        XCTAssertEqual(cmd.expectField, "title")
+        XCTAssertEqual(cmd.retryDelayMs, 100)
+    }
+
+    func testOpenRetryDefaults() throws {
+        let cmd = try BrowserCommand.Open.parse(["https://x"])
+        XCTAssertEqual(cmd.retry, 0)
+        XCTAssertNil(cmd.expectField)
+        XCTAssertEqual(cmd.retryDelayMs, 500)
+    }
+
+    func testSnapshotParsesRetryFlags() throws {
+        let cmd = try BrowserCommand.Snapshot.parse([
+            "--retry", "5", "--expect-field", "title", "--retry-delay-ms", "50",
+        ])
+        XCTAssertEqual(cmd.retry, 5)
+        XCTAssertEqual(cmd.expectField, "title")
+        XCTAssertEqual(cmd.retryDelayMs, 50)
+    }
+
+    func testSnapshotRetryDefaults() throws {
+        let cmd = try BrowserCommand.Snapshot.parse([])
+        XCTAssertEqual(cmd.retry, 0)
+        XCTAssertNil(cmd.expectField)
+        XCTAssertEqual(cmd.retryDelayMs, 500)
+    }
 }

@@ -307,6 +307,30 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertThrowsError(try MailCommand.List.parse(["--preview", "-1"]))
     }
 
+    // MARK: - List pagination flags (pippin-gb3)
+
+    func testListParsesPageSize() throws {
+        let cmd = try MailCommand.List.parse(["--page-size", "10"])
+        XCTAssertEqual(cmd.pagination.pageSize, 10)
+        XCTAssertTrue(cmd.pagination.isActive)
+    }
+
+    func testListParsesCursor() throws {
+        let token = try Pagination.encode(Cursor(offset: 5, filterHash: "abc"))
+        let cmd = try MailCommand.List.parse(["--cursor", token])
+        XCTAssertEqual(cmd.pagination.cursor, token)
+    }
+
+    func testListPaginationInactiveByDefault() throws {
+        let cmd = try MailCommand.List.parse([])
+        XCTAssertFalse(cmd.pagination.isActive)
+    }
+
+    func testListSummarizeWithPaginationFails() {
+        // ArgumentParser runs validate() during parse(), so the throw surfaces here.
+        XCTAssertThrowsError(try MailCommand.List.parse(["--page-size", "10", "--summarize"]))
+    }
+
     // MARK: - Search --page
 
     func testSearchPageDefault() throws {

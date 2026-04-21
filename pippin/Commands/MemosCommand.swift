@@ -21,8 +21,10 @@ public struct MemosCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Only return recordings on or after YYYY-MM-DD.")
         public var since: String?
 
-        @Option(name: .long, help: "Maximum number of results (default: 20).")
+        @Option(name: .long, help: "Maximum number of results (default: 20). Ignored when --cursor or --page-size is set.")
         public var limit: Int = 20
+
+        @OptionGroup public var pagination: PaginationOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -42,12 +44,34 @@ public struct MemosCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
             let sinceDate = since.flatMap { parseDateString($0) }
-            let memos = try db.listMemos(since: sinceDate, limit: limit)
 
+            if pagination.isActive {
+                let hash = Pagination.filterHash(["since": since])
+                let (offset, pageSize) = try Pagination.resolve(
+                    pagination, defaultPageSize: limit, filterHash: hash
+                )
+                let fetched = try db.listMemos(since: sinceDate, limit: offset + pageSize + 1)
+                let page = try Pagination.paginate(
+                    all: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+                )
+                if output.isJSON {
+                    try printJSON(page)
+                } else if output.isAgent {
+                    try output.printAgent(page)
+                } else {
+                    printMemosTable(page.items)
+                    if let cursor = page.nextCursor {
+                        print("(more — re-run with --cursor \(cursor))")
+                    }
+                }
+                return
+            }
+
+            let memos = try db.listMemos(since: sinceDate, limit: limit)
             if output.isJSON {
                 try printJSON(memos)
             } else if output.isAgent {
-                try printAgentJSON(memos)
+                try output.printAgent(memos)
             } else {
                 printMemosTable(memos)
             }
@@ -78,7 +102,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(memo)
             } else if output.isAgent {
-                try printAgentJSON(memo)
+                try output.printAgent(memo)
             } else {
                 printMemoCard(memo)
             }
@@ -216,7 +240,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if outputOptions.isJSON {
                 try printJSON(results)
             } else if outputOptions.isAgent {
-                try printAgentJSON(results)
+                try outputOptions.printAgent(results)
             } else {
                 let noun = results.count == 1 ? "recording" : "recordings"
                 print("\nExported \(results.count) \(noun) to \(output)")
@@ -361,7 +385,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if outputOptions.isJSON {
                 try printJSON(results)
             } else if outputOptions.isAgent {
-                try printAgentJSON(results)
+                try outputOptions.printAgent(results)
             } else if !all {
                 if let result = results.first {
                     print(result.transcription)
@@ -422,7 +446,7 @@ public struct MemosCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try printAgentJSON(result)
+                try output.printAgent(result)
             } else {
                 print("Deleted: \(memo.title)")
                 print("  Audio: \(audioPath)")

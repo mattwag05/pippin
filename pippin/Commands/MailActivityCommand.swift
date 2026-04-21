@@ -54,7 +54,7 @@ public extension MailCommand {
             if output.isJSON {
                 try printJSON(messages)
             } else if output.isAgent {
-                try printAgentJSON(messages)
+                try output.printAgent(messages)
             } else {
                 printMessageTable(messages)
             }

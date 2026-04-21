@@ -128,7 +128,7 @@ public struct SummarizeCommand: AsyncParsableCommand {
             if outputOptions.isJSON {
                 try printJSON(results)
             } else if outputOptions.isAgent {
-                try printAgentJSON(results)
+                try outputOptions.printAgent(results)
             } else if output == nil {
                 for result in results {
                     printSummaryText(result)
@@ -155,14 +155,14 @@ public struct SummarizeCommand: AsyncParsableCommand {
                 if !outputOptions.isStructured {
                     print("Summary written to: \(path)")
                 } else if outputOptions.isAgent {
-                    try printAgentJSON(result)
+                    try outputOptions.printAgent(result)
                 } else {
                     try printJSON(result)
                 }
             } else if outputOptions.isJSON {
                 try printJSON(result)
             } else if outputOptions.isAgent {
-                try printAgentJSON(result)
+                try outputOptions.printAgent(result)
             } else {
                 printSummaryText(result)
             }
