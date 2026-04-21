@@ -161,10 +161,10 @@ public struct ContactsCommand: AsyncParsableCommand {
         )
 
         @Option(name: .long, help: "Given (first) name.")
-        public var first: String = ""
+        public var first: String?
 
         @Option(name: .long, help: "Family (last) name.")
-        public var last: String = ""
+        public var last: String?
 
         @Option(name: .long, help: "Email address.")
         public var email: String?
@@ -183,12 +183,12 @@ public struct ContactsCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            guard !first.isEmpty || !last.isEmpty else {
+            guard (first != nil && !(first!.isEmpty)) || (last != nil && !(last!.isEmpty)) else {
                 throw ValidationError("At least one of --first or --last is required.")
             }
             let result = try ContactsBridge.createContact(
-                givenName: first,
-                familyName: last,
+                givenName: first ?? "",
+                familyName: last ?? "",
                 email: email,
                 phone: phone,
                 organization: organization,
@@ -197,7 +197,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             if output.isJSON || output.isAgent {
                 try printAgentJSON(result)
             } else {
-                print("Created contact: \(result.details["fullName"] ?? "") (id: \(result.details["id"] ?? ""))")
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }
@@ -253,7 +253,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             if output.isJSON || output.isAgent {
                 try printAgentJSON(result)
             } else {
-                print("Updated contact: \(result.details["fullName"] ?? "") (id: \(result.details["id"] ?? ""))")
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }
@@ -289,7 +289,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             if output.isJSON || output.isAgent {
                 try printAgentJSON(result)
             } else {
-                print("Deleted contact: \(result.details["fullName"] ?? "") (id: \(result.details["id"] ?? ""))")
+                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
             }
         }
     }
