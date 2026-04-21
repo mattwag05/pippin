@@ -129,6 +129,25 @@ final class CalendarCommandTests: XCTestCase {
         XCTAssertNoThrow(try CalendarCommand.Events.parse([]))
     }
 
+    // MARK: - Events pagination flags (pippin-gb3)
+
+    func testEventsParsesPageSize() throws {
+        let cmd = try CalendarCommand.Events.parse(["--page-size", "8"])
+        XCTAssertEqual(cmd.pagination.pageSize, 8)
+        XCTAssertTrue(cmd.pagination.isActive)
+    }
+
+    func testEventsParsesCursor() throws {
+        let token = try Pagination.encode(Cursor(offset: 16, filterHash: "abcd1234"))
+        let cmd = try CalendarCommand.Events.parse(["--cursor", token])
+        XCTAssertEqual(cmd.pagination.cursor, token)
+    }
+
+    func testEventsPaginationInactiveByDefault() throws {
+        let cmd = try CalendarCommand.Events.parse([])
+        XCTAssertFalse(cmd.pagination.isActive)
+    }
+
     // MARK: - Edit: argument validation
 
     func testEditRequiresId() {

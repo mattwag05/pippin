@@ -77,11 +77,13 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Filter by priority: high, medium, low, none (or 1, 5, 9, 0).")
         public var priority: String?
 
-        @Option(name: .long, help: "Maximum reminders to return (default: 50).")
+        @Option(name: .long, help: "Maximum reminders to return (default: 50). Ignored when --cursor or --page-size is set.")
         public var limit: Int = 50
 
         @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,title,dueDate). JSON output only.")
         public var fields: String?
+
+        @OptionGroup public var pagination: PaginationOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -110,6 +112,51 @@ public struct RemindersCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let bridge = RemindersBridge()
+
+            if pagination.isActive {
+                let hash = Pagination.filterHash([
+                    "list": list,
+                    "completed": completed ? "1" : "0",
+                    "dueBefore": dueBefore,
+                    "dueAfter": dueAfter,
+                    "createdAfter": createdAfter,
+                    "modifiedAfter": modifiedAfter,
+                    "priority": priority,
+                ])
+                let (offset, pageSize) = try Pagination.resolve(
+                    pagination, defaultPageSize: limit, filterHash: hash
+                )
+                let fetched = try await bridge.listReminders(
+                    listId: list,
+                    completed: completed,
+                    dueBefore: dueBefore.flatMap { parseCalendarDate($0) },
+                    dueAfter: dueAfter.flatMap { parseCalendarDate($0) },
+                    createdAfter: createdAfter.flatMap { parseCalendarDate($0) },
+                    modifiedAfter: modifiedAfter.flatMap { parseCalendarDate($0) },
+                    priority: priority.flatMap { parseReminderPriority($0) },
+                    limit: offset + pageSize + 1
+                )
+                let page = try Pagination.paginate(
+                    all: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+                )
+                if output.isJSON {
+                    let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                    let data = try page.items.jsonData(fields: fieldList)
+                    print(String(data: data, encoding: .utf8)!)
+                    if let cursor = page.nextCursor {
+                        FileHandle.standardError.write(Data("(more — re-run with --cursor \(cursor))\n".utf8))
+                    }
+                } else if output.isAgent {
+                    try output.printAgent(page)
+                } else {
+                    printRemindersTable(page.items)
+                    if let cursor = page.nextCursor {
+                        print("(more — re-run with --cursor \(cursor))")
+                    }
+                }
+                return
+            }
+
             let reminders = try await bridge.listReminders(
                 listId: list,
                 completed: completed,

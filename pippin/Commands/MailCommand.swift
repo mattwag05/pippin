@@ -206,7 +206,7 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum number of messages to return.")
         public var limit: Int = 20
 
-        @Option(name: .long, help: "Page number (1-based, with --limit as page size).")
+        @Option(name: .long, help: "Page number (1-based, with --limit as page size). Ignored when --cursor or --page-size is set.")
         public var page: Int = 1
 
         @Option(
@@ -227,6 +227,8 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("summarize-api-key"), help: "API key for summary provider.")
         public var summarizeApiKey: String?
 
+        @OptionGroup public var pagination: PaginationOptions
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -238,9 +240,16 @@ public struct MailCommand: AsyncParsableCommand {
             if let preview, preview <= 0 {
                 throw ValidationError("--preview must be a positive integer (chars).")
             }
+            if pagination.isActive, summarize {
+                throw ValidationError("--summarize cannot be combined with --cursor / --page-size.")
+            }
         }
 
         public mutating func run() async throws {
+            if pagination.isActive {
+                try await runPaginated()
+                return
+            }
             let messages = try MailBridge.listMessages(
                 account: account,
                 mailbox: mailbox,
@@ -295,6 +304,39 @@ public struct MailCommand: AsyncParsableCommand {
                 try output.printAgent(messages)
             } else {
                 printMessageTable(messages)
+            }
+        }
+
+        private func runPaginated() async throws {
+            let hash = Pagination.filterHash([
+                "account": account,
+                "mailbox": mailbox,
+                "unread": unread ? "1" : "0",
+                "preview": preview.map(String.init),
+            ])
+            let (offset, pageSize) = try Pagination.resolve(
+                pagination, defaultPageSize: limit, filterHash: hash
+            )
+            let fetched = try MailBridge.listMessages(
+                account: account,
+                mailbox: mailbox,
+                unread: unread,
+                limit: pageSize + 1,
+                offset: offset,
+                preview: preview
+            )
+            let page = try Pagination.pageFromPushdown(
+                fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+            )
+            if output.isJSON {
+                try printJSON(page)
+            } else if output.isAgent {
+                try output.printAgent(page)
+            } else {
+                printMessageTable(page.items)
+                if let cursor = page.nextCursor {
+                    print("(more — re-run with --cursor \(cursor))")
+                }
             }
         }
     }

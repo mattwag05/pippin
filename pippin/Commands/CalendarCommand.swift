@@ -76,7 +76,7 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Calendar name to filter events (case-insensitive).")
         public var calendarName: String?
 
-        @Option(name: .long, help: "Maximum events to return (default: 50).")
+        @Option(name: .long, help: "Maximum events to return (default: 50). Ignored when --cursor or --page-size is set.")
         public var limit: Int = 50
 
         @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. title,startDate,endDate). JSON output only.")
@@ -87,6 +87,8 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         @Option(name: .long, help: "Calendar types to include: local, calDAV, exchange, subscription, birthday.")
         public var type: String?
+
+        @OptionGroup public var pagination: PaginationOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -144,6 +146,39 @@ public struct CalendarCommand: AsyncParsableCommand {
                     .filter { allowedTypes.contains($0.type.lowercased()) }
                     .map { $0.id }
                 events = events.filter { matchingIds.contains($0.calendarId) }
+            }
+
+            if pagination.isActive {
+                let hash = Pagination.filterHash([
+                    "from": from,
+                    "to": to,
+                    "calendar": calendar,
+                    "calendarName": calendarName,
+                    "range": range,
+                    "type": type,
+                ])
+                let (offset, pageSize) = try Pagination.resolve(
+                    pagination, defaultPageSize: limit, filterHash: hash
+                )
+                let page = try Pagination.paginate(
+                    all: events, offset: offset, pageSize: pageSize, filterHash: hash
+                )
+                if output.isJSON {
+                    let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                    let data = try page.items.jsonData(fields: fieldList)
+                    print(String(data: data, encoding: .utf8)!)
+                    if let cursor = page.nextCursor {
+                        FileHandle.standardError.write(Data("(more — re-run with --cursor \(cursor))\n".utf8))
+                    }
+                } else if output.isAgent {
+                    try output.printAgent(page)
+                } else {
+                    printEventsTable(page.items)
+                    if let cursor = page.nextCursor {
+                        print("(more — re-run with --cursor \(cursor))")
+                    }
+                }
+                return
             }
 
             if events.count > limit {
