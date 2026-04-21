@@ -212,6 +212,16 @@ final class ContactsCommandTests: XCTestCase {
         XCTAssertNil(cmd.email)
     }
 
+    func testCreateContactFirstDefaultNil() throws {
+        let cmd = try ContactsCommand.CreateContact.parse([])
+        XCTAssertNil(cmd.first)
+    }
+
+    func testCreateContactLastDefaultNil() throws {
+        let cmd = try ContactsCommand.CreateContact.parse([])
+        XCTAssertNil(cmd.last)
+    }
+
     // MARK: - EditContact Parse Tests
 
     func testEditContactCommandName() {
