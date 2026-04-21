@@ -10,8 +10,10 @@ enum ReplCompleter {
     ]
 
     /// Subcommands for each top-level command.
+    /// NOTE: Keep this in sync with actual command implementations in Commands/*.swift.
+    /// This is also used by ShellCommand.run() for command dispatch.
     static let subcommands: [String: [String]] = [
-        "mail": ["accounts", "list", "search", "send", "flag", "unflag", "delete", "watch"],
+        "mail": ["accounts", "list", "search", "send", "flag", "unflag", "delete", "watch", "triage"],
         "memos": ["list", "search", "summarize", "templates", "export"],
         "calendar": ["list", "agenda", "today", "conflicts"],
         "audio": ["say", "listen", "transcribe"],
@@ -24,10 +26,12 @@ enum ReplCompleter {
     ]
 
     /// Flags for each command.subcommand, keyed as "command.subcommand".
+    /// NOTE: Update this when adding new subcommands or flags to the CLI.
     static let flags: [String: [String]] = [
         "mail.list": ["--account", "--mailbox", "--limit", "--format"],
         "mail.search": ["--account", "--body", "--limit", "--format"],
         "mail.send": ["--account", "--to", "--subject", "--body"],
+        "mail.triage": ["--account", "--mailbox", "--limit", "--format", "--provider", "--model", "--api-key", "--no-rules", "--rules-file"],
         "memos.list": ["--limit", "--format"],
         "memos.summarize": ["--provider", "--model", "--format"],
         "calendar.list": ["--format"],
@@ -58,12 +62,9 @@ enum ReplCompleter {
         if parts.count == 2 {
             let partial = parts[1].lowercased()
             if partial.hasPrefix("-") {
-                // Suggest flags for this command
-                let key = "\(command)._"
-                if let cmdFlags = flags[key] ?? flags.filter({ $0.key.hasPrefix("\(command).") }).values.first {
-                    return cmdFlags.filter { $0.hasPrefix(partial) }
-                }
-                return []
+                // Suggest top-level flags for this command (when no subcommand yet)
+                let matchingFlags = flags.values.flatMap { $0 }.filter { $0.hasPrefix(partial) }
+                return Array(Set(matchingFlags)).sorted()
             } else {
                 // Suggest subcommands
                 if let subs = subcommands[command] {
