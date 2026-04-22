@@ -134,7 +134,7 @@ Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
 - `pippin reminders list --format agent`
 Don't change these command shapes or agent JSON output structure without updating the task. After envelope v1, the task reads the payload from `.data` instead of the top level.
 
-**Talia (OpenClaw agent on Raspberry Pi):**
+**Talia (OpenClaw agent on M4 MacBook Air, `127.0.0.1:18789`):**
 Talia uses pippin indirectly via the `pippin` skill in her workspace TOOLS.md. The `memos summarize` command is the primary AI-powered feature Talia may invoke. Ensure Ollama is running on the MacBook Air before Talia attempts summarization tasks. Envelope v1 applies — Talia's `memos summarize --format agent` result now lives under `.data`.
 
 **MCP clients via `pippin mcp-server`:**
