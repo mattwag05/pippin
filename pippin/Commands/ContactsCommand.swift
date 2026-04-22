@@ -67,9 +67,20 @@ public struct ContactsCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Comma-separated fields to include (e.g. id,fullName,emails).")
         public var fields: String?
 
+        @Option(name: .long, help: "Default page size when --page-size is omitted (default: 50).")
+        public var limit: Int = 50
+
+        @OptionGroup public var pagination: PaginationOptions
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
+
+        public mutating func validate() throws {
+            guard limit > 0 else {
+                throw ValidationError("--limit must be positive.")
+            }
+        }
 
         public mutating func run() async throws {
             let fieldList = parseFields(fields)
@@ -79,6 +90,37 @@ public struct ContactsCommand: AsyncParsableCommand {
             } else {
                 contacts = try ContactsBridge.searchByName(query, fields: fieldList)
             }
+
+            if pagination.isActive {
+                let hash = Pagination.filterHash([
+                    "query": query,
+                    "email": email ? "1" : "0",
+                ])
+                let (offset, pageSize) = try Pagination.resolve(
+                    pagination, defaultPageSize: limit, filterHash: hash
+                )
+                let page = try Pagination.paginate(
+                    all: contacts, offset: offset, pageSize: pageSize, filterHash: hash
+                )
+                if output.isJSON {
+                    try printJSON(page)
+                } else if output.isAgent {
+                    try output.printAgent(page)
+                } else {
+                    if page.items.isEmpty {
+                        print("No contacts found.")
+                    } else {
+                        for contact in page.items {
+                            print(formatContactLine(contact))
+                        }
+                    }
+                    if let cursor = page.nextCursor {
+                        print("(more — re-run with --cursor \(cursor))")
+                    }
+                }
+                return
+            }
+
             if output.isJSON {
                 try printJSON(contacts)
             } else if output.isAgent {

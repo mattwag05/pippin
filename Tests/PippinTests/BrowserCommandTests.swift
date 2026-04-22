@@ -540,4 +540,58 @@ final class BrowserCommandTests: XCTestCase {
         XCTAssertNil(cmd.expectField)
         XCTAssertEqual(cmd.retryDelayMs, 500)
     }
+
+    // MARK: - Fetch retry-flag parsing (pippin-tss)
+
+    func testFetchParsesRetryFlags() throws {
+        let cmd = try BrowserCommand.Fetch.parse([
+            "https://x", "--retry", "4", "--expect-field", "content", "--retry-delay-ms", "250",
+        ])
+        XCTAssertEqual(cmd.retry, 4)
+        XCTAssertEqual(cmd.expectField, "content")
+        XCTAssertEqual(cmd.retryDelayMs, 250)
+    }
+
+    func testFetchRetryDefaults() throws {
+        let cmd = try BrowserCommand.Fetch.parse(["https://x"])
+        XCTAssertEqual(cmd.retry, 0)
+        XCTAssertNil(cmd.expectField)
+        XCTAssertEqual(cmd.retryDelayMs, 500)
+    }
+
+    func testFetchAcceptsFormatAgent() throws {
+        XCTAssertNoThrow(try BrowserCommand.Fetch.parse(["https://x", "--format", "agent"]))
+    }
+
+    // MARK: - BrowserRetry — FetchResult payload shape
+
+    func testExpectFieldContentEmptyFalse() throws {
+        let v = FetchResult(url: "https://x", content: "")
+        XCTAssertFalse(try BrowserRetry.expectFieldSatisfied(v, path: "content"))
+    }
+
+    func testExpectFieldContentPresentTrue() throws {
+        let v = FetchResult(url: "https://x", content: "<html>hi</html>")
+        XCTAssertTrue(try BrowserRetry.expectFieldSatisfied(v, path: "content"))
+    }
+
+    func testRetryReturnsFetchResultOnFirstHit() async throws {
+        var calls = 0
+        let r = try await BrowserRetry.run(retry: 2, delayMs: 0, expectField: "content") {
+            calls += 1
+            return FetchResult(url: "https://x", content: calls >= 2 ? "<body/>" : "")
+        }
+        XCTAssertEqual(r.attempts, 2)
+        XCTAssertEqual(r.result.content, "<body/>")
+    }
+
+    func testFetchResultWithAttemptsEncoding() throws {
+        let v = FetchResult(url: "https://x", content: "hi")
+        let wrapped = WithAttempts(payload: v, attempts: 3)
+        let data = try JSONEncoder().encode(wrapped)
+        let dict = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(dict["url"] as? String, "https://x")
+        XCTAssertEqual(dict["content"] as? String, "hi")
+        XCTAssertEqual(dict["_attempts"] as? Int, 3)
+    }
 }

@@ -102,7 +102,7 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum number of results to return (default: 10).")
         public var limit: Int = 10
 
-        @Option(name: .long, help: "Page number (1-based, with --limit as page size).")
+        @Option(name: .long, help: "Page number (1-based, with --limit as page size). Ignored when --cursor or --page-size is set.")
         public var page: Int = 1
 
         @Flag(name: .long, help: "Use semantic (embedding-based) search. Requires running `mail index` first.")
@@ -116,6 +116,8 @@ public struct MailCommand: AsyncParsableCommand {
 
         @Option(name: .long, help: "Embedding provider for semantic search (only 'ollama' supported).")
         public var provider: String = "ollama"
+
+        @OptionGroup public var pagination: PaginationOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -138,6 +140,10 @@ public struct MailCommand: AsyncParsableCommand {
         }
 
         public mutating func run() async throws {
+            if pagination.isActive {
+                try await runPaginated()
+                return
+            }
             if semantic {
                 guard provider == "ollama" else {
                     throw MailAIError.unsupportedEmbeddingProvider(provider)
@@ -182,6 +188,67 @@ public struct MailCommand: AsyncParsableCommand {
                 try output.printAgent(messages)
             } else {
                 printMessageTable(messages)
+            }
+        }
+
+        private func runPaginated() async throws {
+            let hash = Pagination.filterHash([
+                "query": query,
+                "account": account,
+                "mailbox": mailbox,
+                "body": body ? "1" : "0",
+                "after": after,
+                "before": before,
+                "to": to,
+                "semantic": semantic ? "1" : "0",
+            ])
+            let (offset, pageSize) = try Pagination.resolve(
+                pagination, defaultPageSize: limit, filterHash: hash
+            )
+            let page: Page<MailMessage>
+            if semantic {
+                guard provider == "ollama" else {
+                    throw MailAIError.unsupportedEmbeddingProvider(provider)
+                }
+                let baseURL = ollamaUrl ?? "http://localhost:11434"
+                let model = embeddingModel ?? "nomic-embed-text"
+                let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: model)
+                let store = try EmbeddingStore()
+                let all = try SemanticSearch.search(
+                    query: query,
+                    store: store,
+                    provider: embedProvider,
+                    limit: offset + pageSize + 1
+                )
+                page = try Pagination.paginate(
+                    all: all, offset: offset, pageSize: pageSize, filterHash: hash
+                )
+            } else {
+                let fetched = try MailBridge.searchMessages(
+                    query: query,
+                    account: account,
+                    mailbox: mailbox,
+                    searchBody: body,
+                    limit: pageSize + 1,
+                    offset: offset,
+                    after: after,
+                    before: before,
+                    to: to,
+                    verbose: verbose
+                )
+                page = try Pagination.pageFromPushdown(
+                    fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+                )
+            }
+            if output.isJSON {
+                try printJSON(page)
+            } else if output.isAgent {
+                try output.printAgent(page)
+            } else {
+                printMessageTable(page.items)
+                if let cursor = page.nextCursor {
+                    print("(more — re-run with --cursor \(cursor))")
+                }
             }
         }
     }

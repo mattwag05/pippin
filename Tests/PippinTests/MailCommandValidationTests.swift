@@ -347,6 +347,25 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertThrowsError(try MailCommand.Search.parse(["invoice", "--page", "0"]))
     }
 
+    // MARK: - Search pagination flags (pippin-a9m)
+
+    func testSearchParsesPageSize() throws {
+        let cmd = try MailCommand.Search.parse(["invoice", "--page-size", "7"])
+        XCTAssertEqual(cmd.pagination.pageSize, 7)
+        XCTAssertTrue(cmd.pagination.isActive)
+    }
+
+    func testSearchParsesCursor() throws {
+        let token = try Pagination.encode(Cursor(offset: 12, filterHash: "deadbeef"))
+        let cmd = try MailCommand.Search.parse(["invoice", "--cursor", token])
+        XCTAssertEqual(cmd.pagination.cursor, token)
+    }
+
+    func testSearchPaginationInactiveByDefault() throws {
+        let cmd = try MailCommand.Search.parse(["invoice"])
+        XCTAssertFalse(cmd.pagination.isActive)
+    }
+
     // MARK: - Output format on all subcommands
 
     func testAccountsAcceptsFormat() {

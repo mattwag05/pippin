@@ -17,6 +17,7 @@ struct Pippin: AsyncParsableCommand {
             DoctorCommand.self, StatusCommand.self, InitCommand.self, CompletionsCommand.self,
             ShellCommand.self, McpServerCommand.self,
             BatchCommand.self,
+            JobCommand.self, JobRunnerInternalCommand.self,
         ]
     )
 
