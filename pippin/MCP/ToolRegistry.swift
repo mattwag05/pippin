@@ -709,6 +709,86 @@ enum MCPToolRegistry {
             buildArgs: { _ in pippinArgv("doctor") }
         ),
 
+        // MARK: Jobs (background pippin subprocesses)
+
+        MCPTool(
+            name: "job_run",
+            description: "Fork a detached pippin sub-command as a background job. Returns {job_id, pid, status: \"running\"} immediately — poll via job_show or block via job_wait. Use this for slow work (mail index, memos summarize, actions extract) so the caller isn't blocked.",
+            inputSchema: Schema.object(
+                properties: [
+                    "argv": .object([
+                        "type": .string("array"),
+                        "description": .string("Argv for the pippin child process (e.g. [\"mail\", \"index\"])."),
+                        "items": .object(["type": .string("string")]),
+                    ]),
+                ],
+                required: ["argv"]
+            ),
+            buildArgs: { args in
+                guard let argvValue = args?["argv"], case let .array(items) = argvValue else {
+                    throw MCPToolArgError.missingRequired("argv")
+                }
+                let argv: [String] = try items.map { item in
+                    guard let s = item.stringValue else {
+                        throw MCPToolArgError.wrongType(field: "argv[]", expected: "string")
+                    }
+                    return s
+                }
+                var out = pippinArgv("job", "run")
+                out.append("--")
+                out.append(contentsOf: argv)
+                return out
+            }
+        ),
+        MCPTool(
+            name: "job_show",
+            description: "Show a job's status + stdout/stderr tails. Use prefix match (e.g. first 6 chars) to save tokens.",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Job id or unambiguous prefix."),
+                    "tail": Schema.integer("Bytes of stdout/stderr to include (default: 4096).", default: 4096),
+                ],
+                required: ["id"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("job", "show")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                argv += ArgHelpers.optionIfInt(args, "tail", flagName: "--tail")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "job_list",
+            description: "List recent background jobs. Filter by status to find only running/failed jobs.",
+            inputSchema: Schema.object(properties: [
+                "limit": Schema.integer("Maximum jobs to return (default: 20).", default: 20),
+                "status": Schema.string("Filter: running, done, error, killed."),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("job", "list")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                argv += ArgHelpers.optionIfString(args, "status", flagName: "--status")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "job_wait",
+            description: "Block until a job reaches a terminal state. Prefer this over polling when you know the job is quick. Returns AgentError.wait_timed_out if deadline hits.",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Job id or unambiguous prefix."),
+                    "timeout": Schema.integer("Maximum seconds to wait (default: 300).", default: 300),
+                ],
+                required: ["id"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("job", "wait")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                argv += ArgHelpers.optionIfInt(args, "timeout", flagName: "--timeout")
+                return argv
+            }
+        ),
+
         // MARK: Batch (parallel sub-command dispatch)
 
         MCPTool(

@@ -246,4 +246,23 @@ final class NotesCommandTests: XCTestCase {
         let cmd = try NotesCommand.Delete.parse(["x-coredata://abc/ICNote/p5", "--force"])
         XCTAssertEqual(cmd.id, "x-coredata://abc/ICNote/p5")
     }
+
+    // MARK: - List pagination flags (pippin-a9m)
+
+    func testListParsesPageSize() throws {
+        let cmd = try NotesCommand.List.parse(["--page-size", "25"])
+        XCTAssertEqual(cmd.pagination.pageSize, 25)
+        XCTAssertTrue(cmd.pagination.isActive)
+    }
+
+    func testListParsesCursor() throws {
+        let token = try Pagination.encode(Cursor(offset: 25, filterHash: "notes-hash"))
+        let cmd = try NotesCommand.List.parse(["--cursor", token])
+        XCTAssertEqual(cmd.pagination.cursor, token)
+    }
+
+    func testListPaginationInactiveByDefault() throws {
+        let cmd = try NotesCommand.List.parse([])
+        XCTAssertFalse(cmd.pagination.isActive)
+    }
 }

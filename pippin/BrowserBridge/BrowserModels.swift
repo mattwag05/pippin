@@ -62,6 +62,20 @@ public struct TabInfo: Codable, Sendable {
     }
 }
 
+// MARK: - Fetch Result
+
+/// Structured payload for `pippin browser fetch --format json|agent`. Text mode
+/// still prints the raw content for pipe-friendliness.
+public struct FetchResult: Codable, Sendable {
+    public let url: String
+    public let content: String
+
+    public init(url: String, content: String) {
+        self.url = url
+        self.content = content
+    }
+}
+
 // MARK: - Action Result
 
 public struct BrowserActionResult: Codable, Sendable {

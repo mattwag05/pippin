@@ -310,4 +310,27 @@ final class ContactsCommandTests: XCTestCase {
         XCTAssertEqual(result.action, "delete")
         XCTAssertTrue(result.success)
     }
+
+    // MARK: - Search pagination flags (pippin-a9m)
+
+    func testSearchParsesPageSize() throws {
+        let cmd = try ContactsCommand.SearchContacts.parse(["alice", "--page-size", "6"])
+        XCTAssertEqual(cmd.pagination.pageSize, 6)
+        XCTAssertTrue(cmd.pagination.isActive)
+    }
+
+    func testSearchParsesCursor() throws {
+        let token = try Pagination.encode(Cursor(offset: 6, filterHash: "contact-hash"))
+        let cmd = try ContactsCommand.SearchContacts.parse(["alice", "--cursor", token])
+        XCTAssertEqual(cmd.pagination.cursor, token)
+    }
+
+    func testSearchPaginationInactiveByDefault() throws {
+        let cmd = try ContactsCommand.SearchContacts.parse(["alice"])
+        XCTAssertFalse(cmd.pagination.isActive)
+    }
+
+    func testSearchLimitZeroFails() {
+        XCTAssertThrowsError(try ContactsCommand.SearchContacts.parse(["alice", "--limit", "0"]))
+    }
 }

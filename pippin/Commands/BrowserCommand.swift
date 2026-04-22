@@ -337,11 +337,39 @@ public struct BrowserCommand: AsyncParsableCommand {
         @Argument(help: "URL to fetch.")
         public var url: String
 
+        @Option(name: .long, help: "Retry up to N times when --expect-field check fails (default: 0).")
+        public var retry: Int = 0
+
+        @Option(name: .long, help: "Dot-path into the payload (e.g. 'content') that must be non-empty for success.")
+        public var expectField: String?
+
+        @Option(name: .long, help: "Delay between retry attempts in milliseconds (default: 500).")
+        public var retryDelayMs: Int = 500
+
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
-            let content = try BrowserBridge.fetch(url: url)
-            print(content)
+            let (result, attempts) = try await BrowserRetry.run(
+                retry: retry,
+                delayMs: retryDelayMs,
+                expectField: expectField
+            ) {
+                let content = try BrowserBridge.fetch(url: url)
+                return FetchResult(url: url, content: content)
+            }
+            if output.isJSON {
+                try printJSON(result)
+            } else if output.isAgent {
+                if retry > 0 {
+                    try output.printAgent(WithAttempts(payload: result, attempts: attempts))
+                } else {
+                    try output.printAgent(result)
+                }
+            } else {
+                print(result.content)
+            }
         }
     }
 }

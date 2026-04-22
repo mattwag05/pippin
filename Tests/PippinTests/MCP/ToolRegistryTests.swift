@@ -162,6 +162,10 @@ final class ToolRegistryTests: XCTestCase {
             return .object(["entries": .array([
                 .object(["cmd": .string("doctor")]),
             ])])
+        case "job_run":
+            return .object(["argv": .array([.string("doctor")])])
+        case "job_show", "job_wait":
+            return .object(["id": .string("abc")])
         default:
             return .object([:])
         }
@@ -197,5 +201,54 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertTrue(withAll.contains("--all"))
 
         XCTAssertThrowsError(try tool.buildArgs(.object([:])))
+    }
+
+    // MARK: - Jobs tools
+
+    func testJobToolsRegistered() {
+        let names = Set(MCPToolRegistry.tools.map { $0.name })
+        XCTAssertTrue(names.contains("job_run"))
+        XCTAssertTrue(names.contains("job_show"))
+        XCTAssertTrue(names.contains("job_list"))
+        XCTAssertTrue(names.contains("job_wait"))
+    }
+
+    func testJobRunBuildsArgvWithTerminator() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "job_run"))
+        let argv = try tool.buildArgs(.object(["argv": .array([
+            .string("mail"), .string("index"),
+        ])]))
+        XCTAssertEqual(argv[0], "job")
+        XCTAssertEqual(argv[1], "run")
+        XCTAssertTrue(argv.contains("--"))
+        XCTAssertTrue(argv.contains("mail"))
+        XCTAssertTrue(argv.contains("index"))
+        XCTAssertTrue(argv.contains("--format"))
+        XCTAssertTrue(argv.contains("agent"))
+    }
+
+    func testJobRunRequiresArgv() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "job_run"))
+        XCTAssertThrowsError(try tool.buildArgs(.object([:]))) { error in
+            guard case MCPToolArgError.missingRequired("argv") = error else {
+                return XCTFail("Expected missingRequired(argv), got \(error)")
+            }
+        }
+    }
+
+    func testJobShowRequiresId() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "job_show"))
+        XCTAssertThrowsError(try tool.buildArgs(.object([:])))
+    }
+
+    func testJobWaitPassesTimeout() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "job_wait"))
+        let argv = try tool.buildArgs(.object([
+            "id": .string("abc"),
+            "timeout": .int(60),
+        ]))
+        XCTAssertTrue(argv.contains("abc"))
+        XCTAssertTrue(argv.contains("--timeout"))
+        XCTAssertTrue(argv.contains("60"))
     }
 }
