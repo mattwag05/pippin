@@ -29,6 +29,8 @@ pippin memos summarize <id> --provider ollama
 pippin contacts search "Alice"
 pippin browser open "https://example.com"
 pippin audio speak "Hello"
+pippin job run -- mail index              # detach long-running work
+pippin do "what's on my calendar today?"  # let an LLM plan the tool calls
 ```
 
 ## Install
@@ -165,7 +167,52 @@ pippin browser screenshot --output ~/Desktop/shot.png
 pippin browser click --ref "e12"
 pippin browser fill --ref "e5" --value "search query"
 pippin browser fetch "https://example.com"
+
+# --retry lets agents re-invoke until a field is populated, instead of
+# polling. --expect-field names a dot-path that must be non-empty for
+# success; --retry-delay-ms tunes the gap between attempts.
+pippin browser open "https://slow-cdn.example/"   --retry 5 --expect-field title
+pippin browser fetch "https://api.example/data"   --retry 3 --expect-field content
+pippin browser snapshot                           --retry 3 --expect-field snapshot.0.ref
 ```
+
+### Background Jobs
+
+`pippin job` detaches long-running work (`mail index`, `memos summarize`,
+`actions extract`) so the caller's process doesn't block. Each job writes
+state to `~/.cache/pippin/jobs/<id>/` with `status.json`, `stdout.log`, and
+`stderr.log`. IDs are 16-char hex and accept unambiguous prefix matches.
+
+```bash
+pippin job run -- mail index                     # fork; prints {job_id, pid, "running"}
+pippin job show <id>                             # status + stdout/stderr tails
+pippin job list                                  # recent jobs (--status running|done|error|killed)
+pippin job wait <id> --timeout 600               # block until terminal state
+pippin job logs <id> --stream                    # tail -f stdout (or --stderr)
+pippin job gc --older-than 7d                    # prune terminal jobs
+```
+
+Terminal statuses: `done` (exit 0), `error` (non-zero exit), `killed` (signal).
+
+Over MCP, the same surface is exposed as `job_run`, `job_show`, `job_list`,
+`job_wait` — agents can fire-and-forget a slow index build and poll without
+blocking their MCP session.
+
+### Plan-and-Execute (`pippin do`)
+
+Hand a natural-language intent to an LLM; it plans a short sequence of tool
+calls over the MCP tool registry, validates each step's arguments against
+the tool's schema, and executes them as child `pippin` processes.
+
+```bash
+pippin do "what's on my calendar today and any overdue reminders?"
+pippin do "list my icloud inbox" --dry-run        # plan only, don't execute
+pippin do "summarize yesterday's voice memos" --provider claude --max-steps 3
+```
+
+`--dry-run` returns the plan (`{steps: [{tool, args}...], final_answer}`)
+without executing. Single-turn: one planning round, optionally one self-repair
+retry if the model's JSON fails to parse.
 
 ### Action Extraction
 
@@ -207,6 +254,25 @@ Every command supports three modes:
 | `--format json` | Pretty-printed JSON for scripting |
 | `--format agent` | Compact JSON, minimal tokens — built for LLM pipelines |
 
+### Pagination
+
+List commands (`mail list`, `mail search`, `memos list`, `reminders list`,
+`notes list`, `calendar events`, `calendar upcoming`, `contacts search`)
+accept opaque `--cursor` tokens so agents can walk large result sets without
+re-fetching earlier pages.
+
+```bash
+pippin mail list --account icloud --page-size 20 --format agent
+# .data.next_cursor carries the token for the next page:
+pippin mail list --account icloud --cursor <token> --format agent
+```
+
+Cursor tokens are bound to the query via a filter-hash, so changing any
+filter between calls is detected and rejected (`cursor_mismatch`) rather
+than silently returning mixed pages. When neither `--cursor` nor `--page-size`
+is set, the response shape is the legacy bare array — no change for existing
+callers.
+
 ### MCP Server Mode
 
 Run pippin as a [Model Context Protocol](https://modelcontextprotocol.io) server so Claude Code, Claude Desktop, Cursor, or any MCP-compatible client can call it as a first-class tool instead of shelling out:
@@ -216,7 +282,7 @@ pippin mcp-server                    # run the server (stdin/stdout JSON-RPC)
 pippin mcp-server --list-tools       # dump the registered tools as JSON
 ```
 
-Ships with 26 tools covering mail, calendar, reminders, contacts, notes, status, and doctor. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+Ships with 38 tools covering mail, calendar, reminders, contacts, notes, voice memos, status, doctor, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
 
 ## AI Configuration
 
@@ -286,6 +352,9 @@ pippin mail list --unread --format json \
 | `pippin/AudioBridge/` | mlx-audio Python subprocess (TTS/STT) |
 | `pippin/BrowserBridge/` | Playwright WebKit with persistent sessions |
 | `pippin/AIProvider/` | Ollama + Claude backends for summarization |
+| `pippin/Jobs/` | Filesystem-backed registry for detached `pippin job` subprocesses |
+| `pippin/Planner/` | LLM-driven plan-and-execute over the MCP tool registry (`pippin do`) |
+| `pippin/Pagination/` | Opaque-cursor tokens + filter-hash guards for list commands |
 | `pippin/Commands/ShellCommand.swift` | Interactive REPL with argument parsing and session-wide format |
 | `pippin/Formatting/` | Text tables, JSON output, agent compact output |
 
@@ -303,7 +372,7 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 
 ```bash
 make build      # Release build
-make test       # Run tests (1049 tests, 0 failures)
+make test       # Run tests (1483 tests, 0 failures)
 make lint       # swiftformat lint
 make install    # Build + install to ~/.local/bin
 ```
