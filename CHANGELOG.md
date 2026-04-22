@@ -11,6 +11,36 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.20.0] - 2026-04-21
+
+### Breaking
+
+- [agent] Envelope v1 — every `--format agent` response is now wrapped in `{"v":1,"status":"ok","duration_ms":N,"data":<payload>}` (or `{"v":1,"status":"error",…,"error":{…}}`). The previous raw payload lives unchanged under `.data`, so single-field extractions like `.error.code` keep working; iterations like `jq 'length'` must be rewritten as `jq '.data | length'`. Canonical constant: `AGENT_SCHEMA_VERSION` in `pippin/Formatting/AgentOutput.swift`. Morning-briefing scheduled task already migrated. Consumer migration notes in `docs/mcp-server.md`.
+
+### Added
+
+- [feat] `pippin do "<intent>"` — LLM-planned sub-command execution. Reads the MCP tool registry as the tool schema, prompts the active AIProvider for a JSON plan (with one self-repair retry), validates step args against each tool's `inputSchema`, then executes via `pippin batch`. `--dry-run` stops before execution; `--max-steps N` caps plan size.
+- [feat] `pippin job run/show/list/wait/logs/gc` — detached-child jobs subsystem. State under `~/.cache/pippin/jobs/<ulid>/{status.json,stdout.log,stderr.log}`. Matching MCP tools `job_run`, `job_show`, `job_list`, `job_wait` so agents can fire long-running work without blocking the tools/call channel.
+- [feat] `pippin batch` — reads a JSON array of `{cmd,args}` on stdin, runs each entry concurrently (subprocess per entry, `--concurrency` default 4), returns an enveloped array of per-item envelopes. MCP companion tool `batch` registered — a single `tools/call` can parallelize N things.
+- [feat] `pippin mail watch` — polls configured accounts and emits newline-delimited JSON events for new messages. Options: `--account`, `--mailbox`, `--interval`.
+- [feat] `pippin contacts create/edit/delete` — write support on top of the existing read-only bridge. Uses `CNMutableContact` + `CNSaveRequest`. `--force` required for destructive ops.
+- [feat] `pippin mail triage` rules engine — persistent per-user rules at `~/.config/pippin/triage-rules.json` apply before (or instead of) the AI pass, covering auto-label, auto-archive, and priority overrides by sender/subject/keywords. Cuts tokens spent on predictable traffic.
+- [feat] Browser retry flags — `pippin browser open/fetch/snapshot` gained `--retry N`, `--expect-field <json.path>`, `--retry-delay-ms <ms>`. Response envelope adds `data._attempts` whenever `--retry > 0` is passed.
+- [feat] Pagination cursors — `--cursor <token>` + `--page-size N` on `mail list`, `mail search`, `memos list`, `reminders list`, `notes list`, `calendar events`, `calendar upcoming`, `contacts search`. When either flag is set, `envelope.data` becomes `{items, next_cursor}`; bare-array shape preserved otherwise. Cursor is `base64url(json({offset, filter_hash}))` with SHA-256 filter hash to reject cross-query reuse.
+- [feat] REPL tab completion — command names, subcommands, flag names, and contextual values (mail account names, reminder list names).
+
+### Changed
+
+- [ops] Jobs / MCP tool table refreshed in `docs/mcp-server.md`.
+
+### Fixed
+
+- [fix] REPL flag suggestions now honor command-specific flag sets; `mail triage` shows triage-specific flags in suggestions.
+- [fix] `pippin mail watch`: hoist `WatchEvent`, fix an overflow on long-poll runs, surface encoder errors instead of swallowing them.
+- [chore] Remove stray backup file from the tree; sync beads interactions log.
+
+---
+
 ## [0.19.0] - 2026-04-20
 
 ### Added
@@ -451,7 +481,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/mattwag05/pippin/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/mattwag05/pippin/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/mattwag05/pippin/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/mattwag05/pippin/compare/v0.16.0...v0.17.0
