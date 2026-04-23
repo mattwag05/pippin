@@ -37,8 +37,9 @@ public struct OutputOptions: ParsableArguments {
     }
 
     /// Print `payload` as a compact agent-mode envelope, computing
-    /// `duration_ms` from `startedAt`.
-    public func printAgent(_ payload: some Encodable) throws {
-        try printAgentJSON(payload, startedAt: startedAt)
+    /// `duration_ms` from `startedAt`. Pass non-empty `warnings` to surface
+    /// non-fatal advisories alongside the payload.
+    public func printAgent(_ payload: some Encodable, warnings: [String]? = nil) throws {
+        try printAgentJSON(payload, startedAt: startedAt, warnings: warnings)
     }
 }

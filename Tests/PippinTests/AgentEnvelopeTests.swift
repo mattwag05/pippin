@@ -86,6 +86,36 @@ final class AgentEnvelopeTests: XCTestCase {
         XCTAssertNotNil(errorDict["remediation"], "access_denied is catalogued; remediation should be present")
     }
 
+    // MARK: - Warnings (optional, omitted when empty)
+
+    func testOkEnvelopeOmitsWarningsByDefault() throws {
+        let capture = try captureStdout {
+            try printAgentJSON(Sample(name: "x", count: 1))
+        }
+        let json = try decodeObject(capture)
+        XCTAssertNil(json["warnings"], "warnings must be absent when none are passed")
+    }
+
+    func testOkEnvelopeOmitsWarningsWhenEmpty() throws {
+        let capture = try captureStdout {
+            try printAgentJSON(Sample(name: "x", count: 1), warnings: [])
+        }
+        let json = try decodeObject(capture)
+        XCTAssertNil(json["warnings"], "empty warnings array must be omitted, not encoded as []")
+    }
+
+    func testOkEnvelopeIncludesWarningsWhenPresent() throws {
+        let capture = try captureStdout {
+            try printAgentJSON(
+                Sample(name: "x", count: 1),
+                warnings: ["partial results — narrow your query"]
+            )
+        }
+        let json = try decodeObject(capture)
+        let warnings = try XCTUnwrap(json["warnings"] as? [String])
+        XCTAssertEqual(warnings, ["partial results — narrow your query"])
+    }
+
     // MARK: - OutputOptions helper
 
     func testOutputOptionsPrintAgentWrapsAndThreadsStartedAt() throws {

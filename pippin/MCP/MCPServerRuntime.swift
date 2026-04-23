@@ -46,7 +46,17 @@ enum MCPServerRuntime {
         return nil
     }
 
-    static func runChild(argv: [String], pippinPath: String) throws -> ChildResult {
+    /// Default hard timeout for any tool invocation. Bridge tools must self-bound
+    /// well below this — the MCP runtime will SIGTERM/SIGKILL the child if it
+    /// blows past, returning a structured `.childTimedOut` error rather than
+    /// hanging the JSON-RPC loop forever.
+    static let defaultChildTimeoutSeconds = 60
+
+    static func runChild(
+        argv: [String],
+        pippinPath: String,
+        timeoutSeconds: Int = defaultChildTimeoutSeconds
+    ) throws -> ChildResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: pippinPath)
         process.arguments = argv
@@ -80,8 +90,27 @@ enum MCPServerRuntime {
             throw MCPServerRuntimeError.processLaunchFailed(pippinPath, underlying: error)
         }
 
+        // Hard timeout: SIGTERM, then SIGKILL after a 2s grace, mirroring
+        // ScriptRunner's pattern. Without this the JSON-RPC loop blocks forever
+        // if the child wedges (e.g. osascript stuck on an unresponsive Mail.app).
+        nonisolated(unsafe) var timedOut = false
+        let timeoutItem = DispatchWorkItem {
+            guard process.isRunning else { return }
+            timedOut = true
+            process.terminate()
+            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds), execute: timeoutItem)
+
         process.waitUntilExit()
+        timeoutItem.cancel()
         drainGroup.wait()
+
+        if timedOut {
+            throw MCPServerRuntimeError.childTimedOut(seconds: timeoutSeconds)
+        }
 
         return ChildResult(
             exitCode: process.terminationStatus,
@@ -96,6 +125,7 @@ enum MCPServerRuntime {
 enum MCPServerRuntimeError: LocalizedError {
     case processLaunchFailed(String, underlying: Error)
     case childCrashed(signal: Int32)
+    case childTimedOut(seconds: Int)
 
     var errorDescription: String? {
         switch self {
@@ -103,6 +133,8 @@ enum MCPServerRuntimeError: LocalizedError {
             return "Failed to launch child pippin at \(path): \(error.localizedDescription)"
         case let .childCrashed(signal):
             return "pippin child exited with signal \(signal)"
+        case let .childTimedOut(seconds):
+            return "pippin child exceeded \(seconds)s and was terminated. Narrow the request (--account, --mailbox, --limit) or rerun with a more specific query."
         }
     }
 }
@@ -235,6 +267,25 @@ enum MCPDispatcher {
         let childResult: MCPServerRuntime.ChildResult
         do {
             childResult = try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath)
+        } catch let error as MCPServerRuntimeError {
+            // Timeout is a tool-level failure (the user can act on it); other
+            // runtime errors are protocol-level (the user can't).
+            if case .childTimedOut = error {
+                return wrapToolResult(
+                    id: id,
+                    payload: MCPToolCallResult(
+                        text: error.localizedDescription,
+                        isError: true
+                    )
+                )
+            }
+            return JSONRPCResponse(
+                id: id,
+                error: JSONRPCError(
+                    code: JSONRPCError.internalError,
+                    message: error.localizedDescription
+                )
+            )
         } catch {
             return JSONRPCResponse(
                 id: id,

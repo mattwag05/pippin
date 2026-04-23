@@ -8,23 +8,38 @@ public let AGENT_SCHEMA_VERSION = 1
 
 /// Success envelope — wraps the original payload under `data`.
 /// Shape: {"v":1,"status":"ok","duration_ms":234,"data":<payload>}
+/// Optional `warnings` array surfaces non-fatal advisories (e.g. "scan exceeded
+/// soft timeout, returning partial results"). Omitted when empty/nil so the
+/// shape stays backward-compatible for consumers that only read `.data`.
 public struct AgentOkEnvelope<T: Encodable>: Encodable {
     public let v: Int
     public let status: String
     public let durationMs: Int
+    public let warnings: [String]?
     public let data: T
 
     enum CodingKeys: String, CodingKey {
         case v, status
         case durationMs = "duration_ms"
+        case warnings
         case data
     }
 
-    public init(v: Int, status: String, durationMs: Int, data: T) {
+    public init(v: Int, status: String, durationMs: Int, data: T, warnings: [String]? = nil) {
         self.v = v
         self.status = status
         self.durationMs = durationMs
+        self.warnings = (warnings?.isEmpty ?? true) ? nil : warnings
         self.data = data
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(v, forKey: .v)
+        try container.encode(status, forKey: .status)
+        try container.encode(durationMs, forKey: .durationMs)
+        try container.encodeIfPresent(warnings, forKey: .warnings)
+        try container.encode(data, forKey: .data)
     }
 }
 
@@ -61,12 +76,17 @@ public struct AgentErrorEnvelope: Encodable {
 ///     `duration_ms`. Defaults to `Date()` (≈0ms) — callers should thread
 ///     their own `OutputOptions.startedAt` via `output.printAgent(_:)` for
 ///     accurate timing.
-public func printAgentJSON<T: Encodable>(_ value: T, startedAt: Date = Date()) throws {
+public func printAgentJSON<T: Encodable>(
+    _ value: T,
+    startedAt: Date = Date(),
+    warnings: [String]? = nil
+) throws {
     let envelope = AgentOkEnvelope(
         v: AGENT_SCHEMA_VERSION,
         status: "ok",
         durationMs: durationMs(from: startedAt),
-        data: value
+        data: value,
+        warnings: warnings
     )
     let encoder = JSONEncoder()
     let data = try encoder.encode(envelope)
