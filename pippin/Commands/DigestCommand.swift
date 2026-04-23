@@ -121,7 +121,7 @@ public struct DigestCommand: AsyncParsableCommand {
         var notesSection = DigestPayload.NotesSection(recent: [])
         if !skipSet.contains("notes") {
             do {
-                let notes = try NotesBridge.listNotes(limit: notesLimit)
+                let notes = try NotesBridge.listNotes(limit: notesLimit).results
                 notesSection = DigestPayload.NotesSection(recent: notes.map { NoteDigestInfo(from: $0) })
             } catch {
                 warnings.append("notes: \(error.localizedDescription)")

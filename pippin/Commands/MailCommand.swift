@@ -187,36 +187,14 @@ public struct MailCommand: AsyncParsableCommand {
 
         static let timedOutHint = "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results"
 
-        /// Render search results in whichever format the user requested, plus
-        /// the timeout advisory (stderr always, agent warnings, text-mode trailer).
-        private func emitResult<T: Encodable>(
-            _ payload: T,
-            timedOut: Bool,
-            renderText: () -> Void
-        ) throws {
-            if timedOut {
-                fputs("Warning: \(Self.timedOutHint)\n", stderr)
-            }
-            if output.isJSON {
-                try printJSON(payload)
-            } else if output.isAgent {
-                try output.printAgent(payload, warnings: timedOut ? [Self.timedOutHint] : nil)
-            } else {
-                renderText()
-                if timedOut {
-                    print("(partial results — \(Self.timedOutHint))")
-                }
-            }
-        }
-
         private func emitMessages(_ messages: [MailMessage], timedOut: Bool) throws {
-            try emitResult(messages, timedOut: timedOut) {
+            try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint) {
                 printMessageTable(messages)
             }
         }
 
         private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) throws {
-            try emitResult(page, timedOut: timedOut) {
+            try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint) {
                 printMessageTable(page.items)
                 if let cursor = page.nextCursor {
                     print("(more — re-run with --cursor \(cursor))")

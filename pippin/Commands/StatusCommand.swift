@@ -194,8 +194,8 @@ private func gatherMemosStatus() -> StatusReport.MemosStatus? {
 // MARK: - Notes
 
 private func gatherNotesStatus() -> StatusReport.NotesStatus? {
-    guard let folders = try? NotesBridge.listFolders() else { return nil }
-    let noteCount = (try? NotesBridge.listNotes(folder: nil, limit: 500))?.count ?? 0
+    guard let folders = try? NotesBridge.listFolders().results else { return nil }
+    let noteCount = (try? NotesBridge.listNotes(folder: nil, limit: 500).results)?.count ?? 0
     return StatusReport.NotesStatus(noteCount: noteCount, folderCount: folders.count)
 }
 

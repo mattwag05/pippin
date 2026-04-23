@@ -42,4 +42,33 @@ public struct OutputOptions: ParsableArguments {
     public func printAgent(_ payload: some Encodable, warnings: [String]? = nil) throws {
         try printAgentJSON(payload, startedAt: startedAt, warnings: warnings)
     }
+
+    /// Render `payload` in the configured format, surfacing a soft-timeout
+    /// advisory when `timedOut == true`:
+    /// - JSON: writes `payload` unchanged + a stderr `Warning:` line.
+    /// - Agent: passes `[hint]` as `warnings` in the envelope. Stderr stays
+    ///   silent — the MCP server captures child stderr and a duplicate line
+    ///   would be double-noise alongside the structured warning.
+    /// - Text: stderr `Warning:` line + caller's `renderText` closure +
+    ///   trailing `(partial results — <hint>)` trailer.
+    public func emit<T: Encodable>(
+        _ payload: T,
+        timedOut: Bool = false,
+        timedOutHint: String,
+        renderText: () -> Void
+    ) throws {
+        if timedOut, !isAgent {
+            FileHandle.standardError.write(Data("Warning: \(timedOutHint)\n".utf8))
+        }
+        if isJSON {
+            try printJSON(payload)
+        } else if isAgent {
+            try printAgent(payload, warnings: timedOut ? [timedOutHint] : nil)
+        } else {
+            renderText()
+            if timedOut {
+                print("(partial results — \(timedOutHint))")
+            }
+        }
+    }
 }
