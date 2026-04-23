@@ -57,3 +57,20 @@ Progress `print()` calls guarded by `!outputOptions.isJSON` also need `&& !outpu
 ## `CalendarBridge` is `@unchecked Sendable` — parallelize reads
 
 Multiple `bridge.listEvents(from:to:)` calls in the same command can run concurrently via `async let` (see `DigestCommand.swift` for today/upcoming pattern). Same applies anywhere you need a day-scoped + range-scoped read together.
+
+## Soft timeout inside long-running JXA loops (mail + notes search/list/folders)
+
+Any JXA loop that walks an unbounded collection (mailboxes, messages, notes, folders) must self-bound — the MCP `runChild` 60s hard cap will SIGKILL the child otherwise, leaving the user with no partial results.
+
+Pattern (used by `MailBridge.buildSearchScript`, `NotesBridge.buildSearchScript`/`buildListScript`/`buildListFoldersScript`):
+1. Take `softTimeoutMs: Int = 22000` builder param. Clamp to [1000, 300_000].
+2. Inject `var _start = Date.now(); var _meta = { timedOut: false };` at the top of the script.
+3. At the top of every iteration that does Apple-side I/O (per-mailbox, per-message, per-note, per-folder):
+   ```js
+   if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
+   ```
+4. Wrap output as `JSON.stringify({results: results, meta: _meta})`.
+
+In Swift the bridge returns `Outcome<T> { results, timedOut }` (mail uses a domain-specific `SearchOutcome { messages, timedOut }`; notes uses a generic `Outcome<T>`). Commands surface the flag via `output.emit(payload, timedOut:, timedOutHint:) { renderText() }` — that helper writes a stderr `Warning:`, threads `[hint]` into the agent envelope's `warnings: [...]`, and appends a `(partial results — ...)` trailer in text mode.
+
+Defaults: 22s soft cap leaves ~8s headroom under the 30s ScriptRunner timeout and well under the 60s MCP `runChild` failsafe. Don't raise above ~50s without lowering the runChild cap to match.

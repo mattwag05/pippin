@@ -136,25 +136,6 @@ final class AgentEnvelopeTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func captureStdout(_ body: () throws -> Void) throws -> String {
-        // Duplicate original stdout, redirect to a pipe, run body, restore.
-        fflush(stdout)
-        let originalFD = dup(fileno(stdout))
-        defer { close(originalFD) }
-
-        let pipe = Pipe()
-        dup2(pipe.fileHandleForWriting.fileDescriptor, fileno(stdout))
-
-        try body()
-
-        fflush(stdout)
-        pipe.fileHandleForWriting.closeFile()
-        dup2(originalFD, fileno(stdout))
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8) ?? ""
-    }
-
     private func decodeObject(_ text: String) throws -> [String: Any] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let data = try XCTUnwrap(trimmed.data(using: .utf8))

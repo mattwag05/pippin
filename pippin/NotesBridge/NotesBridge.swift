@@ -3,11 +3,52 @@ import Foundation
 enum NotesBridge {
     // MARK: - Public API
 
-    static func listNotes(folder: String? = nil, limit: Int = 50) throws -> [NoteInfo] {
+    /// Outcome of a JXA query that walks an unbounded collection (notes,
+    /// folders). The `timedOut` flag is set when the script's internal
+    /// soft-timeout fires, so callers can surface a "partial results"
+    /// advisory to the user. See `MailBridge.SearchOutcome` for the parallel
+    /// pattern.
+    struct Outcome<T: Decodable>: Decodable {
+        let results: T
+        let timedOut: Bool
+
+        init(results: T, timedOut: Bool) {
+            self.results = results
+            self.timedOut = timedOut
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            results = try container.decode(T.self, forKey: .results)
+            let meta = try container.decodeIfPresent(Meta.self, forKey: .meta)
+            timedOut = meta?.timedOut ?? false
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case results, meta
+        }
+
+        /// Backward-compatible: legacy scripts that don't emit `timedOut`
+        /// default to `false` rather than failing decode.
+        private struct Meta: Decodable {
+            let timedOut: Bool
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case timedOut
+            }
+        }
+    }
+
+    static func listNotes(folder: String? = nil, limit: Int = 50, softTimeoutMs: Int = 22000) throws -> Outcome<[NoteInfo]> {
         let clampedLimit = max(1, min(limit, 500))
-        let script = buildListScript(folder: folder, limit: clampedLimit)
+        let script = buildListScript(folder: folder, limit: clampedLimit, softTimeoutMs: softTimeoutMs)
         let json = try runScript(script)
-        return try decode([NoteInfo].self, from: json)
+        return try decode(Outcome<[NoteInfo]>.self, from: json)
     }
 
     static func showNote(id: String) throws -> NoteInfo {
@@ -16,17 +57,17 @@ enum NotesBridge {
         return try decode(NoteInfo.self, from: json)
     }
 
-    static func searchNotes(query: String, folder: String? = nil, limit: Int = 50) throws -> [NoteInfo] {
+    static func searchNotes(query: String, folder: String? = nil, limit: Int = 50, softTimeoutMs: Int = 22000) throws -> Outcome<[NoteInfo]> {
         let clampedLimit = max(1, min(limit, 500))
-        let script = buildSearchScript(query: query, folder: folder, limit: clampedLimit)
+        let script = buildSearchScript(query: query, folder: folder, limit: clampedLimit, softTimeoutMs: softTimeoutMs)
         let json = try runScript(script)
-        return try decode([NoteInfo].self, from: json)
+        return try decode(Outcome<[NoteInfo]>.self, from: json)
     }
 
-    static func listFolders() throws -> [NoteFolder] {
-        let script = buildListFoldersScript()
+    static func listFolders(softTimeoutMs: Int = 22000) throws -> Outcome<[NoteFolder]> {
+        let script = buildListFoldersScript(softTimeoutMs: softTimeoutMs)
         let json = try runScript(script)
-        return try decode([NoteFolder].self, from: json)
+        return try decode(Outcome<[NoteFolder]>.self, from: json)
     }
 
     static func createNote(title: String, body: String? = nil, folder: String? = nil) throws -> NoteActionResult {
@@ -65,15 +106,27 @@ enum NotesBridge {
         s.map { "'\(jsEscape($0))'" } ?? "null"
     }
 
+    /// Clamp soft-timeout to a sane range. Mirrors `MailBridgeScripts`:
+    /// 1s floor (anything lower kills useful work) and 5min ceiling (anything
+    /// higher exceeds the MCP `runChild` 60s hard cap anyway, but CLI-direct
+    /// callers may want longer).
+    static func clampSoftTimeoutMs(_ ms: Int) -> Int {
+        max(1000, min(ms, 300_000))
+    }
+
     // MARK: - JXA Script Builders
 
-    static func buildListScript(folder: String?, limit: Int) -> String {
+    static func buildListScript(folder: String?, limit: Int, softTimeoutMs: Int = 22000) -> String {
         let folderFilter = jsEscapeOptional(folder)
+        let clampedTimeout = clampSoftTimeoutMs(softTimeoutMs)
         return """
         var app = Application('Notes');
         app.includeStandardAdditions = true;
         var folderFilter = \(folderFilter);
         var limit = \(limit);
+        var softTimeoutMs = \(clampedTimeout);
+        var _start = Date.now();
+        var _meta = { timedOut: false };
         var notes = [];
         if (folderFilter !== null) {
             var folders = app.folders.whose({name: folderFilter})();
@@ -88,12 +141,15 @@ enum NotesBridge {
             return b.modificationDate() - a.modificationDate();
         });
         var sliced = notes.slice(0, limit);
-        var results = sliced.map(function(note) {
+        var results = [];
+        for (var i = 0; i < sliced.length; i++) {
+            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
+            var note = sliced[i];
             var folderId = '';
             var folderName = '';
             try { folderId = note.container().id(); } catch(e) {}
             try { folderName = note.container().name(); } catch(e) {}
-            return {
+            results.push({
                 id: note.id(),
                 title: note.name(),
                 body: note.body(),
@@ -103,9 +159,9 @@ enum NotesBridge {
                 account: null,
                 creationDate: note.creationDate().toISOString(),
                 modificationDate: note.modificationDate().toISOString()
-            };
-        });
-        JSON.stringify(results);
+            });
+        }
+        JSON.stringify({results: results, meta: _meta});
         """
     }
 
@@ -136,15 +192,19 @@ enum NotesBridge {
         """
     }
 
-    static func buildSearchScript(query: String, folder: String?, limit: Int) -> String {
+    static func buildSearchScript(query: String, folder: String?, limit: Int, softTimeoutMs: Int = 22000) -> String {
         let safeQuery = jsEscape(query)
         let folderFilter = jsEscapeOptional(folder)
+        let clampedTimeout = clampSoftTimeoutMs(softTimeoutMs)
         return """
         var app = Application('Notes');
         app.includeStandardAdditions = true;
         var query = '\(safeQuery)'.toLowerCase();
         var folderFilter = \(folderFilter);
         var limit = \(limit);
+        var softTimeoutMs = \(clampedTimeout);
+        var _start = Date.now();
+        var _meta = { timedOut: false };
         var notes = [];
         if (folderFilter !== null) {
             var folders = app.folders.whose({name: folderFilter})();
@@ -160,6 +220,7 @@ enum NotesBridge {
         });
         var results = [];
         for (var i = 0; i < notes.length && results.length < limit; i++) {
+            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
             var note = notes[i];
             var title = '';
             var plain = '';
@@ -185,26 +246,33 @@ enum NotesBridge {
                 });
             }
         }
-        JSON.stringify(results);
+        JSON.stringify({results: results, meta: _meta});
         """
     }
 
-    static func buildListFoldersScript() -> String {
+    static func buildListFoldersScript(softTimeoutMs: Int = 22000) -> String {
+        let clampedTimeout = clampSoftTimeoutMs(softTimeoutMs)
         return """
         var app = Application('Notes');
         app.includeStandardAdditions = true;
+        var softTimeoutMs = \(clampedTimeout);
+        var _start = Date.now();
+        var _meta = { timedOut: false };
         var folders = app.folders();
-        var results = folders.map(function(f) {
+        var results = [];
+        for (var i = 0; i < folders.length; i++) {
+            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
+            var f = folders[i];
             var count = 0;
             try { count = f.notes().length; } catch(e) {}
-            return {
+            results.push({
                 id: f.id(),
                 name: f.name(),
                 account: null,
                 noteCount: count
-            };
-        });
-        JSON.stringify(results);
+            });
+        }
+        JSON.stringify({results: results, meta: _meta});
         """
     }
 

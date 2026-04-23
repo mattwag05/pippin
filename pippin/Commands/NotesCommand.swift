@@ -13,6 +13,10 @@ public struct NotesCommand: ParsableCommand {
 
     public init() {}
 
+    /// Hint surfaced when a Notes JXA loop hits its 22s soft timeout.
+    /// Mirrors `MailCommand.Search.timedOutHint`.
+    static let timedOutHint = "Notes scan exceeded soft timeout, returning partial results — narrow with --folder or --limit for complete results"
+
     // MARK: - List
 
     public struct List: ParsableCommand {
@@ -47,17 +51,20 @@ public struct NotesCommand: ParsableCommand {
                 try runPaginated()
                 return
             }
-            let notes = try NotesBridge.listNotes(folder: folder, limit: limit)
+            let outcome = try NotesBridge.listNotes(folder: folder, limit: limit)
+            let notes = outcome.results
             if output.isJSON {
                 try printFilteredNotes(notes, fields: fields)
             } else if output.isAgent {
-                try output.printAgent(notes)
+                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {}
             } else {
-                if notes.isEmpty {
-                    print("No notes found.")
-                    return
+                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
+                    if notes.isEmpty {
+                        print("No notes found.")
+                    } else {
+                        print(printNotesTable(notes))
+                    }
                 }
-                print(printNotesTable(notes))
             }
         }
 
@@ -67,24 +74,26 @@ public struct NotesCommand: ParsableCommand {
                 pagination, defaultPageSize: limit, filterHash: hash
             )
             // Bridge has no offset; over-fetch and slice in-memory.
-            let all = try NotesBridge.listNotes(
+            let outcome = try NotesBridge.listNotes(
                 folder: folder, limit: offset + pageSize + 1
             )
             let page = try Pagination.paginate(
-                all: all, offset: offset, pageSize: pageSize, filterHash: hash
+                all: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
             )
             if output.isJSON {
                 try printFilteredNotesPage(page, fields: fields)
             } else if output.isAgent {
-                try output.printAgent(page)
+                try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {}
             } else {
-                if page.items.isEmpty {
-                    print("No notes found.")
-                } else {
-                    print(printNotesTable(page.items))
-                }
-                if let cursor = page.nextCursor {
-                    print("(more — re-run with --cursor \(cursor))")
+                try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
+                    if page.items.isEmpty {
+                        print("No notes found.")
+                    } else {
+                        print(printNotesTable(page.items))
+                    }
+                    if let cursor = page.nextCursor {
+                        print("(more — re-run with --cursor \(cursor))")
+                    }
                 }
             }
         }
@@ -149,17 +158,20 @@ public struct NotesCommand: ParsableCommand {
         }
 
         public mutating func run() throws {
-            let notes = try NotesBridge.searchNotes(query: query, folder: folder, limit: limit)
+            let outcome = try NotesBridge.searchNotes(query: query, folder: folder, limit: limit)
+            let notes = outcome.results
             if output.isJSON {
                 try printFilteredNotes(notes, fields: fields)
             } else if output.isAgent {
-                try output.printAgent(notes)
+                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {}
             } else {
-                if notes.isEmpty {
-                    print("No notes matching \"\(query)\".")
-                    return
+                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
+                    if notes.isEmpty {
+                        print("No notes matching \"\(query)\".")
+                    } else {
+                        print(printNotesTable(notes))
+                    }
                 }
-                print(printNotesTable(notes))
             }
         }
     }
@@ -177,17 +189,20 @@ public struct NotesCommand: ParsableCommand {
         public init() {}
 
         public mutating func run() throws {
-            let folders = try NotesBridge.listFolders()
+            let outcome = try NotesBridge.listFolders()
+            let folders = outcome.results
             if output.isJSON {
                 try printJSON(folders)
             } else if output.isAgent {
-                try output.printAgent(folders)
+                try output.emit(folders, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {}
             } else {
-                if folders.isEmpty {
-                    print("No folders found.")
-                    return
+                try output.emit(folders, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
+                    if folders.isEmpty {
+                        print("No folders found.")
+                    } else {
+                        print(printFoldersTable(folders))
+                    }
                 }
-                print(printFoldersTable(folders))
             }
         }
     }

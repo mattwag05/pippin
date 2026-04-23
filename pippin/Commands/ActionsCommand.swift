@@ -125,7 +125,7 @@ public struct ActionsCommand: AsyncParsableCommand {
         }
 
         private func collectNoteItems(since: Date?) throws -> [ActionExtractor.Item] {
-            let all = try NotesBridge.listNotes(folder: nil, limit: limit)
+            let all = try NotesBridge.listNotes(folder: nil, limit: limit).results
             let filtered: [NoteInfo]
             if let since {
                 let isoFrac = ISO8601DateFormatter()
