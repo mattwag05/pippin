@@ -170,7 +170,7 @@ public struct MailCommand: AsyncParsableCommand {
                 return
             }
 
-            let messages = try MailBridge.searchMessages(
+            let outcome = try MailBridge.searchMessages(
                 query: query,
                 account: account,
                 mailbox: mailbox,
@@ -182,14 +182,24 @@ public struct MailCommand: AsyncParsableCommand {
                 to: to,
                 verbose: verbose
             )
+            let messages = outcome.messages
+            if outcome.timedOut {
+                fputs("Warning: \(Self.timedOutHint)\n", stderr)
+            }
             if output.isJSON {
                 try printJSON(messages)
             } else if output.isAgent {
-                try output.printAgent(messages)
+                let warnings = outcome.timedOut ? [Self.timedOutHint] : nil
+                try output.printAgent(messages, warnings: warnings)
             } else {
                 printMessageTable(messages)
+                if outcome.timedOut {
+                    print("(partial results — \(Self.timedOutHint))")
+                }
             }
         }
+
+        static let timedOutHint = "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results"
 
         private func runPaginated() async throws {
             let hash = Pagination.filterHash([
@@ -206,6 +216,7 @@ public struct MailCommand: AsyncParsableCommand {
                 pagination, defaultPageSize: limit, filterHash: hash
             )
             let page: Page<MailMessage>
+            var paginatedTimedOut = false
             if semantic {
                 guard provider == "ollama" else {
                     throw MailAIError.unsupportedEmbeddingProvider(provider)
@@ -224,7 +235,7 @@ public struct MailCommand: AsyncParsableCommand {
                     all: all, offset: offset, pageSize: pageSize, filterHash: hash
                 )
             } else {
-                let fetched = try MailBridge.searchMessages(
+                let outcome = try MailBridge.searchMessages(
                     query: query,
                     account: account,
                     mailbox: mailbox,
@@ -236,18 +247,26 @@ public struct MailCommand: AsyncParsableCommand {
                     to: to,
                     verbose: verbose
                 )
+                paginatedTimedOut = outcome.timedOut
                 page = try Pagination.pageFromPushdown(
-                    fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+                    fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
                 )
+            }
+            if paginatedTimedOut {
+                fputs("Warning: \(Self.timedOutHint)\n", stderr)
             }
             if output.isJSON {
                 try printJSON(page)
             } else if output.isAgent {
-                try output.printAgent(page)
+                let warnings = paginatedTimedOut ? [Self.timedOutHint] : nil
+                try output.printAgent(page, warnings: warnings)
             } else {
                 printMessageTable(page.items)
                 if let cursor = page.nextCursor {
                     print("(more — re-run with --cursor \(cursor))")
+                }
+                if paginatedTimedOut {
+                    print("(partial results — \(Self.timedOutHint))")
                 }
             }
         }
@@ -465,8 +484,8 @@ public struct MailCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let compoundId: String
             if let subject = subject {
-                let results = try MailBridge.searchMessages(query: subject, limit: 1)
-                guard let first = results.first else {
+                let outcome = try MailBridge.searchMessages(query: subject, limit: 1)
+                guard let first = outcome.messages.first else {
                     throw ValidationError("No message found matching subject: \(subject)")
                 }
                 compoundId = first.id

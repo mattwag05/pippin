@@ -127,6 +127,53 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("msg.messageId()"))
     }
 
+    // MARK: - buildSearchScript (soft timeout)
+
+    func testSearchScriptDefaultSoftTimeoutIs22Seconds() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("var softTimeoutMs = 22000;"))
+    }
+
+    func testSearchScriptInterpolatesSoftTimeout() {
+        let script = MailBridge.buildSearchScript(
+            query: "test", account: nil, limit: 10, softTimeoutMs: 5000
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 5000;"))
+    }
+
+    func testSearchScriptClampsSoftTimeoutBelowOneSecond() {
+        let script = MailBridge.buildSearchScript(
+            query: "test", account: nil, limit: 10, softTimeoutMs: 0
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 1000;"))
+    }
+
+    func testSearchScriptClampsSoftTimeoutAboveFiveMinutes() {
+        let script = MailBridge.buildSearchScript(
+            query: "test", account: nil, limit: 10, softTimeoutMs: 999_999_999
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 300000;"))
+    }
+
+    func testSearchScriptInjectsTimedOutMetaField() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("timedOut: false"))
+    }
+
+    func testSearchScriptInjectsStartTimestamp() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("var _searchStart = Date.now();"))
+    }
+
+    func testSearchScriptBreaksOnSoftTimeoutInPerMessageLoop() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(
+            script.contains("Date.now() - _searchStart > softTimeoutMs"),
+            "search script must check elapsed time inside the scan loops"
+        )
+        XCTAssertTrue(script.contains("_meta.timedOut = true"))
+    }
+
     func testSearchScriptSkipsFlattenWhenMailboxFilterSet() {
         // When a mailbox is explicitly requested, resolveMailbox is still used (not the flatten helper).
         let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: "INBOX", limit: 10)

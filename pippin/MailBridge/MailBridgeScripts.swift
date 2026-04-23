@@ -159,7 +159,8 @@ extension MailBridge {
         offset: Int = 0,
         after: String? = nil,
         before: String? = nil,
-        to: String? = nil
+        to: String? = nil,
+        softTimeoutMs: Int = 22000
     ) -> String {
         let safeQuery = jsEscape(query)
         let acctFilter = jsEscapeOptional(account)
@@ -170,6 +171,8 @@ extension MailBridge {
         // Clamp limit to prevent runaway scans; per-mailbox cap bounds scan time
         let safeLimitVal = max(1, min(limit, 500))
         let perMailboxLimit = 500
+        // Clamp soft timeout to a sane window: 1s floor, 5min ceiling.
+        let safeSoftTimeoutMs = max(1000, min(softTimeoutMs, 300_000))
 
         return """
         var mail = Application('Mail');
@@ -184,6 +187,7 @@ extension MailBridge {
         var limit = \(safeLimitVal);
         var offset = \(offset);
         var perMailboxLimit = \(perMailboxLimit);
+        var softTimeoutMs = \(safeSoftTimeoutMs);
         var afterFilter = \(afterFilter);
         var beforeFilter = \(beforeFilter);
         var toFilter = \(toFilter);
@@ -191,11 +195,14 @@ extension MailBridge {
         var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var results = [];
         var skipped = 0;
-        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0};
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
         var seenMsgKeys = {};
+        // Soft timeout: bail out of nested scan loops with whatever we've got so the
+        // CLI returns partial results before the ScriptRunner hard timeout kicks in.
+        var _searchStart = Date.now();
 
         var accounts = mail.accounts();
-        for (var a = 0; a < accounts.length && results.length < limit; a++) {
+        for (var a = 0; a < accounts.length && results.length < limit && !_meta.timedOut; a++) {
             var acct = accounts[a];
             var acctName = acct.name();
             if (acctFilter !== null && acctName !== acctFilter) continue;
@@ -208,7 +215,8 @@ extension MailBridge {
             } else {
                 mbList = collectAllMailboxes(acct.mailboxes(), []);
             }
-            for (var m = 0; m < mbList.length && results.length < limit; m++) {
+            for (var m = 0; m < mbList.length && results.length < limit && !_meta.timedOut; m++) {
+                if (Date.now() - _searchStart > softTimeoutMs) { _meta.timedOut = true; break; }
                 var mb = mbList[m];
                 _meta.mailboxesScanned++;
                 // Cap messages scanned per mailbox; scan newest first (IMAP order is ascending)
@@ -219,6 +227,7 @@ extension MailBridge {
                 var msgs = allMsgs.slice(startIdx, allMsgs.length);
 
                 for (var i = msgs.length - 1; i >= 0 && results.length < limit; i--) {
+                    if (Date.now() - _searchStart > softTimeoutMs) { _meta.timedOut = true; break; }
                     var msg = msgs[i];
                     _meta.messagesExamined++;
 

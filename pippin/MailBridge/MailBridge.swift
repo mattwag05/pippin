@@ -38,6 +38,14 @@ enum MailBridge {
         return try decode([MailMessage].self, from: json)
     }
 
+    /// Outcome of a search call: the matched messages plus a `timedOut` flag
+    /// that callers should surface to the user (text/JSON/agent format) so they
+    /// know to narrow the query when results may be incomplete.
+    struct SearchOutcome {
+        let messages: [MailMessage]
+        let timedOut: Bool
+    }
+
     static func searchMessages(
         query: String,
         account: String? = nil,
@@ -48,16 +56,19 @@ enum MailBridge {
         after: String? = nil,
         before: String? = nil,
         to: String? = nil,
-        verbose: Bool = false
-    ) throws -> [MailMessage] {
+        verbose: Bool = false,
+        softTimeoutMs: Int = 22000
+    ) throws -> SearchOutcome {
         let clampedOffset = max(0, offset)
         let script = buildSearchScript(
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
-            limit: limit, offset: clampedOffset, after: after, before: before, to: to
+            limit: limit, offset: clampedOffset, after: after, before: before, to: to,
+            softTimeoutMs: softTimeoutMs
         )
-        // Search recurses through nested mailboxes (Gmail's [Gmail]/All Mail etc.);
-        // 90s accommodates multi-mailbox IMAP accounts.
-        let json = try runScript(script, timeoutSeconds: 90)
+        // The JXA loop self-bounds via softTimeoutMs (default 22s) and returns
+        // partial results with meta.timedOut=true. ScriptRunner timeout is a
+        // hard failsafe slightly above that to allow JSON serialization.
+        let json = try runScript(script, timeoutSeconds: 30)
         let wrapper = try decode(SearchResponse.self, from: json)
         if verbose {
             let stderr = FileHandle.standardError
@@ -67,12 +78,13 @@ enum MailBridge {
                 "[search] mailboxes scanned: \(meta.mailboxesScanned)",
                 "[search] messages examined: \(meta.messagesExamined)",
                 "[search] body search: \(searchBody ? "on" : "off (use --body to search message content)")",
+                "[search] timed out: \(meta.timedOut ? "yes (returning partial results)" : "no")",
             ]
             for line in lines {
                 stderr.write(Data((line + "\n").utf8))
             }
         }
-        return wrapper.results
+        return SearchOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
     }
 
     static func markMessage(
@@ -231,13 +243,29 @@ enum MailBridge {
 
     // MARK: - Private Types
 
-    private struct SearchMeta: Decodable {
+    /// Internal so tests can verify backward-compatible JSON decoding when
+    /// older JXA scripts omit the `timedOut` field.
+    struct SearchMeta: Decodable {
         let accountsScanned: Int
         let mailboxesScanned: Int
         let messagesExamined: Int
+        let timedOut: Bool
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            accountsScanned = try container.decode(Int.self, forKey: .accountsScanned)
+            mailboxesScanned = try container.decode(Int.self, forKey: .mailboxesScanned)
+            messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
+            // Backward-compatible: scripts that don't emit timedOut default to false.
+            timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case accountsScanned, mailboxesScanned, messagesExamined, timedOut
+        }
     }
 
-    private struct SearchResponse: Decodable {
+    struct SearchResponse: Decodable {
         let results: [MailMessage]
         let meta: SearchMeta
     }
