@@ -93,10 +93,8 @@ enum MCPServerRuntime {
         // Hard timeout: SIGTERM, then SIGKILL after a 2s grace, mirroring
         // ScriptRunner's pattern. Without this the JSON-RPC loop blocks forever
         // if the child wedges (e.g. osascript stuck on an unresponsive Mail.app).
-        nonisolated(unsafe) var timedOut = false
         let timeoutItem = DispatchWorkItem {
             guard process.isRunning else { return }
-            timedOut = true
             process.terminate()
             DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
                 if process.isRunning { kill(process.processIdentifier, SIGKILL) }
@@ -108,7 +106,12 @@ enum MCPServerRuntime {
         timeoutItem.cancel()
         drainGroup.wait()
 
-        if timedOut {
+        // Detect timeout from process state, not a separate flag — avoids the
+        // race where the child exits naturally microseconds before the timeout
+        // work item fires. `.uncaughtSignal` plus elapsed≥timeout is the
+        // signature of "we killed it"; SIGSEGV-style crashes flow through as
+        // non-zero exit codes via the normal AgentError pipeline.
+        if process.terminationReason == .uncaughtSignal {
             throw MCPServerRuntimeError.childTimedOut(seconds: timeoutSeconds)
         }
 
