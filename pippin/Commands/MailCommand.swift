@@ -182,24 +182,47 @@ public struct MailCommand: AsyncParsableCommand {
                 to: to,
                 verbose: verbose
             )
-            let messages = outcome.messages
-            if outcome.timedOut {
+            try emitMessages(outcome.messages, timedOut: outcome.timedOut)
+        }
+
+        static let timedOutHint = "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results"
+
+        /// Render search results in whichever format the user requested, plus
+        /// the timeout advisory (stderr always, agent warnings, text-mode trailer).
+        private func emitResult<T: Encodable>(
+            _ payload: T,
+            timedOut: Bool,
+            renderText: () -> Void
+        ) throws {
+            if timedOut {
                 fputs("Warning: \(Self.timedOutHint)\n", stderr)
             }
             if output.isJSON {
-                try printJSON(messages)
+                try printJSON(payload)
             } else if output.isAgent {
-                let warnings = outcome.timedOut ? [Self.timedOutHint] : nil
-                try output.printAgent(messages, warnings: warnings)
+                try output.printAgent(payload, warnings: timedOut ? [Self.timedOutHint] : nil)
             } else {
-                printMessageTable(messages)
-                if outcome.timedOut {
+                renderText()
+                if timedOut {
                     print("(partial results — \(Self.timedOutHint))")
                 }
             }
         }
 
-        static let timedOutHint = "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results"
+        private func emitMessages(_ messages: [MailMessage], timedOut: Bool) throws {
+            try emitResult(messages, timedOut: timedOut) {
+                printMessageTable(messages)
+            }
+        }
+
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) throws {
+            try emitResult(page, timedOut: timedOut) {
+                printMessageTable(page.items)
+                if let cursor = page.nextCursor {
+                    print("(more — re-run with --cursor \(cursor))")
+                }
+            }
+        }
 
         private func runPaginated() async throws {
             let hash = Pagination.filterHash([
@@ -252,23 +275,7 @@ public struct MailCommand: AsyncParsableCommand {
                     fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
                 )
             }
-            if paginatedTimedOut {
-                fputs("Warning: \(Self.timedOutHint)\n", stderr)
-            }
-            if output.isJSON {
-                try printJSON(page)
-            } else if output.isAgent {
-                let warnings = paginatedTimedOut ? [Self.timedOutHint] : nil
-                try output.printAgent(page, warnings: warnings)
-            } else {
-                printMessageTable(page.items)
-                if let cursor = page.nextCursor {
-                    print("(more — re-run with --cursor \(cursor))")
-                }
-                if paginatedTimedOut {
-                    print("(partial results — \(Self.timedOutHint))")
-                }
-            }
+            try emitPage(page, timedOut: paginatedTimedOut)
         }
     }
 
