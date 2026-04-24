@@ -4,11 +4,11 @@
 
 ## What you get
 
-32 tools spanning the commonly scripted pippin surfaces:
+33 tools spanning the commonly scripted pippin surfaces:
 
 | Area | Tools |
 |---|---|
-| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_show`, `mail_search` |
+| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_show`, `mail_search`, `mail_attachments` |
 | Calendar | `calendar_list`, `calendar_events`, `calendar_today`, `calendar_remaining`, `calendar_upcoming`, `calendar_search`, `calendar_create` |
 | Reminders | `reminders_lists`, `reminders_list`, `reminders_show`, `reminders_search`, `reminders_create`, `reminders_complete` |
 | Contacts | `contacts_search`, `contacts_show` |
