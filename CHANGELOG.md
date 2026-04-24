@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.22.0] - 2026-04-24
+
+### Added
+
+- [feat] `pippin messages` subcommand — read-only access to Apple Messages (`~/Library/Messages/chat.db` via GRDB). Subcommands: `list` (recent conversations, most-recent first), `search <query>` (substring match over message bodies), `show <conversation-id>` (thread view by GUID), `exclude {list,add,remove} <thread>` (per-thread opt-out stored in config). Handles both the post-macOS-10.13 nanosecond date column and the legacy seconds format. Agent/JSON output obeys envelope v1. Audit log at `~/.local/share/pippin/messages-audit.jsonl` records every read op (no message bodies persisted). MCP tools: `messages_list`, `messages_search`, `messages_show`. Requires Full Disk Access for the invoking terminal.
+
+---
+
 ## [0.21.0] - 2026-04-24
 
 ### Added

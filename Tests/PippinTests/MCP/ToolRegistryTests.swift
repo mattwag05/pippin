@@ -169,8 +169,10 @@ final class ToolRegistryTests: XCTestCase {
     private func sampleArgs(for name: String) -> JSONValue {
         // Provide synthetic required fields for tools that demand them.
         switch name {
-        case "mail_search", "calendar_search", "reminders_search", "contacts_search", "notes_search":
+        case "mail_search", "calendar_search", "reminders_search", "contacts_search", "notes_search", "messages_search":
             return .object(["query": .string("x")])
+        case "messages_show":
+            return .object(["conversationId": .string("iMessage;-;+15551234567")])
         case "mail_show", "mail_attachments":
             return .object(["messageId": .string("a||b||1")])
         case "reminders_show", "reminders_complete":
@@ -257,6 +259,49 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertTrue(withAll.contains("--all"))
 
         XCTAssertThrowsError(try tool.buildArgs(.object([:])))
+    }
+
+    // MARK: - Messages tools
+
+    func testMessagesToolsRegistered() {
+        let names = Set(MCPToolRegistry.tools.map { $0.name })
+        XCTAssertTrue(names.contains("messages_list"))
+        XCTAssertTrue(names.contains("messages_search"))
+        XCTAssertTrue(names.contains("messages_show"))
+    }
+
+    func testMessagesListArgvShape() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "messages_list"))
+        let argv = try tool.buildArgs(.object([
+            "sinceHours": .int(24),
+            "limit": .int(10),
+        ]))
+        XCTAssertEqual(argv[0], "messages")
+        XCTAssertEqual(argv[1], "list")
+        XCTAssertTrue(argv.contains("--since-hours"))
+        XCTAssertTrue(argv.contains("24"))
+        XCTAssertTrue(argv.contains("--limit"))
+        XCTAssertTrue(argv.contains("10"))
+        XCTAssertTrue(argv.contains("--format"))
+        XCTAssertTrue(argv.contains("agent"))
+    }
+
+    func testMessagesSearchRequiresQuery() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "messages_search"))
+        XCTAssertThrowsError(try tool.buildArgs(.object([:]))) { error in
+            guard case MCPToolArgError.missingRequired("query") = error else {
+                return XCTFail("Expected missingRequired(\"query\"), got \(error)")
+            }
+        }
+    }
+
+    func testMessagesShowRequiresConversationId() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "messages_show"))
+        XCTAssertThrowsError(try tool.buildArgs(.object([:]))) { error in
+            guard case MCPToolArgError.missingRequired("conversationId") = error else {
+                return XCTFail("Expected missingRequired(conversationId), got \(error)")
+            }
+        }
     }
 
     // MARK: - Jobs tools
