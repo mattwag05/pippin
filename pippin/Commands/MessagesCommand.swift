@@ -4,8 +4,8 @@ import Foundation
 public struct MessagesCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "messages",
-        abstract: "Read Apple Messages conversations (read-only).",
-        subcommands: [List.self, Search.self, Show.self, Exclude.self]
+        abstract: "Read Apple Messages conversations and send (draft by default).",
+        subcommands: [List.self, Search.self, Show.self, Send.self, Exclude.self]
     )
 
     public init() {}
@@ -185,6 +185,112 @@ public struct MessagesCommand: AsyncParsableCommand {
             if payload.truncated {
                 print("")
                 print("(older messages truncated — re-run with --limit N)")
+            }
+        }
+    }
+
+    // MARK: - Send
+
+    public enum SendMode: String, Sendable {
+        case draft
+        case autonomous
+    }
+
+    public struct Send: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "send",
+            abstract: "Send a message. Defaults to --draft; autonomous delivery requires triple gate."
+        )
+
+        @Option(name: .long, help: "Recipient handle (e.g. +15551234567) or chat GUID.")
+        public var to: String
+
+        @Option(name: .long, help: "Message body.")
+        public var body: String
+
+        @Flag(name: .long, help: "Do not actually send — just log the draft (default).")
+        public var draft: Bool = false
+
+        @Flag(name: .long, help: "Send for real. Requires PIPPIN_AUTONOMOUS_MESSAGES=1 and allowlist.")
+        public var autonomous: Bool = false
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func validate() throws {
+            if draft, autonomous {
+                throw ValidationError("--draft and --autonomous are mutually exclusive.")
+            }
+        }
+
+        public mutating func run() async throws {
+            let mode: SendMode = autonomous ? .autonomous : .draft
+            let bodyHash = MessagesAuditLog.hash(body: body)
+
+            if mode == .autonomous {
+                try gateAutonomous(recipient: to)
+            }
+
+            let phi = PHIFilter.scan(body)
+            if !phi.isClean {
+                MessagesAuditLog.record(
+                    operation: "send",
+                    params: ["mode": mode.rawValue],
+                    recipient: to,
+                    bodyHash: bodyHash,
+                    sent: false,
+                    overrides: phi.flagged
+                )
+                throw MessagesSendError.phiFiltered(phi.flagged)
+            }
+
+            let payload: MessagesSendResult = try {
+                switch mode {
+                case .autonomous:
+                    let result = try MessagesSender.send(to: to, body: body)
+                    return MessagesSendResult(
+                        recipient: to,
+                        delivered: result.delivered,
+                        mode: mode.rawValue,
+                        detail: result.detail,
+                        bodyHash: bodyHash
+                    )
+                case .draft:
+                    return MessagesSendResult(
+                        recipient: to,
+                        delivered: false,
+                        mode: mode.rawValue,
+                        detail: "draft — no delivery attempted",
+                        bodyHash: bodyHash
+                    )
+                }
+            }()
+
+            MessagesAuditLog.record(
+                operation: "send",
+                params: ["mode": mode.rawValue],
+                recipient: to,
+                bodyHash: bodyHash,
+                sent: payload.delivered
+            )
+
+            try output.emit(payload, timedOutHint: "") {
+                if payload.delivered {
+                    print("Sent to \(payload.recipient). hash=\(bodyHash.prefix(12))…")
+                } else {
+                    print("Draft (mode=\(mode.rawValue)) for \(payload.recipient). hash=\(bodyHash.prefix(12))…")
+                    print("Not delivered. Re-run with --autonomous to send (requires env + allowlist).")
+                }
+            }
+        }
+
+        private func gateAutonomous(recipient: String) throws {
+            let envOK = ProcessInfo.processInfo.environment["PIPPIN_AUTONOMOUS_MESSAGES"] == "1"
+            guard envOK else { throw MessagesSendError.autonomousNotAuthorized }
+            let allow = AIProviderFactory.loadConfig()?.messages?.autonomousAllowlist ?? []
+            guard allow.contains(recipient) else {
+                throw MessagesSendError.recipientNotAllowed(recipient)
             }
         }
     }

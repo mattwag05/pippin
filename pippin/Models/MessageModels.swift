@@ -163,3 +163,33 @@ public struct MessagesExcludeResult: Codable, Sendable {
         self.threads = threads
     }
 }
+
+public struct MessagesSendResult: Codable, Sendable {
+    public let recipient: String
+    public let delivered: Bool
+    public let mode: String
+    public let detail: String?
+    public let bodyHash: String
+
+    public init(
+        recipient: String,
+        delivered: Bool,
+        mode: String,
+        detail: String? = nil,
+        bodyHash: String
+    ) {
+        self.recipient = recipient
+        self.delivered = delivered
+        self.mode = mode
+        self.detail = detail
+        self.bodyHash = bodyHash
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case recipient
+        case delivered
+        case mode
+        case detail
+        case bodyHash = "body_hash"
+    }
+}

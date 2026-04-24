@@ -173,6 +173,8 @@ final class ToolRegistryTests: XCTestCase {
             return .object(["query": .string("x")])
         case "messages_show":
             return .object(["conversationId": .string("iMessage;-;+15551234567")])
+        case "messages_send":
+            return .object(["to": .string("+15551234567"), "body": .string("hi")])
         case "mail_show", "mail_attachments":
             return .object(["messageId": .string("a||b||1")])
         case "reminders_show", "reminders_complete":
@@ -268,6 +270,7 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertTrue(names.contains("messages_list"))
         XCTAssertTrue(names.contains("messages_search"))
         XCTAssertTrue(names.contains("messages_show"))
+        XCTAssertTrue(names.contains("messages_send"))
     }
 
     func testMessagesListArgvShape() throws {
@@ -300,6 +303,33 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertThrowsError(try tool.buildArgs(.object([:]))) { error in
             guard case MCPToolArgError.missingRequired("conversationId") = error else {
                 return XCTFail("Expected missingRequired(conversationId), got \(error)")
+            }
+        }
+    }
+
+    func testMessagesSendAlwaysDraftAndRequiresToAndBody() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "messages_send"))
+        let argv = try tool.buildArgs(.object([
+            "to": .string("+15551234567"),
+            "body": .string("hi there"),
+        ]))
+        XCTAssertEqual(argv[0], "messages")
+        XCTAssertEqual(argv[1], "send")
+        XCTAssertTrue(argv.contains("--draft"), "MCP tool must always pass --draft")
+        XCTAssertFalse(argv.contains("--autonomous"), "MCP tool must never pass --autonomous")
+        XCTAssertTrue(argv.contains("--to"))
+        XCTAssertTrue(argv.contains("+15551234567"))
+        XCTAssertTrue(argv.contains("--body"))
+        XCTAssertTrue(argv.contains("hi there"))
+
+        XCTAssertThrowsError(try tool.buildArgs(.object(["to": .string("+1555")]))) { error in
+            guard case MCPToolArgError.missingRequired("body") = error else {
+                return XCTFail("Expected missingRequired(body), got \(error)")
+            }
+        }
+        XCTAssertThrowsError(try tool.buildArgs(.object(["body": .string("hi")]))) { error in
+            guard case MCPToolArgError.missingRequired("to") = error else {
+                return XCTFail("Expected missingRequired(to), got \(error)")
             }
         }
     }

@@ -647,6 +647,24 @@ enum MCPToolRegistry {
                 return argv
             }
         ),
+        MCPTool(
+            name: "messages_send",
+            description: "Draft a message (DRAFT ONLY — MCP clients cannot trigger autonomous delivery).",
+            inputSchema: Schema.object(
+                properties: [
+                    "to": Schema.string("Recipient handle or chat GUID."),
+                    "body": Schema.string("Message body."),
+                ],
+                required: ["to", "body"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("messages", "send")
+                try argv += ["--to", ArgHelpers.requiredString(args, "to")]
+                try argv += ["--body", ArgHelpers.requiredString(args, "body")]
+                argv += ["--draft"]
+                return argv
+            }
+        ),
 
         // MARK: Memos
 

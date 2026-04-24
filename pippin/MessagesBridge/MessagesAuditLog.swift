@@ -59,6 +59,33 @@ public enum MessagesAuditLog {
         return digest.compactMap { String(format: "%02x", $0) }.joined()
     }
 
+    /// Convenience: build an entry with `now()` timestamp and append in one call.
+    /// Used by every `messages` subcommand to remove the boilerplate.
+    public static func record(
+        operation: String,
+        params: [String: String] = [:],
+        resultCount: Int? = nil,
+        recipient: String? = nil,
+        bodyHash: String? = nil,
+        sent: Bool? = nil,
+        overrides: [String]? = nil,
+        path: String? = nil
+    ) {
+        try? append(
+            MessagesAuditEntry(
+                timestamp: now(),
+                operation: operation,
+                params: params,
+                resultCount: resultCount,
+                recipient: recipient,
+                bodyHash: bodyHash,
+                sent: sent,
+                overrides: overrides
+            ),
+            path: path
+        )
+    }
+
     public static func append(_ entry: MessagesAuditEntry, path: String? = nil) throws {
         let target = path ?? defaultPath()
         let dir = (target as NSString).deletingLastPathComponent

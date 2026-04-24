@@ -24,6 +24,7 @@ public struct PippinConfig: Codable, Sendable {
     public struct MessagesConfig: Codable, Sendable {
         public var excludedThreads: [String]?
         public var defaultWindowHours: Int?
+        public var autonomousAllowlist: [String]?
     }
 }
 
