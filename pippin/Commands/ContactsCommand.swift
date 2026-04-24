@@ -11,6 +11,10 @@ public struct ContactsCommand: AsyncParsableCommand {
         ]
     )
 
+    /// Hint surfaced when a Contacts enumeration hits its 22s soft timeout.
+    /// Mirrors `NotesCommand.timedOutHint`.
+    static let timedOutHint = "Contacts scan exceeded soft timeout, returning partial results — narrow with --group (list) or use --email with a more specific query"
+
     public init() {}
 
     // MARK: - List
@@ -33,18 +37,21 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let fieldList = parseFields(fields)
-            let contacts = try ContactsBridge.listContacts(group: group, fields: fieldList)
+            let outcome = try ContactsBridge.listContacts(group: group, fields: fieldList)
+            let contacts = outcome.results
             if output.isJSON {
-                try printJSON(contacts)
+                try output.emit(contacts, timedOut: outcome.timedOut, timedOutHint: ContactsCommand.timedOutHint) {}
             } else if output.isAgent {
-                try output.printAgent(contacts)
+                try output.emit(contacts, timedOut: outcome.timedOut, timedOutHint: ContactsCommand.timedOutHint) {}
             } else {
-                if contacts.isEmpty {
-                    print("No contacts found.")
-                    return
-                }
-                for contact in contacts {
-                    print(formatContactLine(contact))
+                try output.emit(contacts, timedOut: outcome.timedOut, timedOutHint: ContactsCommand.timedOutHint) {
+                    if contacts.isEmpty {
+                        print("No contacts found.")
+                    } else {
+                        for contact in contacts {
+                            print(formatContactLine(contact))
+                        }
+                    }
                 }
             }
         }
@@ -85,10 +92,17 @@ public struct ContactsCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let fieldList = parseFields(fields)
             let contacts: [ContactInfo]
+            let timedOut: Bool
             if email {
-                contacts = try ContactsBridge.searchByEmail(query, fields: fieldList)
+                let outcome = try ContactsBridge.searchByEmail(query, fields: fieldList)
+                contacts = outcome.results
+                timedOut = outcome.timedOut
             } else {
+                // Name search uses CNContact.predicateForContacts — the
+                // Contacts framework bounds it, so no client-side timeout
+                // is needed.
                 contacts = try ContactsBridge.searchByName(query, fields: fieldList)
+                timedOut = false
             }
 
             if pagination.isActive {
@@ -102,11 +116,7 @@ public struct ContactsCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: contacts, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                if output.isJSON {
-                    try printJSON(page)
-                } else if output.isAgent {
-                    try output.printAgent(page)
-                } else {
+                try output.emit(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
                     if page.items.isEmpty {
                         print("No contacts found.")
                     } else {
@@ -121,17 +131,13 @@ public struct ContactsCommand: AsyncParsableCommand {
                 return
             }
 
-            if output.isJSON {
-                try printJSON(contacts)
-            } else if output.isAgent {
-                try output.printAgent(contacts)
-            } else {
+            try output.emit(contacts, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
                 if contacts.isEmpty {
                     print("No contacts found.")
-                    return
-                }
-                for contact in contacts {
-                    print(formatContactLine(contact))
+                } else {
+                    for contact in contacts {
+                        print(formatContactLine(contact))
+                    }
                 }
             }
         }

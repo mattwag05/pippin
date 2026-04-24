@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [fix] `contacts list` (no `--group`) and `contacts search --email` now return partial results with a `warnings` entry rather than hanging MCP clients when the Contacts store is large. Wall-clock soft timeout defaults to 22s, clamped `[1s, 5min]`, matching the mail/notes pattern. Group-filtered list and name search are unaffected (they use bounded Contacts predicates).
+
 ---
 
 ## [0.20.1] - 2026-04-23
