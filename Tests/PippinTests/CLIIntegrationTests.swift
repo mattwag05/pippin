@@ -43,10 +43,13 @@ final class CLIIntegrationTests: XCTestCase {
     }
 
     @discardableResult
-    static func runProcess(_ executable: String, args: [String]) -> (stdout: String, stderr: String, exitCode: Int32) {
+    static func runProcess(_ executable: String, args: [String], env: [String: String]? = nil) -> (stdout: String, stderr: String, exitCode: Int32) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
+        if let env {
+            process.environment = env
+        }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -61,6 +64,14 @@ final class CLIIntegrationTests: XCTestCase {
         let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         return (stdout, stderr, process.terminationStatus)
+    }
+
+    @discardableResult
+    private func runWithEnv(_ args: [String], env: [String: String]) -> (stdout: String, stderr: String, exitCode: Int32) {
+        guard let binary = CLIIntegrationTests.binaryURL else {
+            return ("", "", 0)
+        }
+        return Self.runProcess(binary.path, args: args, env: env)
     }
 
     // MARK: - Version
@@ -215,6 +226,32 @@ final class CLIIntegrationTests: XCTestCase {
             XCTAssertNotNil(check["status"], "Each check must have a 'status' field")
             XCTAssertNotNil(check["detail"], "Each check must have a 'detail' field")
         }
+    }
+
+    // MARK: - Experimental gate (Phase 3)
+
+    func testAudioAndBrowserHiddenByDefault() {
+        guard requireBinary() else { return }
+        // Scrub PIPPIN_EXPERIMENTAL from the child's env so an exported value on
+        // the developer's shell doesn't poison the negative case.
+        var env = ProcessInfo.processInfo.environment
+        env.removeValue(forKey: "PIPPIN_EXPERIMENTAL")
+        let result = runWithEnv(["--help"], env: env)
+        XCTAssertEqual(result.exitCode, 0)
+        let combined = result.stdout + result.stderr
+        XCTAssertFalse(combined.contains("\n  audio"), "audio subcommand must not appear in default help")
+        XCTAssertFalse(combined.contains("\n  browser"), "browser subcommand must not appear in default help")
+    }
+
+    func testAudioAndBrowserAppearWithExperimentalFlag() {
+        guard requireBinary() else { return }
+        var env = ProcessInfo.processInfo.environment
+        env["PIPPIN_EXPERIMENTAL"] = "1"
+        let result = runWithEnv(["--help"], env: env)
+        XCTAssertEqual(result.exitCode, 0)
+        let combined = result.stdout + result.stderr
+        XCTAssertTrue(combined.contains("\n  audio"), "audio subcommand should appear when PIPPIN_EXPERIMENTAL=1")
+        XCTAssertTrue(combined.contains("\n  browser"), "browser subcommand should appear when PIPPIN_EXPERIMENTAL=1")
     }
 }
 

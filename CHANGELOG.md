@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.20.3] - 2026-04-24
+
+### Deprecated
+
+- [deprecation] `pippin audio` and `pippin browser` subcommands are now hidden by default. Set `PIPPIN_EXPERIMENTAL=1` to re-enable them — existing scripts with the env var continue to work unchanged. These commands will be **removed in the next major release (v1.0.0)** unless an issue is filed against `github.com/mattwag05/pippin` requesting otherwise. Rationale: they're rarely used and carry outsized maintenance cost (mlx-audio Python subprocess, Playwright WebKit bundle). Code and tests remain in place so re-enabling requires no rebuild.
+
+---
+
 ## [0.20.2] - 2026-04-23
 
 ### Fixed
