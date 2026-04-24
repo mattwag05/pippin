@@ -212,6 +212,42 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertNoThrow(try MailCommand.Attachments.parse(["some-id", "--save-dir", dir.path]))
     }
 
+    func testAttachmentsSaveDirAndSaveToCacheMutuallyExclusive() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pippin-test-savedir-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        XCTAssertThrowsError(try MailCommand.Attachments.parse([
+            "some-id", "--save-dir", dir.path, "--save-to-cache",
+        ]))
+    }
+
+    func testAttachmentsSaveToCacheParsesCleanly() throws {
+        let cmd = try MailCommand.Attachments.parse(["acc||INBOX||42", "--save-to-cache"])
+        XCTAssertTrue(cmd.saveToCache)
+        XCTAssertNil(cmd.saveDir)
+    }
+
+    func testAttachmentsResolveCacheDirCreatesPathUnderCaches() throws {
+        let resolved = try MailCommand.Attachments.resolveCacheDir(for: "acc||INBOX||42")
+        let base = try XCTUnwrap(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first)
+        let expectedPrefix = base.appendingPathComponent("pippin").appendingPathComponent("attachments").path
+        XCTAssertTrue(resolved.hasPrefix(expectedPrefix), "Expected \(resolved) to start with \(expectedPrefix)")
+        // Compound separator `||` sanitizes to `__`; the final path component contains the id.
+        XCTAssertTrue(resolved.hasSuffix("acc__INBOX__42"), "Unexpected suffix: \(resolved)")
+        var isDir: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: resolved, isDirectory: &isDir))
+        XCTAssertTrue(isDir.boolValue)
+    }
+
+    func testAttachmentsResolveCacheDirSanitizesPathSeparators() throws {
+        // Gmail compound ids embed `[Gmail]/All Mail` — brackets, slash, and the space
+        // must all sanitize to `_` so the dirname is a single path component and shell
+        // consumers don't glob-expand `[Gmail]` as a character class.
+        let resolved = try MailCommand.Attachments.resolveCacheDir(for: "a||[Gmail]/All Mail||7")
+        XCTAssertTrue(resolved.hasSuffix("a___Gmail__All_Mail__7"), "Unexpected suffix: \(resolved)")
+    }
+
     // MARK: - Reply subcommand
 
     func testReplyParsesWithBody() {

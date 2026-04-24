@@ -784,11 +784,17 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Save attachments to this directory.")
         public var saveDir: String?
 
+        @Flag(name: .long, help: "Save attachments to pippin's default cache directory (~/Library/Caches/pippin/attachments/<msg>/).")
+        public var saveToCache: Bool = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
         public mutating func validate() throws {
+            if saveDir != nil, saveToCache {
+                throw ValidationError("--save-dir and --save-to-cache are mutually exclusive.")
+            }
             if let dir = saveDir {
                 var isDir: ObjCBool = false
                 guard FileManager.default.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue else {
@@ -801,7 +807,12 @@ public struct MailCommand: AsyncParsableCommand {
         }
 
         public mutating func run() async throws {
-            let attachments = try MailBridge.listAttachments(compoundId: messageId, saveDir: saveDir)
+            // Resolve here, not in validate(): ArgumentParser may invoke validate() more
+            // than once, and mutating saveDir there makes the mutual-exclusion check false-fire.
+            let effectiveSaveDir = try saveToCache
+                ? Attachments.resolveCacheDir(for: messageId)
+                : saveDir
+            let attachments = try MailBridge.listAttachments(compoundId: messageId, saveDir: effectiveSaveDir)
             if output.isJSON {
                 try printJSON(attachments)
             } else if output.isAgent {
@@ -819,6 +830,27 @@ public struct MailCommand: AsyncParsableCommand {
                     columnWidths: [30, 25, 10, 40]
                 ))
             }
+        }
+
+        /// Per-message cache dir; sanitizes shell/path-hostile chars so Gmail `[Gmail]`
+        /// ids don't glob-expand when downstream tools unquote the returned path.
+        static func resolveCacheDir(for compoundId: String) throws -> String {
+            let sanitized = compoundId
+                .replacingOccurrences(of: "||", with: "__")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "\\", with: "_")
+                .replacingOccurrences(of: ":", with: "_")
+                .replacingOccurrences(of: "[", with: "_")
+                .replacingOccurrences(of: "]", with: "_")
+                .replacingOccurrences(of: " ", with: "_")
+            let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches")
+            let dir = base
+                .appendingPathComponent("pippin")
+                .appendingPathComponent("attachments")
+                .appendingPathComponent(sanitized)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir.path
         }
     }
 

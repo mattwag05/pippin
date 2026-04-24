@@ -7,6 +7,7 @@ final class ToolRegistryTests: XCTestCase {
         let names = Set(MCPToolRegistry.tools.map { $0.name })
         XCTAssertTrue(names.contains("mail_list"))
         XCTAssertTrue(names.contains("mail_accounts"))
+        XCTAssertTrue(names.contains("mail_attachments"))
         XCTAssertTrue(names.contains("calendar_today"))
         XCTAssertTrue(names.contains("calendar_upcoming"))
         XCTAssertTrue(names.contains("reminders_list"))
@@ -91,6 +92,36 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertThrowsError(try tool.buildArgs(.object([:])))
     }
 
+    func testBuildArgsForMailAttachmentsRequiresMessageId() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_attachments"))
+        XCTAssertThrowsError(try tool.buildArgs(.object([:]))) { error in
+            guard case MCPToolArgError.missingRequired("messageId") = error else {
+                return XCTFail("Expected missingRequired(\"messageId\"), got \(error)")
+            }
+        }
+    }
+
+    func testBuildArgsForMailAttachmentsDefaultsToSaveToCache() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_attachments"))
+        let argv = try tool.buildArgs(.object(["messageId": .string("acct||INBOX||42")]))
+        XCTAssertEqual(argv[0], "mail")
+        XCTAssertEqual(argv[1], "attachments")
+        XCTAssertTrue(argv.contains("acct||INBOX||42"))
+        XCTAssertTrue(argv.contains("--save-to-cache"))
+        XCTAssertFalse(argv.contains("--save-dir"))
+    }
+
+    func testBuildArgsForMailAttachmentsHonorsSaveDir() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_attachments"))
+        let argv = try tool.buildArgs(.object([
+            "messageId": .string("acct||INBOX||42"),
+            "saveDir": .string("/tmp/out"),
+        ]))
+        XCTAssertTrue(argv.contains("--save-dir"))
+        XCTAssertTrue(argv.contains("/tmp/out"))
+        XCTAssertFalse(argv.contains("--save-to-cache"))
+    }
+
     func testBuildArgsForRemindersCreate() throws {
         let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "reminders_create"))
         let argv = try tool.buildArgs(.object([
@@ -140,7 +171,7 @@ final class ToolRegistryTests: XCTestCase {
         switch name {
         case "mail_search", "calendar_search", "reminders_search", "contacts_search", "notes_search":
             return .object(["query": .string("x")])
-        case "mail_show":
+        case "mail_show", "mail_attachments":
             return .object(["messageId": .string("a||b||1")])
         case "reminders_show", "reminders_complete":
             return .object(["id": .string("123")])

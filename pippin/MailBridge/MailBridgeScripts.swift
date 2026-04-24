@@ -810,24 +810,23 @@ extension MailBridge {
                     }
                 } catch(e) {}
 
+                // See docs/gotchas/jxa.md — per-attachment try/catch required.
                 var attachList = [];
                 var msgHasAtt = false;
-                try {
-                    var atts = msg.mailAttachments();
-                    msgHasAtt = atts.length > 0;
-                    for (var ai = 0; ai < atts.length; ai++) {
-                        var att = atts[ai];
-                        var attSize = 0;
-                        try { attSize = att.fileSize(); } catch(e) {
-                            try { attSize = att.downloadedSize(); } catch(e2) {}
-                        }
-                        attachList.push({
-                            name: att.name(),
-                            mimeType: att.mimeType(),
-                            size: attSize
-                        });
+                var atts = [];
+                try { atts = msg.mailAttachments(); msgHasAtt = atts.length > 0; } catch(e) {}
+                for (var ai = 0; ai < atts.length; ai++) {
+                    var att = atts[ai];
+                    var attName = 'attachment_' + ai;
+                    try { attName = att.name(); } catch(e) {}
+                    var attMime = 'application/octet-stream';
+                    try { var m = att.mimeType(); if (m) attMime = m; } catch(e) {}
+                    var attSize = 0;
+                    try { attSize = att.fileSize(); } catch(e) {
+                        try { attSize = att.downloadedSize(); } catch(e2) {}
                     }
-                } catch(e) {}
+                    attachList.push({ name: attName, mimeType: attMime, size: attSize });
+                }
 
                 var msgSize = null;
                 try { msgSize = msg.messageSize(); } catch(e) {}

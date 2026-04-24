@@ -26,6 +26,10 @@ Format: `account||mailbox||numericId`. Parsed in `MailBridge` and `CompoundId` h
 - Wrap `att.mimeType()` in try/catch with a fallback (e.g. `'application/octet-stream'`). It raises "AppleEvent handler failed" (-10000) on some IMAP-backed attachments even when the attachment is fully usable.
 - Gmail label'd compound ids (e.g. `||Important||`) may not resolve cleanly via `resolveMailbox`; when the message isn't in the resolved mailbox, fall back to `collectAllMailboxes` + `.messages.whose({id})()` across every mailbox (skip the already-tried one).
 
+## Per-attachment try/catch required in *read* scripts too
+
+The same `att.mimeType()` (and `att.name()`) flakiness that bit `buildSaveAttachmentsScript` also bites any script that just enumerates attachment metadata. A single outer try/catch around the loop swallows the *entire* iteration when one field accessor throws, returning `attachments: []` even though `hasAttachment: true`. Mirror the save-script pattern: one try/catch around `msg.mailAttachments()` to populate `atts`, then per-attachment try/catch around each of `att.name()`, `att.mimeType()`, `att.fileSize()` / `downloadedSize()` with sensible fallbacks (`'attachment_' + i`, `'application/octet-stream'`, `0`). Regression test: `JXAScriptBuilderTests.testReadScriptHandlesAttachmentMimeTypeFailure`.
+
 ## Shared mail validation helpers (`MailCommand.swift`)
 
 `validateEmailAddresses(_:field:)` and `validateAttachmentPaths(_:)` are file-private free functions used by Send/Reply/Forward — add new outgoing commands there, not inline.
