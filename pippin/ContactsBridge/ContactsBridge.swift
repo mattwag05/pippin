@@ -2,6 +2,33 @@ import Contacts
 import Foundation
 
 public enum ContactsBridge {
+    // MARK: - Soft timeout
+
+    /// Outcome of a Contacts-framework enumeration that may hit a wall-clock
+    /// soft timeout. Mirrors `NotesBridge.Outcome<T>` and
+    /// `MailBridge.SearchOutcome`. No `Decodable` conformance — results are
+    /// built directly in Swift rather than parsed from a JXA JSON payload.
+    public struct Outcome<T> {
+        public let results: T
+        public let timedOut: Bool
+
+        public init(results: T, timedOut: Bool) {
+            self.results = results
+            self.timedOut = timedOut
+        }
+    }
+
+    /// Default soft-timeout for `enumerateContacts` paths. 22s matches the
+    /// Notes/Mail pattern (`NotesBridge.listNotes` et al.).
+    public static let defaultSoftTimeoutMs = 22000
+
+    /// Clamp a caller-supplied soft-timeout to the same `[1s, 5min]` bounds
+    /// the Notes/Mail JXA scripts enforce inline. Prevents zero/negative
+    /// windows that would insta-fire and absurd values that defeat the cap.
+    static func clampSoftTimeoutMs(_ value: Int) -> Int {
+        max(1000, min(300_000, value))
+    }
+
     // MARK: - Authorization
 
     public static func authorizationStatus() -> CNAuthorizationStatus {
@@ -12,10 +39,16 @@ public enum ContactsBridge {
 
     /// List all contacts, optionally filtered by group name.
     /// When `fields` is nil, returns minimal fields (id, fullName, primary email, primary phone).
+    ///
+    /// Group-filtered queries use `unifiedContacts(matching:)` which the
+    /// Contacts framework bounds itself, so `Outcome.timedOut` is always
+    /// false on that branch. Un-grouped queries enumerate the full store
+    /// client-side and honor `softTimeoutMs`.
     public static func listContacts(
         group: String? = nil,
-        fields: [String]? = nil
-    ) throws -> [ContactInfo] {
+        fields: [String]? = nil,
+        softTimeoutMs: Int = defaultSoftTimeoutMs
+    ) throws -> Outcome<[ContactInfo]> {
         let store = CNContactStore()
         try checkAuthorization(store: store)
 
@@ -30,14 +63,23 @@ public enum ContactsBridge {
                 withIdentifier: matchedGroup.identifier
             )
             let contacts = try store.unifiedContacts(matching: predicate, keysToFetch: keysToFetch)
-            return contacts.map { convert($0, fields: fields) }
+            return Outcome(results: contacts.map { convert($0, fields: fields) }, timedOut: false)
         } else {
             var results: [ContactInfo] = []
+            var timedOut = false
+            let deadline = Date().addingTimeInterval(
+                TimeInterval(clampSoftTimeoutMs(softTimeoutMs)) / 1000.0
+            )
             let request = CNContactFetchRequest(keysToFetch: keysToFetch)
-            try store.enumerateContacts(with: request) { contact, _ in
+            try store.enumerateContacts(with: request) { contact, stop in
+                if Date() >= deadline {
+                    timedOut = true
+                    stop.pointee = true
+                    return
+                }
                 results.append(convert(contact, fields: fields))
             }
-            return results
+            return Outcome(results: results, timedOut: timedOut)
         }
     }
 
@@ -58,19 +100,33 @@ public enum ContactsBridge {
     }
 
     /// Search contacts by email substring or domain.
+    ///
+    /// Contacts has no built-in email predicate, so this enumerates the full
+    /// store and filters client-side. Honors `softTimeoutMs` — on large
+    /// stores the enumeration stops with partial results once the wall-clock
+    /// deadline fires.
     public static func searchByEmail(
         _ query: String,
-        fields: [String]? = nil
-    ) throws -> [ContactInfo] {
+        fields: [String]? = nil,
+        softTimeoutMs: Int = defaultSoftTimeoutMs
+    ) throws -> Outcome<[ContactInfo]> {
         let store = CNContactStore()
         try checkAuthorization(store: store)
 
-        // CNContactStore has no built-in email predicate; enumerate and filter client-side.
         let keysToFetch = keysForFields(fields, forceEmails: true)
         let lowercasedQuery = query.lowercased()
         var results: [ContactInfo] = []
+        var timedOut = false
+        let deadline = Date().addingTimeInterval(
+            TimeInterval(clampSoftTimeoutMs(softTimeoutMs)) / 1000.0
+        )
         let request = CNContactFetchRequest(keysToFetch: keysToFetch)
-        try store.enumerateContacts(with: request) { contact, _ in
+        try store.enumerateContacts(with: request) { contact, stop in
+            if Date() >= deadline {
+                timedOut = true
+                stop.pointee = true
+                return
+            }
             let matches = contact.emailAddresses.contains { labeled in
                 (labeled.value as String).lowercased().contains(lowercasedQuery)
             }
@@ -78,7 +134,7 @@ public enum ContactsBridge {
                 results.append(convert(contact, fields: fields))
             }
         }
-        return results
+        return Outcome(results: results, timedOut: timedOut)
     }
 
     // MARK: - Get by identifier
