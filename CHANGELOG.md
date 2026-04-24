@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.20.1] - 2026-04-23
+
+### Fixed
+
+- [fix] `mail_search` and `notes_{list,search,folders}` now return partial results with a `warnings` entry rather than hanging MCP clients when Mail.app / Notes.app is slow (default soft timeout: 22s, clamp `[1s, 5min]`, configurable via `--soft-timeout-ms`). Legacy `{results}` payloads continue to decode.
+- [refactor] Consolidated timeout-warning emission across Mail + MCP runtime into a shared `OutputOptions.emit(..., timedOut:, timedOutHint:)` helper; hardens a small race where the warning could be emitted twice.
+
+---
+
 ## [0.20.0] - 2026-04-21
 
 ### Breaking
@@ -481,7 +490,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/mattwag05/pippin/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/mattwag05/pippin/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/mattwag05/pippin/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/mattwag05/pippin/compare/v0.17.0...v0.18.0
