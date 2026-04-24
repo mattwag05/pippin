@@ -4,6 +4,7 @@ import Foundation
 
 public struct PippinConfig: Codable, Sendable {
     public var ai: AIConfig?
+    public var messages: MessagesConfig?
 
     public struct AIConfig: Codable, Sendable {
         public var provider: String?
@@ -18,6 +19,12 @@ public struct PippinConfig: Codable, Sendable {
         public struct ClaudeConfig: Codable, Sendable {
             public var model: String?
         }
+    }
+
+    public struct MessagesConfig: Codable, Sendable {
+        public var excludedThreads: [String]?
+        public var defaultWindowHours: Int?
+        public var autonomousAllowlist: [String]?
     }
 }
 
@@ -40,6 +47,20 @@ public enum AIProviderFactory {
             return nil
         }
         return config
+    }
+
+    /// Persist a config to disk, creating parent directories as needed.
+    public static func saveConfig(_ config: PippinConfig, path: String? = nil) throws {
+        let configPath = path ?? defaultConfigPath()
+        let dir = (configPath as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(
+            atPath: dir,
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(config)
+        try data.write(to: URL(fileURLWithPath: configPath))
     }
 
     /// Create the appropriate AIProvider from CLI flags, falling back to config file then defaults.

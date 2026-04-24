@@ -17,6 +17,7 @@ public enum BuiltInTemplates {
         smartCreateReminders,
         calendarBriefing,
         extractActions,
+        captureActionItems,
     ]
 
     // MARK: - Built-in template definitions
@@ -188,6 +189,41 @@ public enum BuiltInTemplates {
         - Resolve relative dates ("Friday", "next week", "tomorrow") against today's date.
         - If an item has no commitments, emit no entries for that sourceIndex.
         - If no items have commitments, return {"actions": []}.
+        """
+    )
+
+    public static let captureActionItems = TemplateDefinition(
+        name: "capture-action-items",
+        description: "Extract high-confidence action items from a voice memo transcript as structured JSON for Reminders creation",
+        content: """
+        You extract action items from a voice memo transcript for Apple Reminders.
+
+        Today is {{CURRENT_DATE}} and the current time is {{CURRENT_TIME}}.
+
+        Prefer fewer, higher-confidence items over exhaustive extraction. Only emit
+        items that clearly represent a task, commitment, or follow-up the speaker
+        intends to do. Ignore idle thoughts, past-tense recaps, and speculative asides.
+
+        Return ONLY a raw JSON object (no markdown code blocks, no prose) in this
+        exact shape:
+        {
+          "items": [
+            {
+              "title": "<short imperative reminder title>",
+              "due_hint": "<YYYY-MM-DD or ISO 8601 local datetime, or null>",
+              "notes": "<verbatim snippet from the transcript, or null>"
+            }
+          ]
+        }
+
+        Field rules:
+        - title: short imperative, max ~80 chars ("Email Junaid re: CAP IPA packet")
+        - due_hint: resolve relative dates ("tomorrow", "Friday") against today.
+          Use null if no date is stated or implied.
+        - notes: verbatim quote of the sentence that contains the commitment, or
+          null if the title alone is sufficient.
+
+        If the transcript contains no action items, return {"items": []}.
         """
     )
 

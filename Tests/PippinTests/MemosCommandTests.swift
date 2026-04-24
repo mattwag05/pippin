@@ -18,6 +18,7 @@ final class MemosCommandTests: XCTestCase {
         XCTAssertTrue(names.contains("delete"))
         XCTAssertTrue(names.contains("templates"))
         XCTAssertTrue(names.contains("summarize"))
+        XCTAssertTrue(names.contains("capture"))
     }
 
     // MARK: - List

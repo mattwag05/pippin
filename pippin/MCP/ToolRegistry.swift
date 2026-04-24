@@ -595,6 +595,77 @@ enum MCPToolRegistry {
             buildArgs: { _ in pippinArgv("notes", "folders") }
         ),
 
+        // MARK: Messages (read-only)
+
+        MCPTool(
+            name: "messages_list",
+            description: "List recent Apple Messages conversations (most recent first). Read-only.",
+            inputSchema: Schema.object(properties: [
+                "sinceHours": Schema.integer("Only conversations with a message in the last N hours (default: 48).", default: 48),
+                "limit": Schema.integer("Maximum conversations to return (default: 50).", default: 50),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("messages", "list")
+                argv += ArgHelpers.optionIfInt(args, "sinceHours", flagName: "--since-hours")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "messages_search",
+            description: "Search Messages bodies by substring. Read-only.",
+            inputSchema: Schema.object(
+                properties: [
+                    "query": Schema.string("Search substring."),
+                    "sinceHours": Schema.integer("Restrict to last N hours.", default: 168),
+                    "limit": Schema.integer("Maximum messages (default: 50).", default: 50),
+                ],
+                required: ["query"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("messages", "search")
+                try argv.append(ArgHelpers.requiredString(args, "query"))
+                argv += ArgHelpers.optionIfInt(args, "sinceHours", flagName: "--since-hours")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "messages_show",
+            description: "Show messages in a conversation thread by GUID. Read-only.",
+            inputSchema: Schema.object(
+                properties: [
+                    "conversationId": Schema.string("Conversation GUID from messages_list."),
+                    "limit": Schema.integer("Maximum messages (default: 50).", default: 50),
+                ],
+                required: ["conversationId"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("messages", "show")
+                try argv.append(ArgHelpers.requiredString(args, "conversationId"))
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "messages_send",
+            description: "Draft a message (DRAFT ONLY — MCP clients cannot trigger autonomous delivery).",
+            inputSchema: Schema.object(
+                properties: [
+                    "to": Schema.string("Recipient handle or chat GUID."),
+                    "body": Schema.string("Message body."),
+                ],
+                required: ["to", "body"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("messages", "send")
+                try argv += ["--to", ArgHelpers.requiredString(args, "to")]
+                try argv += ["--body", ArgHelpers.requiredString(args, "body")]
+                argv += ["--draft"]
+                return argv
+            }
+        ),
+
         // MARK: Memos
 
         MCPTool(
@@ -666,6 +737,26 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "output", flagName: "--output")
                 argv += ArgHelpers.flagIfTrue(args, "force", flagName: "--force")
                 argv += ArgHelpers.optionIfInt(args, "jobs", flagName: "--jobs")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "memos_capture_to_reminders",
+            description: "Transcribe a Voice Memos recording, extract action items via the configured LLM, and create Reminders. Commits by default in agent mode; pass dryRun=true to preview.",
+            inputSchema: Schema.object(properties: [
+                "memo": Schema.string("Memo UUID or prefix (default: most recent recording)."),
+                "list": Schema.string("Reminder list name (default: Inbox)."),
+                "dryRun": Schema.boolean("Preview items without creating reminders.", default: false),
+                "provider": Schema.string("AI provider: ollama or claude (default: ollama)."),
+                "model": Schema.string("Model name (provider-specific default)."),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("memos", "capture", "--to-reminders")
+                argv += ArgHelpers.optionIfString(args, "memo", flagName: "--memo")
+                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
+                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
                 return argv
             }
         ),
