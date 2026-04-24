@@ -98,21 +98,7 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
         XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
     }
 
-    // MARK: - clampSoftTimeoutMs
-
-    func testClampSoftTimeoutMsFloor() {
-        XCTAssertEqual(NotesBridge.clampSoftTimeoutMs(0), 1000)
-        XCTAssertEqual(NotesBridge.clampSoftTimeoutMs(-100), 1000)
-        XCTAssertEqual(NotesBridge.clampSoftTimeoutMs(500), 1000)
-    }
-
-    func testClampSoftTimeoutMsCeiling() {
-        XCTAssertEqual(NotesBridge.clampSoftTimeoutMs(300_000), 300_000)
-        XCTAssertEqual(NotesBridge.clampSoftTimeoutMs(999_999), 300_000)
-    }
-
-    func testClampSoftTimeoutMsPassthrough() {
-        XCTAssertEqual(NotesBridge.clampSoftTimeoutMs(22000), 22000)
-        XCTAssertEqual(NotesBridge.clampSoftTimeoutMs(1000), 1000)
-    }
+    // Soft-timeout clamp bounds are now tested in `SoftTimeoutTests`
+    // (shared helper). Script-level interpolation stays here because it's
+    // specific to the Notes JXA builders above.
 }

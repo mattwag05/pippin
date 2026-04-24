@@ -8,25 +8,12 @@ public enum ContactsBridge {
     /// soft timeout. Mirrors `NotesBridge.Outcome<T>` and
     /// `MailBridge.SearchOutcome`. No `Decodable` conformance — results are
     /// built directly in Swift rather than parsed from a JXA JSON payload.
+    ///
+    /// Memberwise init is internal on purpose — only the bridge constructs
+    /// these; callers read `results` / `timedOut`.
     public struct Outcome<T> {
         public let results: T
         public let timedOut: Bool
-
-        public init(results: T, timedOut: Bool) {
-            self.results = results
-            self.timedOut = timedOut
-        }
-    }
-
-    /// Default soft-timeout for `enumerateContacts` paths. 22s matches the
-    /// Notes/Mail pattern (`NotesBridge.listNotes` et al.).
-    public static let defaultSoftTimeoutMs = 22000
-
-    /// Clamp a caller-supplied soft-timeout to the same `[1s, 5min]` bounds
-    /// the Notes/Mail JXA scripts enforce inline. Prevents zero/negative
-    /// windows that would insta-fire and absurd values that defeat the cap.
-    static func clampSoftTimeoutMs(_ value: Int) -> Int {
-        max(1000, min(300_000, value))
     }
 
     // MARK: - Authorization
@@ -47,7 +34,7 @@ public enum ContactsBridge {
     public static func listContacts(
         group: String? = nil,
         fields: [String]? = nil,
-        softTimeoutMs: Int = defaultSoftTimeoutMs
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> Outcome<[ContactInfo]> {
         let store = CNContactStore()
         try checkAuthorization(store: store)
@@ -68,7 +55,7 @@ public enum ContactsBridge {
             var results: [ContactInfo] = []
             var timedOut = false
             let deadline = Date().addingTimeInterval(
-                TimeInterval(clampSoftTimeoutMs(softTimeoutMs)) / 1000.0
+                TimeInterval(SoftTimeout.clamp(softTimeoutMs)) / 1000.0
             )
             let request = CNContactFetchRequest(keysToFetch: keysToFetch)
             try store.enumerateContacts(with: request) { contact, stop in
@@ -108,7 +95,7 @@ public enum ContactsBridge {
     public static func searchByEmail(
         _ query: String,
         fields: [String]? = nil,
-        softTimeoutMs: Int = defaultSoftTimeoutMs
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> Outcome<[ContactInfo]> {
         let store = CNContactStore()
         try checkAuthorization(store: store)
@@ -118,7 +105,7 @@ public enum ContactsBridge {
         var results: [ContactInfo] = []
         var timedOut = false
         let deadline = Date().addingTimeInterval(
-            TimeInterval(clampSoftTimeoutMs(softTimeoutMs)) / 1000.0
+            TimeInterval(SoftTimeout.clamp(softTimeoutMs)) / 1000.0
         )
         let request = CNContactFetchRequest(keysToFetch: keysToFetch)
         try store.enumerateContacts(with: request) { contact, stop in

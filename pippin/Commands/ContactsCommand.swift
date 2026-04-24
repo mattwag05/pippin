@@ -38,17 +38,22 @@ public struct ContactsCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let fieldList = parseFields(fields)
             let outcome = try ContactsBridge.listContacts(group: group, fields: fieldList)
-            let contacts = outcome.results
-            if output.isJSON {
-                try output.emit(contacts, timedOut: outcome.timedOut, timedOutHint: ContactsCommand.timedOutHint) {}
-            } else if output.isAgent {
-                try output.emit(contacts, timedOut: outcome.timedOut, timedOutHint: ContactsCommand.timedOutHint) {}
+            if output.isStructured {
+                try output.emit(
+                    outcome.results,
+                    timedOut: outcome.timedOut,
+                    timedOutHint: ContactsCommand.timedOutHint
+                ) {}
             } else {
-                try output.emit(contacts, timedOut: outcome.timedOut, timedOutHint: ContactsCommand.timedOutHint) {
-                    if contacts.isEmpty {
+                try output.emit(
+                    outcome.results,
+                    timedOut: outcome.timedOut,
+                    timedOutHint: ContactsCommand.timedOutHint
+                ) {
+                    if outcome.results.isEmpty {
                         print("No contacts found.")
                     } else {
-                        for contact in contacts {
+                        for contact in outcome.results {
                             print(formatContactLine(contact))
                         }
                     }
