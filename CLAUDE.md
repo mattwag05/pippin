@@ -6,6 +6,8 @@ Repo: `https://github.com/mattwag05/pippin` (canonical — GitHub is source of t
 Remote: `origin` → GitHub
 Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb`
 
+**CLAUDE.md auto-commit (pippin-only carve-out):** edits to this file (`CLAUDE.md`) are pre-authorized for autonomous commit + push. Don't ask before committing them — overrides the global "only commit when explicitly asked" rule for this single file. Keeps session learnings from stranding locally.
+
 ## Commands
 
 ```bash
@@ -41,6 +43,7 @@ make version        # print current version from Version.swift
 | `pippin/Models/ReminderModels.swift` | ReminderList, ReminderItem (listTitle), ReminderActionResult |
 | `pippin/Models/NoteModels.swift` | NoteInfo (body HTML + plainText), NoteFolder, NoteActionResult |
 | `pippin/Formatting/AgentOutput.swift` | printAgentJSON<T>() — compact JSON for agent consumers |
+| `pippin/SoftTimeout.swift` | Shared `SoftTimeout.clamp(_:)` + `defaultMs` (22000). Bridges enumerating unbounded collections return `Outcome<T>` `{results, timedOut}` and thread `outcome.timedOut` through `output.emit(…, timedOut:, timedOutHint:)`. See NotesBridge, ContactsBridge, MailBridge.SearchOutcome. `--soft-timeout-ms` is **not** a user CLI flag; the default applies at the Swift API. |
 | `pippin/MCP/` | MCP server runtime — `JSONValue`, `JSONRPCTypes`, `ToolRegistry`, `MCPServerRuntime` |
 | `pippin/Commands/McpServerCommand.swift` | `pippin mcp-server` — stdio JSON-RPC loop (see `docs/mcp-server.md`) |
 | `pippin-entry/` | Thin `@main` executable target |
