@@ -106,19 +106,11 @@ enum NotesBridge {
         s.map { "'\(jsEscape($0))'" } ?? "null"
     }
 
-    /// Clamp soft-timeout to a sane range. Mirrors `MailBridgeScripts`:
-    /// 1s floor (anything lower kills useful work) and 5min ceiling (anything
-    /// higher exceeds the MCP `runChild` 60s hard cap anyway, but CLI-direct
-    /// callers may want longer).
-    static func clampSoftTimeoutMs(_ ms: Int) -> Int {
-        max(1000, min(ms, 300_000))
-    }
-
     // MARK: - JXA Script Builders
 
     static func buildListScript(folder: String?, limit: Int, softTimeoutMs: Int = 22000) -> String {
         let folderFilter = jsEscapeOptional(folder)
-        let clampedTimeout = clampSoftTimeoutMs(softTimeoutMs)
+        let clampedTimeout = SoftTimeout.clamp(softTimeoutMs)
         return """
         var app = Application('Notes');
         app.includeStandardAdditions = true;
@@ -195,7 +187,7 @@ enum NotesBridge {
     static func buildSearchScript(query: String, folder: String?, limit: Int, softTimeoutMs: Int = 22000) -> String {
         let safeQuery = jsEscape(query)
         let folderFilter = jsEscapeOptional(folder)
-        let clampedTimeout = clampSoftTimeoutMs(softTimeoutMs)
+        let clampedTimeout = SoftTimeout.clamp(softTimeoutMs)
         return """
         var app = Application('Notes');
         app.includeStandardAdditions = true;
@@ -251,7 +243,7 @@ enum NotesBridge {
     }
 
     static func buildListFoldersScript(softTimeoutMs: Int = 22000) -> String {
-        let clampedTimeout = clampSoftTimeoutMs(softTimeoutMs)
+        let clampedTimeout = SoftTimeout.clamp(softTimeoutMs)
         return """
         var app = Application('Notes');
         app.includeStandardAdditions = true;
