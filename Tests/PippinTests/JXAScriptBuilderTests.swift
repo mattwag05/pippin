@@ -345,6 +345,22 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertEqual(occurrences, 2, "Expected two htmlContent() calls (initial + retry)")
     }
 
+    func testReadScriptHandlesAttachmentMimeTypeFailure() {
+        // att.mimeType() raises -10000 on some IMAP-backed attachments; the script must
+        // catch per-attachment and fall back to application/octet-stream instead of
+        // swallowing the entire loop and returning attachments:[].
+        let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
+        XCTAssertTrue(script.contains("application/octet-stream"))
+        XCTAssertTrue(script.contains("try { var m = att.mimeType();"))
+    }
+
+    func testReadScriptHandlesAttachmentNameFailure() {
+        // att.name() also throws on some attachments; fall back to `attachment_<i>`.
+        let script = MailBridge.buildReadScript(account: "Work", mailbox: "INBOX", messageId: "1")
+        XCTAssertTrue(script.contains("'attachment_' + ai"))
+        XCTAssertTrue(script.contains("try { attName = att.name(); } catch(e) {}"))
+    }
+
     // MARK: - buildMarkScript
 
     func testMarkScriptReadTrue() {

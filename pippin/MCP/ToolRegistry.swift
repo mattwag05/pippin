@@ -232,6 +232,28 @@ enum MCPToolRegistry {
             }
         ),
         MCPTool(
+            name: "mail_attachments",
+            description: "List and download attachments for a message. When saveDir is omitted, attachments are written to pippin's cache directory (~/Library/Caches/pippin/attachments/<msg>/) and the paths are returned in `savedPath`; the agent can then read the files with its file tools.",
+            inputSchema: Schema.object(
+                properties: [
+                    "messageId": Schema.string("Compound message ID from mail_list or mail_show output."),
+                    "saveDir": Schema.string("Optional directory to save attachments into. If omitted, a pippin cache directory is used."),
+                ],
+                required: ["messageId"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "attachments")
+                let id = try ArgHelpers.requiredString(args, "messageId")
+                argv.append(id)
+                if let dir = ArgHelpers.string(args, "saveDir") {
+                    argv += ["--save-dir", dir]
+                } else {
+                    argv.append("--save-to-cache")
+                }
+                return argv
+            }
+        ),
+        MCPTool(
             name: "mail_search",
             description: "Search messages by subject/sender (add --body to include body text).",
             inputSchema: Schema.object(
