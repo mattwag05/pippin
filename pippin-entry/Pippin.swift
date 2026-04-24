@@ -11,7 +11,7 @@ struct Pippin: AsyncParsableCommand {
         subcommands: [
             MailCommand.self, MemosCommand.self, CalendarCommand.self,
             AudioCommand.self, ContactsCommand.self, BrowserCommand.self,
-            RemindersCommand.self, NotesCommand.self,
+            RemindersCommand.self, NotesCommand.self, MessagesCommand.self,
             ActionsCommand.self,
             DigestCommand.self,
             DoctorCommand.self, StatusCommand.self, InitCommand.self, CompletionsCommand.self,
