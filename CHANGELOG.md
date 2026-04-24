@@ -9,9 +9,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.20.2] - 2026-04-23
+
 ### Fixed
 
 - [fix] `contacts list` (no `--group`) and `contacts search --email` now return partial results with a `warnings` entry rather than hanging MCP clients when the Contacts store is large. Wall-clock soft timeout defaults to 22s, clamped `[1s, 5min]`, matching the mail/notes pattern. Group-filtered list and name search are unaffected (they use bounded Contacts predicates).
+
+### Changed
+
+- [refactor] Extracted the `clampSoftTimeoutMs` helper and 22s default into a shared `SoftTimeout` enum. NotesBridge and ContactsBridge callers now share a single definition; the JXA-side inline clamps stay put (different language) but agree on the same bounds.
 
 ---
 
@@ -494,7 +502,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.20.2...HEAD
+[0.20.2]: https://github.com/mattwag05/pippin/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/mattwag05/pippin/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/mattwag05/pippin/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/mattwag05/pippin/compare/v0.18.0...v0.19.0
