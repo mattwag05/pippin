@@ -670,6 +670,26 @@ enum MCPToolRegistry {
             }
         ),
         MCPTool(
+            name: "memos_capture_to_reminders",
+            description: "Transcribe a Voice Memos recording, extract action items via the configured LLM, and create Reminders. Commits by default in agent mode; pass dryRun=true to preview.",
+            inputSchema: Schema.object(properties: [
+                "memo": Schema.string("Memo UUID or prefix (default: most recent recording)."),
+                "list": Schema.string("Reminder list name (default: Inbox)."),
+                "dryRun": Schema.boolean("Preview items without creating reminders.", default: false),
+                "provider": Schema.string("AI provider: ollama or claude (default: ollama)."),
+                "model": Schema.string("Model name (provider-specific default)."),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("memos", "capture", "--to-reminders")
+                argv += ArgHelpers.optionIfString(args, "memo", flagName: "--memo")
+                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
+                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
+                return argv
+            }
+        ),
+        MCPTool(
             name: "memos_summarize",
             description: "Summarize a Voice Memos recording using an AI provider (ollama or claude).",
             inputSchema: Schema.object(properties: [
