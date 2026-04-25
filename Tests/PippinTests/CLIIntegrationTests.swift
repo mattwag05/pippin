@@ -67,9 +67,17 @@ final class CLIIntegrationTests: XCTestCase {
     }
 
     @discardableResult
-    private func runWithEnv(_ args: [String], env: [String: String]) -> (stdout: String, stderr: String, exitCode: Int32) {
+    private func runWithEnv(
+        _ args: [String],
+        env: [String: String],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> (stdout: String, stderr: String, exitCode: Int32) {
         guard let binary = CLIIntegrationTests.binaryURL else {
-            return ("", "", 0)
+            // Defense in depth: callers should `requireBinary()` first, but if a
+            // future test forgets, a missing-build state must not look like success.
+            XCTFail("pippin binary not found — run `swift build` before running integration tests", file: file, line: line)
+            return ("", "", -1)
         }
         return Self.runProcess(binary.path, args: args, env: env)
     }

@@ -332,7 +332,7 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 
 - **macOS 15+** (Sequoia) or later
 - **Swift 6.2+** for source builds; pre-built binaries are arm64
-- **mlx-audio** — `pippin memos transcribe` only
+- **mlx-audio** — required for `pippin memos transcribe`, and for the experimental `audio` command when re-enabled via `PIPPIN_EXPERIMENTAL=1`
 - **Ollama** — `pippin memos summarize` with local AI (optional; Claude works without it)
 
 > **Experimental commands:** `audio` (TTS/STT via mlx-audio) and `browser`
