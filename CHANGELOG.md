@@ -15,7 +15,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `pippin memos capture --to-reminders` — transcribe the most recent voice memo (or `--memo <id>`), extract action items via the configured LLM, and create Reminders in one shot. Chains existing `MemosBridge` → `AIProvider` → `RemindersBridge`; no new infrastructure. Supports `--list <name>` (default: Inbox), `--dry-run` (auto-on for TTY text output; commits by default in agent mode). MCP tool: `memos_capture_to_reminders`. New built-in template `capture-action-items` enforces JSON shape `{items: [{title, due_hint, notes}]}`.
+- [feat] `pippin memos capture --to-reminders` — transcribe the most recent voice memo (or `--memo <id>`), extract action items via the configured LLM, and create Reminders in one shot. Chains existing `VoiceMemosDB`/`TranscriptCache`/`MLXAudioTranscriber` → `AIProvider` → `RemindersBridge`; no new infrastructure. Supports `--list <name>` (default: Inbox), `--dry-run` (auto-on for TTY text output; commits by default for `--format json` / `--format agent`). MCP tool: `memos_capture_to_reminders`. New built-in template `capture-action-items` enforces JSON shape `{items: [{title, due_hint, notes}]}`.
 
 ---
 
