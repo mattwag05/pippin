@@ -11,11 +11,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.21.0] - 2026-04-24
+## [0.21.0] - 2026-04-25
 
 ### Added
 
 - [feat] `pippin memos capture --to-reminders` — transcribe the most recent voice memo (or `--memo <id>`), extract action items via the configured LLM, and create Reminders in one shot. Chains existing `VoiceMemosDB`/`TranscriptCache`/`MLXAudioTranscriber` → `AIProvider` → `RemindersBridge`; no new infrastructure. Supports `--list <name>` (default: Inbox), `--dry-run` (auto-on for TTY text output; commits by default for `--format json` / `--format agent`). MCP tool: `memos_capture_to_reminders`. New built-in template `capture-action-items` enforces JSON shape `{items: [{title, due_hint, notes}]}`.
+
+---
+
+## [0.20.3] - 2026-04-24
+
+### Deprecated
+
+- [deprecation] `pippin audio` and `pippin browser` subcommands are now hidden by default. Set `PIPPIN_EXPERIMENTAL=1` to re-enable them — existing scripts with the env var continue to work unchanged. These commands will be **removed in the next major release (v1.0.0)** unless an issue is filed against `github.com/mattwag05/pippin` requesting otherwise. Rationale: they're rarely used and carry outsized maintenance cost (mlx-audio Python subprocess, Playwright WebKit bundle). Code and tests remain in place so re-enabling requires no rebuild.
 
 ---
 

@@ -4,13 +4,10 @@ import PippinLib
 
 @main
 struct Pippin: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "pippin",
-        abstract: PippinVersion.tagline,
-        version: "pippin \(PippinVersion.version)",
-        subcommands: [
+    static let configuration: CommandConfiguration = {
+        var commands: [ParsableCommand.Type] = [
             MailCommand.self, MemosCommand.self, CalendarCommand.self,
-            AudioCommand.self, ContactsCommand.self, BrowserCommand.self,
+            ContactsCommand.self,
             RemindersCommand.self, NotesCommand.self,
             ActionsCommand.self,
             DigestCommand.self,
@@ -20,7 +17,17 @@ struct Pippin: AsyncParsableCommand {
             JobCommand.self, JobRunnerInternalCommand.self,
             DoCommand.self,
         ]
-    )
+        if ProcessInfo.processInfo.environment["PIPPIN_EXPERIMENTAL"] == "1" {
+            commands.append(AudioCommand.self)
+            commands.append(BrowserCommand.self)
+        }
+        return CommandConfiguration(
+            commandName: "pippin",
+            abstract: PippinVersion.tagline,
+            version: "pippin \(PippinVersion.version)",
+            subcommands: commands
+        )
+    }()
 
     static func main() async {
         // Inject the parser so ShellCommand can dispatch subcommands
