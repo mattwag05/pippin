@@ -44,26 +44,36 @@ public final class MessagesDatabase: Sendable {
         do {
             dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
         } catch {
-            let ns = error as NSError
-            // Check for permission errors first — on macOS TCC, fileExists(atPath:)
-            // can return false even when the file exists, so we must inspect the
+            // Check for POSIX errors first — on macOS TCC, fileExists(atPath:)
+            // can return false even when the file exists, so we inspect the
             // NSError before falling back to a filesystem existence check.
-            if ns.domain == NSPOSIXErrorDomain {
-                switch ns.code {
-                case Int(EACCES), Int(EPERM):
-                    throw MessagesError.accessDenied(ns.localizedDescription)
-                case Int(ENOENT):
-                    throw MessagesError.databaseNotFound(dbPath)
-                default:
-                    break
-                }
+            let ns = error as NSError
+            if ns.domain == NSPOSIXErrorDomain, ns.code == Int(ENOENT) {
+                throw MessagesError.databaseNotFound(dbPath)
             }
-            // Fallback existence check for non-POSIX "not found" scenarios.
+            if Self.isAccessDeniedOpenError(error) {
+                throw MessagesError.accessDenied(error.localizedDescription)
+            }
             if !FileManager.default.fileExists(atPath: dbPath) {
                 throw MessagesError.databaseNotFound(dbPath)
             }
             throw MessagesError.databaseError(error.localizedDescription)
         }
+    }
+
+    private static func isAccessDeniedOpenError(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == NSPOSIXErrorDomain,
+           ns.code == Int(EACCES) || ns.code == Int(EPERM)
+        {
+            return true
+        }
+        if let dbError = error as? DatabaseError,
+           [.SQLITE_AUTH, .SQLITE_PERM].contains(dbError.resultCode)
+        {
+            return true
+        }
+        return false
     }
 
     public init(dbQueue: DatabaseQueue) {
@@ -170,9 +180,10 @@ public final class MessagesDatabase: Sendable {
             JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
             JOIN chat c ON c.ROWID = cmj.chat_id
             LEFT JOIN handle h ON h.ROWID = m.handle_id
-            WHERE m.text LIKE ?
+            WHERE m.text LIKE ? ESCAPE '\\'
+              AND c.is_archived = 0
             """
-            var args: [any DatabaseValueConvertible] = ["%\(query)%"]
+            var args: [any DatabaseValueConvertible] = ["%\(Self.escapeLike(query))%"]
             if let cutoffNs {
                 sql += " AND m.date >= ?"
                 args.append(cutoffNs)
@@ -340,5 +351,15 @@ public final class MessagesDatabase: Sendable {
 
     static func preview(_ text: String, limit: Int = 140) -> String {
         TextFormatter.truncate(text.replacingOccurrences(of: "\n", with: " "), to: limit)
+    }
+
+    /// Escape SQLite LIKE metacharacters so a user query is treated as a
+    /// literal substring. Uses `\` as the escape character; paired with
+    /// `ESCAPE '\\'` in the SQL clause.
+    static func escapeLike(_ pattern: String) -> String {
+        pattern
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
     }
 }
