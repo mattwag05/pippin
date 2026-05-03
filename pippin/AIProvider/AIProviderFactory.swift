@@ -59,7 +59,7 @@ public enum AIProviderFactory {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(config)
-        try data.write(to: URL(fileURLWithPath: configPath))
+        try data.write(to: URL(fileURLWithPath: configPath), options: .atomic)
     }
 
     /// Create the appropriate AIProvider from CLI flags, falling back to config file then defaults.
