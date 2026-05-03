@@ -210,7 +210,7 @@ public enum BuiltInTemplates {
           "items": [
             {
               "title": "<short imperative reminder title>",
-"due_hint": "<YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS (seconds required), or null>",
+              "due_hint": "<YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS (seconds required), or null>",
               "notes": "<verbatim snippet from the transcript, or null>"
             }
           ]
@@ -219,7 +219,7 @@ public enum BuiltInTemplates {
         Field rules:
         - title: short imperative, max ~80 chars ("Email Junaid re: CAP IPA packet")
         - due_hint: resolve relative dates ("tomorrow", "Friday") against today.
-Emit "YYYY-MM-DD" for date-only or "YYYY-MM-DDTHH:MM:SS" for
+          Emit "YYYY-MM-DD" for date-only or "YYYY-MM-DDTHH:MM:SS" for
           datetime (seconds component is REQUIRED — "2026-04-25T10:00" will
           be silently dropped). Use null if no date is stated or implied.
         - notes: verbatim quote of the sentence that contains the commitment, or
