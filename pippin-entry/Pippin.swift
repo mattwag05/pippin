@@ -8,7 +8,7 @@ struct Pippin: AsyncParsableCommand {
         var commands: [ParsableCommand.Type] = [
             MailCommand.self, MemosCommand.self, CalendarCommand.self,
             ContactsCommand.self,
-            RemindersCommand.self, NotesCommand.self,
+            RemindersCommand.self, NotesCommand.self, MessagesCommand.self,
             ActionsCommand.self,
             DigestCommand.self,
             DoctorCommand.self, StatusCommand.self, InitCommand.self, CompletionsCommand.self,

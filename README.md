@@ -148,6 +148,54 @@ pippin contacts show <id>
 pippin contacts groups
 ```
 
+### Messages
+
+Read-only access and gated-autonomous send for `~/Library/Messages/chat.db`. Requires
+Full Disk Access for your terminal (System Settings → Privacy & Security → Full Disk Access).
+
+```bash
+pippin messages list --since-hours 48
+pippin messages search "lunch"
+pippin messages show "iMessage;-;+15551234567"
+pippin messages exclude add "iMessage;-;groupA"   # hide thread from every read
+pippin messages exclude list
+
+# Send — defaults to --draft (log only, no delivery)
+pippin messages send --to "+15551234567" --body "Running 10 min late" --draft
+
+# Autonomous send requires all three gates:
+#   1. PIPPIN_AUTONOMOUS_MESSAGES=1 env var
+#   2. Recipient in config.messages.autonomousAllowlist
+#   3. Explicit --autonomous flag
+PIPPIN_AUTONOMOUS_MESSAGES=1 pippin messages send --to "+15551234567" --body "On my way" --autonomous
+```
+
+Every read and send attempt is appended to
+`~/.local/share/pippin/messages-audit.jsonl` (operation, params, SHA-256(body) —
+message bodies are never stored).
+
+### Audio (experimental)
+
+Requires `PIPPIN_EXPERIMENTAL=1`. Hidden by default.
+
+```bash
+PIPPIN_EXPERIMENTAL=1 pippin audio speak "Hello, world" --voice af_bella
+PIPPIN_EXPERIMENTAL=1 pippin audio transcribe ~/recordings/meeting.m4a
+PIPPIN_EXPERIMENTAL=1 pippin audio voices
+```
+
+### Browser (experimental)
+
+Requires Node.js, Playwright WebKit (`npx playwright install webkit`), and
+`PIPPIN_EXPERIMENTAL=1`. Hidden by default.
+
+```bash
+PIPPIN_EXPERIMENTAL=1 pippin browser open "https://example.com"
+PIPPIN_EXPERIMENTAL=1 pippin browser snapshot
+PIPPIN_EXPERIMENTAL=1 pippin browser fetch "https://example.com"
+```
+
+
 ### Background Jobs
 
 `pippin job` detaches long-running work (`mail index`, `memos summarize`,
@@ -254,7 +302,7 @@ pippin mcp-server                    # run the server (stdin/stdout JSON-RPC)
 pippin mcp-server --list-tools       # dump the registered tools as JSON
 ```
 
-Ships with 38 tools covering mail, calendar, reminders, contacts, notes, voice memos, status, doctor, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+Ships with 43 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read-only), status, doctor, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
 
 ## AI Configuration
 
