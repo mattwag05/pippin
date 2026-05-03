@@ -13,7 +13,7 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
     @Flag(name: .customLong("to-reminders"), help: "Required: commit action items to Reminders. Present for future --to-notes etc.")
     public var toReminders: Bool = false
 
-    @Option(name: .long, help: "Reminder list name (default: Inbox, or configured default).")
+@Option(name: .long, help: "Reminder list name (default: Inbox).")
     public var list: String?
 
     @Flag(name: .long, help: "Preview items without creating reminders. Auto-on when stdout is a TTY.")
@@ -118,7 +118,12 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
     // MARK: - Private
 
     private func shouldDefaultDryRun() -> Bool {
-        if outputOptions.isAgent { return false }
+// Only auto-engage dry-run for human-facing text output. Structured
+        // formats (json + agent) are typically scripted/automated callers
+        // who expect commit-by-default — anything else makes piping awkward
+        // (e.g. `pippin … --format json | jq` would silently produce a
+        // preview). Matches the CHANGELOG wording: "auto-on for TTY text".
+        if outputOptions.isStructured { return false }
         return isatty(fileno(stdout)) != 0
     }
 

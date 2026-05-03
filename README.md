@@ -27,8 +27,6 @@ pippin reminders list "Work"
 pippin notes search "meeting"
 pippin memos summarize <id> --provider ollama
 pippin contacts search "Alice"
-pippin browser open "https://example.com"
-pippin audio speak "Hello"
 pippin job run -- mail index              # detach long-running work
 pippin do "what's on my calendar today?"  # let an LLM plan the tool calls
 ```
@@ -150,11 +148,10 @@ pippin contacts show <id>
 pippin contacts groups
 ```
 
-### Messages (read-only)
+### Messages
 
-Read-only access to `~/Library/Messages/chat.db`. Requires Full Disk Access for your
-terminal (System Settings → Privacy & Security → Full Disk Access). Sending is not
-supported in this build.
+Read-only access and gated-autonomous send for `~/Library/Messages/chat.db`. Requires
+Full Disk Access for your terminal (System Settings → Privacy & Security → Full Disk Access).
 
 ```bash
 pippin messages list --since-hours 48
@@ -162,38 +159,42 @@ pippin messages search "lunch"
 pippin messages show "iMessage;-;+15551234567"
 pippin messages exclude add "iMessage;-;groupA"   # hide thread from every read
 pippin messages exclude list
+
+# Send — defaults to --draft (log only, no delivery)
+pippin messages send --to "+15551234567" --body "Running 10 min late" --draft
+
+# Autonomous send requires all three gates:
+#   1. PIPPIN_AUTONOMOUS_MESSAGES=1 env var
+#   2. Recipient in config.messages.autonomousAllowlist
+#   3. Explicit --autonomous flag
+PIPPIN_AUTONOMOUS_MESSAGES=1 pippin messages send --to "+15551234567" --body "On my way" --autonomous
 ```
 
-Every read is appended to `~/.local/share/pippin/messages-audit.jsonl` (operation,
-params, result count — no message bodies).
+Every read and send attempt is appended to
+`~/.local/share/pippin/messages-audit.jsonl` (operation, params, SHA-256(body) —
+message bodies are never stored).
 
-### Audio
+### Audio (experimental)
+
+Requires `PIPPIN_EXPERIMENTAL=1`. Hidden by default.
 
 ```bash
-pippin audio speak "Hello, world" --voice af_bella
-pippin audio transcribe ~/recordings/meeting.m4a
-pippin audio voices
+PIPPIN_EXPERIMENTAL=1 pippin audio speak "Hello, world" --voice af_bella
+PIPPIN_EXPERIMENTAL=1 pippin audio transcribe ~/recordings/meeting.m4a
+PIPPIN_EXPERIMENTAL=1 pippin audio voices
 ```
 
-### Browser
+### Browser (experimental)
 
-Requires Node.js and Playwright WebKit (`npx playwright install webkit`).
+Requires Node.js, Playwright WebKit (`npx playwright install webkit`), and
+`PIPPIN_EXPERIMENTAL=1`. Hidden by default.
 
 ```bash
-pippin browser open "https://example.com"
-pippin browser snapshot            # Accessibility tree — ideal for AI agents
-pippin browser screenshot --output ~/Desktop/shot.png
-pippin browser click --ref "e12"
-pippin browser fill --ref "e5" --value "search query"
-pippin browser fetch "https://example.com"
-
-# --retry lets agents re-invoke until a field is populated, instead of
-# polling. --expect-field names a dot-path that must be non-empty for
-# success; --retry-delay-ms tunes the gap between attempts.
-pippin browser open "https://slow-cdn.example/"   --retry 5 --expect-field title
-pippin browser fetch "https://api.example/data"   --retry 3 --expect-field content
-pippin browser snapshot                           --retry 3 --expect-field snapshot.0.ref
+PIPPIN_EXPERIMENTAL=1 pippin browser open "https://example.com"
+PIPPIN_EXPERIMENTAL=1 pippin browser snapshot
+PIPPIN_EXPERIMENTAL=1 pippin browser fetch "https://example.com"
 ```
+
 
 ### Background Jobs
 
@@ -368,8 +369,6 @@ pippin mail list --unread --format json \
 | `pippin/RemindersBridge/` | EventKit wrapper for Reminders |
 | `pippin/NotesBridge/` | JXA subprocess bridge for Notes.app |
 | `pippin/ContactsBridge/` | CNContactStore wrapper (read-only) |
-| `pippin/AudioBridge/` | mlx-audio Python subprocess (TTS/STT) |
-| `pippin/BrowserBridge/` | Playwright WebKit with persistent sessions |
 | `pippin/AIProvider/` | Ollama + Claude backends for summarization |
 | `pippin/Jobs/` | Filesystem-backed registry for detached `pippin job` subprocesses |
 | `pippin/Planner/` | LLM-driven plan-and-execute over the MCP tool registry (`pippin do`) |
@@ -383,9 +382,13 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 
 - **macOS 15+** (Sequoia) or later
 - **Swift 6.2+** for source builds; pre-built binaries are arm64
-- **Node.js + Playwright** — `pippin browser` only
-- **mlx-audio** — `pippin audio` and `pippin memos transcribe` only
+- **mlx-audio** — required for `pippin memos transcribe`, and for the experimental `audio` command when re-enabled via `PIPPIN_EXPERIMENTAL=1`
 - **Ollama** — `pippin memos summarize` with local AI (optional; Claude works without it)
+
+> **Experimental commands:** `audio` (TTS/STT via mlx-audio) and `browser`
+> (Playwright WebKit) are hidden by default. Set `PIPPIN_EXPERIMENTAL=1`
+> to re-enable. They'll be removed in the next major release unless an
+> issue is filed requesting otherwise — see `CHANGELOG.md`.
 
 ## Development
 

@@ -15,15 +15,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `pippin messages` subcommand — read-only access to Apple Messages (`~/Library/Messages/chat.db` via GRDB). Subcommands: `list` (recent conversations, most-recent first), `search <query>` (substring match over message bodies), `show <conversation-id>` (thread view by GUID), `exclude {list,add,remove} <thread>` (per-thread opt-out stored in config). Handles both the post-macOS-10.13 nanosecond date column and the legacy seconds format. Agent/JSON output obeys envelope v1. Audit log at `~/.local/share/pippin/messages-audit.jsonl` records every read op (no message bodies persisted). MCP tools: `messages_list`, `messages_search`, `messages_show`. Requires Full Disk Access for the invoking terminal.
+- [feat] `pippin messages` subcommand — read and send access to Apple Messages (`~/Library/Messages/chat.db` via GRDB). Read subcommands: `list` (recent conversations, most-recent first), `search <query>` (substring match over message bodies), `show <conversation-id>` (thread view by GUID), `exclude {list,add,remove} <thread>` (per-thread opt-out stored in config). Handles both the post-macOS-10.13 nanosecond date column and the legacy seconds format. Agent/JSON output obeys envelope v1. Audit log at `~/.local/share/pippin/messages-audit.jsonl` records every read/send op (no message bodies persisted). MCP tools: `messages_list`, `messages_search`, `messages_show`, `messages_send` (draft-only via MCP). Requires Full Disk Access for the invoking terminal.
+- [feat] `pippin messages send --to <handle> --body <text>` — defaults to `--draft` (log-only, no delivery). Autonomous delivery (`--autonomous`) is triple-gated: env var `PIPPIN_AUTONOMOUS_MESSAGES=1` AND recipient in `config.messages.autonomousAllowlist` AND explicit `--autonomous` flag. PHI filter (SSN, credit card, API key, PEM, password mention) blocks send and records category names in the audit log.
 
 ---
 
-## [0.21.0] - 2026-04-24
+## [0.21.0] - 2026-04-25
 
 ### Added
 
-- [feat] `pippin memos capture --to-reminders` — transcribe the most recent voice memo (or `--memo <id>`), extract action items via the configured LLM, and create Reminders in one shot. Chains existing `MemosBridge` → `AIProvider` → `RemindersBridge`; no new infrastructure. Supports `--list <name>` (default: Inbox), `--dry-run` (auto-on for TTY text output; commits by default in agent mode). MCP tool: `memos_capture_to_reminders`. New built-in template `capture-action-items` enforces JSON shape `{items: [{title, due_hint, notes}]}`.
+- [feat] `pippin memos capture --to-reminders` — transcribe the most recent voice memo (or `--memo <id>`), extract action items via the configured LLM, and create Reminders in one shot. Chains existing `VoiceMemosDB`/`TranscriptCache`/`MLXAudioTranscriber` → `AIProvider` → `RemindersBridge`; no new infrastructure. Supports `--list <name>` (default: Inbox), `--dry-run` (auto-on for TTY text output; commits by default for `--format json` / `--format agent`). MCP tool: `memos_capture_to_reminders`. New built-in template `capture-action-items` enforces JSON shape `{items: [{title, due_hint, notes}]}`.
+
+---
+
+## [0.20.3] - 2026-04-24
+
+### Deprecated
+
+- [deprecation] `pippin audio` and `pippin browser` subcommands are now hidden by default. Set `PIPPIN_EXPERIMENTAL=1` to re-enable them — existing scripts with the env var continue to work unchanged. These commands will be **removed in the next major release (v1.0.0)** unless an issue is filed against `github.com/mattwag05/pippin` requesting otherwise. Rationale: they're rarely used and carry outsized maintenance cost (mlx-audio Python subprocess, Playwright WebKit bundle). Code and tests remain in place so re-enabling requires no rebuild.
 
 ---
 
