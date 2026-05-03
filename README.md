@@ -106,6 +106,8 @@ pippin memos list --since 2026-01-01
 pippin memos export <uuid> --output ~/Desktop/memos --transcribe
 pippin memos summarize <uuid> --template meeting-notes
 pippin memos summarize <uuid> --provider ollama --model gemma4:latest
+pippin memos capture --to-reminders                 # most recent memo → Reminders
+pippin memos capture --to-reminders --list Work --dry-run
 pippin memos templates list
 ```
 

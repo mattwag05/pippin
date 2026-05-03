@@ -211,6 +211,31 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertTrue(names.contains("memos_export"))
         XCTAssertTrue(names.contains("memos_transcribe"))
         XCTAssertTrue(names.contains("memos_summarize"))
+        XCTAssertTrue(names.contains("memos_capture_to_reminders"))
+    }
+
+    func testMemosCaptureArgvShape() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "memos_capture_to_reminders"))
+        let argv = try tool.buildArgs(.object([
+            "memo": .string("abc123"),
+            "list": .string("Work"),
+            "dryRun": .bool(true),
+        ]))
+        XCTAssertEqual(Array(argv.prefix(3)), ["memos", "capture", "--to-reminders"])
+        XCTAssertTrue(argv.contains("--memo"))
+        XCTAssertTrue(argv.contains("abc123"))
+        XCTAssertTrue(argv.contains("--list"))
+        XCTAssertTrue(argv.contains("Work"))
+        XCTAssertTrue(argv.contains("--dry-run"))
+        XCTAssertTrue(argv.contains("--format"))
+        XCTAssertTrue(argv.contains("agent"))
+    }
+
+    func testMemosCaptureDefaultsCommit() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "memos_capture_to_reminders"))
+        let argv = try tool.buildArgs(nil)
+        XCTAssertFalse(argv.contains("--dry-run"), "agent default should commit, not dry-run")
+        XCTAssertEqual(Array(argv.prefix(3)), ["memos", "capture", "--to-reminders"])
     }
 
     func testMemosExportRequiresOutput() throws {

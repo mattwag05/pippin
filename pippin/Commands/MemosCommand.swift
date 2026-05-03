@@ -5,7 +5,7 @@ public struct MemosCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "memos",
         abstract: "Interact with Voice Memos.",
-        subcommands: [List.self, Info.self, Export.self, Transcribe.self, Delete.self, TemplatesCommand.self, SummarizeCommand.self]
+        subcommands: [List.self, Info.self, Export.self, Transcribe.self, Delete.self, TemplatesCommand.self, SummarizeCommand.self, MemosCaptureCommand.self]
     )
 
     public init() {}
