@@ -18,7 +18,7 @@ public struct MessagesCommand: AsyncParsableCommand {
             abstract: "List recent conversations (most recent first)."
         )
 
-        @Option(name: .long, help: "Only conversations with a message in the last N hours (default: 48).")
+        @Option(name: .long, help: "Only conversations with a message in the last N hours (defaults to messages.defaultWindowHours from config, otherwise 48).")
         public var sinceHours: Int?
 
         @Option(name: .long, help: "Maximum conversations to return (default: 50).")
@@ -113,7 +113,7 @@ public struct MessagesCommand: AsyncParsableCommand {
             )
             try? MessagesAuditLog.record(
                 operation: "search",
-                params: ["query": query, "limit": "\(limit)"],
+                params: ["query": query, "since_hours": "\(sinceHours)", "limit": "\(limit)"],
                 resultCount: matches.count
             )
             try output.emit(payload, timedOutHint: "") {

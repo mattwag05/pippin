@@ -3,7 +3,7 @@ import GRDB
 import XCTest
 
 final class MessagesDatabaseTests: XCTestCase {
-    private func makeFixtureDB() throws -> DatabaseQueue {
+    private func makeEmptySchemaDB() throws -> DatabaseQueue {
         let db = try DatabaseQueue()
         try db.write { db in
             try db.execute(sql: """
@@ -35,6 +35,13 @@ final class MessagesDatabaseTests: XCTestCase {
             CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
             CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
             """)
+        }
+        return db
+    }
+
+    private func makeFixtureDB() throws -> DatabaseQueue {
+        let db = try makeEmptySchemaDB()
+        try db.write { db in
             try db.execute(sql: """
             INSERT INTO chat (guid, chat_identifier, service_name, display_name, style)
                 VALUES ('iMessage;-;+15551234567', '+15551234567', 'iMessage', NULL, 0);
@@ -131,6 +138,52 @@ final class MessagesDatabaseTests: XCTestCase {
         XCTAssertEqual(excluded, 1)
     }
 
+    func testSearchEscapesLikeMetachars() throws {
+        // A query containing `%` must be treated as a literal character, not
+        // a LIKE wildcard — otherwise "100%" would match every row.
+        let fixture = try makeEmptySchemaDB()
+        try fixture.write { db in
+            let ns = MessagesDatabase.appleNanos(from: Date())
+            try db.execute(sql: """
+            INSERT INTO chat (guid, chat_identifier, service_name, display_name, style)
+                VALUES ('chat-1', '+15550001111', 'iMessage', 'Test', 0);
+            INSERT INTO message (guid, text, date, is_from_me, is_read, service)
+                VALUES ('m1', '100% complete', ?, 0, 1, 'iMessage');
+            INSERT INTO message (guid, text, date, is_from_me, is_read, service)
+                VALUES ('m2', 'no match here', ?, 0, 1, 'iMessage');
+            INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
+            INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 2);
+            """, arguments: [ns, ns - 1])
+        }
+        let db = try MessagesDatabase(dbQueue: fixture)
+        let (matches, _) = try db.searchMessages(query: "100%", limit: 50)
+        XCTAssertEqual(matches.count, 1)
+        XCTAssertEqual(matches.first?.text, "100% complete")
+    }
+
+    func testSearchExcludesArchivedChats() throws {
+        let fixture = try makeEmptySchemaDB()
+        try fixture.write { db in
+            let ns = MessagesDatabase.appleNanos(from: Date())
+            try db.execute(sql: """
+            INSERT INTO chat (guid, chat_identifier, service_name, display_name, style, is_archived)
+                VALUES ('active-chat', '+15550002222', 'iMessage', 'Active', 0, 0);
+            INSERT INTO chat (guid, chat_identifier, service_name, display_name, style, is_archived)
+                VALUES ('archived-chat', '+15550003333', 'iMessage', 'Archived', 0, 1);
+            INSERT INTO message (guid, text, date, is_from_me, is_read, service)
+                VALUES ('m-active', 'hello world from active', ?, 0, 1, 'iMessage');
+            INSERT INTO message (guid, text, date, is_from_me, is_read, service)
+                VALUES ('m-archived', 'hello world from archived', ?, 0, 1, 'iMessage');
+            INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
+            INSERT INTO chat_message_join (chat_id, message_id) VALUES (2, 2);
+            """, arguments: [ns, ns - 1])
+        }
+        let db = try MessagesDatabase(dbQueue: fixture)
+        let (matches, _) = try db.searchMessages(query: "hello world", limit: 50)
+        XCTAssertEqual(matches.count, 1)
+        XCTAssertEqual(matches.first?.id, "m-active")
+    }
+
     // MARK: - Show
 
     func testShowReturnsThreadMessages() throws {
@@ -186,5 +239,23 @@ final class MessagesDatabaseTests: XCTestCase {
     func testPreviewCollapsesNewlines() {
         let result = MessagesDatabase.preview("line1\nline2\nline3")
         XCTAssertFalse(result.contains("\n"))
+    }
+
+    // MARK: - escapeLike
+
+    func testEscapeLikeEscapesPercent() {
+        XCTAssertEqual(MessagesDatabase.escapeLike("100%"), "100\\%")
+    }
+
+    func testEscapeLikeEscapesUnderscore() {
+        XCTAssertEqual(MessagesDatabase.escapeLike("file_name"), "file\\_name")
+    }
+
+    func testEscapeLikeEscapesBackslash() {
+        XCTAssertEqual(MessagesDatabase.escapeLike("path\\to"), "path\\\\to")
+    }
+
+    func testEscapeLikePassesThroughNormalText() {
+        XCTAssertEqual(MessagesDatabase.escapeLike("hello world"), "hello world")
     }
 }

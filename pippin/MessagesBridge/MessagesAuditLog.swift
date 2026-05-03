@@ -99,14 +99,16 @@ public enum MessagesAuditLog {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(entry) + Data("\n".utf8)
-        let url = URL(fileURLWithPath: target)
-        if let handle = try? FileHandle(forWritingTo: url) {
-            defer { try? handle.close() }
-            try handle.seekToEnd()
-            try handle.write(contentsOf: data)
-        } else {
-            try data.write(to: url)
+        // O_APPEND guarantees each write atomically seeks to end, preventing
+        // line interleaving when multiple `pippin messages` processes run
+        // concurrently (e.g. under MCP).
+        let fd = open(target, O_WRONLY | O_CREAT | O_APPEND, 0o644)
+        guard fd >= 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: nil)
         }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        try handle.write(contentsOf: data)
     }
 
     public static func now() -> String {
