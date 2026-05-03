@@ -45,13 +45,24 @@ public final class MessagesDatabase: Sendable {
             dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
         } catch {
             let ns = error as NSError
+            // Check for permission errors first — on macOS TCC, fileExists(atPath:)
+            // can return false even when the file exists, so we must inspect the
+            // NSError before falling back to a filesystem existence check.
+            if ns.domain == NSPOSIXErrorDomain {
+                switch ns.code {
+                case Int(EACCES), Int(EPERM):
+                    throw MessagesError.accessDenied(ns.localizedDescription)
+                case Int(ENOENT):
+                    throw MessagesError.databaseNotFound(dbPath)
+                default:
+                    break
+                }
+            }
+            // Fallback existence check for non-POSIX "not found" scenarios.
             if !FileManager.default.fileExists(atPath: dbPath) {
                 throw MessagesError.databaseNotFound(dbPath)
             }
-            if ns.domain == NSPOSIXErrorDomain, ns.code == Int(EACCES) {
-                throw MessagesError.accessDenied(ns.localizedDescription)
-            }
-            throw MessagesError.accessDenied(error.localizedDescription)
+            throw MessagesError.databaseError(error.localizedDescription)
         }
     }
 

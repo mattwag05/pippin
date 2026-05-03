@@ -28,7 +28,11 @@ final class MessagesSendCommandTests: XCTestCase {
 
     func testPHIFilteredBodyBlocksDraftAndRecordsAudit() async throws {
         let tmpAudit = NSTemporaryDirectory() + "messages-audit-\(UUID().uuidString).jsonl"
-        defer { try? FileManager.default.removeItem(atPath: tmpAudit) }
+        setenv("PIPPIN_MESSAGES_AUDIT_PATH", tmpAudit, 1)
+        defer {
+            unsetenv("PIPPIN_MESSAGES_AUDIT_PATH")
+            try? FileManager.default.removeItem(atPath: tmpAudit)
+        }
 
         var cmd = try MessagesCommand.Send.parse([
             "--to", "+15551234567",
@@ -45,5 +49,10 @@ final class MessagesSendCommandTests: XCTestCase {
         } catch {
             XCTFail("unexpected error: \(error)")
         }
+
+        // Audit log must be written with the password_mention override category.
+        let log = try String(contentsOfFile: tmpAudit, encoding: .utf8)
+        XCTAssertTrue(log.contains("password_mention"), "audit entry missing category; got: \(log)")
+        XCTAssertTrue(log.contains("\"sent\":false"), "audit entry should record sent=false")
     }
 }

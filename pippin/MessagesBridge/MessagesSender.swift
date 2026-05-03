@@ -36,6 +36,10 @@ public enum MessagesSender {
 
     /// Drives `send.messages`. `buddyOrChatId` accepts either a handle
     /// (e.g. `+15551234567`) for DMs or a chat GUID for group threads.
+    ///
+    /// The caller (``MessagesCommand.Send``) is responsible for PHI filtering
+    /// before calling this function. The triple-gate (env + allowlist + flag)
+    /// is also enforced at the command layer.
     public static func send(
         to buddyOrChatId: String,
         body: String,
@@ -44,10 +48,6 @@ public enum MessagesSender {
             try ScriptRunner.run(script, timeoutSeconds: timeout, appName: "Messages")
         }
     ) throws -> SendResult {
-        let phi = PHIFilter.scan(body)
-        if !phi.isClean {
-            throw MessagesSendError.phiFiltered(phi.flagged)
-        }
         let script = buildScript(recipient: buddyOrChatId, body: body)
         do {
             let out = try runner(script, timeoutSeconds)

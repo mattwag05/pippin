@@ -50,6 +50,9 @@ public struct MessagesAuditEntry: Codable, Sendable {
 /// and lets the user audit after an incident.
 public enum MessagesAuditLog {
     public static func defaultPath() -> String {
+        if let override = ProcessInfo.processInfo.environment["PIPPIN_MESSAGES_AUDIT_PATH"] {
+            return override
+        }
         let home = NSHomeDirectory()
         return "\(home)/.local/share/pippin/messages-audit.jsonl"
     }
@@ -60,7 +63,7 @@ public enum MessagesAuditLog {
     }
 
     /// Convenience: build an entry with `now()` timestamp and append in one call.
-    /// Used by every `messages` subcommand to remove the boilerplate.
+    /// Used by every `messages` subcommand (`list`, `search`, `show`, `send`).
     public static func record(
         operation: String,
         params: [String: String] = [:],

@@ -44,12 +44,11 @@ public struct MessagesCommand: AsyncParsableCommand {
                 excludedCount: excludedCount,
                 windowHours: windowHours
             )
-            try? MessagesAuditLog.append(MessagesAuditEntry(
-                timestamp: MessagesAuditLog.now(),
+            try? MessagesAuditLog.record(
                 operation: "list",
                 params: ["since_hours": "\(windowHours)", "limit": "\(limit)"],
                 resultCount: convs.count
-            ))
+            )
             try output.emit(payload, timedOutHint: "") {
                 printConversationList(payload)
             }
@@ -112,12 +111,11 @@ public struct MessagesCommand: AsyncParsableCommand {
                 excludedCount: excludedCount,
                 query: query
             )
-            try? MessagesAuditLog.append(MessagesAuditEntry(
-                timestamp: MessagesAuditLog.now(),
+            try? MessagesAuditLog.record(
                 operation: "search",
                 params: ["query": query, "limit": "\(limit)"],
                 resultCount: matches.count
-            ))
+            )
             try output.emit(payload, timedOutHint: "") {
                 printSearchResults(payload)
             }
@@ -161,12 +159,11 @@ public struct MessagesCommand: AsyncParsableCommand {
                 limit: limit
             )
             let payload = MessagesShowResult(conversation: conv, messages: messages, truncated: truncated)
-            try? MessagesAuditLog.append(MessagesAuditEntry(
-                timestamp: MessagesAuditLog.now(),
+            try? MessagesAuditLog.record(
                 operation: "show",
                 params: ["conversation_id": conversationId, "limit": "\(limit)"],
                 resultCount: messages.count
-            ))
+            )
             try output.emit(payload, timedOutHint: "") {
                 printShow(payload)
             }
