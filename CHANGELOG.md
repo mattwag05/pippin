@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.22.0] - 2026-04-24
+
+### Added
+
+- [feat] `pippin messages` subcommand — read and send access to Apple Messages (`~/Library/Messages/chat.db` via GRDB). Read subcommands: `list` (recent conversations, most-recent first), `search <query>` (substring match over message bodies), `show <conversation-id>` (thread view by GUID), `exclude {list,add,remove} <thread>` (per-thread opt-out stored in config). Handles both the post-macOS-10.13 nanosecond date column and the legacy seconds format. Agent/JSON output obeys envelope v1. Audit log at `~/.local/share/pippin/messages-audit.jsonl` records every read/send op (no message bodies persisted). MCP tools: `messages_list`, `messages_search`, `messages_show`, `messages_send` (draft-only via MCP). Requires Full Disk Access for the invoking terminal.
+- [feat] `pippin messages send --to <handle> --body <text>` — defaults to `--draft` (log-only, no delivery). Autonomous delivery (`--autonomous`) is triple-gated: env var `PIPPIN_AUTONOMOUS_MESSAGES=1` AND recipient in `config.messages.autonomousAllowlist` AND explicit `--autonomous` flag. PHI filter (SSN, credit card, API key, PEM, password mention) blocks send and records category names in the audit log.
+
+---
+
 ## [0.21.0] - 2026-04-25
 
 ### Added
