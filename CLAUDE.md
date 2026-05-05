@@ -121,6 +121,12 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 - `copilot-setup-steps.yml` — Xcode/SwiftFormat/deps for the Copilot coding agent.
 - Workflow pinning, swiftformat traps, and other CI/build gotchas: [docs/gotchas/build.md](docs/gotchas/build.md).
 
+## CodeQL
+
+Advanced setup via `.github/workflows/codeql.yml` — GitHub default setup is disabled. To toggle: `gh api -X PATCH repos/mattwag05/pippin/code-scanning/default-setup -f state=<configured|not-configured>`.
+
+SPM version resolution for GRDB is the slow step (~455 s cold). Fixed by caching `~/Library/Caches/org.swift.swiftpm` keyed on `Package.resolved` in the workflow.
+
 ## Known Consumers
 
 **Agent-mode envelope v1 (2026-04-20, breaking):**
