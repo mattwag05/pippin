@@ -10,14 +10,13 @@ extension MailBridge {
         limit: Int,
         offset: Int = 0,
         preview: Int? = nil,
-        softTimeoutMs: Int = 22000
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
         let mbName = jsEscape(mailbox)
         // 0 means "preview disabled"; positive value is clamped chars for the preview.
         let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
-        // Clamp soft timeout to a sane window: 1s floor, 5min ceiling.
-        let safeSoftTimeoutMs = max(1000, min(softTimeoutMs, 300_000))
+        let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
 
         return """
         var mail = Application('Mail');
@@ -171,7 +170,7 @@ extension MailBridge {
         after: String? = nil,
         before: String? = nil,
         to: String? = nil,
-        softTimeoutMs: Int = 22000
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let safeQuery = jsEscape(query)
         let acctFilter = jsEscapeOptional(account)
@@ -182,8 +181,7 @@ extension MailBridge {
         // Clamp limit to prevent runaway scans; per-mailbox cap bounds scan time
         let safeLimitVal = max(1, min(limit, 500))
         let perMailboxLimit = 500
-        // Clamp soft timeout to a sane window: 1s floor, 5min ceiling.
-        let safeSoftTimeoutMs = max(1000, min(softTimeoutMs, 300_000))
+        let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
 
         return """
         var mail = Application('Mail');
@@ -317,7 +315,7 @@ extension MailBridge {
         since: Date?,
         limit: Int,
         preview: Int?,
-        softTimeoutMs: Int = 22000
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
         let mbNamesJS = jsStringArray(mailboxes)
@@ -325,8 +323,7 @@ extension MailBridge {
         let safeLimit = max(1, min(limit, 500))
         let perMailboxLimit = 500
         let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
-        // Clamp soft timeout to a sane window: 1s floor, 5min ceiling.
-        let safeSoftTimeoutMs = max(1000, min(softTimeoutMs, 300_000))
+        let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
 
         return """
         var mail = Application('Mail');

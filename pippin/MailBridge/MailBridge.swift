@@ -29,8 +29,10 @@ enum MailBridge {
         )
         // The JXA loop self-bounds via softTimeoutMs (default 22s) when preview
         // forces per-message body fetches. ScriptRunner timeout is a hard
-        // failsafe well under the 60s MCP runChild cap.
-        let timeout = (preview ?? 0) > 0 ? 30 : 10
+        // failsafe well under the 60s MCP runChild cap; 35s gives the same
+        // ~13s headroom over the soft cap as activity to absorb a final
+        // in-flight body fetch + JSON.stringify of up to 500 rows × 4kb.
+        let timeout = (preview ?? 0) > 0 ? 35 : 10
         let json = try runScript(script, timeoutSeconds: timeout)
         let wrapper = try decode(ListResponse.self, from: json)
         return ListOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
@@ -84,7 +86,7 @@ enum MailBridge {
         before: String? = nil,
         to: String? = nil,
         verbose: Bool = false,
-        softTimeoutMs: Int = 22000
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> SearchOutcome {
         let clampedOffset = max(0, offset)
         let script = buildSearchScript(
@@ -337,6 +339,7 @@ enum MailBridge {
             accountsScanned = try container.decode(Int.self, forKey: .accountsScanned)
             mailboxesScanned = try container.decode(Int.self, forKey: .mailboxesScanned)
             messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
+            // Backward-compatible: scripts that don't emit timedOut default to false.
             timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
         }
 
