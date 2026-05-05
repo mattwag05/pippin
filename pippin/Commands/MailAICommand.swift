@@ -49,9 +49,6 @@ public struct MailIndex: AsyncParsableCommand {
             limit: limit,
             offset: 0
         )
-        if indexOutcome.timedOut {
-            fputs("warning: mailbox scan timed out — index will be partial\n", stderr)
-        }
         let messages = indexOutcome.messages
 
         var indexed = 0
@@ -121,11 +118,7 @@ public struct MailIndex: AsyncParsableCommand {
         }
 
         let result = IndexResult(indexed: indexed, skipped: skipped, total: messages.count)
-        if output.isJSON {
-            try printJSON(result)
-        } else if output.isAgent {
-            try output.printAgent(result)
-        } else {
+        try output.emit(result, timedOut: indexOutcome.timedOut, timedOutHint: "mailbox scan timed out — index will be partial") {
             print("Indexed \(indexed) messages, skipped \(skipped) (total \(messages.count))")
         }
     }
@@ -238,9 +231,6 @@ public struct MailTriage: AsyncParsableCommand {
             limit: limit,
             offset: 0
         )
-        if triageOutcome.timedOut {
-            fputs("warning: mailbox scan timed out — triage results will be partial\n", stderr)
-        }
         let messages = triageOutcome.messages
 
         // Apply persistent rules before the AI pass to skip token usage on predictable patterns.
@@ -258,11 +248,7 @@ public struct MailTriage: AsyncParsableCommand {
             actionItems: aiResult.actionItems
         )
 
-        if output.isJSON {
-            try printJSON(result)
-        } else if output.isAgent {
-            try output.printAgent(result)
-        } else {
+        try output.emit(result, timedOut: triageOutcome.timedOut, timedOutHint: "mailbox scan timed out — triage results will be partial") {
             let rows = result.messages.map { m in
                 [m.category.rawValue, "\(m.urgency)", TextFormatter.truncate(m.subject, to: 35), m.oneLiner]
             }
