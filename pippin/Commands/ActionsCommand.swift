@@ -105,13 +105,17 @@ public struct ActionsCommand: AsyncParsableCommand {
         // MARK: - Source collection
 
         private func collectMailItems(since: Date?) throws -> [ActionExtractor.Item] {
-            let messages = try MailBridge.listActivity(
+            let outcome = try MailBridge.listActivity(
                 account: account,
                 mailboxes: ["Sent"],
                 since: since,
                 limit: limit,
                 preview: 400
-            ).messages
+            )
+            if outcome.timedOut {
+                fputs("[actions] warning: activity scan timed out — commitment extraction may be incomplete\n", stderr)
+            }
+            let messages = outcome.messages
             return messages.compactMap { msg in
                 let text = msg.bodyPreview ?? msg.body
                 guard let body = text, !body.isEmpty else { return nil }

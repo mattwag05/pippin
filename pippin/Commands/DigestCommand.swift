@@ -57,16 +57,19 @@ public struct DigestCommand: AsyncParsableCommand {
                 var summaries: [DigestPayload.AccountSummary] = []
                 for account in accounts {
                     do {
-                        let messages = try MailBridge.listMessages(
+                        let outcome = try MailBridge.listMessages(
                             account: account.name,
                             mailbox: "INBOX",
                             unread: true,
                             limit: mailLimit
-                        ).messages
+                        )
+                        if outcome.timedOut {
+                            warnings.append("mail (\(account.name)): unread count may be partial — scan timed out")
+                        }
                         summaries.append(DigestPayload.AccountSummary(
                             account: account.name,
-                            unread: messages.count,
-                            topMessages: messages
+                            unread: outcome.messages.count,
+                            topMessages: outcome.messages
                         ))
                     } catch {
                         warnings.append("mail (\(account.name)): \(error.localizedDescription)")

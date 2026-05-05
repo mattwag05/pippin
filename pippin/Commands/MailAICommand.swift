@@ -42,13 +42,17 @@ public struct MailIndex: AsyncParsableCommand {
         let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: embeddingModel)
         let store = try EmbeddingStore()
 
-        let messages = try MailBridge.listMessages(
+        let indexOutcome = try MailBridge.listMessages(
             account: account,
             mailbox: mailbox,
             unread: false,
             limit: limit,
             offset: 0
-        ).messages
+        )
+        if indexOutcome.timedOut {
+            fputs("warning: mailbox scan timed out — index will be partial\n", stderr)
+        }
+        let messages = indexOutcome.messages
 
         var indexed = 0
         var skipped = 0
@@ -227,13 +231,17 @@ public struct MailTriage: AsyncParsableCommand {
     }
 
     public mutating func run() async throws {
-        let messages = try MailBridge.listMessages(
+        let triageOutcome = try MailBridge.listMessages(
             account: account,
             mailbox: mailbox,
             unread: false,
             limit: limit,
             offset: 0
-        ).messages
+        )
+        if triageOutcome.timedOut {
+            fputs("warning: mailbox scan timed out — triage results will be partial\n", stderr)
+        }
+        let messages = triageOutcome.messages
 
         // Apply persistent rules before the AI pass to skip token usage on predictable patterns.
         let rules = noRules ? [] : TriageRulesEngine.loadRules(path: rulesFile)
