@@ -48,7 +48,7 @@ public struct MailIndex: AsyncParsableCommand {
             unread: false,
             limit: limit,
             offset: 0
-        )
+        ).messages
 
         var indexed = 0
         var skipped = 0
@@ -233,7 +233,7 @@ public struct MailTriage: AsyncParsableCommand {
             unread: false,
             limit: limit,
             offset: 0
-        )
+        ).messages
 
         // Apply persistent rules before the AI pass to skip token usage on predictable patterns.
         let rules = noRules ? [] : TriageRulesEngine.loadRules(path: rulesFile)

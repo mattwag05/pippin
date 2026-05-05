@@ -42,7 +42,7 @@ public extension MailCommand {
 
             let initial = try MailBridge.listMessages(
                 account: account, mailbox: mailbox, unread: false, limit: limit
-            )
+            ).messages
             for msg in initial {
                 seen.insert(msg.id)
             }
@@ -59,7 +59,7 @@ public extension MailCommand {
                 do {
                     messages = try MailBridge.listMessages(
                         account: account, mailbox: mailbox, unread: false, limit: limit
-                    )
+                    ).messages
                 } catch {
                     fputs("poll error: \(error.localizedDescription)\n", stderr)
                     continue

@@ -111,7 +111,7 @@ public struct ActionsCommand: AsyncParsableCommand {
                 since: since,
                 limit: limit,
                 preview: 400
-            )
+            ).messages
             return messages.compactMap { msg in
                 let text = msg.bodyPreview ?? msg.body
                 guard let body = text, !body.isEmpty else { return nil }

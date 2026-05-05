@@ -62,7 +62,7 @@ public struct DigestCommand: AsyncParsableCommand {
                             mailbox: "INBOX",
                             unread: true,
                             limit: mailLimit
-                        )
+                        ).messages
                         summaries.append(DigestPayload.AccountSummary(
                             account: account.name,
                             unread: messages.count,
