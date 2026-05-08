@@ -436,44 +436,51 @@ final class BrowserCommandTests: XCTestCase {
 
     // MARK: - BrowserRetry — retry mechanics
 
+    /// Sendable counter: BrowserRetry now hops the operation closure through
+    /// detachBlocking, so any captured state needs to cross the @Sendable
+    /// boundary. The retries are serialized so the @unchecked claim is safe.
+    private final class CallCounter: @unchecked Sendable {
+        var count = 0
+    }
+
     func testRetryStopsOnFirstSuccessNoExpect() async throws {
-        var calls = 0
+        let calls = CallCounter()
         let r = try await BrowserRetry.run(retry: 3, delayMs: 0, expectField: nil) {
-            calls += 1
+            calls.count += 1
             return PageInfo(url: "x", title: "y")
         }
         XCTAssertEqual(r.attempts, 1)
-        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(calls.count, 1)
     }
 
     func testRetryRunsAllAttemptsWhenExpectFails() async throws {
-        var calls = 0
+        let calls = CallCounter()
         let r = try await BrowserRetry.run(retry: 2, delayMs: 0, expectField: "title") {
-            calls += 1
+            calls.count += 1
             return PageInfo(url: "x", title: "")
         }
         XCTAssertEqual(r.attempts, 3)
-        XCTAssertEqual(calls, 3)
+        XCTAssertEqual(calls.count, 3)
         XCTAssertEqual(r.result.title, "")
     }
 
     func testRetryStopsOnExpectSatisfied() async throws {
-        var calls = 0
+        let calls = CallCounter()
         let r = try await BrowserRetry.run(retry: 5, delayMs: 0, expectField: "title") { () -> PageInfo in
-            calls += 1
-            return PageInfo(url: "x", title: calls >= 3 ? "loaded" : "")
+            calls.count += 1
+            return PageInfo(url: "x", title: calls.count >= 3 ? "loaded" : "")
         }
         XCTAssertEqual(r.attempts, 3)
-        XCTAssertEqual(calls, 3)
+        XCTAssertEqual(calls.count, 3)
         XCTAssertEqual(r.result.title, "loaded")
     }
 
     func testRetryPropagatesFirstErrorImmediately() async {
         // Errors are non-retryable: the first throw propagates, no further attempts.
-        var calls = 0
+        let calls = CallCounter()
         do {
             _ = try await BrowserRetry.run(retry: 2, delayMs: 0, expectField: nil) { () -> PageInfo in
-                calls += 1
+                calls.count += 1
                 throw BrowserBridgeError.scriptFailed("boom")
             }
             XCTFail("expected throw")
@@ -482,7 +489,7 @@ final class BrowserCommandTests: XCTestCase {
         } catch {
             XCTFail("expected scriptFailed, got \(error)")
         }
-        XCTAssertEqual(calls, 1, "errors should not trigger retries")
+        XCTAssertEqual(calls.count, 1, "errors should not trigger retries")
     }
 
     func testRetryReturnsPartialOnExhaustedExpectFail() async throws {
@@ -576,10 +583,10 @@ final class BrowserCommandTests: XCTestCase {
     }
 
     func testRetryReturnsFetchResultOnFirstHit() async throws {
-        var calls = 0
+        let calls = CallCounter()
         let r = try await BrowserRetry.run(retry: 2, delayMs: 0, expectField: "content") {
-            calls += 1
-            return FetchResult(url: "https://x", content: calls >= 2 ? "<body/>" : "")
+            calls.count += 1
+            return FetchResult(url: "https://x", content: calls.count >= 2 ? "<body/>" : "")
         }
         XCTAssertEqual(r.attempts, 2)
         XCTAssertEqual(r.result.content, "<body/>")

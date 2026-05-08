@@ -42,6 +42,8 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
+            let url = self.url
+            let sessionDir = self.sessionDir
             let (info, attempts) = try await BrowserRetry.run(
                 retry: retry,
                 delayMs: retryDelayMs,
@@ -92,6 +94,7 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
+            let sessionDir = self.sessionDir
             let (result, attempts) = try await BrowserRetry.run(
                 retry: retry,
                 delayMs: retryDelayMs,
@@ -148,7 +151,11 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let savedPath = try BrowserBridge.screenshot(outputPath: file, sessionDir: sessionDir)
+            let file = self.file
+            let sessionDir = self.sessionDir
+            let savedPath = try await detachBlocking {
+                try BrowserBridge.screenshot(outputPath: file, sessionDir: sessionDir)
+            }
             let result = BrowserActionResult(success: true, action: "screenshot", details: ["path": savedPath])
             if output.isJSON {
                 try printJSON(result)
@@ -179,7 +186,11 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            _ = try BrowserBridge.click(ref: ref, sessionDir: sessionDir)
+            let ref = self.ref
+            let sessionDir = self.sessionDir
+            _ = try await detachBlocking {
+                try BrowserBridge.click(ref: ref, sessionDir: sessionDir)
+            }
             let result = BrowserActionResult(success: true, action: "click", details: ["ref": ref])
             if output.isJSON {
                 try printJSON(result)
@@ -213,7 +224,12 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            _ = try BrowserBridge.fill(ref: ref, value: value, sessionDir: sessionDir)
+            let ref = self.ref
+            let value = self.value
+            let sessionDir = self.sessionDir
+            _ = try await detachBlocking {
+                try BrowserBridge.fill(ref: ref, value: value, sessionDir: sessionDir)
+            }
             let result = BrowserActionResult(success: true, action: "fill", details: ["ref": ref])
             if output.isJSON {
                 try printJSON(result)
@@ -250,8 +266,12 @@ public struct BrowserCommand: AsyncParsableCommand {
                     message: "Invalid direction '\(direction)'. Must be one of: up, down, left, right."
                 )
             }
-            _ = try BrowserBridge.scroll(direction: direction.lowercased(), sessionDir: sessionDir)
-            let result = BrowserActionResult(success: true, action: "scroll", details: ["direction": direction.lowercased()])
+            let lowered = direction.lowercased()
+            let sessionDir = self.sessionDir
+            _ = try await detachBlocking {
+                try BrowserBridge.scroll(direction: lowered, sessionDir: sessionDir)
+            }
+            let result = BrowserActionResult(success: true, action: "scroll", details: ["direction": lowered])
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
@@ -278,7 +298,10 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let tabs = try BrowserBridge.tabs(sessionDir: sessionDir)
+            let sessionDir = self.sessionDir
+            let tabs = try await detachBlocking {
+                try BrowserBridge.tabs(sessionDir: sessionDir)
+            }
             if output.isJSON {
                 try printJSON(tabs)
             } else if output.isAgent {
@@ -314,7 +337,10 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            try BrowserBridge.close(sessionDir: sessionDir)
+            let sessionDir = self.sessionDir
+            try await detachBlocking {
+                try BrowserBridge.close(sessionDir: sessionDir)
+            }
             let result = BrowserActionResult(success: true, action: "close")
             if output.isJSON {
                 try printJSON(result)
@@ -351,6 +377,7 @@ public struct BrowserCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
+            let url = self.url
             let (result, attempts) = try await BrowserRetry.run(
                 retry: retry,
                 delayMs: retryDelayMs,
