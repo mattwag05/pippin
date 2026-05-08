@@ -119,7 +119,7 @@ private func gatherMailStatus() -> StatusReport.MailStatus? {
         let mailboxCount = (try? MailBridge.listMailboxes(account: account.name))?.count ?? 0
         return StatusReport.MailAccountSummary(
             name: account.name,
-            email: account.email ?? "",
+            email: account.email,
             mailboxCount: mailboxCount
         )
     }
@@ -129,8 +129,10 @@ private func gatherMailStatus() -> StatusReport.MailStatus? {
 // MARK: - Calendar
 
 private func gatherCalendarStatus() -> StatusReport.CalendarStatus? {
+    // We need to read events, so .writeOnly isn't enough. .authorized was the
+    // pre-macOS-14 spelling; deprecated since we target macOS 15+.
     let ekStatus = EKEventStore.authorizationStatus(for: .event)
-    guard ekStatus == .fullAccess || ekStatus == .authorized else { return nil }
+    guard ekStatus == .fullAccess else { return nil }
 
     let store = EKEventStore()
     let calendars = store.calendars(for: .event)
@@ -159,7 +161,7 @@ private func gatherCalendarStatus() -> StatusReport.CalendarStatus? {
 
 private func gatherRemindersStatus() -> StatusReport.RemindersStatus? {
     let ekStatus = EKEventStore.authorizationStatus(for: .reminder)
-    guard ekStatus == .fullAccess || ekStatus == .authorized else { return nil }
+    guard ekStatus == .fullAccess else { return nil }
 
     let store = EKEventStore()
     let lists = store.calendars(for: .reminder)
@@ -239,14 +241,14 @@ private func gatherPermissions() -> [StatusReport.PermissionEntry] {
     let calStatus = EKEventStore.authorizationStatus(for: .event)
     entries.append(StatusReport.PermissionEntry(
         name: "Calendar",
-        granted: calStatus == .fullAccess || calStatus == .authorized
+        granted: calStatus == .fullAccess
     ))
 
     // Reminders
     let remStatus = EKEventStore.authorizationStatus(for: .reminder)
     entries.append(StatusReport.PermissionEntry(
         name: "Reminders",
-        granted: remStatus == .fullAccess || remStatus == .authorized
+        granted: remStatus == .fullAccess
     ))
 
     // Contacts

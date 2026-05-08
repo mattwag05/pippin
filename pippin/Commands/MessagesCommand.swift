@@ -44,7 +44,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 excludedCount: excludedCount,
                 windowHours: windowHours
             )
-            try? MessagesAuditLog.record(
+            MessagesAuditLog.record(
                 operation: "list",
                 params: ["since_hours": "\(windowHours)", "limit": "\(limit)"],
                 resultCount: convs.count
@@ -111,7 +111,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 excludedCount: excludedCount,
                 query: query
             )
-            try? MessagesAuditLog.record(
+            MessagesAuditLog.record(
                 operation: "search",
                 params: ["query": query, "since_hours": "\(sinceHours)", "limit": "\(limit)"],
                 resultCount: matches.count
@@ -159,7 +159,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 limit: limit
             )
             let payload = MessagesShowResult(conversation: conv, messages: messages, truncated: truncated)
-            try? MessagesAuditLog.record(
+            MessagesAuditLog.record(
                 operation: "show",
                 params: ["conversation_id": conversationId, "limit": "\(limit)"],
                 resultCount: messages.count
