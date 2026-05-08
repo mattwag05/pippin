@@ -4,7 +4,7 @@
 
 ## Mission
 
-Review changes in this repository, fix any issues, then push and open a PR on Forgejo. After merge, sync the GitHub mirror. You have full authority to modify code to make it shippable.
+Review changes in this repository, fix any issues, then push and open a PR on GitHub. You have full authority to modify code to make it shippable.
 
 ## Phase 1 — Inventory
 
@@ -21,10 +21,11 @@ Work through each changed file. For anything that fails the bar below, fix it yo
 ### Correctness
 - Logic matches the changelog description, no regressions
 - Bridge patterns followed: `enum` + `static` methods, `nonisolated(unsafe)` + DispatchGroup (intentional for Swift 6)
-- Agent output uses the three-way pattern: `isJSON -> printJSON`, `isAgent -> printAgentJSON`, else text
+- Async commands hop sync blocking work via `detachBlocking { ... }` — see `pippin/DetachBlocking.swift` and any `process.waitUntilExit` / `DispatchSemaphore.wait` / `sendSynchronousRequest` callsite
+- Agent output uses the three-way pattern: `isJSON -> printJSON`, `isAgent -> printAgentJSON`, else text — wrapped in envelope v1 (`{v, status, duration_ms, data|error}`)
 - Progress output guarded by `!outputOptions.isStructured`
-- No `TextFormatter.actionResult` hand-rolled inline (use the dict overload)
 - Compound IDs use the `account||mailbox||numericId` format correctly
+- Mail/Notes bridges threading `softTimeoutMs` and surfacing `outcome.timedOut` to callers
 
 ### Security
 - No hardcoded secrets or debug output in production paths
@@ -50,7 +51,7 @@ Work through each changed file. For anything that fails the bar below, fix it yo
 Run all three and fix failures caused by the changes:
 ```bash
 make lint    # swiftformat check
-make test    # 831+ tests must pass
+make test    # all tests must pass (current baseline: ~1648)
 make build   # release build must succeed
 ```
 
@@ -66,7 +67,7 @@ Once changes are clean:
    git commit -m "$(cat <<'EOF'
    <type>: <description>
 
-   Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+   Co-Authored-By: Claude Code <noreply@anthropic.com>
    EOF
    )"
    ```
@@ -76,49 +77,44 @@ Once changes are clean:
    git checkout -b <descriptive-branch-name>
    ```
 
-3. Push to Forgejo:
+3. Push to GitHub:
    ```bash
-   git push forgejo <branch-name>
+   git push -u origin <branch-name>
    ```
 
-## Phase 4 — Open PR on Forgejo
-
-Get the auth token and create the PR:
+## Phase 4 — Open PR on GitHub
 
 ```bash
-TOKEN=$(get-secret "Forgejo Admin Credentials")
+gh pr create --title "<short summary, under 70 chars>" --body "$(cat <<'EOF'
+## Summary
+<2-3 sentences from changelog>
 
-curl -s -X POST "https://forgejo.tail6e035b.ts.net/api/v1/repos/matthewwagner/pippin/pulls" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Basic $(echo -n "matthewwagner:$TOKEN" | base64)" \
-  -d "$(cat <<'EOF'
-{
-  "title": "<short summary, under 70 chars>",
-  "head": "<branch-name>",
-  "base": "main",
-  "body": "## Summary\n<2-3 sentences from changelog>\n\n## Changes\n<changelog entries as bullets, grouped by category>\n\n## Validation\n- Lint: <pass/fail> | Tests: <count> passed | Build: <pass/fail>\n\n## Notes\n<any pre-existing failures, reviewer amendments, observations>\n\n---\nGenerated with [Claude Code](https://claude.com/claude-code)"
-}
+## Changes
+<changelog entries as bullets, grouped by category>
+
+## Validation
+- Lint: <pass/fail> | Tests: <count> passed | Build: <pass/fail>
+
+## Notes
+<any pre-existing failures, reviewer amendments, observations>
+
+---
+Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
 ```
 
-Confirm the PR URL from the API response.
+Confirm the PR URL from the `gh` output.
 
-## Phase 5 — Post-Merge Mirror Sync
+## Phase 5 — Post-Merge
 
-After the PR is merged (or if pushing directly to main):
+After the PR is merged:
 
 ```bash
-# Ensure local main is up to date
 git checkout main
-git pull forgejo main
-
-# Sync GitHub mirror
-git push github main
-
-# If this is a tagged release, push tags to both
-git push forgejo --tags
-git push github --tags
+git pull --rebase origin main
+# If this was a tagged release:
+git push --tags origin
 ```
 
 ## Phase 6 — Report
@@ -128,12 +124,9 @@ Output a terminal summary:
 - Issues found and fixed during review (count and type)
 - `make test` / `make lint` / `make build` final status
 - Any pre-existing failures noted
-- GitHub mirror sync status
 
 ## Constraints
-- Never push directly to `main` on Forgejo unless the changes are trivial (typo, formatting only) and no PR workflow is warranted
-- Use Basic auth for Forgejo API — Bearer token fails with "user does not exist"
-- Do NOT use `gh pr create` — Forgejo returns HTTP 405 (no GraphQL)
+- Never push directly to `main` on shared branches unless the changes are trivial (typo, formatting only) and no PR workflow is warranted
 - Do NOT modify `Package.resolved` unless a dependency update is part of the changes
 - If you discover a security vulnerability you cannot safely fix, halt and escalate to the user
-- Do NOT delete the feature branch from Forgejo until the PR is merged
+- Do NOT delete the feature branch from GitHub until the PR is merged
