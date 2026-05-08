@@ -44,21 +44,20 @@ public extension MailCommand {
         }
 
         public mutating func run() async throws {
-            let messages = try MailBridge.listActivity(
+            let outcome = try MailBridge.listActivity(
                 account: account,
                 mailboxes: Self.parseMailboxList(mailboxes),
                 since: since.flatMap { parseCalendarDate($0) },
                 limit: limit,
                 preview: preview > 0 ? preview : nil
             )
-            if output.isJSON {
-                try printJSON(messages)
-            } else if output.isAgent {
-                try output.printAgent(messages)
-            } else {
+            let messages = outcome.messages
+            try output.emit(messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
                 printMessageTable(messages)
             }
         }
+
+        static let timedOutHint = "activity exceeded soft timeout, returning partial results — narrow with --since, --account, or a smaller --limit for complete results"
 
         static func parseMailboxList(_ raw: String) -> [String] {
             raw.split(separator: ",")

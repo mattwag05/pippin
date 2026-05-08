@@ -9,12 +9,14 @@ extension MailBridge {
         unread: Bool,
         limit: Int,
         offset: Int = 0,
-        preview: Int? = nil
+        preview: Int? = nil,
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
         let mbName = jsEscape(mailbox)
         // 0 means "preview disabled"; positive value is clamped chars for the preview.
         let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
+        let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
 
         return """
         var mail = Application('Mail');
@@ -27,16 +29,24 @@ extension MailBridge {
         var limit = \(limit);
         var offset = \(offset);
         var previewChars = \(previewChars);
+        var softTimeoutMs = \(safeSoftTimeoutMs);
         var results = [];
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
+        // Soft timeout: bail out of the per-message body-fetch loop with whatever
+        // we've got so the CLI returns partial results before the ScriptRunner
+        // hard timeout (and the MCP runChild 60s cap) kicks in.
+        var _listStart = Date.now();
 
         var accounts = mail.accounts();
-        for (var a = 0; a < accounts.length && results.length < limit; a++) {
+        for (var a = 0; a < accounts.length && results.length < limit && !_meta.timedOut; a++) {
             var acct = accounts[a];
             var acctName = acct.name();
             if (acctFilter !== null && acctName !== acctFilter) continue;
+            _meta.accountsScanned++;
 
             var mb = resolveMailbox(acct, mbFilter);
             if (mb === null || results.length >= limit) continue;
+            _meta.mailboxesScanned++;
             var resolvedMbName = mb.name();
 
             // whose({}) is invalid JXA — use messages() directly for all-messages case
@@ -46,49 +56,49 @@ extension MailBridge {
             var slice = msgs.slice(startIdx, endIdx);
             var count = slice.length;
 
-            var ids       = slice.map(function(msg) { return msg.id(); });
-            var subjects  = slice.map(function(msg) { return msg.subject(); });
-            var senders   = slice.map(function(msg) { return msg.sender(); });
-            var dates     = slice.map(function(msg) { return msg.dateSent().toISOString(); });
-            var readFlags = slice.map(function(msg) { return msg.readStatus(); });
-            var sizes     = slice.map(function(msg) { try { return msg.messageSize(); } catch(e) { return null; } });
-            var hasAtts   = slice.map(function(msg) { try { return msg.mailAttachments().length > 0; } catch(e) { return false; } });
-            // msg.content() triggers the IMAP body fetch per CLAUDE.md — only called when previewChars > 0.
-            var previews = slice.map(function(msg) {
-                if (previewChars <= 0) return null;
-                try {
-                    var raw = msg.content();
-                    if (raw == null || raw === '') return null;
-                    var s = String(raw);
-                    if (s.length > previewChars) return s.substring(0, previewChars) + '…';
-                    return s;
-                } catch (e) {
-                    return null;
-                }
-            });
+            // Single-pass assembly: time-check fires per message so the
+            // expensive msg.content() body fetch (when preview is on) can be
+            // bounded. Preserves the metadata-then-body order so we never
+            // discard partial work — if the soft cap fires mid-row, we keep
+            // every row already pushed to results.
+            for (var i = 0; i < count && results.length < limit; i++) {
+                if (Date.now() - _listStart > softTimeoutMs) { _meta.timedOut = true; break; }
+                var msg = slice[i];
+                _meta.messagesExamined++;
 
-            for (var i = 0; i < count; i++) {
+                var msgSize = null;
+                try { msgSize = msg.messageSize(); } catch(e) {}
+                var msgHasAtt = false;
+                try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {}
+
                 var row = {
-                    id: acctName + '||' + resolvedMbName + '||' + ids[i],
+                    id: acctName + '||' + resolvedMbName + '||' + msg.id(),
                     account: acctName,
                     mailbox: resolvedMbName,
-                    subject: subjects[i],
-                    from: senders[i],
+                    subject: msg.subject(),
+                    from: msg.sender(),
                     to: [],
-                    date: dates[i],
-                    read: readFlags[i],
+                    date: msg.dateSent().toISOString(),
+                    read: msg.readStatus(),
                     body: null,
-                    size: sizes[i],
-                    hasAttachment: hasAtts[i]
+                    size: msgSize,
+                    hasAttachment: msgHasAtt
                 };
-                if (previewChars > 0 && previews[i] != null) {
-                    row.bodyPreview = previews[i];
+                // msg.content() triggers the IMAP body fetch per CLAUDE.md — only called when previewChars > 0.
+                if (previewChars > 0) {
+                    try {
+                        var raw = msg.content();
+                        if (raw != null && raw !== '') {
+                            var s = String(raw);
+                            row.bodyPreview = s.length > previewChars ? s.substring(0, previewChars) + '…' : s;
+                        }
+                    } catch (e) {}
                 }
                 results.push(row);
             }
         }
 
-        JSON.stringify(results);
+        JSON.stringify({results: results, meta: _meta});
         """
     }
 
@@ -160,7 +170,7 @@ extension MailBridge {
         after: String? = nil,
         before: String? = nil,
         to: String? = nil,
-        softTimeoutMs: Int = 22000
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let safeQuery = jsEscape(query)
         let acctFilter = jsEscapeOptional(account)
@@ -171,8 +181,7 @@ extension MailBridge {
         // Clamp limit to prevent runaway scans; per-mailbox cap bounds scan time
         let safeLimitVal = max(1, min(limit, 500))
         let perMailboxLimit = 500
-        // Clamp soft timeout to a sane window: 1s floor, 5min ceiling.
-        let safeSoftTimeoutMs = max(1000, min(softTimeoutMs, 300_000))
+        let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
 
         return """
         var mail = Application('Mail');
@@ -305,7 +314,8 @@ extension MailBridge {
         mailboxes: [String],
         since: Date?,
         limit: Int,
-        preview: Int?
+        preview: Int?,
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
         let mbNamesJS = jsStringArray(mailboxes)
@@ -313,6 +323,7 @@ extension MailBridge {
         let safeLimit = max(1, min(limit, 500))
         let perMailboxLimit = 500
         let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
+        let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
 
         return """
         var mail = Application('Mail');
@@ -327,16 +338,24 @@ extension MailBridge {
         var limit = \(safeLimit);
         var perMailboxLimit = \(perMailboxLimit);
         var previewChars = \(previewChars);
+        var softTimeoutMs = \(safeSoftTimeoutMs);
         var results = [];
         var seenMsgKeys = {};
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
+        // Soft timeout: bail out of nested scan loops AND the post-slice preview
+        // loop so the CLI returns partial results before the ScriptRunner hard
+        // timeout (and the MCP runChild 60s cap) kicks in.
+        var _activityStart = Date.now();
 
         var accounts = mail.accounts();
-        for (var a = 0; a < accounts.length; a++) {
+        for (var a = 0; a < accounts.length && !_meta.timedOut; a++) {
             var acct = accounts[a];
             var acctName = acct.name();
             if (acctFilter !== null && acctName !== acctFilter) continue;
+            _meta.accountsScanned++;
 
-            for (var t = 0; t < targetNames.length; t++) {
+            for (var t = 0; t < targetNames.length && !_meta.timedOut; t++) {
+                if (Date.now() - _activityStart > softTimeoutMs) { _meta.timedOut = true; break; }
                 var targetName = targetNames[t];
                 var mb = resolveMailbox(acct, targetName);
                 if (mb === null) {
@@ -346,14 +365,17 @@ extension MailBridge {
                     }
                     if (mb === null) continue;
                 }
+                _meta.mailboxesScanned++;
                 var resolvedMbName = mb.name();
 
                 var allMsgs = mb.messages();
                 if (!allMsgs) continue;
                 var scanCount = Math.min(allMsgs.length, perMailboxLimit);
                 var startIdx = Math.max(0, allMsgs.length - scanCount);
-                for (var i = allMsgs.length - 1; i >= startIdx; i--) {
+                for (var i = allMsgs.length - 1; i >= startIdx && !_meta.timedOut; i--) {
+                    if (Date.now() - _activityStart > softTimeoutMs) { _meta.timedOut = true; break; }
                     var msg = allMsgs[i];
+                    _meta.messagesExamined++;
                     var msgDate = msg.dateSent();
                     if (sinceDate !== null && msgDate < sinceDate) continue;
 
@@ -403,8 +425,10 @@ extension MailBridge {
         if (results.length > limit) results = results.slice(0, limit);
 
         // Preview fetch runs AFTER slice so msg.content() only fires for survivors.
+        // Time-check inside the loop so a slow IMAP fetch can't blow the budget.
         if (previewChars > 0) {
-            for (var p = 0; p < results.length; p++) {
+            for (var p = 0; p < results.length && !_meta.timedOut; p++) {
+                if (Date.now() - _activityStart > softTimeoutMs) { _meta.timedOut = true; break; }
                 try {
                     var raw = results[p].__msg.content();
                     if (raw != null && raw !== '') {
@@ -416,7 +440,7 @@ extension MailBridge {
         }
         for (var p2 = 0; p2 < results.length; p2++) { delete results[p2].__msg; }
 
-        JSON.stringify(results);
+        JSON.stringify({results: results, meta: _meta});
         """
     }
 

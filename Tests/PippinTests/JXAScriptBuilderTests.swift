@@ -226,6 +226,153 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("var previewChars = 4000;"), "preview should clamp at 4000")
     }
 
+    // MARK: - buildListScript (soft timeout)
+
+    func testListScriptDefaultSoftTimeoutIs22Seconds() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("var softTimeoutMs = 22000;"))
+    }
+
+    func testListScriptInterpolatesSoftTimeout() {
+        let script = MailBridge.buildListScript(
+            account: nil, mailbox: "INBOX", unread: false, limit: 10, softTimeoutMs: 5000
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 5000;"))
+    }
+
+    func testListScriptClampsSoftTimeoutBelowOneSecond() {
+        let script = MailBridge.buildListScript(
+            account: nil, mailbox: "INBOX", unread: false, limit: 10, softTimeoutMs: 0
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 1000;"))
+    }
+
+    func testListScriptClampsSoftTimeoutAboveFiveMinutes() {
+        let script = MailBridge.buildListScript(
+            account: nil, mailbox: "INBOX", unread: false, limit: 10, softTimeoutMs: 999_999_999
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 300000;"))
+    }
+
+    func testListScriptInjectsStartTimestamp() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("var _listStart = Date.now();"))
+    }
+
+    func testListScriptBreaksOnSoftTimeoutInPerMessageLoop() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(
+            script.contains("Date.now() - _listStart > softTimeoutMs"),
+            "list script must check elapsed time inside the per-message body-fetch loop"
+        )
+        XCTAssertTrue(script.contains("_meta.timedOut = true"))
+    }
+
+    func testListScriptInjectsTimedOutMetaField() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("timedOut: false"))
+    }
+
+    func testListScriptOutputsMetaWrapper() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
+    }
+
+    // MARK: - buildActivityScript
+
+    func testActivityScriptDefaultMailboxesAreInboxAndSent() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX", "Sent"], since: nil, limit: 50, preview: 200
+        )
+        XCTAssertTrue(script.contains("'INBOX'"))
+        XCTAssertTrue(script.contains("'Sent'"))
+    }
+
+    func testActivityScriptInterpolatesLimit() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 33, preview: 0
+        )
+        XCTAssertTrue(script.contains("var limit = 33;"))
+    }
+
+    func testActivityScriptPreviewClampsAbove4000() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 99999
+        )
+        XCTAssertTrue(script.contains("var previewChars = 4000;"))
+    }
+
+    func testActivityScriptDefaultSoftTimeoutIs22Seconds() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 22000;"))
+    }
+
+    func testActivityScriptInterpolatesSoftTimeout() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0, softTimeoutMs: 8000
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 8000;"))
+    }
+
+    func testActivityScriptClampsSoftTimeoutBelowOneSecond() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0, softTimeoutMs: 0
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 1000;"))
+    }
+
+    func testActivityScriptClampsSoftTimeoutAboveFiveMinutes() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0, softTimeoutMs: 999_999_999
+        )
+        XCTAssertTrue(script.contains("var softTimeoutMs = 300000;"))
+    }
+
+    func testActivityScriptInjectsStartTimestamp() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0
+        )
+        XCTAssertTrue(script.contains("var _activityStart = Date.now();"))
+    }
+
+    func testActivityScriptBreaksOnSoftTimeoutInScanLoop() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0
+        )
+        XCTAssertTrue(
+            script.contains("Date.now() - _activityStart > softTimeoutMs"),
+            "activity script must check elapsed time inside the scan + preview loops"
+        )
+        XCTAssertTrue(script.contains("_meta.timedOut = true"))
+    }
+
+    func testActivityScriptInjectsTimedOutMetaField() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0
+        )
+        XCTAssertTrue(script.contains("timedOut: false"))
+    }
+
+    func testActivityScriptOutputsMetaWrapper() {
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0
+        )
+        XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
+    }
+
+    func testActivityScriptPreviewLoopHasTimeoutCheck() {
+        // The post-slice preview loop fetches msg.content() which can be slow on iCloud;
+        // it must also bail out on soft-timeout, not just the metadata-collection loop.
+        let script = MailBridge.buildActivityScript(
+            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 200
+        )
+        // Two separate timeout checks: one in the scan loop, one in the preview loop.
+        let occurrences = script.components(separatedBy: "Date.now() - _activityStart > softTimeoutMs").count - 1
+        XCTAssertGreaterThanOrEqual(occurrences, 2, "expected timeout check in both scan and preview loops")
+    }
+
     // MARK: - buildSearchScript (offset/pagination + metadata)
 
     func testSearchScriptDefaultOffsetZero() {

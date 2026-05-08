@@ -79,12 +79,17 @@ public struct ActionsCommand: AsyncParsableCommand {
 
             let sinceDate = Calendar.current.date(byAdding: .day, value: -days, to: Date())
             var items: [ActionExtractor.Item] = []
+            var timedOut = false
 
             if mail {
-                try items.append(contentsOf: collectMailItems(since: sinceDate))
+                let (mailItems, mailTimedOut) = try collectMailItems(since: sinceDate)
+                items.append(contentsOf: mailItems)
+                timedOut = timedOut || mailTimedOut
             }
             if notes {
-                try items.append(contentsOf: collectNoteItems(since: sinceDate))
+                let (noteItems, notesTimedOut) = try collectNoteItems(since: sinceDate)
+                items.append(contentsOf: noteItems)
+                timedOut = timedOut || notesTimedOut
             }
 
             let actions = try ActionExtractor.extract(
@@ -95,24 +100,25 @@ public struct ActionsCommand: AsyncParsableCommand {
 
             if create {
                 let results = try await createReminders(from: actions)
-                try emitResults(results)
+                try emitResults(results, timedOut: timedOut)
                 return
             }
 
-            try emitActions(actions)
+            try emitActions(actions, timedOut: timedOut)
         }
 
         // MARK: - Source collection
 
-        private func collectMailItems(since: Date?) throws -> [ActionExtractor.Item] {
-            let messages = try MailBridge.listActivity(
+        private func collectMailItems(since: Date?) throws -> (items: [ActionExtractor.Item], timedOut: Bool) {
+            let outcome = try MailBridge.listActivity(
                 account: account,
                 mailboxes: ["Sent"],
                 since: since,
                 limit: limit,
                 preview: 400
             )
-            return messages.compactMap { msg in
+            let messages = outcome.messages
+            let items = messages.compactMap { msg -> ActionExtractor.Item? in
                 let text = msg.bodyPreview ?? msg.body
                 guard let body = text, !body.isEmpty else { return nil }
                 return ActionExtractor.Item(
@@ -122,25 +128,26 @@ public struct ActionsCommand: AsyncParsableCommand {
                     text: body
                 )
             }
+            return (items, outcome.timedOut)
         }
 
-        private func collectNoteItems(since: Date?) throws -> [ActionExtractor.Item] {
-            let all = try NotesBridge.listNotes(folder: nil, limit: limit).results
+        private func collectNoteItems(since: Date?) throws -> (items: [ActionExtractor.Item], timedOut: Bool) {
+            let outcome = try NotesBridge.listNotes(folder: nil, limit: limit)
             let filtered: [NoteInfo]
             if let since {
                 let isoFrac = ISO8601DateFormatter()
                 isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                 let iso = ISO8601DateFormatter()
                 iso.formatOptions = [.withInternetDateTime]
-                filtered = all.filter { note in
+                filtered = outcome.results.filter { note in
                     guard let modDate = isoFrac.date(from: note.modificationDate)
                         ?? iso.date(from: note.modificationDate) else { return true }
                     return modDate >= since
                 }
             } else {
-                filtered = all
+                filtered = outcome.results
             }
-            return filtered.map { note in
+            let items = filtered.map { note in
                 ActionExtractor.Item(
                     source: .note,
                     sourceId: note.id,
@@ -148,6 +155,7 @@ public struct ActionsCommand: AsyncParsableCommand {
                     text: String(note.plainText.prefix(1200))
                 )
             }
+            return (items, outcome.timedOut)
         }
 
         // MARK: - Reminder creation
@@ -182,49 +190,39 @@ public struct ActionsCommand: AsyncParsableCommand {
 
         // MARK: - Output
 
-        private func emitActions(_ actions: [ExtractedAction]) throws {
-            if output.isJSON {
-                try printJSON(actions)
-                return
+        private func emitActions(_ actions: [ExtractedAction], timedOut: Bool) throws {
+            let hint = "activity scan timed out — commitment extraction may be incomplete"
+            try output.emit(actions, timedOut: timedOut, timedOutHint: hint) {
+                if actions.isEmpty {
+                    print("No commitments found in the last \(days) day(s).")
+                    return
+                }
+                let headers = ["Source", "Title", "Due", "Conf"]
+                let widths = [6, 42, 18, 5]
+                let rows = actions.map { action -> [String] in
+                    let due = action.proposedDueDate.map { TextFormatter.compactDate($0) } ?? "-"
+                    let conf = String(format: "%.2f", action.confidence)
+                    return [
+                        action.source.rawValue,
+                        TextFormatter.truncate(action.proposedTitle, to: widths[1]),
+                        due,
+                        conf,
+                    ]
+                }
+                print(TextFormatter.table(headers: headers, rows: rows, columnWidths: widths))
             }
-            if output.isAgent {
-                try output.printAgent(actions)
-                return
-            }
-            if actions.isEmpty {
-                print("No commitments found in the last \(days) day(s).")
-                return
-            }
-            let headers = ["Source", "Title", "Due", "Conf"]
-            let widths = [6, 42, 18, 5]
-            let rows = actions.map { action -> [String] in
-                let due = action.proposedDueDate.map { TextFormatter.compactDate($0) } ?? "-"
-                let conf = String(format: "%.2f", action.confidence)
-                return [
-                    action.source.rawValue,
-                    TextFormatter.truncate(action.proposedTitle, to: widths[1]),
-                    due,
-                    conf,
-                ]
-            }
-            print(TextFormatter.table(headers: headers, rows: rows, columnWidths: widths))
         }
 
-        private func emitResults(_ results: [ReminderActionResult]) throws {
-            if output.isJSON {
-                try printJSON(results)
-                return
-            }
-            if output.isAgent {
-                try output.printAgent(results)
-                return
-            }
-            if results.isEmpty {
-                print("No commitments found — nothing created.")
-                return
-            }
-            for result in results {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
+        private func emitResults(_ results: [ReminderActionResult], timedOut: Bool) throws {
+            let hint = "activity scan timed out — some commitments may not have been created"
+            try output.emit(results, timedOut: timedOut, timedOutHint: hint) {
+                if results.isEmpty {
+                    print("No commitments found — nothing created.")
+                    return
+                }
+                for result in results {
+                    print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
+                }
             }
         }
     }

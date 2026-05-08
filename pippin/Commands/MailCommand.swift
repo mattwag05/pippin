@@ -321,7 +321,7 @@ public struct MailCommand: AsyncParsableCommand {
                 try await runPaginated()
                 return
             }
-            let messages = try MailBridge.listMessages(
+            let outcome = try MailBridge.listMessages(
                 account: account,
                 mailbox: mailbox,
                 unread: unread,
@@ -329,6 +329,7 @@ public struct MailCommand: AsyncParsableCommand {
                 offset: (page - 1) * limit,
                 preview: preview
             )
+            let messages = outcome.messages
 
             if summarize {
                 let aiProvider = try AIProviderFactory.make(
@@ -348,11 +349,7 @@ public struct MailCommand: AsyncParsableCommand {
                 }
                 let withSummaries = messages.map { MessageWithSummary(message: $0, summary: triageMap[$0.id] ?? "(summary unavailable)") }
 
-                if output.isJSON {
-                    try printJSON(withSummaries)
-                } else if output.isAgent {
-                    try output.printAgent(withSummaries)
-                } else {
+                try output.emit(withSummaries, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
                     let rows = messages.map { msg in
                         [
                             TextFormatter.truncate(msg.id, to: 8),
@@ -369,12 +366,25 @@ public struct MailCommand: AsyncParsableCommand {
                         columnWidths: [10, 18, 20, 26, 4, 42]
                     ))
                 }
-            } else if output.isJSON {
-                try printJSON(messages)
-            } else if output.isAgent {
-                try output.printAgent(messages)
             } else {
+                try emitMessages(messages, timedOut: outcome.timedOut)
+            }
+        }
+
+        static let timedOutHint = "list exceeded soft timeout, returning partial results — narrow with --account, --mailbox, or a smaller --limit for complete results"
+
+        private func emitMessages(_ messages: [MailMessage], timedOut: Bool) throws {
+            try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint) {
                 printMessageTable(messages)
+            }
+        }
+
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) throws {
+            try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint) {
+                printMessageTable(page.items)
+                if let cursor = page.nextCursor {
+                    print("(more — re-run with --cursor \(cursor))")
+                }
             }
         }
 
@@ -388,7 +398,7 @@ public struct MailCommand: AsyncParsableCommand {
             let (offset, pageSize) = try Pagination.resolve(
                 pagination, defaultPageSize: limit, filterHash: hash
             )
-            let fetched = try MailBridge.listMessages(
+            let outcome = try MailBridge.listMessages(
                 account: account,
                 mailbox: mailbox,
                 unread: unread,
@@ -397,18 +407,9 @@ public struct MailCommand: AsyncParsableCommand {
                 preview: preview
             )
             let page = try Pagination.pageFromPushdown(
-                fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+                fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
             )
-            if output.isJSON {
-                try printJSON(page)
-            } else if output.isAgent {
-                try output.printAgent(page)
-            } else {
-                printMessageTable(page.items)
-                if let cursor = page.nextCursor {
-                    print("(more — re-run with --cursor \(cursor))")
-                }
-            }
+            try emitPage(page, timedOut: outcome.timedOut)
         }
     }
 
