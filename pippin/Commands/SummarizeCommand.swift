@@ -142,13 +142,19 @@ public struct SummarizeCommand: AsyncParsableCommand {
             guard let memo = try db.getMemoByPrefix(id: id) else {
                 throw VoiceMemosError.memoNotFound(id)
             }
-            let result = try summarizeMemo(
-                memo: memo,
-                db: db,
-                cache: cache,
-                aiProvider: aiProvider,
-                systemPrompt: systemPrompt
-            )
+            let template = self.template
+            let prompt = self.prompt
+            let providerFlag = provider
+            // summarizeMemoStatic spawns a Python subprocess (transcription) and
+            // calls aiProvider.complete() which blocks via DispatchSemaphore —
+            // hop off the cooperative pool.
+            let result = try await detachBlocking {
+                try Self.summarizeMemoStatic(
+                    memo: memo, db: db, cache: cache,
+                    aiProvider: aiProvider, systemPrompt: systemPrompt,
+                    template: template, prompt: prompt, provider: providerFlag
+                )
+            }
 
             if let outputDir = output {
                 let path = try writeResult(result, toDir: outputDir)

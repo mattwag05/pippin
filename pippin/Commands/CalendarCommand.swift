@@ -503,7 +503,12 @@ public struct CalendarCommand: AsyncParsableCommand {
                 .replacingOccurrences(of: "{{CURRENT_DATE}}", with: today)
                 .replacingOccurrences(of: "{{CURRENT_TIME}}", with: currentTime)
 
-            let jsonStr = try aiProvider.complete(prompt: description, system: systemPrompt)
+            let descriptionLocal = description
+            // aiProvider.complete blocks via DispatchSemaphore — hop off the
+            // cooperative pool so concurrent MCP smart-creates don't stall.
+            let jsonStr = try await detachBlocking {
+                try aiProvider.complete(prompt: descriptionLocal, system: systemPrompt)
+            }
 
             guard
                 let eventData = extractJSON(from: jsonStr),
@@ -642,10 +647,14 @@ public struct CalendarCommand: AsyncParsableCommand {
             \(eventSummary)
             """
 
-            let briefing = try aiProvider.complete(
-                prompt: userPrompt,
-                system: BuiltInTemplates.calendarBriefing.content
-            )
+            // aiProvider.complete blocks via DispatchSemaphore — hop off the
+            // cooperative pool.
+            let briefing = try await detachBlocking {
+                try aiProvider.complete(
+                    prompt: userPrompt,
+                    system: BuiltInTemplates.calendarBriefing.content
+                )
+            }
 
             var result: [String: String] = [
                 "briefing": briefing,

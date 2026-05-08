@@ -55,10 +55,12 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
             throw MemosCaptureError.memoTooShort(memoId: targetMemo.id)
         }
 
-        let rawResponse = try aiProvider.complete(
-            prompt: transcript,
-            system: renderSystemPrompt(now: Date())
-        )
+        let systemPrompt = renderSystemPrompt(now: Date())
+        // aiProvider.complete blocks via DispatchSemaphore — hop off the
+        // cooperative pool.
+        let rawResponse = try await detachBlocking {
+            try aiProvider.complete(prompt: transcript, system: systemPrompt)
+        }
         let items = try parseItems(from: rawResponse)
 
         let listName = list ?? Self.defaultCaptureList
