@@ -301,7 +301,7 @@ pippin mcp-server                    # run the server (stdin/stdout JSON-RPC)
 pippin mcp-server --list-tools       # dump the registered tools as JSON
 ```
 
-Ships with 43 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read-only), status, doctor, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+Ships with 44 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
 
 ## AI Configuration
 
@@ -367,7 +367,8 @@ pippin mail list --unread --format json \
 | `pippin/CalendarBridge/` | EventKit wrapper for Calendar |
 | `pippin/RemindersBridge/` | EventKit wrapper for Reminders |
 | `pippin/NotesBridge/` | JXA subprocess bridge for Notes.app |
-| `pippin/ContactsBridge/` | CNContactStore wrapper (read-only) |
+| `pippin/ContactsBridge/` | CNContactStore wrapper (read + write) |
+| `pippin/MessagesBridge/` | GRDB SQLite access to Apple Messages (read + gated send) |
 | `pippin/AIProvider/` | Ollama + Claude backends for summarization |
 | `pippin/Jobs/` | Filesystem-backed registry for detached `pippin job` subprocesses |
 | `pippin/Planner/` | LLM-driven plan-and-execute over the MCP tool registry (`pippin do`) |
@@ -393,7 +394,7 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 
 ```bash
 make build      # Release build
-make test       # Run tests (1483 tests, 0 failures)
+make test       # Run tests (1,600+ tests, 0 failures)
 make lint       # swiftformat lint
 make install    # Build + install to ~/.local/bin
 ```
