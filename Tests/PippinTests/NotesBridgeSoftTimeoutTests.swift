@@ -98,6 +98,41 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
         XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
     }
 
+    // MARK: - Pre-loop fetch+sort guard (pippin-4as)
+
+    func testSearchScriptHasPreSortBudgetCheck() {
+        // Large vaults can spend the entire soft cap on app.notes() alone;
+        // the script must check time after fetch and skip the (slow) sort
+        // when over budget so we still emit timedOut=true rather than blowing
+        // the ScriptRunner hard cap.
+        let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
+        let firstCheck = script.range(of: "Date.now() - _start > softTimeoutMs")
+        XCTAssertNotNil(firstCheck)
+        // The first occurrence must precede the sort call.
+        let sortRange = script.range(of: "notes.slice().sort")
+        XCTAssertNotNil(sortRange)
+        if let first = firstCheck, let sort = sortRange {
+            XCTAssertTrue(
+                first.lowerBound < sort.lowerBound,
+                "Pre-sort time check must appear before notes.slice().sort"
+            )
+        }
+    }
+
+    func testListScriptHasPreSortBudgetCheck() {
+        let script = NotesBridge.buildListScript(folder: nil, limit: 10)
+        let firstCheck = script.range(of: "Date.now() - _start > softTimeoutMs")
+        XCTAssertNotNil(firstCheck)
+        let sortRange = script.range(of: "notes.slice().sort")
+        XCTAssertNotNil(sortRange)
+        if let first = firstCheck, let sort = sortRange {
+            XCTAssertTrue(
+                first.lowerBound < sort.lowerBound,
+                "Pre-sort time check must appear before notes.slice().sort"
+            )
+        }
+    }
+
     // Soft-timeout clamp bounds are now tested in `SoftTimeoutTests`
     // (shared helper). Script-level interpolation stays here because it's
     // specific to the Notes JXA builders above.

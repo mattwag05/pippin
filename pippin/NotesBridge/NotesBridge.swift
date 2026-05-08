@@ -128,11 +128,22 @@ enum NotesBridge {
         } else {
             notes = app.notes();
         }
-        // Sort by modificationDate descending (newest first)
-        notes = notes.slice().sort(function(a, b) {
-            return b.modificationDate() - a.modificationDate();
-        });
-        var sliced = notes.slice(0, limit);
+        // Time check after fetch: large vaults can spend the entire soft-cap
+        // budget on app.notes() alone. If we're already over budget, skip the
+        // (potentially many-second) sort and emit unsorted notes so the user
+        // gets *something* with timedOut=true rather than nothing.
+        var sliced;
+        if (Date.now() - _start > softTimeoutMs) {
+            _meta.timedOut = true;
+            sliced = notes.slice(0, limit);
+        } else {
+            // Sort by modificationDate descending (newest first)
+            notes = notes.slice().sort(function(a, b) {
+                return b.modificationDate() - a.modificationDate();
+            });
+            sliced = notes.slice(0, limit);
+            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; }
+        }
         var results = [];
         for (var i = 0; i < sliced.length; i++) {
             if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
@@ -206,10 +217,18 @@ enum NotesBridge {
         } else {
             notes = app.notes();
         }
-        // Sort by modificationDate descending
-        notes = notes.slice().sort(function(a, b) {
-            return b.modificationDate() - a.modificationDate();
-        });
+        // Time check after fetch: skip sort on large vaults so we still get
+        // some results back with timedOut=true rather than hitting the
+        // ScriptRunner hard cap before the loop runs at all.
+        if (Date.now() - _start > softTimeoutMs) {
+            _meta.timedOut = true;
+        } else {
+            // Sort by modificationDate descending
+            notes = notes.slice().sort(function(a, b) {
+                return b.modificationDate() - a.modificationDate();
+            });
+            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; }
+        }
         var results = [];
         for (var i = 0; i < notes.length && results.length < limit; i++) {
             if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
@@ -352,7 +371,7 @@ enum NotesBridge {
 
     // MARK: - Process Runner
 
-    private static func runScript(_ script: String, timeoutSeconds: Int = 30) throws -> String {
+    private static func runScript(_ script: String, timeoutSeconds: Int = 35) throws -> String {
         do {
             return try ScriptRunner.run(script, timeoutSeconds: timeoutSeconds, appName: "Notes")
         } catch ScriptRunnerError.timeout {

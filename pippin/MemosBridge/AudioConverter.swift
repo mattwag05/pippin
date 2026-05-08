@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 
 /// Normalizes audio files to the format the STT backend is happiest with
@@ -95,7 +95,10 @@ public enum AudioConverter {
             if inputBuffer.frameLength == 0 { break }
 
             outBuffer.frameLength = 0
-            var fed = false
+            // AVAudioConverter calls this closure synchronously on the calling
+            // thread; `nonisolated(unsafe)` tells the compiler we know there is
+            // no actual concurrent access despite the @Sendable closure type.
+            nonisolated(unsafe) var fed = false
             var err: NSError?
             let status = converter.convert(to: outBuffer, error: &err) { _, outStatus in
                 if fed {
