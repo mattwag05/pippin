@@ -14,6 +14,13 @@ public struct OllamaProvider: AIProvider {
             throw AIProviderError.networkError("Invalid Ollama URL: \(baseURL)")
         }
 
+        // Fast preflight: if `ollama serve` isn't running, fail in <3s with
+        // an actionable message rather than letting the agent or MCP client
+        // wait the full request budget. Mirrors the philosophy of the MCP
+        // runChild cap: typed errors beat silent SIGKILLs.
+        try preflight()
+
+        let timeout = aiRequestTimeoutSeconds()
         let body: [String: Any] = [
             "model": model,
             "prompt": prompt,
@@ -21,12 +28,15 @@ public struct OllamaProvider: AIProvider {
             "stream": false,
         ]
 
-        var request = URLRequest(url: url, timeoutInterval: 120)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, httpResponse) = try sendSynchronousRequest(request)
+        let (data, httpResponse) = try sendSynchronousRequest(
+            request,
+            waitTimeoutSeconds: Int(timeout) + 5
+        )
 
         guard httpResponse.statusCode == 200 else {
             let detail = String(data: data, encoding: .utf8) ?? ""
@@ -40,5 +50,31 @@ public struct OllamaProvider: AIProvider {
         }
 
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 2-second `GET /api/version` probe. Throws `.providerUnreachable`
+    /// when Ollama is down so the caller distinguishes "no model server"
+    /// from "model server is slow."
+    private func preflight() throws {
+        guard let url = URL(string: "\(baseURL)/api/version") else { return }
+        var request = URLRequest(url: url, timeoutInterval: 2)
+        request.httpMethod = "GET"
+        do {
+            let (_, response) = try sendSynchronousRequest(request, waitTimeoutSeconds: 5)
+            if response.statusCode != 200 {
+                throw AIProviderError.providerUnreachable(
+                    "Ollama at \(baseURL) returned HTTP \(response.statusCode) on preflight — is the server healthy?"
+                )
+            }
+        } catch let error as AIProviderError {
+            switch error {
+            case .timeout, .networkError:
+                throw AIProviderError.providerUnreachable(
+                    "Ollama at \(baseURL) is unreachable — start it with `ollama serve` (or set ai.ollama.url in ~/.config/pippin/config.json)"
+                )
+            default:
+                throw error
+            }
+        }
     }
 }

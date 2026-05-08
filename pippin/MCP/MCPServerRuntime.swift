@@ -61,6 +61,13 @@ enum MCPServerRuntime {
         process.executableURL = URL(fileURLWithPath: pippinPath)
         process.arguments = argv
 
+        // Mark the child so AI providers and other MCP-sensitive code paths
+        // can shorten budgets / run preflight pings to stay under the
+        // `defaultChildTimeoutSeconds` hard cap.
+        var env = ProcessInfo.processInfo.environment
+        env["PIPPIN_MCP"] = "1"
+        process.environment = env
+
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe
