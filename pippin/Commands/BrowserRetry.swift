@@ -13,11 +13,11 @@ import Foundation
 /// not the agent-mode envelope. So for `browser open`, the path is `title`, not
 /// `data.title`.
 public enum BrowserRetry {
-    public static func run<T: Encodable>(
+    public static func run<T: Encodable & Sendable>(
         retry: Int,
         delayMs: Int,
         expectField: String?,
-        operation: () throws -> T
+        operation: @Sendable @escaping () throws -> T
     ) async throws -> (result: T, attempts: Int) {
         let maxAttempts = max(1, retry + 1)
         let delayNs = UInt64(max(0, delayMs)) * 1_000_000
@@ -26,7 +26,9 @@ public enum BrowserRetry {
 
         while attempt < maxAttempts {
             attempt += 1
-            let result = try operation() // throws propagate; retry is only for empty expect-field
+            // BrowserBridge spawns Node.js subprocesses and blocks on
+            // process.waitUntilExit() — hop off the cooperative pool.
+            let result = try await detachBlocking(operation)
             if try expectFieldSatisfied(result, path: expectField) {
                 return (result, attempt)
             }
