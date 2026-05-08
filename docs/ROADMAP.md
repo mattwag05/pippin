@@ -1,76 +1,90 @@
 # Roadmap
 
-Planned features and improvements for pippin. Tracked in [beads](https://github.com/plandex-ai/beads) — run `bd ready` to see available work.
+Tracked in [beads](https://github.com/plandex-ai/beads) — run `bd ready` to see actively claimable work.
+
+The original v0.x roadmap (mail watch, triage rules engine, MCP server, unified
+digest, REPL completion, contacts write, smart-create for calendar/reminders,
+plan-and-execute `pippin do`) all shipped before v0.22. The remaining items
+below are explicitly **deferred** per their own beads' descriptions — captured
+so the scope isn't lost, not actively worked on.
 
 ---
 
-## Bugs (from Pi Agent Testing)
+## Deferred (revisit on demand)
 
-### Contacts Search Crash (`pippin-crl`) — P1
-`pippin contacts search` crashes while `contacts list` works fine. Likely CNContactStore query construction issue.
+### Async withTimeout for EventKit bridges (`pippin-91n`) — P3
 
-### Browser Snapshot Undefined Page (`pippin-1gb`) — P1
-`pippin browser snapshot` fails with "Cannot read properties of undefined (reading 'snapshot')". Page object not initialized in persistent context. Blocks click/fill (which depend on @ref IDs from snapshot).
+EventKit-backed bridges (Reminders, Calendar) are async, so the cooperative-
+thread blocking concern doesn't apply. Hang risk is low in practice — EventKit
+predicates are efficient. Captured to revisit if a real hang surfaces against
+`reminders_list`, `calendar_events`, or `findConflicts` on a large vault or
+wide date range. Then: add a generic `withAsyncTimeout` helper, thread
+`softTimeoutMs` through, reuse `OutputOptions.emit(...,timedOut:,...)` for
+the warning envelope.
 
-### Browser NODE_PATH Resolution (`pippin-izt`) — P1
-Browser commands fail unless `NODE_PATH=/opt/homebrew/lib/node_modules` is set. Node can't find globally-installed Playwright at runtime even though `pippin doctor` reports it as found.
+### Lift Outcome<T> into a shared bridge module (`pippin-a9v`) — P3
 
-### Mail Search Null allMsgs (`pippin-3sk`) — P2
-`pippin mail search` crashes with TypeError when JXA `allMsgs` is null (mailbox not accessible or not loaded). Needs null guard in generated search script.
+`Outcome<T>` (results + timedOut flag, back-compat decoder) is duplicated
+across `NotesBridge` and `ContactsBridge`. Lifting requires resolving the
+shape mismatch: NotesBridge.Outcome has a custom `Decodable` init for JXA
+JSON; ContactsBridge.Outcome is pure Swift no-Decodable. Revisit when a
+third bridge picks up the pattern — duplication isn't biting yet.
 
-### Doctor Doesn't Find pipx Installs (`pippin-6mj`) — P2
-`pippin doctor` checks mlx-audio via system Python import but misses pipx installations. Should also check `pipx list` or common pipx venv paths.
+### Extract MailMessageEmitter helper (`pippin-eil`) — P4
 
----
-
-## Next Up
-
-### MCP Server Mode (`pippin-6dp`)
-Expose pippin as an MCP (Model Context Protocol) server over stdin/stdout JSON-RPC. Each command group becomes a tool — `mail_list`, `calendar_today`, `reminders_create`, etc. Any MCP-compatible client (Claude Desktop, Cursor, etc.) can use pippin natively without shelling out.
-
-### Unified Daily Digest (`pippin-syb`)
-Single `pippin digest` command that combines mail summary, calendar agenda, due reminders, and recent notes into one structured briefing. Replaces calling 4 separate commands in the morning briefing task. `--format agent` for token-efficient output.
-
----
-
-## Agent & Automation
-
-### Mail Watch Mode (`pippin-lhh`)
-`pippin mail watch` — poll for new messages, emit events as newline-delimited JSON. Real-time mail monitoring for agent workflows. Options: `--account`, `--interval`, `--mailbox`.
-
-### Mail Triage Rules Engine (`pippin-ace`)
-Persistent triage rules in `~/.config/pippin/triage-rules.json` — auto-label, auto-archive, priority overrides based on sender/subject/keywords. Applied before (or instead of) the AI pass to reduce token usage for predictable patterns.
+`MailCommand.Search/List` and `MailActivityCommand` each define near-identical
+`timedOutHint` strings + `emitMessages` helpers. Hint text and filter hash
+genuinely differ per call site, and unifying adds indirection for ~15 saved
+lines per command. Revisit when a fourth caller needs the same plumbing or a
+new bridge method needs `timedOut` surfacing.
 
 ---
 
-## AI Features
+## Shipped (v0.16.0 → v0.22.0)
 
-### Reminders Smart Create (`pippin-mfe`)
-`pippin reminders smart-create "remind me to call the dentist next Tuesday at 9am priority high"` — AI parses due date, priority, and list assignment from natural language. Mirrors `calendar smart-create`.
+### v0.22.x — Concurrency & MCP polish
 
-### Calendar Conflict Detection (`pippin-arr`)
-`pippin calendar conflicts --from --to` — find overlapping events. Integrated into `smart-create`: warn or abort if proposed event conflicts. Structured conflict details in agent mode.
+- Cooperative-thread fixes (`pippin-3re`, `pippin-f1n`, `pippin-ka7`) —
+  `process.waitUntilExit`, `DispatchSemaphore.wait`, and
+  `sendSynchronousRequest` no longer stall the cooperative pool when called
+  from async commands. New `detachBlocking` helper.
+- MCP-aware AI request budget (`pippin-5et`) — Ollama 2s preflight,
+  `PIPPIN_MCP=1` shortens AI timeouts to 50s under MCP.
+- Mail bridge soft-timeout fixes (`pippin-kis`, `pippin-tl8`) — `mail_list`
+  and `mail_activity` no longer time out under MCP clients.
+- Notes JXA pre-loop budget guard (`pippin-4as`) — large vaults emit
+  `timedOut: true` partial results instead of busting the ScriptRunner cap.
+- BatchBudget (`pippin-55e`) — `memos export/transcribe --all` bound to 50s
+  under MCP; partial results + warning instead of mid-batch SIGKILL.
+- Unified `MailBridge.ScanMeta`/`ScanResponse`/`ScanOutcome` (`pippin-660`).
+- `pippin doctor --latency` Mail bridge probes (`pippin-11e`).
+- Surfaced previously-silent `outcome.timedOut` in DigestCommand,
+  MailAICommand, StatusCommand (`pippin-6tg`, `pippin-53p`).
 
----
+### v0.20.x — Bridge & agent envelope
 
-## Shell & UX
+- Agent-mode envelope v1 — every `--format agent` response carries
+  `{v, status, duration_ms, data|error}`.
+- ContactsBridge with `Outcome<T>` soft-timeout pattern.
+- `pippin do` — natural-language plan-and-execute over the MCP tool registry.
+- `pippin job` — detached background subprocesses with status/poll/wait.
+- `pippin batch` — parallel sub-command dispatch in one call.
 
-### REPL Tab Completion (`pippin-ypg`)
-Tab completion for command names, subcommands, flags, and contextual values (account names, reminder lists). Uses libedit/readline integration.
+### v0.18.x — Apple app coverage
 
----
+- Mail watch mode (`pippin-lhh`) — newline-delimited JSON event stream.
+- Mail triage rules engine (`pippin-ace`) — persistent rules in
+  `~/.config/pippin/triage-rules.json`.
+- Calendar smart-create + conflict detection (`pippin-arr`).
+- Reminders smart-create (`pippin-mfe`).
+- REPL tab completion (`pippin-ypg`).
+- Contacts read support — `search`, `show`, `groups` (write deferred,
+  `pippin-83z`).
 
-## Data Access
+### v0.16.0
 
-### Contacts Write Support (`pippin-83z`)
-Add `create`, `edit`, `delete` to the contacts bridge (currently read-only). Uses `CNMutableContact` + `CNSaveRequest`.
-
----
-
-## Completed (v0.16.0)
-
-- ~~SKILL.md agent discovery manifest~~ (`pippin-7rd`)
-- ~~`pippin status` introspection command~~ (`pippin-4eg`)
-- ~~`runConcurrently` refactor~~ (`pippin-jgq`)
-- ~~Universal `--json` on all commands~~ (`pippin-6k6`)
-- ~~Session state persistence~~ (`pippin-mqt`)
+- SKILL.md agent discovery manifest (`pippin-7rd`)
+- `pippin status` introspection command (`pippin-4eg`)
+- `runConcurrently` refactor (`pippin-jgq`)
+- Universal `--json` / `--format agent` on all commands (`pippin-6k6`)
+- Session state persistence (`pippin-mqt`)
