@@ -46,6 +46,33 @@ Calling `try await command.run()` directly on a `ParsableCommand` existential in
 
 Use `TextFormatter.actionResult(success:action:details:[String:String])` — never hand-roll `.map { "\($0.key)=\($0.value)" }.sorted().joined()` inline.
 
+## Cooperative-thread blocking — use `detachBlocking`
+
+Swift 6 runs `async` functions on a fixed-size cooperative thread pool. Calling sync work that **blocks the calling thread** from inside an `async` command starves that pool — under any concurrent usage (notably `pippin mcp-server`, which fans out commands per connection) the entire process can wedge.
+
+The blocking call sites in pippin:
+- `process.waitUntilExit()` (every `*Bridge` that spawns a subprocess: AudioBridge, BrowserBridge, MailBridge via ScriptRunner, AIProviderFactory.tryGetSecret)
+- `DispatchSemaphore.wait()` (every `sendSynchronousRequest` in `pippin/AIProvider/AIProvider.swift`, plus `gatherRemindersStatus` in StatusCommand)
+- `DispatchGroup.wait()` (`runConcurrently` in `pippin/MailAIBridge/ConcurrencyUtils.swift`)
+
+The fix is mechanical — wrap any sync helper called from an async command in `detachBlocking { ... }` (defined in `pippin/DetachBlocking.swift`):
+
+```swift
+public mutating func run() async throws {
+    let result = try await detachBlocking {
+        try SomeBridge.someBlockingCall(args)
+    }
+}
+```
+
+`detachBlocking` has both throwing and non-throwing overloads. Default `priority: .userInitiated` matches every existing call site (CLI commands the user is actively waiting on); override per-call only for genuine background work.
+
+**Closure capture gotcha:** the closure passed to `detachBlocking` is `@Sendable @escaping`, so referencing `self.foo` from a `mutating func` on a struct will fail with "mutable capture of 'inout' parameter 'self' is not allowed in concurrently-executing code." Rebind to a local `let foo = self.foo` before the closure (or use a capture list `[foo]`).
+
+**Tests with retry counters:** if a test counts retries via `var calls = 0` captured in the operation closure, that captured `var` becomes invalid once the helper hops through `detachBlocking`. Use a `final class CallCounter: @unchecked Sendable { var count = 0 }` reference type — retries are still serialized so `@unchecked` is safe.
+
+`AIProviderFactory.tryGetSecret` and `JobRunnerInternalCommand` are deliberately left unwrapped — get-secret is fast (~100ms) and JobRunnerInternal is the only thing happening in its process.
+
 ## Swift 6 Sendable auto-synthesis + closure fields
 
 When a struct is stored in a `static let`, Swift 6 requires it to be `Sendable`. Auto-synthesis works only if all stored properties are `Sendable` — **including closure types, which need the `@Sendable` attribute explicitly**. Error surfaces as "static property 'X' is not concurrency-safe" pointing at the `static let`, not at the offending closure field. Fix at the field (`let buildArgs: @Sendable (JSONValue?) throws -> [String]`), not the struct declaration — SwiftFormat will then strip the redundant `: Sendable` conformance line, which is fine because auto-synthesis is in effect.
