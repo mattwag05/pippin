@@ -3,13 +3,20 @@ import Foundation
 enum MailBridge {
     // MARK: - Public API
 
-    /// Outcome of a list call: messages plus a `timedOut` flag the caller
-    /// should surface so the user knows results may be incomplete and how to
-    /// narrow the query.
-    struct ListOutcome {
+    /// Outcome of any scan call (list/activity/search): messages plus a
+    /// `timedOut` flag callers must surface so the user knows results may
+    /// be incomplete and how to narrow the query. The three call sites used
+    /// to define byte-identical wrapper structs each — this is the unified
+    /// type, with type aliases below for the legacy names so existing
+    /// callers stay compiling.
+    struct ScanOutcome {
         let messages: [MailMessage]
         let timedOut: Bool
     }
+
+    typealias ListOutcome = ScanOutcome
+    typealias ActivityOutcome = ScanOutcome
+    typealias SearchOutcome = ScanOutcome
 
     static func listMessages(
         account: String? = nil,
@@ -38,13 +45,6 @@ enum MailBridge {
         return ListOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
     }
 
-    /// Outcome of an activity call: same shape as `ListOutcome`, separate type
-    /// so it's grep-able and can diverge if activity grows extra metadata.
-    struct ActivityOutcome {
-        let messages: [MailMessage]
-        let timedOut: Bool
-    }
-
     static func listActivity(
         account: String? = nil,
         mailboxes: [String] = ["INBOX", "Sent"],
@@ -65,14 +65,6 @@ enum MailBridge {
         let json = try runScript(script, timeoutSeconds: timeout)
         let wrapper = try decode(ActivityResponse.self, from: json)
         return ActivityOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
-    }
-
-    /// Outcome of a search call: the matched messages plus a `timedOut` flag
-    /// that callers should surface to the user (text/JSON/agent format) so they
-    /// know to narrow the query when results may be incomplete.
-    struct SearchOutcome {
-        let messages: [MailMessage]
-        let timedOut: Bool
     }
 
     static func searchMessages(
@@ -272,9 +264,13 @@ enum MailBridge {
 
     // MARK: - Private Types
 
+    /// Telemetry envelope returned by every JXA scan script. The three call
+    /// sites used to define byte-identical types (SearchMeta/ListMeta/
+    /// ActivityMeta) — this is the unified Decodable, with aliases below
+    /// for the legacy names so tests and any external readers don't churn.
     /// Internal so tests can verify backward-compatible JSON decoding when
     /// older JXA scripts omit the `timedOut` field.
-    struct SearchMeta: Decodable {
+    struct ScanMeta: Decodable {
         let accountsScanned: Int
         let mailboxesScanned: Int
         let messagesExamined: Int
@@ -294,62 +290,18 @@ enum MailBridge {
         }
     }
 
-    struct SearchResponse: Decodable {
+    typealias SearchMeta = ScanMeta
+    typealias ListMeta = ScanMeta
+    typealias ActivityMeta = ScanMeta
+
+    /// JXA result envelope: results + scan telemetry. Same triplet
+    /// collapse as `ScanMeta` — Search/List/Activity decoded the same shape.
+    struct ScanResponse: Decodable {
         let results: [MailMessage]
-        let meta: SearchMeta
+        let meta: ScanMeta
     }
 
-    /// `MailBridge.listMessages` result envelope. Same shape as `SearchMeta`;
-    /// kept as a dedicated type so test fixtures and any future divergence
-    /// (e.g. list-specific telemetry) stay grep-able.
-    struct ListMeta: Decodable {
-        let accountsScanned: Int
-        let mailboxesScanned: Int
-        let messagesExamined: Int
-        let timedOut: Bool
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            accountsScanned = try container.decode(Int.self, forKey: .accountsScanned)
-            mailboxesScanned = try container.decode(Int.self, forKey: .mailboxesScanned)
-            messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
-            // Backward-compatible: scripts that don't emit timedOut default to false.
-            timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
-        }
-
-        private enum CodingKeys: String, CodingKey {
-            case accountsScanned, mailboxesScanned, messagesExamined, timedOut
-        }
-    }
-
-    struct ListResponse: Decodable {
-        let results: [MailMessage]
-        let meta: ListMeta
-    }
-
-    /// `MailBridge.listActivity` result envelope.
-    struct ActivityMeta: Decodable {
-        let accountsScanned: Int
-        let mailboxesScanned: Int
-        let messagesExamined: Int
-        let timedOut: Bool
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            accountsScanned = try container.decode(Int.self, forKey: .accountsScanned)
-            mailboxesScanned = try container.decode(Int.self, forKey: .mailboxesScanned)
-            messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
-            // Backward-compatible: scripts that don't emit timedOut default to false.
-            timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
-        }
-
-        private enum CodingKeys: String, CodingKey {
-            case accountsScanned, mailboxesScanned, messagesExamined, timedOut
-        }
-    }
-
-    struct ActivityResponse: Decodable {
-        let results: [MailMessage]
-        let meta: ActivityMeta
-    }
+    typealias SearchResponse = ScanResponse
+    typealias ListResponse = ScanResponse
+    typealias ActivityResponse = ScanResponse
 }
