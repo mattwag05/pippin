@@ -207,12 +207,14 @@ private func gatherMemosStatus() -> StatusReport.MemosStatus? {
 
 private func gatherNotesStatus() -> StatusReport.NotesStatus? {
     guard let foldersOutcome = try? NotesBridge.listFolders() else { return nil }
-    let notesOutcome = try? NotesBridge.listNotes(folder: nil, limit: 500)
-    let timedOut = foldersOutcome.timedOut || (notesOutcome?.timedOut ?? false)
+    // Count via app.notes().length (single Apple Event) instead of iterating
+    // every note's body — listNotes(limit: 500) hits the 35s ScriptRunner cap
+    // on vaults of a few hundred notes and dragged status to ~84s.
+    let countResult = try? NotesBridge.countNotes()
     return StatusReport.NotesStatus(
-        noteCount: notesOutcome?.results.count ?? 0,
+        noteCount: countResult ?? 0,
         folderCount: foldersOutcome.results.count,
-        timedOut: timedOut
+        timedOut: foldersOutcome.timedOut || countResult == nil
     )
 }
 

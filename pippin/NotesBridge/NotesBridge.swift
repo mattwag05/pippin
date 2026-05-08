@@ -70,6 +70,19 @@ enum NotesBridge {
         return try decode(Outcome<[NoteFolder]>.self, from: json)
     }
 
+    /// Count notes without fetching bodies. `pippin status` and similar
+    /// dashboards just want `noteCount`; the full `listNotes` path iterates
+    /// every note's `.body()` + `.plaintext()` over JXA, which busts the
+    /// ScriptRunner cap on vaults of a few hundred notes. `app.notes().length`
+    /// is a single Apple Event — typically <500ms.
+    static func countNotes(folder: String? = nil) throws -> Int {
+        let script = buildCountScript(folder: folder)
+        let json = try runScript(script, timeoutSeconds: 10)
+        return try decode(NoteCount.self, from: json).count
+    }
+
+    private struct NoteCount: Decodable { let count: Int }
+
     static func createNote(title: String, body: String? = nil, folder: String? = nil) throws -> NoteActionResult {
         let script = buildCreateScript(title: title, body: body, folder: folder)
         let json = try runScript(script, timeoutSeconds: 20)
@@ -165,6 +178,25 @@ enum NotesBridge {
             });
         }
         JSON.stringify({results: results, meta: _meta});
+        """
+    }
+
+    /// Returns `{count: N}` for the named folder (or whole vault when nil).
+    /// No iteration, no body fetch — single Apple Event.
+    static func buildCountScript(folder: String?) -> String {
+        let folderFilter = jsEscapeOptional(folder)
+        return """
+        var app = Application('Notes');
+        app.includeStandardAdditions = true;
+        var folderFilter = \(folderFilter);
+        var n = 0;
+        if (folderFilter !== null) {
+            var folders = app.folders.whose({name: folderFilter})();
+            if (folders.length > 0) { n = folders[0].notes().length; }
+        } else {
+            n = app.notes().length;
+        }
+        JSON.stringify({count: n});
         """
     }
 
