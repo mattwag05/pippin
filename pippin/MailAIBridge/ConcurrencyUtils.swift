@@ -10,7 +10,7 @@ import Foundation
 ///   - failFast: When true, the first error aborts remaining work and is re-thrown.
 ///     When false (default), errors are silently ignored and only successful results are returned.
 /// - Returns: Results in the same order as `items` (minus any that threw when `failFast` is false).
-public func runConcurrently<Input, Output>(
+public func runConcurrently<Input: Sendable, Output: Sendable>(
     _ items: [Input],
     maxConcurrent: Int? = nil,
     failFast: Bool = false,
