@@ -14,7 +14,7 @@ Before making any changes:
 2. Run `make version` to confirm the current version
 3. Map the bridge modules: `pippin/{Mail,Memos,Calendar,Audio,Contacts,Browser,Reminders,Notes}Bridge/`
 4. Read `pippin/Commands/OutputOptions.swift` and `pippin/Formatting/AgentOutput.swift` to understand the output format contract
-5. Run `make test` to establish a passing baseline (831+ tests expected)
+5. Run `make test` to establish a passing baseline (~1648 tests as of v0.22)
 6. Run `make lint` to check formatting baseline
 7. Check for open issues: `bd ready` (if beads is configured; skip if `bd` is not available)
 8. Read `docs/` for any active specs or design documents
@@ -37,9 +37,16 @@ Work through each category. For each finding, note the file, line, and severity.
 ### AX (Agent Experience)
 - Commands missing `--format agent` support or with broken agent output
 - Agent output that isn't compact JSON (must use `printAgentJSON`, not `printJSON`)
+- Agent output not wrapped in envelope v1 (`{v, status, duration_ms, data|error}`) — see `pippin/Formatting/AgentOutput.swift`
 - Progress `print()` calls not guarded by `!outputOptions.isStructured`
 - Action results not following the three-way pattern: `isJSON -> printJSON`, `isAgent -> printAgentJSON`, else text
 - Missing `debugDetail` on bridge error types
+- `outcome.timedOut` from MailBridge/NotesBridge/ContactsBridge silently dropped instead of surfaced through `output.emit(...,timedOut:,timedOutHint:)`
+
+### Concurrency
+- Async commands (`AsyncParsableCommand.run`) calling sync work that blocks on `process.waitUntilExit()`, `DispatchSemaphore.wait()`, or `sendSynchronousRequest()` without hopping through `detachBlocking { ... }` (see `pippin/DetachBlocking.swift`)
+- Generic helpers capturing `Input`/`Output` without `: Sendable` constraints inside `@Sendable` closures
+- AVFoundation/EventKit captures without `@preconcurrency` import or `nonisolated(unsafe)` where the runtime guarantee is real
 
 ### Bridge Consistency
 - Bridges not following the established pattern: `enum` with `static` methods, `nonisolated(unsafe)` vars, DispatchGroup concurrent pipe drain, DispatchWorkItem SIGTERM->SIGKILL timeout
@@ -73,7 +80,7 @@ For each issue found, in priority order:
 6. **Test coverage** — add missing tests
 
 After each fix:
-- Run `make test` — all 831+ tests must pass
+- Run `make test` — all tests must pass (current baseline: ~1648)
 - Run `make lint` — no formatting violations
 - Verify `swift build -c release` succeeds
 
