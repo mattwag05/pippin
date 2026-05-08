@@ -4,10 +4,16 @@ VERSION := $(shell grep 'static let version' pippin/Version.swift | sed 's/.*"\(
 .PHONY: build test lint install completions version release tarball clean link-skills
 
 build:
-	swift build -c release
+	xcrun --sdk macosx swift build -c release
 
+# `xcrun --sdk macosx` routes through xcode-select's developer dir. On a host
+# with Xcode installed it picks the Xcode SDK (XCTest present); on a CLT-only
+# macOS 26 host the CLT SDK lacks XCTest.framework so tests would fail with
+# "no such module XCTest". Workaround: install Xcode, or set
+# DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer before running.
+# See pippin-ncr.
 test:
-	swift test
+	xcrun --sdk macosx swift test
 
 lint:
 	swiftformat --lint pippin/ pippin-entry/ Tests/ 2>/dev/null || echo "swiftformat not installed — skipping lint"
