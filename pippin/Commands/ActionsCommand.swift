@@ -92,11 +92,17 @@ public struct ActionsCommand: AsyncParsableCommand {
                 timedOut = timedOut || notesTimedOut
             }
 
-            let actions = try ActionExtractor.extract(
-                items: items,
-                provider: aiProvider,
-                minConfidence: minConfidence
-            )
+            let minConfidence = self.minConfidence
+            let collectedItems = items
+            // ActionExtractor.extract → runConcurrently → provider.complete chain
+            // is sync and blocks on DispatchGroup.wait + DispatchSemaphore.
+            let actions = try await detachBlocking {
+                try ActionExtractor.extract(
+                    items: collectedItems,
+                    provider: aiProvider,
+                    minConfidence: minConfidence
+                )
+            }
 
             if create {
                 let results = try await createReminders(from: actions)

@@ -340,7 +340,11 @@ public struct MailCommand: AsyncParsableCommand {
                 let aiProvider = try AIProviderFactory.make(
                     providerFlag: summarizeProvider, modelFlag: summarizeModel, apiKeyFlag: summarizeApiKey
                 )
-                let triaged = try TriageEngine.triageBatchForSummaries(messages: messages, provider: aiProvider)
+                // TriageEngine fans out via runConcurrently → provider.complete; both
+                // sync and blocking. Hop off the cooperative pool.
+                let triaged = try await detachBlocking {
+                    try TriageEngine.triageBatchForSummaries(messages: messages, provider: aiProvider)
+                }
                 let triageMap = Dictionary(triaged.map { ($0.compoundId, $0.oneLiner) }, uniquingKeysWith: { first, _ in first })
 
                 if triageMap.count < messages.count {
@@ -531,7 +535,12 @@ public struct MailCommand: AsyncParsableCommand {
                     let aiProvider = try AIProviderFactory.make(
                         providerFlag: sanitizeProvider, modelFlag: sanitizeModel, apiKeyFlag: sanitizeApiKey
                     )
-                    scanResult = try PromptInjectionScanner.scanWithAI(text: body, provider: aiProvider)
+                    // PromptInjectionScanner.scanWithAI calls provider.complete which
+                    // blocks via DispatchSemaphore — hop off the cooperative pool.
+                    let bodyLocal = body
+                    scanResult = try await detachBlocking {
+                        try PromptInjectionScanner.scanWithAI(text: bodyLocal, provider: aiProvider)
+                    }
                 } else {
                     scanResult = PromptInjectionScanner.scan(text: body)
                 }
