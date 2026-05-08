@@ -11,14 +11,16 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 ## Commands
 
 ```bash
-make build          # swift build -c release
-make test           # swift test (~1049 tests, 0 failures expected)
+make build          # xcrun --sdk macosx swift build -c release
+make test           # xcrun --sdk macosx swift test (~1648 tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
 make install        # build + copy to ~/.local/bin/pippin + install zsh completions
 make release        # build + copy release binary to .build/release-artifacts/
 make tarball        # release + tar.gz artifact
 make version        # print current version from Version.swift
 ```
+
+**SDK selection:** `make build`/`make test` invoke `xcrun --sdk macosx` so they route through `xcode-select`. On a CLT-only macOS 26 host the CLT SDK lacks `XCTest.framework` and tests fail with "no such module XCTest" — install Xcode or `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. See pippin-ncr.
 
 ## Architecture
 
