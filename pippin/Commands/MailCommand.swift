@@ -153,12 +153,14 @@ public struct MailCommand: AsyncParsableCommand {
                 let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: model)
                 let store = try EmbeddingStore()
 
-                let messages = try SemanticSearch.search(
-                    query: query,
-                    store: store,
-                    provider: embedProvider,
-                    limit: limit
-                )
+                let messages = try await detachBlocking { [query, limit] in
+                    try SemanticSearch.search(
+                        query: query,
+                        store: store,
+                        provider: embedProvider,
+                        limit: limit
+                    )
+                }
 
                 if output.isJSON {
                     try printJSON(messages)
@@ -226,12 +228,15 @@ public struct MailCommand: AsyncParsableCommand {
                 let model = embeddingModel ?? "nomic-embed-text"
                 let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: model)
                 let store = try EmbeddingStore()
-                let all = try SemanticSearch.search(
-                    query: query,
-                    store: store,
-                    provider: embedProvider,
-                    limit: offset + pageSize + 1
-                )
+                let searchLimit = offset + pageSize + 1
+                let all = try await detachBlocking { [query] in
+                    try SemanticSearch.search(
+                        query: query,
+                        store: store,
+                        provider: embedProvider,
+                        limit: searchLimit
+                    )
+                }
                 page = try Pagination.paginate(
                     all: all, offset: offset, pageSize: pageSize, filterHash: hash
                 )

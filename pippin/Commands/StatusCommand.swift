@@ -66,7 +66,7 @@ public struct StatusCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        let report = buildStatusReport()
+        let report = await detachBlocking { buildStatusReport() }
 
         if output.isAgent {
             try output.printAgent(report)
