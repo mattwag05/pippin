@@ -12,7 +12,7 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 
 ```bash
 make build          # xcrun --sdk macosx swift build -c release
-make test           # xcrun --sdk macosx swift test (~1648 tests, 0 failures expected)
+make test           # xcrun --sdk macosx swift test (1,600+ tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
 make install        # build + copy to ~/.local/bin/pippin + install zsh completions
 make release        # build + copy release binary to .build/release-artifacts/
@@ -27,31 +27,21 @@ make version        # print current version from Version.swift
 | Path | Purpose |
 |------|---------|
 | `pippin/` | `PippinLib` — all application logic (importable by tests) |
-| `pippin/MailBridge/` | JXA script builders for Mail.app automation |
-| `pippin/MemosBridge/` | GRDB-based Voice Memos DB access |
-| `pippin/CalendarBridge/` | EventKit-based Calendar automation |
-| `pippin/AIProvider/` | Ollama + Claude backends for `memos summarize` |
-| `pippin/Commands/` | ArgumentParser command implementations |
-| `pippin/Commands/ShellCommand.swift` | Interactive REPL — `pippin shell` or bare `pippin` |
-| `pippin/Commands/StatusCommand.swift` | System dashboard — `pippin status` |
-| `pippin/SessionState.swift` | Session state persistence for REPL (`~/.config/pippin/session.json`) |
-| `pippin/Commands/TemplatesCommand.swift` | `memos templates` subcommand |
-| `pippin/Commands/SummarizeCommand.swift` | `memos summarize` subcommand |
-| `pippin/Templates/` | Built-in summarization prompt templates |
-| `pippin/Models/CalendarModels.swift` | CalendarInfo, CalendarEvent, Attendee, CalendarActionResult |
-| `pippin/Models/MailModels.swift` | MailMessage, Attachment (savedPath), MailActionResult, Mailbox, MailAccount |
-| `pippin/RemindersBridge/` | EventKit-based Reminders automation (.reminder entity) |
-| `pippin/NotesBridge/` | JXA-based Notes automation (enum pattern, synchronous) |
-| `pippin/Models/ReminderModels.swift` | ReminderList, ReminderItem (listTitle), ReminderActionResult |
-| `pippin/Models/NoteModels.swift` | NoteInfo (body HTML + plainText), NoteFolder, NoteActionResult |
-| `pippin/Formatting/AgentOutput.swift` | printAgentJSON<T>() — compact JSON for agent consumers |
-| `pippin/SoftTimeout.swift` | Shared `SoftTimeout.clamp(_:)` + `defaultMs` (22000). Bridges enumerating unbounded collections return `Outcome<T>` `{results, timedOut}` and thread `outcome.timedOut` through `output.emit(…, timedOut:, timedOutHint:)`. See NotesBridge, ContactsBridge, MailBridge.SearchOutcome. `--soft-timeout-ms` is **not** a user CLI flag; the default applies at the Swift API. |
-| `pippin/MCP/` | MCP server runtime — `JSONValue`, `JSONRPCTypes`, `ToolRegistry`, `MCPServerRuntime` |
-| `pippin/Commands/McpServerCommand.swift` | `pippin mcp-server` — stdio JSON-RPC loop (see `docs/mcp-server.md`) |
+| `pippin/{Mail,Memos,Calendar,Reminders,Notes,Contacts,Messages,Audio,Browser}Bridge/` | Per-app bridges. JXA via `Scripting/ScriptRunner.swift` for Mail/Notes/Contacts; EventKit for Calendar/Reminders; GRDB for Memos/Messages |
+| `pippin/MailAIBridge/` | Embeddings, semantic search, triage, prompt-injection scanner — Ollama-backed |
+| `pippin/AIProvider/` | Ollama + Claude backends. `isMCPContext()` and `aiRequestTimeoutSeconds()` shorten budgets to 50s when `PIPPIN_MCP=1` |
+| `pippin/Commands/` | ArgumentParser entry points. REPL (`ShellCommand`), system dashboard (`StatusCommand`), MCP server (`McpServerCommand`), plan-and-execute (`DoCommand`), background jobs (`JobCommand`), parallel dispatch (`BatchCommand`) |
+| `pippin/MCP/ToolRegistry.swift` | Single source of truth for the MCP tool surface — adding a tool is one entry here |
+| `pippin/Models/` | DTO structs for each bridge. `Codable, Sendable`. Names: `{Mail,Calendar,Reminder,Note,Contact,Messages,MailAI,Audio,Browser}Models.swift` |
+| `pippin/Templates/` | Built-in summarization + smart-create + extract-actions prompt templates |
+| `pippin/Formatting/AgentOutput.swift` | `printAgentJSON<T>()` + envelope v1 `{v, status, duration_ms, data\|error}` |
+| `pippin/SoftTimeout.swift` | `SoftTimeout.clamp(_:)` + `defaultMs` (22000). Bridges return `Outcome<T>` `{results, timedOut}`; callers thread it through `output.emit(…, timedOut:, timedOutHint:)`. `--soft-timeout-ms` is **not** a user CLI flag; the default applies at the Swift API |
+| `pippin/DetachBlocking.swift` | **Load-bearing.** `detachBlocking { ... }` hops sync, thread-blocking work (subprocess waits, `DispatchSemaphore.wait`, `sendSynchronousRequest`) off the cooperative pool. Required at every async-command → sync-bridge boundary; failure to hop wedges `pippin mcp-server` under fanout. Full pattern in [docs/gotchas/swift.md](docs/gotchas/swift.md) |
+| `pippin/BatchBudget.swift` | `BatchBudget.forCurrentContext()` — 50s wall-clock cap under MCP, unlimited in CLI. Used by `memos export/transcribe --all` for partial-results-with-warning instead of mid-batch SIGKILL |
+| `pippin/SessionState.swift` | REPL session state at `~/.config/pippin/session.json` — active account, last-used IDs, command history |
 | `pippin-entry/` | Thin `@main` executable target |
-| `Tests/PippinTests/` | Unit tests |
-| `.github/copilot-setup-steps.yml` | Copilot agent environment (Xcode, SwiftFormat, deps) |
-| `.github/workflows/copilot-ci-fix.yml` | Auto-creates Copilot issue on CI failure |
+| `Tests/PippinTests/` | XCTest suite (1,600+ tests). Integration tests in `CLIIntegrationTests.swift` shell out to the built binary |
+| `.github/workflows/` | CI (`ci.yml`), advanced CodeQL (`codeql.yml`), copilot auto-fix (`copilot-ci-fix.yml`), unicode safety scan, release |
 
 ## AI Provider Configuration
 
@@ -140,13 +130,13 @@ Every `pippin <cmd> --format agent` response is wrapped in a versioned envelope.
 
 **Morning briefing scheduled task** (`~/.claude/scheduled-tasks/morning-briefing/SKILL.md`):
 Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
-- `pippin mail list --account <acc> --format agent` (all 5 accounts)
+- `pippin mail list --account <acc> --format agent` (one call per configured account)
 - `pippin calendar agenda --format agent`
 - `pippin reminders list --format agent`
 Don't change these command shapes or agent JSON output structure without updating the task. After envelope v1, the task reads the payload from `.data` instead of the top level.
 
 **Talia (Hermes-Agent on M5, `~/.local/bin/hermes`):**
-Talia runs as Hermes-Agent on the M5 MacBook Pro since 2026-04-22 (replaced the prior OpenClaw/Talia install on the M4 Air). Pippin is registered as a stdio MCP (`pippin mcp-server`) — Talia drives the 33 tools (mail/calendar/reminders/contacts/notes/memos) directly. `memos summarize` is the primary AI-powered feature; ensure Ollama is running on M5 before invocation. Envelope v1 applies — `--format agent` payloads live under `.data`.
+Talia runs as Hermes-Agent on the M5 MacBook Pro since 2026-04-22 (replaced the prior OpenClaw/Talia install on the M4 Air). Pippin is registered as a stdio MCP (`pippin mcp-server`) — Talia drives the full tool registry (mail/calendar/reminders/contacts/notes/memos/messages/digest/jobs/batch) directly. `memos summarize` is the primary AI-powered feature; ensure Ollama is running on M5 before invocation. Envelope v1 applies — `--format agent` payloads live under `.data`.
 
 **MCP clients via `pippin mcp-server`:**
 Claude Code, Claude Desktop, and any other MCP-compatible client may attach to pippin over stdio and call tools like `mail_list`, `calendar_today`, `reminders_create`, `status`. The MCP server **shells out to `pippin <cmd> --format agent`** for every tool call — so any change to an agent-mode JSON shape propagates automatically (including envelope v1), but any change to a CLI flag name or a snake_case tool-level key (like `AgentError.code`) is a breaking change for MCP clients. Tool registry lives in `pippin/MCP/ToolRegistry.swift`; adding a new tool is one entry. See `docs/mcp-server.md` for the full tool list and wiring instructions.
