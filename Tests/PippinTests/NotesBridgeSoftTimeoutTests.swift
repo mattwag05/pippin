@@ -98,6 +98,41 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
         XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
     }
 
+    // MARK: - buildCountScript (pippin-9s6)
+
+    func testCountScriptDoesNotIterateBodies() {
+        // The fix is precisely "don't fetch bodies/plaintext per note." If the
+        // count script grows a body fetch, Notes status will hang again.
+        let script = NotesBridge.buildCountScript(folder: nil)
+        XCTAssertFalse(script.contains(".body()"), "Count script must not call .body()")
+        XCTAssertFalse(script.contains(".plaintext()"), "Count script must not call .plaintext()")
+    }
+
+    func testCountScriptUsesSingleAppleEvent() {
+        let script = NotesBridge.buildCountScript(folder: nil)
+        XCTAssertTrue(
+            script.contains("app.notes().length"),
+            "Whole-vault count must call app.notes().length once."
+        )
+        XCTAssertTrue(script.contains("JSON.stringify({count: n})"))
+    }
+
+    func testCountScriptHonorsFolderFilter() {
+        let script = NotesBridge.buildCountScript(folder: "Work")
+        XCTAssertTrue(script.contains("'Work'"))
+        XCTAssertTrue(script.contains("folders[0].notes().length"))
+    }
+
+    func testCountScriptEscapesFolderName() {
+        // jsEscape must apply — single quotes in a folder name should be escaped.
+        let script = NotesBridge.buildCountScript(folder: "O'Reilly")
+        XCTAssertFalse(
+            script.contains("'O'Reilly'"),
+            "Folder name with apostrophe must be escaped, not interpolated raw"
+        )
+        XCTAssertTrue(script.contains("O\\'Reilly") || script.contains("\\'Reilly"))
+    }
+
     // MARK: - Pre-loop fetch+sort guard (pippin-4as)
 
     func testSearchScriptHasPreSortBudgetCheck() {
