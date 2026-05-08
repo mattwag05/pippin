@@ -36,6 +36,42 @@ final class DoctorTests: XCTestCase {
         )
     }
 
+    // MARK: - classifyLatency (pippin-11e)
+
+    func testClassifyLatencyFastIsOK() {
+        let check = classifyLatency(name: "Mail list latency", ms: 250)
+        XCTAssertEqual(check.status, .ok)
+        XCTAssertTrue(check.detail.contains("250ms"))
+        XCTAssertNil(check.remediation)
+    }
+
+    func testClassifyLatencySlowWarns() {
+        // 25s — over the 22s soft cap, under the 55s MCP boundary.
+        let check = classifyLatency(name: "Mail list latency", ms: 25000)
+        XCTAssertEqual(check.status, .skip)
+        XCTAssertTrue(check.detail.contains("warning"))
+        XCTAssertTrue(check.detail.contains("25000ms"))
+    }
+
+    func testClassifyLatencyExceedingMCPCapFails() {
+        // 56s — over the 55s red threshold.
+        let check = classifyLatency(name: "Mail activity latency", ms: 56000)
+        XCTAssertEqual(check.status, .fail)
+        XCTAssertTrue(check.detail.contains("MCP"))
+        XCTAssertNotNil(check.remediation?.shellCommand)
+    }
+
+    func testClassifyLatencyBoundary55sIsFail() {
+        // Exactly at the boundary — must be classified as fail.
+        let check = classifyLatency(name: "Mail search latency", ms: 55000)
+        XCTAssertEqual(check.status, .fail)
+    }
+
+    func testClassifyLatencyBoundary20sIsWarn() {
+        let check = classifyLatency(name: "Mail search latency", ms: 20000)
+        XCTAssertEqual(check.status, .skip)
+    }
+
     // MARK: - classifyPython3Output
 
     func testClassifyPython3OutputSuccess() {
