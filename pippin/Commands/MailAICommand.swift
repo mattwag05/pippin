@@ -49,6 +49,9 @@ public struct MailIndex: AsyncParsableCommand {
             limit: limit,
             offset: 0
         )
+        if indexOutcome.timedOut {
+            fputs("warning: mail scan timed out — only the messages returned before the soft cap will be indexed; re-run with a narrower --account/--mailbox or smaller --limit for full coverage\n", stderr)
+        }
         let messages = indexOutcome.messages
 
         var indexed = 0
@@ -231,6 +234,9 @@ public struct MailTriage: AsyncParsableCommand {
             limit: limit,
             offset: 0
         )
+        if triageOutcome.timedOut {
+            fputs("warning: mail scan timed out — triage operating on partial results; some unread messages may be missed\n", stderr)
+        }
         let messages = triageOutcome.messages
 
         // Apply persistent rules before the AI pass to skip token usage on predictable patterns.

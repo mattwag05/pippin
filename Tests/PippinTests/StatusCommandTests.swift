@@ -21,6 +21,18 @@ final class StatusCommandTests: XCTestCase {
         XCTAssertTrue(json.contains("\"permissions\":[]"))
     }
 
+    // pippin-53p: Notes Outcome.timedOut must reach the StatusReport payload
+    // so callers can detect partial counts.
+    func testNotesStatusTimedOutDefaultsFalseAndIsCodable() throws {
+        let defaultStatus = StatusReport.NotesStatus(noteCount: 1, folderCount: 1)
+        XCTAssertFalse(defaultStatus.timedOut)
+
+        let timedOut = StatusReport.NotesStatus(noteCount: 1, folderCount: 1, timedOut: true)
+        let data = try JSONEncoder().encode(timedOut)
+        let decoded = try JSONDecoder().decode(StatusReport.NotesStatus.self, from: data)
+        XCTAssertTrue(decoded.timedOut)
+    }
+
     func testStatusReportEncodesFullPayload() throws {
         let report = StatusReport(
             version: "0.15.0",

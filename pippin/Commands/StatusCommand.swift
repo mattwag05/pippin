@@ -34,6 +34,16 @@ public struct StatusReport: Codable, Sendable {
     public struct NotesStatus: Codable, Sendable {
         public let noteCount: Int
         public let folderCount: Int
+        /// `true` when either the folder enumeration or note enumeration hit
+        /// the JXA soft-cap and returned partial results. Means `noteCount`
+        /// and `folderCount` may understate reality.
+        public let timedOut: Bool
+
+        public init(noteCount: Int, folderCount: Int, timedOut: Bool = false) {
+            self.noteCount = noteCount
+            self.folderCount = folderCount
+            self.timedOut = timedOut
+        }
     }
 
     public struct ContactsStatus: Codable, Sendable {
@@ -194,9 +204,14 @@ private func gatherMemosStatus() -> StatusReport.MemosStatus? {
 // MARK: - Notes
 
 private func gatherNotesStatus() -> StatusReport.NotesStatus? {
-    guard let folders = try? NotesBridge.listFolders().results else { return nil }
-    let noteCount = (try? NotesBridge.listNotes(folder: nil, limit: 500).results)?.count ?? 0
-    return StatusReport.NotesStatus(noteCount: noteCount, folderCount: folders.count)
+    guard let foldersOutcome = try? NotesBridge.listFolders() else { return nil }
+    let notesOutcome = try? NotesBridge.listNotes(folder: nil, limit: 500)
+    let timedOut = foldersOutcome.timedOut || (notesOutcome?.timedOut ?? false)
+    return StatusReport.NotesStatus(
+        noteCount: notesOutcome?.results.count ?? 0,
+        folderCount: foldersOutcome.results.count,
+        timedOut: timedOut
+    )
 }
 
 // MARK: - Contacts
@@ -295,7 +310,11 @@ private func printTextReport(_ report: StatusReport) {
     // Notes
     if let notes = report.notes {
         print("Notes")
-        print("  \(notes.noteCount) notes in \(notes.folderCount) folders")
+        var line = "  \(notes.noteCount) notes in \(notes.folderCount) folders"
+        if notes.timedOut {
+            line += " (partial — Notes scan timed out)"
+        }
+        print(line)
         print()
     }
 
