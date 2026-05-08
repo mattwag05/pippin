@@ -570,22 +570,92 @@ private func runSTTDryInvocation(entry: AudioBridge.STTEntry) -> Bool {
 }
 
 private func checkOllama() -> DiagnosticCheck {
-    guard let url = URL(string: "http://localhost:11434/api/version") else {
+    let baseURL = AIProviderFactory.loadConfig()?.ai?.ollama?.url ?? "http://localhost:11434"
+    guard let versionURL = URL(string: "\(baseURL)/api/version") else {
         return DiagnosticCheck(name: "Ollama", status: .skip, detail: "invalid URL")
     }
-    var request = URLRequest(url: url, timeoutInterval: 3)
+    var request = URLRequest(url: versionURL, timeoutInterval: 3)
     request.httpMethod = "GET"
-    if let (_, httpResponse) = try? sendSynchronousRequest(request), httpResponse.statusCode == 200 {
-        return DiagnosticCheck(name: "Ollama", status: .ok, detail: "reachable at localhost:11434")
+    guard
+        let (_, httpResponse) = try? sendSynchronousRequest(request, waitTimeoutSeconds: 5),
+        httpResponse.statusCode == 200
+    else {
+        return DiagnosticCheck(
+            name: "Ollama",
+            status: .skip,
+            detail: "not reachable — optional, required for `mail index`, `mail triage`, `mail extract`",
+            remediation: Remediation(
+                humanHint: "Ollama is not reachable on localhost:11434. It is optional — only `mail index`, `mail triage`, and `mail extract` need it.",
+                doctorCheck: "Ollama",
+                shellCommand: "brew install ollama && ollama serve"
+            )
+        )
+    }
+
+    // Reachable — also verify the configured model is actually pulled, so
+    // `pippin calendar agenda` / `memos summarize` / `actions` don't fail
+    // tens of seconds in with HTTP 404 "model X not found." Default mirrors
+    // OllamaProvider.init.
+    let configuredModel = AIProviderFactory.loadConfig()?.ai?.ollama?.model ?? "llama3.2"
+    if let modelStatus = checkOllamaModel(baseURL: baseURL, configuredModel: configuredModel) {
+        return modelStatus
+    }
+    return DiagnosticCheck(name: "Ollama", status: .ok, detail: "reachable at \(baseURL); model \(configuredModel) pulled")
+}
+
+/// Pure: given the names returned by `/api/tags` and the configured model,
+/// return `true` when the configured model is present. Allows base-name
+/// fuzzy matching so `gemma4:latest` configured matches `gemma4` available
+/// (and vice-versa).
+func ollamaModelIsAvailable(configured: String, available: Set<String>) -> Bool {
+    if available.contains(configured) { return true }
+    let configuredBase = configured.split(separator: ":").first.map(String.init) ?? configured
+    return available.contains { name in
+        let base = name.split(separator: ":").first.map(String.init) ?? name
+        return base == configuredBase
+    }
+}
+
+/// Returns a non-nil DiagnosticCheck when the configured model is not
+/// available; nil means the model is present (caller emits the green check).
+private func checkOllamaModel(baseURL: String, configuredModel: String) -> DiagnosticCheck? {
+    guard let tagsURL = URL(string: "\(baseURL)/api/tags") else { return nil }
+    var request = URLRequest(url: tagsURL, timeoutInterval: 3)
+    request.httpMethod = "GET"
+    guard
+        let (data, response) = try? sendSynchronousRequest(request, waitTimeoutSeconds: 5),
+        response.statusCode == 200,
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let models = json["models"] as? [[String: Any]]
+    else {
+        // Couldn't probe tags — Ollama is up so don't flag a hard failure.
+        return DiagnosticCheck(
+            name: "Ollama",
+            status: .ok,
+            detail: "reachable at \(baseURL) (model presence not verified)"
+        )
+    }
+
+    let availableNames = Set(models.compactMap { $0["name"] as? String })
+    if ollamaModelIsAvailable(configured: configuredModel, available: availableNames) {
+        return nil
+    }
+
+    let suggestion: String
+    if availableNames.isEmpty {
+        suggestion = "ollama pull \(configuredModel)"
+    } else {
+        let sample = availableNames.sorted().prefix(3).joined(separator: ", ")
+        suggestion = "ollama pull \(configuredModel)  # or set ai.ollama.model in ~/.config/pippin/config.json (available: \(sample))"
     }
     return DiagnosticCheck(
         name: "Ollama",
-        status: .skip,
-        detail: "not reachable — optional, required for `mail index`, `mail triage`, `mail extract`",
+        status: .fail,
+        detail: "reachable at \(baseURL) but model \(configuredModel) is not pulled — `pippin memos summarize`, `calendar agenda`, `actions extract` will fail",
         remediation: Remediation(
-            humanHint: "Ollama is not reachable on localhost:11434. It is optional — only `mail index`, `mail triage`, and `mail extract` need it.",
+            humanHint: "The configured Ollama model is not pulled. Pull it with the command below, or set a different model under ai.ollama.model in ~/.config/pippin/config.json.",
             doctorCheck: "Ollama",
-            shellCommand: "brew install ollama && ollama serve"
+            shellCommand: suggestion
         )
     )
 }
