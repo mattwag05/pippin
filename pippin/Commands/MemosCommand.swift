@@ -163,12 +163,18 @@ public struct MemosCommand: AsyncParsableCommand {
 
             var results: [ExportResult] = []
 
+            var batchTimedOut = false
             if all {
                 let memos = try db.listMemos(limit: allMemosLimit)
                 let chunks = stride(from: 0, to: memos.count, by: jobs).map { i in
                     Array(memos[i ..< min(i + jobs, memos.count)])
                 }
+                let budget = BatchBudget.forCurrentContext()
                 for chunk in chunks {
+                    if budget.exceeded {
+                        batchTimedOut = true
+                        break
+                    }
                     if !outputOptions.isStructured {
                         for memo in chunk {
                             print("Exporting: \(memo.title)...", terminator: " ")
@@ -214,6 +220,12 @@ public struct MemosCommand: AsyncParsableCommand {
                             if !outputOptions.isStructured { print("FAILED: \(e.localizedDescription)") }
                         }
                     }
+                }
+                if batchTimedOut {
+                    fputs(
+                        "warning: export batch budget (\(budget.softTimeoutMs / 1000)s) exceeded — \(results.count)/\(memos.count) memos exported; narrow with smaller --jobs or per-memo invocations for the rest\n",
+                        stderr
+                    )
                 }
             } else if let id {
                 if !outputOptions.isStructured {
@@ -302,12 +314,20 @@ public struct MemosCommand: AsyncParsableCommand {
             let convertedPathLogger: (@Sendable (String) -> Void)? =
                 (keep && !outputOptions.isStructured) ? logConverted : nil
 
+            var batchTimedOut = false
+            var totalMemoCount = 0
             if all {
                 let memos = try db.listMemos(limit: allMemosLimit)
+                totalMemoCount = memos.count
                 let chunks = stride(from: 0, to: memos.count, by: jobs).map { i in
                     Array(memos[i ..< min(i + jobs, memos.count)])
                 }
+                let budget = BatchBudget.forCurrentContext()
                 for chunk in chunks {
+                    if budget.exceeded {
+                        batchTimedOut = true
+                        break
+                    }
                     if !outputOptions.isStructured {
                         for memo in chunk {
                             print("Transcribing: \(memo.title)...", terminator: " ")
@@ -392,6 +412,14 @@ public struct MemosCommand: AsyncParsableCommand {
                 }
             } else {
                 print("\nTranscribed \(results.count) recording(s)")
+            }
+
+            if batchTimedOut {
+                let budgetSec = BatchBudget.forCurrentContext().softTimeoutMs / 1000
+                fputs(
+                    "warning: transcribe batch budget (\(budgetSec)s) exceeded — \(results.count)/\(totalMemoCount) memos transcribed; re-run for the remainder or process per-memo\n",
+                    stderr
+                )
             }
         }
     }
