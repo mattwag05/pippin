@@ -36,6 +36,53 @@ final class DoctorTests: XCTestCase {
         )
     }
 
+    // MARK: - ollamaModelIsAvailable (pippin-n5p)
+
+    func testOllamaModelMatchExact() {
+        XCTAssertTrue(ollamaModelIsAvailable(
+            configured: "llama3.2",
+            available: ["llama3.2", "gemma4:latest"]
+        ))
+    }
+
+    func testOllamaModelMatchTagSuffix() {
+        // `gemma4:latest` available, configured says `gemma4` (no tag).
+        XCTAssertTrue(ollamaModelIsAvailable(
+            configured: "gemma4",
+            available: ["gemma4:latest"]
+        ))
+    }
+
+    func testOllamaModelMatchTagOnConfigured() {
+        // `gemma4` available (rare but plausible), configured says `gemma4:latest`.
+        XCTAssertTrue(ollamaModelIsAvailable(
+            configured: "gemma4:latest",
+            available: ["gemma4"]
+        ))
+    }
+
+    func testOllamaModelMissing() {
+        XCTAssertFalse(ollamaModelIsAvailable(
+            configured: "llama3.2",
+            available: ["gemma4:latest", "qwen3:8b"]
+        ))
+    }
+
+    func testOllamaModelMissingWithEmptyAvailable() {
+        XCTAssertFalse(ollamaModelIsAvailable(
+            configured: "llama3.2",
+            available: []
+        ))
+    }
+
+    func testOllamaModelDoesNotConfuseDifferentBaseNames() {
+        // gemma4 != gemma3; base-name match must be exact, not prefix.
+        XCTAssertFalse(ollamaModelIsAvailable(
+            configured: "gemma4",
+            available: ["gemma3:latest"]
+        ))
+    }
+
     // MARK: - classifyLatency (pippin-11e)
 
     func testClassifyLatencyFastIsOK() {
