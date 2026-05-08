@@ -9,6 +9,38 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] `detachBlocking` helper (`pippin/DetachBlocking.swift`) — single-purpose wrapper that hops sync, thread-blocking work to a detached `Task` so async commands no longer stall the cooperative pool when invoking subprocess waits, `DispatchSemaphore.wait`, or `sendSynchronousRequest`. Throwing and non-throwing overloads. Documented at `docs/gotchas/swift.md` § Cooperative-thread blocking.
+- [feat] `pippin doctor --latency` — opt-in Mail bridge latency probes (list/activity/search) with classifyLatency thresholds (<20s ok, 20–55s warn, ≥55s fail with remediation hint). Self-bounded inside the bridge (softTimeoutMs=20000) so the whole `--latency` pass is bounded around 60s. Closes pippin-11e.
+- [feat] `BatchBudget` (`pippin/BatchBudget.swift`) — wall-clock budget for parallel batch operations. `forCurrentContext()` picks 50s under MCP (PIPPIN_MCP=1) and unlimited in CLI. Wired into `memos export --all --transcribe` and `memos transcribe --all` so MCP clients see a partial-results warning instead of mid-batch SIGKILL. Closes pippin-55e.
+- [feat] `pippin/AIProvider/AIProvider.swift` — `isMCPContext()` / `aiRequestTimeoutSeconds()` helpers. `OllamaProvider` runs a 2s `GET /api/version` preflight before completion calls; failures surface as new `AIProviderError.providerUnreachable` with a "start it with `ollama serve`" hint. Both providers shorten the request budget to 50s under MCP (vs 120s CLI) so the JSON-RPC client sees a typed AI error rather than the runChild SIGKILL. Closes pippin-5et.
+- [feat] `MCPServerRuntime.runChild` sets `PIPPIN_MCP=1` in child env so AI providers and `BatchBudget` can detect MCP context.
+- [feat] `StatusReport.NotesStatus.timedOut` — new optional field (defaults to false; backward-compat init) populated from `listFolders` + `listNotes` outcomes. Text mode appends "(partial — Notes scan timed out)". Closes pippin-53p.
+- [test] 16 new tests across `DetachBlocking`, `BatchBudget`, `DoctorTests` (latency classifier), `AIProviderTests` (preflight + MCP context), `NotesBridgeSoftTimeoutTests` (pre-sort budget check), `StatusCommandTests` (Notes timedOut Codable). Test count 1632 → 1648.
+
+### Fixed
+
+- [bug] Async commands no longer stall the Swift 6 cooperative thread pool. Wrapped sync blocking work in `detachBlocking` at the async boundary across DoctorCommand, InitCommand, AudioCommand (4 sites), MailCommand semantic-search paths, StatusCommand, BrowserCommand (8 sites) + BrowserRetry, SummarizeCommand, MemosCaptureCommand, ActionsCommand, CalendarCommand smart-create + briefing, RemindersCommand smart-create, MailCommand list --summarize / show --sanitize. Closes pippin-3re, pippin-f1n, pippin-ka7, pippin-zwn, pippin-8l6.
+- [bug] `NotesBridge.buildListScript` / `buildSearchScript` — large vaults could spend the entire 22s soft-cap budget on `app.notes()` and the modificationDate-comparing sort alone, busting the ScriptRunner 30s hard cap before the loop ran. Now skips the sort when over budget and emits unsorted notes (capped to limit) with `timedOut=true`. ScriptRunner default 30→35s on read-only Notes paths. Closes pippin-4as.
+- [bug] `AudioConverter.swift` — silenced Swift 6.3 Sendable warnings via `@preconcurrency import AVFoundation` and `nonisolated(unsafe) var fed` (the converter callback runs synchronously). Closes pippin-srt.
+- [bug] `runConcurrently<Input, Output>` now requires `Input: Sendable, Output: Sendable` so the `@Sendable` closure capture is well-typed. All callers already pass Sendable types. Closes pippin-69y.
+- [bug] `MailBridge.timedOut` and `NotesBridge.timedOut` no longer silently dropped by callers that need the signal. `DigestCommand` notes section + `MailAICommand` index/triage + `StatusReport.NotesStatus` now surface partial-results warnings. Closes pippin-6tg, pippin-53p.
+- [bug] `MessagesCommand.swift` — removed five `try?` wrappers around the non-throwing `MessagesAuditLog.record`. Adjacent `StatusCommand.swift` cleanup: dropped dead `?? ""` on non-optional `account.email`, replaced four deprecated `EKAuthorizationStatus.authorized` comparisons with `.fullAccess` (we target macOS 15+). Closes pippin-7xn.
+
+### Changed
+
+- [refactor] Unified `MailBridge.SearchMeta` / `ListMeta` / `ActivityMeta` (three byte-identical Decodable structs with the same custom init), `SearchResponse` / `ListResponse` / `ActivityResponse`, and `SearchOutcome` / `ListOutcome` / `ActivityOutcome` into `ScanMeta` / `ScanResponse` / `ScanOutcome`. Legacy names kept as typealiases so existing callers compile unchanged. ~80 lines of duplication removed. Closes pippin-660.
+- [build] `Makefile` — `make build` and `make test` now invoke `xcrun --sdk macosx swift {build,test}` so they route through `xcode-select`. CLT-only macOS 26 hosts get a clear hint to install Xcode or set `DEVELOPER_DIR`. Closes pippin-ncr.
+
+### Documentation
+
+- [docs] `docs/ROADMAP.md` rewritten — every one of the previous file's 13 listed roadmap items had landed and closed. Restructured into Deferred (3 explicitly-deferred beads) and Shipped (v0.16 → v0.22) sections.
+- [docs] `docs/mcp-server.md` — tool count refreshed (33 → 44, added the messages_*, mail_activity, memos_capture_to_reminders, digest tools). [agent]/known-consumers section updated to reflect [agent-runtime]-Agent-on-M5 ([agent] drives pippin natively over stdio MCP rather than shelling out from a Pi).
+- [docs] `README.md` — install URL no longer pin-points v0.14.2 specifically; replaced with a generic vX.Y.Z placeholder pointing at the Releases page.
+- [docs] `docs/agent-prompts/{review-and-ship,autonomous-audit}.md` — retired the Forgejo PR-creation flow (Forgejo retired 2026-04-17 in favor of GitHub canonical); replaced with `gh pr create`. Test-count baseline 831 → ~1648. Audit checklist gained a Concurrency section and codified envelope v1 + outcome.timedOut surfacing as AX contracts.
+- [docs] `docs/gotchas/swift.md` — new "Cooperative-thread blocking — use `detachBlocking`" section covering where the blocking lives, the mechanical fix, and the two recurring traps (mutable struct self-capture, captured-var test counters).
+
 ---
 
 ## [0.22.0] - 2026-04-24
