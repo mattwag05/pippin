@@ -42,13 +42,14 @@ public struct MailIndex: AsyncParsableCommand {
         let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: embeddingModel)
         let store = try EmbeddingStore()
 
-        let messages = try MailBridge.listMessages(
+        let indexOutcome = try MailBridge.listMessages(
             account: account,
             mailbox: mailbox,
             unread: false,
             limit: limit,
             offset: 0
         )
+        let messages = indexOutcome.messages
 
         var indexed = 0
         var skipped = 0
@@ -117,11 +118,7 @@ public struct MailIndex: AsyncParsableCommand {
         }
 
         let result = IndexResult(indexed: indexed, skipped: skipped, total: messages.count)
-        if output.isJSON {
-            try printJSON(result)
-        } else if output.isAgent {
-            try output.printAgent(result)
-        } else {
+        try output.emit(result, timedOut: indexOutcome.timedOut, timedOutHint: "mailbox scan timed out — index will be partial") {
             print("Indexed \(indexed) messages, skipped \(skipped) (total \(messages.count))")
         }
     }
@@ -227,13 +224,14 @@ public struct MailTriage: AsyncParsableCommand {
     }
 
     public mutating func run() async throws {
-        let messages = try MailBridge.listMessages(
+        let triageOutcome = try MailBridge.listMessages(
             account: account,
             mailbox: mailbox,
             unread: false,
             limit: limit,
             offset: 0
         )
+        let messages = triageOutcome.messages
 
         // Apply persistent rules before the AI pass to skip token usage on predictable patterns.
         let rules = noRules ? [] : TriageRulesEngine.loadRules(path: rulesFile)
@@ -250,11 +248,7 @@ public struct MailTriage: AsyncParsableCommand {
             actionItems: aiResult.actionItems
         )
 
-        if output.isJSON {
-            try printJSON(result)
-        } else if output.isAgent {
-            try output.printAgent(result)
-        } else {
+        try output.emit(result, timedOut: triageOutcome.timedOut, timedOutHint: "mailbox scan timed out — triage results will be partial") {
             let rows = result.messages.map { m in
                 [m.category.rawValue, "\(m.urgency)", TextFormatter.truncate(m.subject, to: 35), m.oneLiner]
             }

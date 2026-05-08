@@ -40,10 +40,13 @@ public extension MailCommand {
         public mutating func run() async throws {
             var seen = Set<String>()
 
-            let initial = try MailBridge.listMessages(
+            let initialOutcome = try MailBridge.listMessages(
                 account: account, mailbox: mailbox, unread: false, limit: limit
             )
-            for msg in initial {
+            if initialOutcome.timedOut {
+                fputs("warning: initial mailbox scan timed out — watch baseline may be incomplete; subsequent polls may emit false new_message events\n", stderr)
+            }
+            for msg in initialOutcome.messages {
                 seen.insert(msg.id)
             }
 
@@ -55,17 +58,21 @@ public extension MailCommand {
             while true {
                 try await Task.sleep(nanoseconds: sleepNs)
 
-                let messages: [MailMessage]
+                let pollOutcome: MailBridge.ListOutcome
                 do {
-                    messages = try MailBridge.listMessages(
+                    pollOutcome = try MailBridge.listMessages(
                         account: account, mailbox: mailbox, unread: false, limit: limit
                     )
                 } catch {
                     fputs("poll error: \(error.localizedDescription)\n", stderr)
                     continue
                 }
+                if pollOutcome.timedOut {
+                    fputs("poll: scan timed out — skipping new-message detection for this poll\n", stderr)
+                    continue
+                }
 
-                for msg in messages where !seen.contains(msg.id) {
+                for msg in pollOutcome.messages where !seen.contains(msg.id) {
                     seen.insert(msg.id)
                     let watchEvent = WatchEvent(event: "new_message", message: msg)
                     do {

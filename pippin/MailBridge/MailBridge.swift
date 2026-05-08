@@ -3,24 +3,46 @@ import Foundation
 enum MailBridge {
     // MARK: - Public API
 
+    /// Outcome of a list call: messages plus a `timedOut` flag the caller
+    /// should surface so the user knows results may be incomplete and how to
+    /// narrow the query.
+    struct ListOutcome {
+        let messages: [MailMessage]
+        let timedOut: Bool
+    }
+
     static func listMessages(
         account: String? = nil,
         mailbox: String = "INBOX",
         unread: Bool = false,
         limit: Int = 50,
         offset: Int = 0,
-        preview: Int? = nil
-    ) throws -> [MailMessage] {
+        preview: Int? = nil,
+        softTimeoutMs: Int = SoftTimeout.defaultMs
+    ) throws -> ListOutcome {
         let clampedLimit = max(1, min(limit, 500))
         let clampedOffset = max(0, offset)
         let script = buildListScript(
             account: account, mailbox: mailbox, unread: unread,
-            limit: clampedLimit, offset: clampedOffset, preview: preview
+            limit: clampedLimit, offset: clampedOffset, preview: preview,
+            softTimeoutMs: softTimeoutMs
         )
-        // msg.content() forces an IMAP fetch per message — bump the timeout when preview is on.
-        let timeout = (preview ?? 0) > 0 ? 60 : 10
+        // The JXA loop self-bounds via softTimeoutMs (default 22s) when preview
+        // forces per-message body fetches. ScriptRunner timeout is a hard
+        // failsafe well under the 60s MCP runChild cap; 35s gives the same
+        // ~13s headroom over the soft cap as activity to absorb a final
+        // in-flight body fetch + JSON.stringify of up to 500 rows × 4kb.
+        let timeout = (preview ?? 0) > 0 ? 35 : 10
         let json = try runScript(script, timeoutSeconds: timeout)
-        return try decode([MailMessage].self, from: json)
+        let wrapper = try decode(ListResponse.self, from: json)
+        return ListOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
+    }
+
+    /// Outcome of an activity call: same shape as `ListOutcome`, separate type
+    /// so it's grep-able and can diverge if activity grows extra metadata.
+    struct ActivityOutcome {
+        let messages: [MailMessage]
+        let timedOut: Bool
     }
 
     static func listActivity(
@@ -28,14 +50,21 @@ enum MailBridge {
         mailboxes: [String] = ["INBOX", "Sent"],
         since: Date? = nil,
         limit: Int = 50,
-        preview: Int? = 200
-    ) throws -> [MailMessage] {
+        preview: Int? = 200,
+        softTimeoutMs: Int = SoftTimeout.defaultMs
+    ) throws -> ActivityOutcome {
         let script = buildActivityScript(
-            account: account, mailboxes: mailboxes, since: since, limit: limit, preview: preview
+            account: account, mailboxes: mailboxes, since: since,
+            limit: limit, preview: preview, softTimeoutMs: softTimeoutMs
         )
-        let timeout = (preview ?? 0) > 0 ? 120 : 30
+        // Lowered from 120s — the prior value exceeded the 60s MCP runChild cap
+        // so every preview-on activity call was reliably killed before JXA
+        // returned. JXA self-bounds via softTimeoutMs (default 22s); 50s gives
+        // enough headroom for sort + JSON.stringify after the soft cap fires.
+        let timeout = (preview ?? 0) > 0 ? 50 : 30
         let json = try runScript(script, timeoutSeconds: timeout)
-        return try decode([MailMessage].self, from: json)
+        let wrapper = try decode(ActivityResponse.self, from: json)
+        return ActivityOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
     }
 
     /// Outcome of a search call: the matched messages plus a `timedOut` flag
@@ -57,7 +86,7 @@ enum MailBridge {
         before: String? = nil,
         to: String? = nil,
         verbose: Bool = false,
-        softTimeoutMs: Int = 22000
+        softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> SearchOutcome {
         let clampedOffset = max(0, offset)
         let script = buildSearchScript(
@@ -268,5 +297,59 @@ enum MailBridge {
     struct SearchResponse: Decodable {
         let results: [MailMessage]
         let meta: SearchMeta
+    }
+
+    /// `MailBridge.listMessages` result envelope. Same shape as `SearchMeta`;
+    /// kept as a dedicated type so test fixtures and any future divergence
+    /// (e.g. list-specific telemetry) stay grep-able.
+    struct ListMeta: Decodable {
+        let accountsScanned: Int
+        let mailboxesScanned: Int
+        let messagesExamined: Int
+        let timedOut: Bool
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            accountsScanned = try container.decode(Int.self, forKey: .accountsScanned)
+            mailboxesScanned = try container.decode(Int.self, forKey: .mailboxesScanned)
+            messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
+            // Backward-compatible: scripts that don't emit timedOut default to false.
+            timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case accountsScanned, mailboxesScanned, messagesExamined, timedOut
+        }
+    }
+
+    struct ListResponse: Decodable {
+        let results: [MailMessage]
+        let meta: ListMeta
+    }
+
+    /// `MailBridge.listActivity` result envelope.
+    struct ActivityMeta: Decodable {
+        let accountsScanned: Int
+        let mailboxesScanned: Int
+        let messagesExamined: Int
+        let timedOut: Bool
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            accountsScanned = try container.decode(Int.self, forKey: .accountsScanned)
+            mailboxesScanned = try container.decode(Int.self, forKey: .mailboxesScanned)
+            messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
+            // Backward-compatible: scripts that don't emit timedOut default to false.
+            timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case accountsScanned, mailboxesScanned, messagesExamined, timedOut
+        }
+    }
+
+    struct ActivityResponse: Decodable {
+        let results: [MailMessage]
+        let meta: ActivityMeta
     }
 }
