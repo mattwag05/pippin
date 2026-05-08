@@ -34,12 +34,22 @@ public struct DoctorCommand: AsyncParsableCommand {
         abstract: "Check system requirements and permissions."
     )
 
+    @Flag(name: .long, help: "Add Mail bridge latency probes (list/activity/search). Each runs against a 20s soft cap; slow probes warn, blown probes fail. Adds up to ~60s wall time on a problem vault.")
+    public var latency: Bool = false
+
     @OptionGroup public var output: OutputOptions
 
     public init() {}
 
     public mutating func run() async throws {
-        let checks = await detachBlocking { runAllChecks() }
+        let runLatency = latency
+        let checks = await detachBlocking {
+            var checks = runAllChecks()
+            if runLatency {
+                checks.append(contentsOf: runMailLatencyProbes())
+            }
+            return checks
+        }
 
         if output.isAgent {
             try output.printAgent(checks)
@@ -621,4 +631,83 @@ private func checkPippinVersion() -> DiagnosticCheck {
         status: .ok,
         detail: PippinVersion.version
     )
+}
+
+// MARK: - Mail latency probes (opt-in via --latency)
+
+/// Run the three MCP-relevant Mail probes (list/activity/search) and
+/// classify by wall-clock latency. Each probe uses a 20s soft timeout
+/// inside the bridge (well under the 22s default and the 35-50s hard
+/// caps) so the worst case is bounded — a thoroughly broken vault still
+/// returns a typed error within ~60s rather than hanging.
+public func runMailLatencyProbes() -> [DiagnosticCheck] {
+    [
+        runMailLatencyProbe(name: "Mail list latency") {
+            _ = try MailBridge.listMessages(
+                mailbox: "INBOX", unread: false, limit: 1, softTimeoutMs: 20000
+            )
+        },
+        runMailLatencyProbe(name: "Mail activity latency") {
+            let oneHourAgo = Calendar.current.date(byAdding: .hour, value: -1, to: Date())
+            _ = try MailBridge.listActivity(
+                mailboxes: ["INBOX"], since: oneHourAgo, limit: 1, preview: 0,
+                softTimeoutMs: 20000
+            )
+        },
+        runMailLatencyProbe(name: "Mail search latency") {
+            _ = try MailBridge.searchMessages(
+                query: "pippin-doctor-probe-no-match-expected", limit: 1,
+                softTimeoutMs: 20000
+            )
+        },
+    ]
+}
+
+private func runMailLatencyProbe(name: String, body: () throws -> Void) -> DiagnosticCheck {
+    let start = Date()
+    do {
+        try body()
+        let ms = Int(Date().timeIntervalSince(start) * 1000)
+        return classifyLatency(name: name, ms: ms)
+    } catch {
+        let ms = Int(Date().timeIntervalSince(start) * 1000)
+        return DiagnosticCheck(
+            name: name,
+            status: .fail,
+            detail: "errored after \(ms)ms: \(error.localizedDescription)",
+            remediation: Remediation(
+                humanHint: "The Mail bridge raised an error during the latency probe. Open Mail.app, retry `pippin mail list --limit 1`, and check `pippin doctor` for permissions issues.",
+                doctorCheck: name
+            )
+        )
+    }
+}
+
+func classifyLatency(name: String, ms: Int) -> DiagnosticCheck {
+    // 20s yellow, 55s red — chosen to match the MCP runChild 60s cap with
+    // a 5s headroom for the JSON-RPC roundtrip on top of the probe itself.
+    if ms >= 55000 {
+        return DiagnosticCheck(
+            name: name,
+            status: .fail,
+            detail: "\(ms)ms — exceeds MCP 60s runChild cap; this tool will be SIGKILL'd under MCP",
+            remediation: Remediation(
+                humanHint: "Mail bridge is too slow for MCP use. Narrow the call (--account, --mailbox, --limit) or investigate Mail.app sync state. Consider quitting and reopening Mail.app.",
+                doctorCheck: name,
+                shellCommand: "killall Mail && open -a Mail"
+            )
+        )
+    }
+    if ms >= 20000 {
+        return DiagnosticCheck(
+            name: name,
+            status: .skip,
+            detail: "warning: \(ms)ms — slow; narrow scope for reliable MCP use",
+            remediation: Remediation(
+                humanHint: "This probe took longer than the 22s soft cap most callers use. Mail.app may be syncing. Re-run after sync completes.",
+                doctorCheck: name
+            )
+        )
+    }
+    return DiagnosticCheck(name: name, status: .ok, detail: "\(ms)ms")
 }
