@@ -4,17 +4,18 @@
 
 ## What you get
 
-33 tools spanning the commonly scripted pippin surfaces:
+44 tools spanning the commonly scripted pippin surfaces:
 
 | Area | Tools |
 |---|---|
-| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_show`, `mail_search`, `mail_attachments` |
+| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_activity`, `mail_show`, `mail_search`, `mail_attachments` |
 | Calendar | `calendar_list`, `calendar_events`, `calendar_today`, `calendar_remaining`, `calendar_upcoming`, `calendar_search`, `calendar_create` |
 | Reminders | `reminders_lists`, `reminders_list`, `reminders_show`, `reminders_search`, `reminders_create`, `reminders_complete` |
 | Contacts | `contacts_search`, `contacts_show` |
 | Notes | `notes_list`, `notes_search`, `notes_show`, `notes_folders` |
-| Memos | `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_summarize` |
-| System | `status`, `doctor` |
+| Messages | `messages_list`, `messages_search`, `messages_show`, `messages_send` (gated — see [README § Messages](../README.md#messages)) |
+| Memos | `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_capture_to_reminders`, `memos_summarize` |
+| System | `status`, `doctor`, `digest` |
 | Jobs  | `job_run`, `job_show`, `job_list`, `job_wait` — detach long-running work (see below) |
 | Batch | `batch` — fan out N pippin commands concurrently in one tool call (see below) |
 
@@ -66,7 +67,7 @@ Heavy AI subsystems (`mail index`, `mail triage`, `audio transcribe`, browser au
 
 ## How it works
 
-Each `tools/call` spawns `pippin <subcommand> --format agent` as a child process and returns the child's compact JSON stdout as the tool result. This guarantees the MCP path stays in perfect parity with the existing CLI path used by [agent], the morning-briefing task, and manual invocations.
+Each `tools/call` spawns `pippin <subcommand> --format agent` as a child process and returns the child's compact JSON stdout as the tool result. This guarantees the MCP path stays in perfect parity with the existing CLI path used by the morning-briefing task and manual invocations.
 
 - Successful tool call → `{"content":[{"type":"text","text":"<agent JSON>"}],"isError":false}`
 - Tool failure (bad ID, permission denied, etc.) → same shape with `isError:true` and the pippin `AgentError` JSON as text
@@ -169,6 +170,8 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 
 ## Known consumers
 
-The morning-briefing scheduled task and [agent] (on Raspberry Pi) still shell out to the pippin CLI for now — they have not been migrated to MCP. Both paths will continue to work; MCP is additive.
+- **[agent] ([agent-runtime]-Agent on M5)** — registers `pippin mcp-server` as a stdio MCP and drives the 44 tools natively. See `~/.claude/references/agent-runtime.md`.
+- **Claude Code / Claude Desktop** — register via `claude mcp add` or the desktop config JSON; both pick up tools automatically on restart.
+- **Morning-briefing scheduled task** — still shells out to the pippin CLI directly (no migration planned; the task is single-shot enough that MCP doesn't add value).
 
 All CLI and MCP consumers receive envelope v1 responses (see above) as of 2026-04-20.

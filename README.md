@@ -47,9 +47,8 @@ verify with `pippin doctor`.
 **Pre-built binary** (arm64, macOS 15+):
 
 ```bash
-curl -LO https://github.com/mattwag05/pippin/releases/latest/download/pippin-$(pippin --version 2>/dev/null | awk '{print $2}')-arm64-macos.tar.gz
-# or grab a specific version:
-curl -LO https://github.com/mattwag05/pippin/releases/download/v0.14.2/pippin-0.14.2-arm64-macos.tar.gz
+# Latest tagged release (replace X.Y.Z with the version from the Releases page):
+curl -LO https://github.com/mattwag05/pippin/releases/download/vX.Y.Z/pippin-X.Y.Z-arm64-macos.tar.gz
 tar xzf pippin-*.tar.gz && mv pippin-*-arm64-macos ~/.local/bin/pippin
 ```
 
