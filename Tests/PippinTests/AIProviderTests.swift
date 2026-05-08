@@ -82,5 +82,42 @@ final class AIProviderTests: XCTestCase {
         XCTAssertNotNil(AIProviderError.timeout.errorDescription)
         XCTAssertNotNil(AIProviderError.decodingFailed("bad json").errorDescription)
         XCTAssertNotNil(AIProviderError.missingAPIKey.errorDescription)
+        XCTAssertEqual(
+            AIProviderError.providerUnreachable("ollama down").errorDescription,
+            "ollama down"
+        )
+    }
+
+    // MARK: - MCP context detection (pippin-5et)
+
+    func testIsMCPContextDefaultsFalse() {
+        // Tests don't run under PIPPIN_MCP=1 in this environment.
+        XCTAssertFalse(isMCPContext())
+    }
+
+    func testAIRequestTimeoutSecondsRespectsMode() {
+        // CLI default: long budget.
+        XCTAssertEqual(aiRequestTimeoutSeconds(), 120)
+    }
+
+    func testOllamaPreflightFailsFastWhenServerDown() throws {
+        // Point at a port nothing is listening on; preflight must fail quickly
+        // with a typed providerUnreachable error rather than waiting the full
+        // request budget.
+        let provider = OllamaProvider(baseURL: "http://127.0.0.1:1", model: "x")
+        let start = Date()
+        do {
+            _ = try provider.complete(prompt: "hi", system: "")
+            XCTFail("Expected preflight to throw")
+        } catch let error as AIProviderError {
+            switch error {
+            case .providerUnreachable:
+                break // expected
+            default:
+                XCTFail("Expected .providerUnreachable, got \(error)")
+            }
+        }
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertLessThan(elapsed, 10, "Preflight must fail in well under 10s; took \(elapsed)s")
     }
 }

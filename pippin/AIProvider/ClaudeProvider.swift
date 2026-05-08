@@ -23,14 +23,18 @@ public struct ClaudeProvider: AIProvider {
             ],
         ]
 
-        var request = URLRequest(url: url, timeoutInterval: 120)
+        let timeout = aiRequestTimeoutSeconds()
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, httpResponse) = try sendSynchronousRequest(request)
+        let (data, httpResponse) = try sendSynchronousRequest(
+            request,
+            waitTimeoutSeconds: Int(timeout) + 5
+        )
 
         guard httpResponse.statusCode == 200 else {
             let detail = String(data: data, encoding: .utf8) ?? ""
