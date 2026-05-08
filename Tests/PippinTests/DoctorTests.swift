@@ -2,6 +2,13 @@
 import XCTest
 
 final class DoctorTests: XCTestCase {
+    /// Cached `runAllChecks()` result reused across every test below that
+    /// asserts on a specific check. The full battery includes EventKit
+    /// auth probes + a 3s Ollama HTTP request + Python/Node/Playwright
+    /// subprocess waits — running it 7+ times per test process added ~30s
+    /// to the suite. Lazy + Sendable means it computes once on first use.
+    nonisolated(unsafe) static let cachedChecks: [DiagnosticCheck] = runAllChecks()
+
     // MARK: - classifyMailError
 
     func testClassifyMailErrorTCC() {
@@ -146,7 +153,7 @@ final class DoctorTests: XCTestCase {
     // MARK: - Permission-denial remediations (via runAllChecks)
 
     func testCalendarPermissionDeniedNoRunnableCommand() {
-        let checks = runAllChecks()
+        let checks = Self.cachedChecks
         guard let check = checks.first(where: { $0.name == "Calendar access" }),
               check.status == .fail else { return }
         XCTAssertNil(
@@ -156,7 +163,7 @@ final class DoctorTests: XCTestCase {
     }
 
     func testRemindersPermissionDeniedNoRunnableCommand() {
-        let checks = runAllChecks()
+        let checks = Self.cachedChecks
         guard let check = checks.first(where: { $0.name == "Reminders access" }),
               check.status == .fail else { return }
         XCTAssertNil(
@@ -166,7 +173,7 @@ final class DoctorTests: XCTestCase {
     }
 
     func testContactsPermissionDeniedNoRunnableCommand() {
-        let checks = runAllChecks()
+        let checks = Self.cachedChecks
         guard let check = checks.first(where: { $0.name == "Contacts access" }),
               check.status == .fail else { return }
         XCTAssertNil(
@@ -178,7 +185,7 @@ final class DoctorTests: XCTestCase {
     // MARK: - Agent-actionable remediations (must have $ command)
 
     func testMLXAudioIsRequiredCheck() {
-        let checks = runAllChecks()
+        let checks = Self.cachedChecks
         guard let check = checks.first(where: { $0.name == "mlx-audio" }) else {
             XCTFail("mlx-audio check must be present in runAllChecks()")
             return
@@ -191,7 +198,7 @@ final class DoctorTests: XCTestCase {
     }
 
     func testMLXAudioRemediationHasRunnableCommand() {
-        let checks = runAllChecks()
+        let checks = Self.cachedChecks
         guard let check = checks.first(where: { $0.name == "mlx-audio" }),
               let remediation = check.remediation else { return }
         XCTAssertNotNil(
@@ -201,7 +208,7 @@ final class DoctorTests: XCTestCase {
     }
 
     func testNodeJSRemediationHasRunnableCommand() {
-        let checks = runAllChecks()
+        let checks = Self.cachedChecks
         guard let check = checks.first(where: { $0.name == "Node.js" }),
               let remediation = check.remediation else { return }
         XCTAssertNotNil(
@@ -211,7 +218,7 @@ final class DoctorTests: XCTestCase {
     }
 
     func testPlaywrightRemediationHasRunnableCommand() {
-        let checks = runAllChecks()
+        let checks = Self.cachedChecks
         guard let check = checks.first(where: { $0.name == "Playwright" }),
               let remediation = check.remediation else { return }
         XCTAssertNotNil(
