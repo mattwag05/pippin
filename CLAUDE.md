@@ -145,8 +145,8 @@ Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
 - `pippin reminders list --format agent`
 Don't change these command shapes or agent JSON output structure without updating the task. After envelope v1, the task reads the payload from `.data` instead of the top level.
 
-**Talia (OpenClaw agent on M4 MacBook Air, `127.0.0.1:18789`):**
-Talia uses pippin indirectly via the `pippin` skill in her workspace TOOLS.md. The `memos summarize` command is the primary AI-powered feature Talia may invoke. Ensure Ollama is running on the MacBook Air before Talia attempts summarization tasks. Envelope v1 applies — Talia's `memos summarize --format agent` result now lives under `.data`.
+**Talia (Hermes-Agent on M5, `~/.local/bin/hermes`):**
+Talia runs as Hermes-Agent on the M5 MacBook Pro since 2026-04-22 (replaced the prior OpenClaw/Talia install on the M4 Air). Pippin is registered as a stdio MCP (`pippin mcp-server`) — Talia drives the 33 tools (mail/calendar/reminders/contacts/notes/memos) directly. `memos summarize` is the primary AI-powered feature; ensure Ollama is running on M5 before invocation. Envelope v1 applies — `--format agent` payloads live under `.data`.
 
 **MCP clients via `pippin mcp-server`:**
 Claude Code, Claude Desktop, and any other MCP-compatible client may attach to pippin over stdio and call tools like `mail_list`, `calendar_today`, `reminders_create`, `status`. The MCP server **shells out to `pippin <cmd> --format agent`** for every tool call — so any change to an agent-mode JSON shape propagates automatically (including envelope v1), but any change to a CLI flag name or a snake_case tool-level key (like `AgentError.code`) is a breaking change for MCP clients. Tool registry lives in `pippin/MCP/ToolRegistry.swift`; adding a new tool is one entry. See `docs/mcp-server.md` for the full tool list and wiring instructions.
