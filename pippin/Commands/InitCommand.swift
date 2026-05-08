@@ -12,7 +12,7 @@ public struct InitCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        let checks = runAllChecks()
+        let checks = await detachBlocking { runAllChecks() }
 
         if output.isAgent {
             try output.printAgent(InitReport(checks: checks))

@@ -38,12 +38,15 @@ public struct AudioCommand: AsyncParsableCommand {
             guard AudioBridge.isAvailable() else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
-            let result = try AudioBridge.speak(
-                text: text,
-                model: model,
-                voice: voice,
-                outputPath: outputFile
-            )
+            let result = try await detachBlocking {
+                [text, model, voice, outputFile] in
+                try AudioBridge.speak(
+                    text: text,
+                    model: model,
+                    voice: voice,
+                    outputPath: outputFile
+                )
+            }
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
@@ -89,11 +92,14 @@ public struct AudioCommand: AsyncParsableCommand {
                     errorDescription: "Invalid format '\(transcriptionFormat)'. Supported: text, srt, json."
                 )
             }
-            let result = try AudioBridge.transcribe(
-                filePath: file,
-                model: model,
-                outputFormat: transcriptionFormat
-            )
+            let result = try await detachBlocking {
+                [file, model, transcriptionFormat] in
+                try AudioBridge.transcribe(
+                    filePath: file,
+                    model: model,
+                    outputFormat: transcriptionFormat
+                )
+            }
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
@@ -129,7 +135,9 @@ public struct AudioCommand: AsyncParsableCommand {
             guard AudioBridge.isAvailable() else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
-            let voices = try AudioBridge.listVoices(model: model)
+            let voices = try await detachBlocking { [model] in
+                try AudioBridge.listVoices(model: model)
+            }
             if output.isJSON {
                 try printJSON(voices)
             } else if output.isAgent {
@@ -166,7 +174,7 @@ public struct AudioCommand: AsyncParsableCommand {
             guard AudioBridge.isAvailable() else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
-            let models = try AudioBridge.listModels()
+            let models = try await detachBlocking { try AudioBridge.listModels() }
             if output.isJSON {
                 try printJSON(models)
             } else if output.isAgent {
