@@ -27,6 +27,7 @@ enum MailBridge {
         preview: Int? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> ListOutcome {
+        let crossAccount = (account == nil)
         let clampedLimit = max(1, min(limit, 500))
         let clampedOffset = max(0, offset)
         let script = buildListScript(
@@ -35,11 +36,15 @@ enum MailBridge {
             softTimeoutMs: softTimeoutMs
         )
         // The JXA loop self-bounds via softTimeoutMs (default 22s) when preview
-        // forces per-message body fetches. 35s was too tight for cross-account
+        // forces per-message body fetches.  50s was too tight for cross-account
         // scans with --limit 100 --preview 200 (e.g. CRM sync); 50s matches
         // listActivity and gives JXA enough headroom for JSON.stringify after
         // the soft cap fires.
-        let timeout = (preview ?? 0) > 0 ? 50 : 10
+        // Cross-account scans iterate multiple accounts' INBOXes, each with
+        // 1000–2700 messages — 10s is far too short.  Use a 6× multiplier for
+        // cross-account to avoid hard-timeout crashes (measured ~20s).
+        let baseTimeout = crossAccount ? 60 : 10
+        let timeout = (preview ?? 0) > 0 ? baseTimeout + 40 : baseTimeout
         let json = try runScript(script, timeoutSeconds: timeout)
         let wrapper = try decode(ListResponse.self, from: json)
         return ListOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
@@ -53,15 +58,17 @@ enum MailBridge {
         preview: Int? = 200,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> ActivityOutcome {
+        let crossAccount = (account == nil)
         let script = buildActivityScript(
             account: account, mailboxes: mailboxes, since: since,
             limit: limit, preview: preview, softTimeoutMs: softTimeoutMs
         )
-        // Lowered from 120s — the prior value exceeded the 60s MCP runChild cap
-        // so every preview-on activity call was reliably killed before JXA
-        // returned. JXA self-bounds via softTimeoutMs (default 22s); 50s gives
-        // enough headroom for sort + JSON.stringify after the soft cap fires.
-        let timeout = (preview ?? 0) > 0 ? 50 : 30
+        // Cross-account activity scans 5 accounts × 2 mailboxes × 500 msgs =
+        // 5000 messages. 50s was too short, 60s is the MCP runChild cap.
+        // Raise base to 75s for cross-account to give the 22s soft cap +
+        // JSON.stringify enough headroom before the ScriptRunner cap fires.
+        let baseTimeout = crossAccount ? 75 : 30
+        let timeout = (preview ?? 0) > 0 ? baseTimeout + 40 : baseTimeout
         let json = try runScript(script, timeoutSeconds: timeout)
         let wrapper = try decode(ActivityResponse.self, from: json)
         return ActivityOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
@@ -80,16 +87,21 @@ enum MailBridge {
         verbose: Bool = false,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> SearchOutcome {
+        let crossAccount = (account == nil) && (mailbox == nil)
         let clampedOffset = max(0, offset)
         let script = buildSearchScript(
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
             limit: limit, offset: clampedOffset, after: after, before: before, to: to,
             softTimeoutMs: softTimeoutMs
         )
-        // The JXA loop self-bounds via softTimeoutMs (default 22s) and returns
-        // partial results with meta.timedOut=true. ScriptRunner timeout is a
-        // hard failsafe slightly above that to allow JSON serialization.
-        let json = try runScript(script, timeoutSeconds: 30)
+        // Cross-account (no --account, no --mailbox) iterates 5 accounts ×
+        // ~21 mailboxes = 100+ mailbox scans.  When --body is on, each match
+        // forces msg.content() (IMAP body download).  30s is far too tight.
+        // 95s for cross-account --body (from measured 120s+ runs),
+        // 65s for cross-account no --body, 45s for single-account --body,
+        // 35s for single-account no --body.
+        let baseTimeout = crossAccount ? 50 : 30
+        let json = try runScript(script, timeoutSeconds: searchBody ? baseTimeout + 45 : baseTimeout + 15)
         let wrapper = try decode(SearchResponse.self, from: json)
         if verbose {
             let stderr = FileHandle.standardError
