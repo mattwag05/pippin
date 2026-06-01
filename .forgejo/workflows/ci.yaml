@@ -9,6 +9,13 @@ on:
 jobs:
   build-and-test:
     name: Build and Test
+    # NOTE: Unlike the GitHub Actions workflows (ci.yml / codeql.yml /
+    # release.yml), this Forgejo job intentionally does NOT use
+    # maxim-lobanov/setup-xcode. It runs on a self-hosted `macos` runner that
+    # already has Xcode installed and selected via `xcode-select`, so bare
+    # `swift build` / `swift test` resolve the system toolchain directly.
+    # The setup-xcode action targets GitHub-hosted runners (multiple Xcodes
+    # installed) and is unavailable in the Forgejo action registry.
     runs-on: macos
     steps:
       - name: Checkout
