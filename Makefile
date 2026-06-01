@@ -8,12 +8,23 @@ build:
 
 # `xcrun --sdk macosx` routes through xcode-select's developer dir. On a host
 # with Xcode installed it picks the Xcode SDK (XCTest present); on a CLT-only
-# macOS 26 host the CLT SDK lacks XCTest.framework so tests would fail with
-# "no such module XCTest". Workaround: install Xcode, or set
-# DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer before running.
-# See pippin-ncr.
+# macOS 26 host the CLT SDK lacks XCTest.framework so `swift test` fails with
+# "no such module XCTest". The preflight below detects that: if XCTest isn't in
+# the selected SDK but Xcode is installed, it transparently runs under Xcode's
+# DEVELOPER_DIR so `make test` just works; otherwise it prints an actionable
+# error instead of the cryptic compiler message. See pippin-ncr.
 test:
-	xcrun --sdk macosx swift test
+	@if xcrun --sdk macosx --find xctest >/dev/null 2>&1; then \
+		xcrun --sdk macosx swift test; \
+	elif [ -d /Applications/Xcode.app/Contents/Developer ]; then \
+		echo "make: XCTest not in the selected SDK (Command Line Tools); using Xcode's toolchain."; \
+		DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun --sdk macosx swift test; \
+	else \
+		echo "ERROR: XCTest.framework is unavailable — the Command Line Tools SDK on macOS 26 does not ship it."; \
+		echo "Install Xcode, or set DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer, then re-run 'make test'."; \
+		echo "See pippin-ncr."; \
+		exit 1; \
+	fi
 
 lint:
 	swiftformat --lint pippin/ pippin-entry/ Tests/ 2>/dev/null || echo "swiftformat not installed — skipping lint"
