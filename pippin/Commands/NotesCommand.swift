@@ -73,22 +73,17 @@ public struct NotesCommand: ParsableCommand {
             let (offset, pageSize) = try Pagination.resolve(
                 pagination, defaultPageSize: limit, filterHash: hash
             )
-            // Bridge has no offset; over-fetch and slice in-memory.
-            let needed = offset + pageSize + 1
+            // Native offset pushdown: the JXA list script skips the first
+            // `offset` sorted notes and returns only `pageSize + 1` (the +1 is
+            // the has-more sentinel). This lifts the old maxListLimit (500)
+            // pagination ceiling — body fetches are bounded to the page window,
+            // and the all-notes sort enumeration is bounded by the soft cap
+            // (surfaced as timedOut), not by a fixed offset ceiling.
             let outcome = try NotesBridge.listNotes(
-                folder: folder, limit: needed
+                folder: folder, limit: pageSize + 1, offset: offset
             )
-            // listNotes caps the fetch at NotesBridge.maxListLimit. If we asked
-            // for more than the cap AND got a full cap back, there may be notes
-            // past the ceiling we can't see — slicing further would silently
-            // drop them and falsely report "done", so fail loudly instead.
-            if needed > NotesBridge.maxListLimit, outcome.results.count >= NotesBridge.maxListLimit {
-                throw ValidationError(
-                    "Cannot paginate beyond \(NotesBridge.maxListLimit) notes (Apple Notes enumeration cap). Narrow the set with --folder."
-                )
-            }
-            let page = try Pagination.paginate(
-                all: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
+            let page = try Pagination.pageFromPushdown(
+                fetched: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
             )
             if output.isJSON {
                 try printFilteredNotesPage(page, fields: fields)

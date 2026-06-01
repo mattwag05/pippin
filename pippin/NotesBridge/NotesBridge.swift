@@ -11,16 +11,18 @@ enum NotesBridge {
     /// on `T: Decodable`). `MailBridge.ScanOutcome` stays separate by design.
     typealias Outcome<T: Decodable> = BridgeOutcome<T>
 
-    /// Hard ceiling on a single `listNotes` fetch. Apple Notes JXA enumeration
-    /// is slow, so the fetch is capped to bound execution time. Pagination
-    /// over-fetches (`offset + pageSize + 1`) and slices in-memory, so requests
-    /// whose window exceeds this ceiling cannot be satisfied — callers must
-    /// detect that rather than silently slicing past a truncated result.
+    /// Hard ceiling on the `limit` (page-window size) of a single `listNotes`
+    /// fetch. Apple Notes JXA enumeration is slow, so the number of notes whose
+    /// body/plaintext is fetched per call is capped to bound execution time.
+    /// Pagination pushes `offset` down natively (the script skips the first
+    /// `offset` sorted notes and returns only `pageSize + 1`), so deep pages are
+    /// NOT bound by this ceiling — the all-notes sort enumeration is instead
+    /// bounded by the soft timeout, surfaced as `timedOut`.
     static let maxListLimit = 500
 
-    static func listNotes(folder: String? = nil, limit: Int = 50, softTimeoutMs: Int = 22000) throws -> Outcome<[NoteInfo]> {
+    static func listNotes(folder: String? = nil, limit: Int = 50, offset: Int = 0, softTimeoutMs: Int = 22000) throws -> Outcome<[NoteInfo]> {
         let clampedLimit = max(1, min(limit, maxListLimit))
-        let script = buildListScript(folder: folder, limit: clampedLimit, softTimeoutMs: softTimeoutMs)
+        let script = buildListScript(folder: folder, limit: clampedLimit, offset: max(0, offset), softTimeoutMs: softTimeoutMs)
         let json = try runScript(script)
         return try decode(Outcome<[NoteInfo]>.self, from: json)
     }
@@ -117,7 +119,7 @@ enum NotesBridge {
 
     // MARK: - JXA Script Builders
 
-    static func buildListScript(folder: String?, limit: Int, softTimeoutMs: Int = 22000) -> String {
+    static func buildListScript(folder: String?, limit: Int, offset: Int = 0, softTimeoutMs: Int = 22000) -> String {
         let folderFilter = jsEscapeOptional(folder)
         let clampedTimeout = SoftTimeout.clamp(softTimeoutMs)
         return """
@@ -125,6 +127,7 @@ enum NotesBridge {
         app.includeStandardAdditions = true;
         var folderFilter = \(folderFilter);
         var limit = \(limit);
+        var offset = \(max(0, offset));
         var softTimeoutMs = \(clampedTimeout);
         var _start = Date.now();
         var _meta = { timedOut: false };
@@ -139,8 +142,13 @@ enum NotesBridge {
         }
         // Materialize + sort by modificationDate (see jsSortNotesByModDate).
         \(jsSortNotesByModDate)
+        // Native offset: skip the first `offset` sorted notes and emit only the
+        // `limit` window. Body/plaintext (the expensive per-note Apple Events)
+        // are fetched only for the returned window, so deep offsets don't
+        // multiply body-fetch cost — they still iterate all notes for the sort,
+        // which the soft cap above bounds (partial results set _meta.timedOut).
         var results = [];
-        for (var i = 0; i < pairs.length && results.length < limit; i++) {
+        for (var i = offset; i < pairs.length && results.length < limit; i++) {
             if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
             var note = pairs[i].note;
             var folderId = '';
