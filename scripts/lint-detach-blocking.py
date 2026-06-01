@@ -33,11 +33,26 @@ from pathlib import Path
 # Blocking calls that must be hopped off the cooperative pool. Matched against
 # the comment/string-stripped source, so substrings inside comments or string
 # literals never trip the lint.
-# MailBridge.(read|list|search)* covers readMessage / listMessages /
-# listActivity / listAccounts / listMailboxes / searchMessages — every method
-# that shells out to a blocking osascript subprocess via ScriptRunner.
+# Blocking entry points that must be hopped off the cooperative pool when
+# called from async code. Scope is deliberately the genuinely-slow sync calls
+# (seconds-to-minutes): osascript subprocesses, full contact-store scans, and
+# synchronous network/semaphore waits.
+#
+# Intentionally NOT listed:
+#   - VoiceMemosDB / GRDB SQLite reads: local, sub-millisecond — a different
+#     risk class; wrapping them would be noise.
+#   - RemindersBridge / CalendarBridge (EventKit): their public methods are
+#     already `async`, so call sites are awaited, not sync-blocking. Their
+#     internal synchronous wait is tracked separately in pippin-91n.
 BLOCKING_PATTERNS = [
+    # MailBridge.(read|list|search)*: readMessage / listMessages / listActivity
+    # / listAccounts / listMailboxes / searchMessages — all shell out to a
+    # blocking osascript subprocess via ScriptRunner.
     r"MailBridge\s*\.\s*(?:read|list|search)[A-Za-z0-9_]*\b",
+    # NotesBridge: JXA osascript subprocesses (notes/folders enumeration).
+    r"NotesBridge\s*\.\s*(?:read|list|search|show|count|create|edit|delete|append)[A-Za-z0-9_]*\b",
+    # ContactsBridge: synchronous CNContactStore enumeration / CNSaveRequest.
+    r"ContactsBridge\s*\.\s*(?:read|list|search|show|create)[A-Za-z0-9_]*\b",
     r"MCPServerRuntime\s*\.\s*runChild\b",
     r"\bsendSynchronousRequest\s*\(",
     r"\bDispatchSemaphore\s*\(",
@@ -334,6 +349,42 @@ def _self_test() -> int:
             """,
             1,
             "bare call inside non-detach closure in async func -> violation",
+        ),
+        (
+            """
+            func run() async throws {
+                let outcome = try NotesBridge.listNotes(limit: 5)
+            }
+            """,
+            1,
+            "bare NotesBridge.listNotes in async -> violation",
+        ),
+        (
+            """
+            func run() async throws {
+                let outcome = try ContactsBridge.listContacts(group: g)
+            }
+            """,
+            1,
+            "bare ContactsBridge.listContacts in async -> violation",
+        ),
+        (
+            """
+            func run() async throws {
+                let o = try await detachBlocking { try NotesBridge.listNotes(limit: 5) }
+            }
+            """,
+            0,
+            "wrapped NotesBridge call -> ok",
+        ),
+        (
+            """
+            func run() throws {
+                let o = try NotesBridge.listNotes(limit: 5)
+            }
+            """,
+            0,
+            "NotesBridge call in SYNC command (like NotesCommand) -> ignored",
         ),
     ]
     failures = 0

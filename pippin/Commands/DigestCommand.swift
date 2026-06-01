@@ -130,7 +130,10 @@ public struct DigestCommand: AsyncParsableCommand {
         var notesSection = DigestPayload.NotesSection(recent: [])
         if !skipSet.contains("notes") {
             do {
-                let outcome = try NotesBridge.listNotes(limit: notesLimit)
+                let notesLimit = self.notesLimit
+                // listNotes spawns a blocking osascript subprocess; hop off the
+                // cooperative pool so concurrent callers don't stall.
+                let outcome = try await detachBlocking { try NotesBridge.listNotes(limit: notesLimit) }
                 if outcome.timedOut {
                     warnings.append("notes: scan timed out — recent notes may be missing or unsorted")
                 }
