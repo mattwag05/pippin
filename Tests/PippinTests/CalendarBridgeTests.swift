@@ -3,6 +3,27 @@ import EventKit
 import XCTest
 
 final class CalendarBridgeTests: XCTestCase {
+    // MARK: - Prefix match disambiguation (recurring events)
+
+    func testPrefixMatchSingleEventIsUnambiguous() {
+        XCTAssertTrue(CalendarBridge.isUnambiguousPrefixMatch(["ABC123"]))
+    }
+
+    func testPrefixMatchRecurringOccurrencesAreUnambiguous() {
+        // A recurring event yields many occurrences sharing one identifier —
+        // this is a single event, not an ambiguous prefix. (Regression: the
+        // old count==1 check wrongly returned nil here.)
+        XCTAssertTrue(CalendarBridge.isUnambiguousPrefixMatch(["EVT/0", "EVT/0", "EVT/0"]))
+    }
+
+    func testPrefixMatchDistinctIdentifiersAreAmbiguous() {
+        XCTAssertFalse(CalendarBridge.isUnambiguousPrefixMatch(["EVT/0", "OTHER/9"]))
+    }
+
+    func testPrefixMatchNoCandidatesIsNotAMatch() {
+        XCTAssertFalse(CalendarBridge.isUnambiguousPrefixMatch([]))
+    }
+
     // MARK: - Error descriptions
 
     func testAccessDeniedDescription() {
