@@ -118,12 +118,45 @@ public enum AIProviderFactory {
         process.arguments = [itemName]
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
-        try? process.run()
+        // Discard stderr at the OS level. Previously this was an undrained
+        // Pipe(): a chatty get-secret (>64KB of stderr) would block on a full
+        // pipe buffer and never exit, hanging waitUntilExit() forever.
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+
+        // Drain stdout concurrently (so a large secret value can't deadlock on
+        // the 64KB stdout buffer) and bound the wait so a wedged get-secret
+        // (e.g. a vault prompt) can't hang the caller forever.
+        nonisolated(unsafe) var outData = Data()
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            outData = pipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+
+        let timeoutItem = DispatchWorkItem {
+            guard process.isRunning else { return }
+            process.terminate()
+            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(10), execute: timeoutItem)
+
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        timeoutItem.cancel()
+        group.wait()
+
+        // Non-zero exit, launch failure, or SIGTERM/SIGKILL from the timeout
+        // all surface as "no secret".
+        guard process.terminationStatus == 0, process.terminationReason != .uncaughtSignal else { return nil }
+        let output = (String(data: outData, encoding: .utf8) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return output.isEmpty ? nil : output
     }
 }
