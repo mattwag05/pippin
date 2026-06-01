@@ -18,6 +18,25 @@ enum MailBridge {
     typealias ActivityOutcome = ScanOutcome
     typealias SearchOutcome = ScanOutcome
 
+    /// Clamp a ScriptRunner hard-timeout below the MCP `runChild` cap
+    /// (`MCPServerRuntime.defaultChildTimeoutSeconds`, 60s) when running under
+    /// MCP, so a wedged osascript is reaped by ScriptRunner — returning a clean
+    /// `.timeout` / partial results — before the MCP layer SIGKILLs the whole
+    /// pippin child (an ungraceful `.childTimedOut`). The 22s soft cap fires
+    /// long before this ceiling in normal operation, so the clamp only changes
+    /// the pathological wedge case; in CLI there is no such cap, so the full
+    /// cross-account-scaled value is used.
+    static func mcpHardTimeout(_ seconds: Int) -> Int {
+        clampHardTimeout(seconds, underMCP: isMCPContext())
+    }
+
+    /// Pure clamp logic (testable without mutating process env). Under MCP the
+    /// ceiling is 55s — 5s below the 60s `runChild` cap, leaving the runtime
+    /// room to SIGTERM/SIGKILL gracefully if the bridge somehow overruns.
+    static func clampHardTimeout(_ seconds: Int, underMCP: Bool) -> Int {
+        underMCP ? min(seconds, 55) : seconds
+    }
+
     static func listMessages(
         account: String? = nil,
         mailbox: String = "INBOX",
@@ -45,7 +64,7 @@ enum MailBridge {
         // cross-account to avoid hard-timeout crashes (measured ~20s).
         let baseTimeout = crossAccount ? 60 : 10
         let timeout = (preview ?? 0) > 0 ? baseTimeout + 40 : baseTimeout
-        let json = try runScript(script, timeoutSeconds: timeout)
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
         let wrapper = try decode(ListResponse.self, from: json)
         return ListOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
     }
@@ -69,7 +88,7 @@ enum MailBridge {
         // JSON.stringify enough headroom before the ScriptRunner cap fires.
         let baseTimeout = crossAccount ? 75 : 30
         let timeout = (preview ?? 0) > 0 ? baseTimeout + 40 : baseTimeout
-        let json = try runScript(script, timeoutSeconds: timeout)
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
         let wrapper = try decode(ActivityResponse.self, from: json)
         return ActivityOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
     }
@@ -97,11 +116,13 @@ enum MailBridge {
         // Cross-account (no --account, no --mailbox) iterates 5 accounts ×
         // ~21 mailboxes = 100+ mailbox scans.  When --body is on, each match
         // forces msg.content() (IMAP body download).  30s is far too tight.
-        // 95s for cross-account --body (from measured 120s+ runs),
-        // 65s for cross-account no --body, 45s for single-account --body,
-        // 35s for single-account no --body.
+        // CLI hard caps: 95s cross-account --body (from measured 120s+ runs),
+        // 65s cross-account no --body, 75s single-account --body, 45s
+        // single-account no --body. Under MCP these are clamped to 55s by
+        // mcpHardTimeout so the bridge self-reaps before the 60s runChild cap.
         let baseTimeout = crossAccount ? 50 : 30
-        let json = try runScript(script, timeoutSeconds: searchBody ? baseTimeout + 45 : baseTimeout + 15)
+        let timeout = searchBody ? baseTimeout + 45 : baseTimeout + 15
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
         let wrapper = try decode(SearchResponse.self, from: json)
         if verbose {
             let stderr = FileHandle.standardError
