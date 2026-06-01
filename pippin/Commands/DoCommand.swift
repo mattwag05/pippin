@@ -90,7 +90,8 @@ public struct DoCommand: AsyncParsableCommand {
             } catch {
                 throw DoError.buildArgsFailed(tool: step.tool, underlying: error)
             }
-            let child = try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath)
+            // runChild blocks on process.waitUntilExit(); hop off the cooperative pool.
+            let child = try await detachBlocking { try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath) }
             let payload = Self.decodeChildStdout(child.stdout)
             executed.append(ExecutedStep(tool: step.tool, args: step.args, result: payload))
         }
