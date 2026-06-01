@@ -314,7 +314,12 @@ public final class RemindersBridge: @unchecked Sendable {
             result = fetched ?? []
             semaphore.signal()
         }
-        semaphore.wait()
+        // Bound the wait: if EventKit's callback never fires (store hang /
+        // permission edge), return partial results instead of hanging forever.
+        // Matches the 15s ceiling used elsewhere; a healthy fetch is near-instant.
+        if semaphore.wait(timeout: .now() + .seconds(15)) == .timedOut {
+            FileHandle.standardError.write(Data("warning: reminders fetch timed out after 15s — returning partial results\n".utf8))
+        }
         return result
     }
 
