@@ -183,6 +183,25 @@ final class NotesTests: XCTestCase {
         )
     }
 
+    func testBuildListScriptDefaultOffsetIsZero() {
+        let script = NotesBridge.buildListScript(folder: nil, limit: 10)
+        XCTAssertTrue(script.contains("var offset = 0;"))
+    }
+
+    /// pippin-m3y: native offset pushdown — the results loop starts at `offset`
+    /// so deep pages fetch a bounded window from any offset without the old
+    /// 500-note ceiling.
+    func testBuildListScriptInjectsOffsetAndStartsLoopThere() {
+        let script = NotesBridge.buildListScript(folder: nil, limit: 25, offset: 50)
+        XCTAssertTrue(script.contains("var offset = 50;"))
+        XCTAssertTrue(script.contains("for (var i = offset;"))
+    }
+
+    func testBuildListScriptClampsNegativeOffsetToZero() {
+        let script = NotesBridge.buildListScript(folder: nil, limit: 10, offset: -5)
+        XCTAssertTrue(script.contains("var offset = 0;"))
+    }
+
     func testBuildListScriptContainsLimit() {
         let script = NotesBridge.buildListScript(folder: nil, limit: 25)
         XCTAssertTrue(
