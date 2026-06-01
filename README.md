@@ -52,7 +52,7 @@ curl -LO https://github.com/mattwag05/pippin/releases/download/vX.Y.Z/pippin-X.Y
 tar xzf pippin-*.tar.gz && mv pippin-*-arm64-macos ~/.local/bin/pippin
 ```
 
-**Build from source** (Xcode 16+ / Swift 6.2+):
+**Build from source** (Xcode 16+ / Swift 6.0+):
 
 ```bash
 git clone https://github.com/mattwag05/pippin.git && cd pippin
@@ -381,7 +381,7 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 ## Requirements
 
 - **macOS 15+** (Sequoia) or later
-- **Swift 6.2+** for source builds; pre-built binaries are arm64
+- **Swift 6.0+** for source builds (matches `swift-tools-version: 6.0` in `Package.swift`); pre-built binaries are arm64
 - **mlx-audio** — required for `pippin memos transcribe`, and for the experimental `audio` command when re-enabled via `PIPPIN_EXPERIMENTAL=1`
 - **Ollama** — `pippin memos summarize` with local AI (optional; Claude works without it)
 
