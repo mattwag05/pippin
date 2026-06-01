@@ -52,6 +52,16 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
         XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
     }
 
+    /// Regression for pippin-4as: search must sort the materialized JS array,
+    /// not a comparator that fires Apple Events per comparison. See the
+    /// buildListScript counterpart for the full rationale.
+    func testSearchScriptSortsMaterializedArrayNotAppleEventComparator() {
+        let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
+        XCTAssertFalse(script.contains("b.modificationDate() - a.modificationDate()"))
+        XCTAssertTrue(script.contains("pairs.sort(function(a, b) { return b.mod - a.mod; })"))
+        XCTAssertTrue(script.contains("var note = pairs[i].note;"))
+    }
+
     // MARK: - buildListScript
 
     func testListScriptDefaultSoftTimeoutIs22000() {
@@ -73,6 +83,28 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
     func testListScriptWrapsResultsInResponseEnvelope() {
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
         XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
+    }
+
+    /// Regression for pippin-4as: the sort must NOT call `.modificationDate()`
+    /// inside the comparator. That naive form fires an Apple Event per
+    /// comparison (O(n log n) round-trips) and can blow the ScriptRunner hard
+    /// cap on large vaults before any partial result is returned. The builder
+    /// must materialize modificationDate once per note, then sort a plain JS
+    /// array (zero Apple Events during the sort).
+    func testListScriptSortsMaterializedArrayNotAppleEventComparator() {
+        let script = NotesBridge.buildListScript(folder: nil, limit: 10)
+        XCTAssertFalse(
+            script.contains("b.modificationDate() - a.modificationDate()"),
+            "Sort comparator must not fire an Apple Event per comparison"
+        )
+        XCTAssertTrue(
+            script.contains("pairs.sort(function(a, b) { return b.mod - a.mod; })"),
+            "Sort must operate on the materialized numeric `mod` field"
+        )
+        // modificationDate must be read exactly once per note (into _d), and the
+        // results loop must reuse the cached ISO string rather than re-fetching.
+        XCTAssertTrue(script.contains("_d = notes[j].modificationDate();"))
+        XCTAssertTrue(script.contains("modificationDate: pairs[i].iso"))
     }
 
     // MARK: - buildListFoldersScript
@@ -136,20 +168,20 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
     // MARK: - Pre-loop fetch+sort guard (pippin-4as)
 
     func testSearchScriptHasPreSortBudgetCheck() {
-        // Large vaults can spend the entire soft cap on app.notes() alone;
-        // the script must check time after fetch and skip the (slow) sort
-        // when over budget so we still emit timedOut=true rather than blowing
-        // the ScriptRunner hard cap.
+        // Large vaults can spend the entire soft cap before the sort; the
+        // modificationDate materialization loop must be time-checked and must
+        // precede the (now pure-JS) sort, so a slow vault self-bounds and emits
+        // timedOut=true rather than blowing the ScriptRunner hard cap.
         let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
         let firstCheck = script.range(of: "Date.now() - _start > softTimeoutMs")
         XCTAssertNotNil(firstCheck)
-        // The first occurrence must precede the sort call.
-        let sortRange = script.range(of: "notes.slice().sort")
+        // The first time check must precede the materialized-array sort.
+        let sortRange = script.range(of: "pairs.sort(function(a, b) { return b.mod - a.mod; })")
         XCTAssertNotNil(sortRange)
         if let first = firstCheck, let sort = sortRange {
             XCTAssertTrue(
                 first.lowerBound < sort.lowerBound,
-                "Pre-sort time check must appear before notes.slice().sort"
+                "Time-checked materialization loop must appear before pairs.sort"
             )
         }
     }
@@ -158,12 +190,12 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
         let firstCheck = script.range(of: "Date.now() - _start > softTimeoutMs")
         XCTAssertNotNil(firstCheck)
-        let sortRange = script.range(of: "notes.slice().sort")
+        let sortRange = script.range(of: "pairs.sort(function(a, b) { return b.mod - a.mod; })")
         XCTAssertNotNil(sortRange)
         if let first = firstCheck, let sort = sortRange {
             XCTAssertTrue(
                 first.lowerBound < sort.lowerBound,
-                "Pre-sort time check must appear before notes.slice().sort"
+                "Time-checked materialization loop must appear before pairs.sort"
             )
         }
     }
