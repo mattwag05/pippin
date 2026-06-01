@@ -5,16 +5,12 @@ public enum ContactsBridge {
     // MARK: - Soft timeout
 
     /// Outcome of a Contacts-framework enumeration that may hit a wall-clock
-    /// soft timeout. Mirrors `NotesBridge.Outcome<T>` and
-    /// `MailBridge.SearchOutcome`. No `Decodable` conformance — results are
-    /// built directly in Swift rather than parsed from a JXA JSON payload.
-    ///
-    /// Memberwise init is internal on purpose — only the bridge constructs
-    /// these; callers read `results` / `timedOut`.
-    public struct Outcome<T> {
-        public let results: T
-        public let timedOut: Bool
-    }
+    /// soft timeout. Shared with `NotesBridge.Outcome` via `BridgeOutcome<T>`.
+    /// Results are built directly in Swift here (the shared type's `Decodable`
+    /// conformance is conditional on `T: Decodable` and never exercised on this
+    /// path). Only the bridge constructs these; callers read `results` /
+    /// `timedOut`.
+    public typealias Outcome<T> = BridgeOutcome<T>
 
     // MARK: - Authorization
 
