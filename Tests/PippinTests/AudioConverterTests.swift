@@ -37,6 +37,31 @@ final class AudioConverterTests: XCTestCase {
         XCTAssertTrue(outFile.length > 0, "output file must contain audio frames")
     }
 
+    /// The conversion must preserve the audio timeline: a 1.0s 44.1 kHz input
+    /// should yield ~16000 frames at 16 kHz, not a truncated tail. Guards
+    /// against resampler-flush regressions (a missing `.endOfStream` drain or a
+    /// per-chunk feeding bug would drop trailing audio before transcription).
+    /// Tolerance is a few ms to absorb the resampler's normal rounding/tail.
+    func testConvertPreservesDuration() throws {
+        let sourceURL = try writeTestCAF(durationSeconds: 1.0)
+        defer { try? FileManager.default.removeItem(at: sourceURL) }
+
+        // Sanity: the source actually persisted a full second (the writer in
+        // writeTestCAF deallocates on return, flushing its final buffer).
+        let inLength = try AVAudioFile(forReading: sourceURL).length
+        XCTAssertEqual(Double(inLength), 44100, accuracy: 16, "test input should be ~1.0s")
+
+        let outputURL = try AudioConverter.convertToWAV16kMono(sourcePath: sourceURL.path)
+        defer { try? FileManager.default.removeItem(at: outputURL) }
+
+        let outLength = try AVAudioFile(forReading: outputURL).length
+        let expected = Double(inLength) * 16000.0 / 44100.0
+        // 50 frames ≈ 3ms; a real truncation (e.g. the historical ~72ms tail
+        // hypothesis = ~1150 frames) would blow well past this.
+        XCTAssertEqual(Double(outLength), expected, accuracy: 50,
+                       "16kHz output (\(outLength)) should match the resampled duration (~\(Int(expected)))")
+    }
+
     /// When `keepOutput == false` the caller still owns cleanup; the converter
     /// does not delete the file itself. This test just verifies the return URL
     /// is usable — cleanup behavior lives at the call site (VoiceMemosDB).
