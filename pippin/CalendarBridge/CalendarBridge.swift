@@ -245,7 +245,24 @@ public final class CalendarBridge: @unchecked Sendable {
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         let matches = store.events(matching: predicate)
             .filter { $0.calendarItemIdentifier.hasPrefix(id) }
-        return matches.count == 1 ? matches[0] : nil
+        // A recurring event surfaces one EKEvent per occurrence, all sharing the
+        // same calendarItemIdentifier — so count alone would treat a single
+        // repeating event as ambiguous and return nil. Accept when exactly one
+        // DISTINCT event matches the prefix (return its first occurrence); only
+        // genuinely different identifiers are ambiguous.
+        guard Self.isUnambiguousPrefixMatch(matches.map(\.calendarItemIdentifier)) else {
+            return nil
+        }
+        return matches.first
+    }
+
+    /// A prefix resolves to a single event iff the matching occurrences all
+    /// share one distinct `calendarItemIdentifier`. Recurring events produce
+    /// many occurrences with the same identifier (one event); two different
+    /// identifiers mean the prefix is genuinely ambiguous. Pure helper so the
+    /// recurring-vs-ambiguous logic is unit-testable without an EKEventStore.
+    static func isUnambiguousPrefixMatch(_ identifiers: [String]) -> Bool {
+        !identifiers.isEmpty && Set(identifiers).count == 1
     }
 
     private func mapEvent(_ event: EKEvent) -> CalendarEvent {

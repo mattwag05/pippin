@@ -74,9 +74,19 @@ public struct NotesCommand: ParsableCommand {
                 pagination, defaultPageSize: limit, filterHash: hash
             )
             // Bridge has no offset; over-fetch and slice in-memory.
+            let needed = offset + pageSize + 1
             let outcome = try NotesBridge.listNotes(
-                folder: folder, limit: offset + pageSize + 1
+                folder: folder, limit: needed
             )
+            // listNotes caps the fetch at NotesBridge.maxListLimit. If we asked
+            // for more than the cap AND got a full cap back, there may be notes
+            // past the ceiling we can't see — slicing further would silently
+            // drop them and falsely report "done", so fail loudly instead.
+            if needed > NotesBridge.maxListLimit, outcome.results.count >= NotesBridge.maxListLimit {
+                throw ValidationError(
+                    "Cannot paginate beyond \(NotesBridge.maxListLimit) notes (Apple Notes enumeration cap). Narrow the set with --folder."
+                )
+            }
             let page = try Pagination.paginate(
                 all: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
             )

@@ -44,8 +44,15 @@ enum NotesBridge {
         }
     }
 
+    /// Hard ceiling on a single `listNotes` fetch. Apple Notes JXA enumeration
+    /// is slow, so the fetch is capped to bound execution time. Pagination
+    /// over-fetches (`offset + pageSize + 1`) and slices in-memory, so requests
+    /// whose window exceeds this ceiling cannot be satisfied — callers must
+    /// detect that rather than silently slicing past a truncated result.
+    static let maxListLimit = 500
+
     static func listNotes(folder: String? = nil, limit: Int = 50, softTimeoutMs: Int = 22000) throws -> Outcome<[NoteInfo]> {
-        let clampedLimit = max(1, min(limit, 500))
+        let clampedLimit = max(1, min(limit, maxListLimit))
         let script = buildListScript(folder: folder, limit: clampedLimit, softTimeoutMs: softTimeoutMs)
         let json = try runScript(script)
         return try decode(Outcome<[NoteInfo]>.self, from: json)
