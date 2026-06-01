@@ -34,3 +34,6 @@ archive/**/.build/
 
 # Bead pre-commit hook's spurious root export (only /issues.jsonl — .beads/issues.jsonl stays tracked)
 /issues.jsonl
+
+# Transient bd auto-import staging file
+.beads/.auto-import-issues.jsonl

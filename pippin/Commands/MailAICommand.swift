@@ -155,17 +155,24 @@ public struct MailSanitize: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        let message = try MailBridge.readMessage(compoundId: messageId)
-        let body = message.body ?? ""
-
-        let scanResult: ScanResult
-        if aiAssisted {
-            let aiProvider = try AIProviderFactory.make(
-                providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
-            )
-            scanResult = try PromptInjectionScanner.scanWithAI(text: body, provider: aiProvider)
-        } else {
-            scanResult = PromptInjectionScanner.scan(text: body)
+        let messageId = self.messageId
+        let aiAssisted = self.aiAssisted
+        let provider = self.provider
+        let model = self.model
+        let apiKey = self.apiKey
+        // readMessage spawns an osascript subprocess and scanWithAI blocks via
+        // DispatchSemaphore (sendSynchronousRequest); hop off the cooperative pool.
+        let scanResult = try await detachBlocking { () -> ScanResult in
+            let message = try MailBridge.readMessage(compoundId: messageId)
+            let body = message.body ?? ""
+            if aiAssisted {
+                let aiProvider = try AIProviderFactory.make(
+                    providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
+                )
+                return try PromptInjectionScanner.scanWithAI(text: body, provider: aiProvider)
+            } else {
+                return PromptInjectionScanner.scan(text: body)
+            }
         }
 
         if output.isJSON {
@@ -227,32 +234,46 @@ public struct MailTriage: AsyncParsableCommand {
     }
 
     public mutating func run() async throws {
-        let triageOutcome = try MailBridge.listMessages(
-            account: account,
-            mailbox: mailbox,
-            unread: false,
-            limit: limit,
-            offset: 0
-        )
+        let account = self.account
+        let mailbox = self.mailbox
+        let limit = self.limit
+        let noRules = self.noRules
+        let rulesFile = self.rulesFile
+        let provider = self.provider
+        let model = self.model
+        let apiKey = self.apiKey
+        // listMessages spawns osascript and TriageEngine.triage blocks via
+        // DispatchSemaphore (AI provider); hop off the cooperative pool.
+        let (triageOutcome, ruleTriaged, result) = try await detachBlocking {
+            () -> (MailBridge.ListOutcome, [TriagedMessage], TriageResult) in
+            let triageOutcome = try MailBridge.listMessages(
+                account: account,
+                mailbox: mailbox,
+                unread: false,
+                limit: limit,
+                offset: 0
+            )
+            let messages = triageOutcome.messages
+
+            // Apply persistent rules before the AI pass to skip token usage on predictable patterns.
+            let rules = noRules ? [] : TriageRulesEngine.loadRules(path: rulesFile)
+            let (remaining, ruleTriaged) = TriageRulesEngine.apply(rules: rules, to: messages)
+
+            let aiProvider = try AIProviderFactory.make(
+                providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
+            )
+            let aiResult = try TriageEngine.triage(messages: remaining, provider: aiProvider)
+
+            let result = TriageResult(
+                messages: ruleTriaged + aiResult.messages,
+                summary: aiResult.summary,
+                actionItems: aiResult.actionItems
+            )
+            return (triageOutcome, ruleTriaged, result)
+        }
         if triageOutcome.timedOut {
             fputs("warning: mail scan timed out — triage operating on partial results; some unread messages may be missed\n", stderr)
         }
-        let messages = triageOutcome.messages
-
-        // Apply persistent rules before the AI pass to skip token usage on predictable patterns.
-        let rules = noRules ? [] : TriageRulesEngine.loadRules(path: rulesFile)
-        let (remaining, ruleTriaged) = TriageRulesEngine.apply(rules: rules, to: messages)
-
-        let aiProvider = try AIProviderFactory.make(
-            providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
-        )
-        let aiResult = try TriageEngine.triage(messages: remaining, provider: aiProvider)
-
-        let result = TriageResult(
-            messages: ruleTriaged + aiResult.messages,
-            summary: aiResult.summary,
-            actionItems: aiResult.actionItems
-        )
 
         try output.emit(result, timedOut: triageOutcome.timedOut, timedOutHint: "mailbox scan timed out — triage results will be partial") {
             let rows = result.messages.map { m in
@@ -302,17 +323,25 @@ public struct MailExtract: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        let message = try MailBridge.readMessage(compoundId: messageId)
-        let aiProvider = try AIProviderFactory.make(
-            providerFlag: provider,
-            modelFlag: model,
-            apiKeyFlag: apiKey
-        )
-        let result = try DataExtractor.extract(
-            messageBody: message.body ?? "",
-            subject: message.subject,
-            provider: aiProvider
-        )
+        let messageId = self.messageId
+        let provider = self.provider
+        let model = self.model
+        let apiKey = self.apiKey
+        // readMessage spawns osascript and DataExtractor.extract blocks via
+        // DispatchSemaphore (AI provider); hop off the cooperative pool.
+        let result = try await detachBlocking { () -> ExtractionResult in
+            let message = try MailBridge.readMessage(compoundId: messageId)
+            let aiProvider = try AIProviderFactory.make(
+                providerFlag: provider,
+                modelFlag: model,
+                apiKeyFlag: apiKey
+            )
+            return try DataExtractor.extract(
+                messageBody: message.body ?? "",
+                subject: message.subject,
+                provider: aiProvider
+            )
+        }
         if output.isJSON {
             try printJSON(result)
         } else if output.isAgent {

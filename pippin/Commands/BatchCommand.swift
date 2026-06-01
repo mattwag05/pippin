@@ -96,7 +96,9 @@ public struct BatchCommand: AsyncParsableCommand {
             for index in 0 ..< lane {
                 let entry = entries[index]
                 group.addTask {
-                    let result = runOne(entry: entry, pippinPath: pippinPath)
+                    // runChild blocks on process.waitUntilExit(); hop off the
+                    // cooperative pool so N lanes don't park N cooperative threads.
+                    let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath) }
                     return (index, result)
                 }
             }
@@ -109,7 +111,7 @@ public struct BatchCommand: AsyncParsableCommand {
                     let index = nextIndex
                     let entry = entries[index]
                     group.addTask {
-                        let result = runOne(entry: entry, pippinPath: pippinPath)
+                        let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath) }
                         return (index, result)
                     }
                     nextIndex += 1
