@@ -35,7 +35,9 @@ public struct AudioCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            guard AudioBridge.isAvailable() else {
+            // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
+            // subprocesses (Python startup can take ~1-2s); hop off the pool.
+            guard await detachBlocking({ AudioBridge.isAvailable() }) else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
             let result = try await detachBlocking {
@@ -84,7 +86,9 @@ public struct AudioCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            guard AudioBridge.isAvailable() else {
+            // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
+            // subprocesses (Python startup can take ~1-2s); hop off the pool.
+            guard await detachBlocking({ AudioBridge.isAvailable() }) else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
             guard ["text", "srt", "json"].contains(transcriptionFormat) else {
@@ -132,7 +136,9 @@ public struct AudioCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            guard AudioBridge.isAvailable() else {
+            // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
+            // subprocesses (Python startup can take ~1-2s); hop off the pool.
+            guard await detachBlocking({ AudioBridge.isAvailable() }) else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
             let voices = try await detachBlocking { [model] in
@@ -171,7 +177,9 @@ public struct AudioCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            guard AudioBridge.isAvailable() else {
+            // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
+            // subprocesses (Python startup can take ~1-2s); hop off the pool.
+            guard await detachBlocking({ AudioBridge.isAvailable() }) else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
             let models = try await detachBlocking { try AudioBridge.listModels() }
