@@ -37,6 +37,20 @@ enum MailBridge {
         underMCP ? min(seconds, 55) : seconds
     }
 
+    /// Minimal probe that exercises only the Mail.app ready-poll
+    /// (`jsMailReadyPoll`) and returns. Used by `pippin doctor --latency` to
+    /// isolate Mail.app launch/ready time from per-query (mailbox scan / body
+    /// fetch) work — a slow ready-poll points at Mail.app startup/sync, a slow
+    /// list/search points at the query itself.
+    static func probeReady() throws {
+        let script = """
+        var mail = Application('Mail');
+        \(jsMailReadyPoll(maxAttempts: 20))
+        JSON.stringify({ready: true});
+        """
+        _ = try runScript(script, timeoutSeconds: mcpHardTimeout(55))
+    }
+
     static func listMessages(
         account: String? = nil,
         mailbox: String = "INBOX",
