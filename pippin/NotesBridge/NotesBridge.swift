@@ -126,6 +126,28 @@ enum NotesBridge {
         s.map { "'\(jsEscape($0))'" } ?? "null"
     }
 
+    /// JXA fragment shared by `buildListScript` / `buildSearchScript`. Reads
+    /// each note's `modificationDate` exactly once (one Apple Event per note)
+    /// into a plain JS array `pairs = [{note, mod, iso}]`, then sorts it
+    /// newest-first on the in-memory `mod` key. A comparator that read the date
+    /// off the live note objects would fire an Apple Event per comparison
+    /// (O(n log n) round-trips) and could blow the ScriptRunner hard cap on
+    /// large vaults before any partial result is returned. The loop honors the
+    /// soft-timeout budget, so a huge vault self-bounds and returns partial
+    /// results with `timedOut=true`. `iso` caches the ISO-8601 string so the
+    /// results loop doesn't re-fetch the date. Expects `notes`, `_start`,
+    /// `softTimeoutMs`, and `_meta` to already be declared in the script.
+    static let jsSortNotesByModDate = """
+    var pairs = [];
+    for (var j = 0; j < notes.length; j++) {
+        if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
+        var _d = null;
+        try { _d = notes[j].modificationDate(); } catch (e) {}
+        pairs.push({ note: notes[j], mod: _d ? _d.getTime() : 0, iso: _d ? _d.toISOString() : '' });
+    }
+    pairs.sort(function(a, b) { return b.mod - a.mod; });
+    """
+
     // MARK: - JXA Script Builders
 
     static func buildListScript(folder: String?, limit: Int, softTimeoutMs: Int = 22000) -> String {
@@ -148,26 +170,12 @@ enum NotesBridge {
         } else {
             notes = app.notes();
         }
-        // Time check after fetch: large vaults can spend the entire soft-cap
-        // budget on app.notes() alone. If we're already over budget, skip the
-        // (potentially many-second) sort and emit unsorted notes so the user
-        // gets *something* with timedOut=true rather than nothing.
-        var sliced;
-        if (Date.now() - _start > softTimeoutMs) {
-            _meta.timedOut = true;
-            sliced = notes.slice(0, limit);
-        } else {
-            // Sort by modificationDate descending (newest first)
-            notes = notes.slice().sort(function(a, b) {
-                return b.modificationDate() - a.modificationDate();
-            });
-            sliced = notes.slice(0, limit);
-            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; }
-        }
+        // Materialize + sort by modificationDate (see jsSortNotesByModDate).
+        \(jsSortNotesByModDate)
         var results = [];
-        for (var i = 0; i < sliced.length; i++) {
+        for (var i = 0; i < pairs.length && results.length < limit; i++) {
             if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
-            var note = sliced[i];
+            var note = pairs[i].note;
             var folderId = '';
             var folderName = '';
             try { folderId = note.container().id(); } catch(e) {}
@@ -181,7 +189,7 @@ enum NotesBridge {
                 folderId: folderId,
                 account: null,
                 creationDate: note.creationDate().toISOString(),
-                modificationDate: note.modificationDate().toISOString()
+                modificationDate: pairs[i].iso
             });
         }
         JSON.stringify({results: results, meta: _meta});
@@ -256,22 +264,14 @@ enum NotesBridge {
         } else {
             notes = app.notes();
         }
-        // Time check after fetch: skip sort on large vaults so we still get
-        // some results back with timedOut=true rather than hitting the
-        // ScriptRunner hard cap before the loop runs at all.
-        if (Date.now() - _start > softTimeoutMs) {
-            _meta.timedOut = true;
-        } else {
-            // Sort by modificationDate descending
-            notes = notes.slice().sort(function(a, b) {
-                return b.modificationDate() - a.modificationDate();
-            });
-            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; }
-        }
+        // Materialize + sort by modificationDate (see jsSortNotesByModDate).
+        // Sorting before filtering preserves "most recently modified matches
+        // first" while keeping the pre-filter work bounded.
+        \(jsSortNotesByModDate)
         var results = [];
-        for (var i = 0; i < notes.length && results.length < limit; i++) {
+        for (var i = 0; i < pairs.length && results.length < limit; i++) {
             if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
-            var note = notes[i];
+            var note = pairs[i].note;
             var title = '';
             var plain = '';
             try { title = note.name() || ''; } catch(e) {}
@@ -292,7 +292,7 @@ enum NotesBridge {
                     folderId: folderId,
                     account: null,
                     creationDate: note.creationDate().toISOString(),
-                    modificationDate: note.modificationDate().toISOString()
+                    modificationDate: pairs[i].iso
                 });
             }
         }
