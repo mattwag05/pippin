@@ -78,16 +78,26 @@ public struct ActionsCommand: AsyncParsableCommand {
             )
 
             let sinceDate = Calendar.current.date(byAdding: .day, value: -days, to: Date())
+            let account = self.account
+            let limit = self.limit
             var items: [ActionExtractor.Item] = []
             var timedOut = false
 
             if mail {
-                let (mailItems, mailTimedOut) = try collectMailItems(since: sinceDate)
+                // collectMailItems calls MailBridge.listActivity (blocking
+                // osascript subprocess); hop off the cooperative pool.
+                let (mailItems, mailTimedOut) = try await detachBlocking {
+                    try Self.collectMailItems(account: account, limit: limit, since: sinceDate)
+                }
                 items.append(contentsOf: mailItems)
                 timedOut = timedOut || mailTimedOut
             }
             if notes {
-                let (noteItems, notesTimedOut) = try collectNoteItems(since: sinceDate)
+                // collectNoteItems calls NotesBridge.listNotes (blocking
+                // osascript subprocess); hop off the cooperative pool.
+                let (noteItems, notesTimedOut) = try await detachBlocking {
+                    try Self.collectNoteItems(limit: limit, since: sinceDate)
+                }
                 items.append(contentsOf: noteItems)
                 timedOut = timedOut || notesTimedOut
             }
@@ -115,7 +125,7 @@ public struct ActionsCommand: AsyncParsableCommand {
 
         // MARK: - Source collection
 
-        private func collectMailItems(since: Date?) throws -> (items: [ActionExtractor.Item], timedOut: Bool) {
+        private static func collectMailItems(account: String?, limit: Int, since: Date?) throws -> (items: [ActionExtractor.Item], timedOut: Bool) {
             let outcome = try MailBridge.listActivity(
                 account: account,
                 mailboxes: ["Sent"],
@@ -137,7 +147,7 @@ public struct ActionsCommand: AsyncParsableCommand {
             return (items, outcome.timedOut)
         }
 
-        private func collectNoteItems(since: Date?) throws -> (items: [ActionExtractor.Item], timedOut: Bool) {
+        private static func collectNoteItems(limit: Int, since: Date?) throws -> (items: [ActionExtractor.Item], timedOut: Bool) {
             let outcome = try NotesBridge.listNotes(folder: nil, limit: limit)
             let filtered: [NoteInfo]
             if let since {
