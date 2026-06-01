@@ -34,7 +34,7 @@ public struct DoctorCommand: AsyncParsableCommand {
         abstract: "Check system requirements and permissions."
     )
 
-    @Flag(name: .long, help: "Add Mail bridge latency probes (list/activity/search). Each runs against a 20s soft cap; slow probes warn, blown probes fail. Adds up to ~60s wall time on a problem vault.")
+    @Flag(name: .long, help: "Add Mail bridge latency probes (ready/list/activity/search). Each runs against a 20s soft cap; slow probes warn, blown probes fail. Adds up to ~70s wall time on a problem vault.")
     public var latency: Bool = false
 
     @OptionGroup public var output: OutputOptions
@@ -712,6 +712,11 @@ private func checkPippinVersion() -> DiagnosticCheck {
 /// returns a typed error within ~60s rather than hanging.
 public func runMailLatencyProbes() -> [DiagnosticCheck] {
     [
+        runMailLatencyProbe(name: "Mail.app ready latency") {
+            // Ready-poll only (no mailbox scan) — isolates Mail.app launch/sync
+            // time from per-query latency in the probes below.
+            try MailBridge.probeReady()
+        },
         runMailLatencyProbe(name: "Mail list latency") {
             _ = try MailBridge.listMessages(
                 mailbox: "INBOX", unread: false, limit: 1, softTimeoutMs: 20000
