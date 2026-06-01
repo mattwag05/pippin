@@ -44,13 +44,22 @@ public extension MailCommand {
         }
 
         public mutating func run() async throws {
-            let outcome = try MailBridge.listActivity(
-                account: account,
-                mailboxes: Self.parseMailboxList(mailboxes),
-                since: since.flatMap { parseCalendarDate($0) },
-                limit: limit,
-                preview: preview > 0 ? preview : nil
-            )
+            let account = self.account
+            let limit = self.limit
+            let preview = self.preview
+            let mailboxList = Self.parseMailboxList(mailboxes)
+            let sinceDate = since.flatMap { parseCalendarDate($0) }
+            // listActivity spawns a blocking osascript subprocess (multi-mailbox,
+            // up to 115s cross-account); hop off the cooperative pool.
+            let outcome = try await detachBlocking {
+                try MailBridge.listActivity(
+                    account: account,
+                    mailboxes: mailboxList,
+                    since: sinceDate,
+                    limit: limit,
+                    preview: preview > 0 ? preview : nil
+                )
+            }
             let messages = outcome.messages
             try output.emit(messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
                 printMessageTable(messages)

@@ -53,16 +53,22 @@ public struct DigestCommand: AsyncParsableCommand {
         var mailSection = DigestPayload.MailSection(totalUnread: 0, perAccount: [])
         if !skipSet.contains("mail") {
             do {
-                let accounts = try MailBridge.listAccounts()
+                // listAccounts/listMessages spawn blocking osascript subprocesses;
+                // hop off the cooperative pool so concurrent callers don't stall.
+                let accounts = try await detachBlocking { try MailBridge.listAccounts() }
                 var summaries: [DigestPayload.AccountSummary] = []
                 for account in accounts {
                     do {
-                        let outcome = try MailBridge.listMessages(
-                            account: account.name,
-                            mailbox: "INBOX",
-                            unread: true,
-                            limit: mailLimit
-                        )
+                        let accountName = account.name
+                        let limit = mailLimit
+                        let outcome = try await detachBlocking {
+                            try MailBridge.listMessages(
+                                account: accountName,
+                                mailbox: "INBOX",
+                                unread: true,
+                                limit: limit
+                            )
+                        }
                         if outcome.timedOut {
                             warnings.append("mail (\(account.name)): unread count may be partial — scan timed out")
                         }
