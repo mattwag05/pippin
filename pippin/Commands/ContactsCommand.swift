@@ -37,7 +37,12 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let fieldList = parseFields(fields)
-            let outcome = try ContactsBridge.listContacts(group: group, fields: fieldList)
+            let group = self.group
+            // listContacts enumerates the full contact store (sync, can be slow
+            // on large address books); hop off the cooperative pool.
+            let outcome = try await detachBlocking {
+                try ContactsBridge.listContacts(group: group, fields: fieldList)
+            }
             if output.isStructured {
                 try output.emit(
                     outcome.results,
@@ -96,17 +101,19 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let fieldList = parseFields(fields)
+            let query = self.query
             let contacts: [ContactInfo]
             let timedOut: Bool
             if email {
-                let outcome = try ContactsBridge.searchByEmail(query, fields: fieldList)
+                // searchByEmail enumerates the contact store (sync); hop off the pool.
+                let outcome = try await detachBlocking { try ContactsBridge.searchByEmail(query, fields: fieldList) }
                 contacts = outcome.results
                 timedOut = outcome.timedOut
             } else {
                 // Name search uses CNContact.predicateForContacts — the
                 // Contacts framework bounds it, so no client-side timeout
-                // is needed.
-                contacts = try ContactsBridge.searchByName(query, fields: fieldList)
+                // is needed; still hop off the pool (sync store fetch).
+                contacts = try await detachBlocking { try ContactsBridge.searchByName(query, fields: fieldList) }
                 timedOut = false
             }
 
@@ -192,7 +199,8 @@ public struct ContactsCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let groups = try ContactsBridge.listGroups()
+            // listGroups reads the contact store (sync); hop off the pool.
+            let groups = try await detachBlocking { try ContactsBridge.listGroups() }
             if output.isJSON {
                 try printJSON(groups)
             } else if output.isAgent {
@@ -243,14 +251,23 @@ public struct ContactsCommand: AsyncParsableCommand {
             guard (first != nil && !(first!.isEmpty)) || (last != nil && !(last!.isEmpty)) else {
                 throw ValidationError("At least one of --first or --last is required.")
             }
-            let result = try ContactsBridge.createContact(
-                givenName: first ?? "",
-                familyName: last ?? "",
-                email: email,
-                phone: phone,
-                organization: organization,
-                jobTitle: jobTitle
-            )
+            let first = self.first
+            let last = self.last
+            let email = self.email
+            let phone = self.phone
+            let organization = self.organization
+            let jobTitle = self.jobTitle
+            // createContact issues a synchronous CNSaveRequest; hop off the pool.
+            let result = try await detachBlocking {
+                try ContactsBridge.createContact(
+                    givenName: first ?? "",
+                    familyName: last ?? "",
+                    email: email,
+                    phone: phone,
+                    organization: organization,
+                    jobTitle: jobTitle
+                )
+            }
             if output.isJSON || output.isAgent {
                 try printAgentJSON(result)
             } else {

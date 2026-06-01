@@ -25,6 +25,12 @@ public struct BridgeOutcome<T> {
     }
 }
 
+/// Conditionally Sendable so callers can return a BridgeOutcome across a
+/// `detachBlocking { }` boundary when the payload is Sendable (it always is —
+/// the bridge DTO arrays are Sendable). A `public` struct needs this spelled
+/// out; the compiler only infers Sendable for non-public types.
+extension BridgeOutcome: Sendable where T: Sendable {}
+
 extension BridgeOutcome: Decodable where T: Decodable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
