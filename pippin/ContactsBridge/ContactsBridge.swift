@@ -118,7 +118,7 @@ public enum ContactsBridge {
                 (labeled.value as String).lowercased().contains(lowercasedQuery)
             }
             if matches {
-                results.append(convert(contact, fields: fields))
+                results.append(convert(contact, fields: fields, forceEmails: true))
             }
         }
         return Outcome(results: results, timedOut: timedOut)
@@ -415,7 +415,8 @@ public enum ContactsBridge {
     private static func convert(
         _ contact: CNContact,
         fields: [String]?,
-        fullDetail: Bool = false
+        fullDetail: Bool = false,
+        forceEmails: Bool = false
     ) -> ContactInfo {
         let fullName = CNContactFormatter.string(from: contact, style: .fullName) ?? ""
 
@@ -428,7 +429,9 @@ public enum ContactsBridge {
         }
 
         let emails: [LabeledValue]
-        if fullDetail || include("emails") || include("email") {
+        // `forceEmails`: on the email-search path the matched address must
+        // always be shown, even when explicit --fields omit "emails".
+        if fullDetail || forceEmails || include("emails") || include("email") {
             emails = contact.emailAddresses.map { labeled in
                 LabeledValue(
                     label: cleanLabel(labeled.label),

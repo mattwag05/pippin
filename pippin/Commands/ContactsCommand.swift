@@ -79,7 +79,7 @@ public struct ContactsCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Comma-separated fields to include (e.g. id,fullName,emails).")
         public var fields: String?
 
-        @Option(name: .long, help: "Default page size when --page-size is omitted (default: 50).")
+        @Option(name: .long, help: "Maximum results to return; also the default page size when paginating (default: 50).")
         public var limit: Int = 50
 
         @OptionGroup public var pagination: PaginationOptions
@@ -136,11 +136,15 @@ public struct ContactsCommand: AsyncParsableCommand {
                 return
             }
 
-            try output.emit(contacts, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
-                if contacts.isEmpty {
+            // Honor --limit in the non-paginated path too (matches calendar /
+            // notes search). Previously the full result set was emitted and
+            // --limit only took effect when paginating.
+            let limited = Array(contacts.prefix(limit))
+            try output.emit(limited, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
+                if limited.isEmpty {
                     print("No contacts found.")
                 } else {
-                    for contact in contacts {
+                    for contact in limited {
                         print(formatContactLine(contact))
                     }
                 }
