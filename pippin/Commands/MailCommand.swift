@@ -23,7 +23,8 @@ public struct MailCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let accounts = try MailBridge.listAccounts()
+            // listAccounts spawns a blocking osascript subprocess; hop off the pool.
+            let accounts = try await detachBlocking { try MailBridge.listAccounts() }
             if output.isJSON {
                 try printJSON(accounts)
             } else if output.isAgent {
@@ -51,7 +52,9 @@ public struct MailCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let mailboxes = try MailBridge.listMailboxes(account: account)
+            let account = self.account
+            // listMailboxes spawns a blocking osascript subprocess; hop off the pool.
+            let mailboxes = try await detachBlocking { try MailBridge.listMailboxes(account: account) }
             if output.isJSON {
                 try printJSON(mailboxes)
             } else if output.isAgent {
@@ -172,18 +175,33 @@ public struct MailCommand: AsyncParsableCommand {
                 return
             }
 
-            let outcome = try MailBridge.searchMessages(
-                query: query,
-                account: account,
-                mailbox: mailbox,
-                searchBody: body,
-                limit: limit,
-                offset: (page - 1) * limit,
-                after: after,
-                before: before,
-                to: to,
-                verbose: verbose
-            )
+            let query = self.query
+            let account = self.account
+            let mailbox = self.mailbox
+            let body = self.body
+            let limit = self.limit
+            let page = self.page
+            let after = self.after
+            let before = self.before
+            let to = self.to
+            let verbose = self.verbose
+            // searchMessages spawns a blocking osascript subprocess (up to 95s
+            // cross-account); hop off the cooperative pool so concurrent callers
+            // (mcp-server) don't stall.
+            let outcome = try await detachBlocking {
+                try MailBridge.searchMessages(
+                    query: query,
+                    account: account,
+                    mailbox: mailbox,
+                    searchBody: body,
+                    limit: limit,
+                    offset: (page - 1) * limit,
+                    after: after,
+                    before: before,
+                    to: to,
+                    verbose: verbose
+                )
+            }
             try emitMessages(outcome.messages, timedOut: outcome.timedOut)
         }
 
@@ -241,18 +259,30 @@ public struct MailCommand: AsyncParsableCommand {
                     all: all, offset: offset, pageSize: pageSize, filterHash: hash
                 )
             } else {
-                let outcome = try MailBridge.searchMessages(
-                    query: query,
-                    account: account,
-                    mailbox: mailbox,
-                    searchBody: body,
-                    limit: pageSize + 1,
-                    offset: offset,
-                    after: after,
-                    before: before,
-                    to: to,
-                    verbose: verbose
-                )
+                let query = self.query
+                let account = self.account
+                let mailbox = self.mailbox
+                let body = self.body
+                let after = self.after
+                let before = self.before
+                let to = self.to
+                let verbose = self.verbose
+                // searchMessages spawns a blocking osascript subprocess; hop off
+                // the cooperative pool so concurrent callers don't stall.
+                let outcome = try await detachBlocking {
+                    try MailBridge.searchMessages(
+                        query: query,
+                        account: account,
+                        mailbox: mailbox,
+                        searchBody: body,
+                        limit: pageSize + 1,
+                        offset: offset,
+                        after: after,
+                        before: before,
+                        to: to,
+                        verbose: verbose
+                    )
+                }
                 paginatedTimedOut = outcome.timedOut
                 page = try Pagination.pageFromPushdown(
                     fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
@@ -497,7 +527,9 @@ public struct MailCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let compoundId: String
             if let subject = subject {
-                let outcome = try MailBridge.searchMessages(query: subject, limit: 1)
+                // searchMessages spawns a blocking osascript subprocess; hop off
+                // the cooperative pool so concurrent callers don't stall.
+                let outcome = try await detachBlocking { try MailBridge.searchMessages(query: subject, limit: 1) }
                 guard let first = outcome.messages.first else {
                     throw ValidationError("No message found matching subject: \(subject)")
                 }
@@ -506,7 +538,8 @@ public struct MailCommand: AsyncParsableCommand {
                 compoundId = messageId!
             }
 
-            let message = try MailBridge.readMessage(compoundId: compoundId)
+            // readMessage spawns a blocking osascript subprocess; hop off the pool.
+            let message = try await detachBlocking { try MailBridge.readMessage(compoundId: compoundId) }
 
             if summarize {
                 let summaryProvider = try AIProviderFactory.make(
@@ -845,7 +878,9 @@ public struct MailCommand: AsyncParsableCommand {
             let effectiveSaveDir = try saveToCache
                 ? Attachments.resolveCacheDir(for: messageId)
                 : saveDir
-            let attachments = try MailBridge.listAttachments(compoundId: messageId, saveDir: effectiveSaveDir)
+            let msgId = self.messageId
+            // listAttachments spawns a blocking osascript subprocess; hop off the pool.
+            let attachments = try await detachBlocking { try MailBridge.listAttachments(compoundId: msgId, saveDir: effectiveSaveDir) }
             if output.isJSON {
                 try printJSON(attachments)
             } else if output.isAgent {

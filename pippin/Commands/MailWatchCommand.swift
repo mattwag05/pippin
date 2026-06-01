@@ -39,10 +39,17 @@ public extension MailCommand {
 
         public mutating func run() async throws {
             var seen = Set<String>()
+            let account = self.account
+            let mailbox = self.mailbox
+            let limit = self.limit
 
-            let initialOutcome = try MailBridge.listMessages(
-                account: account, mailbox: mailbox, unread: false, limit: limit
-            )
+            // listMessages spawns a blocking osascript subprocess; hop off the
+            // cooperative pool so concurrent callers don't stall.
+            let initialOutcome = try await detachBlocking {
+                try MailBridge.listMessages(
+                    account: account, mailbox: mailbox, unread: false, limit: limit
+                )
+            }
             if initialOutcome.timedOut {
                 fputs("warning: initial mailbox scan timed out — watch baseline may be incomplete; subsequent polls may emit false new_message events\n", stderr)
             }
@@ -60,9 +67,11 @@ public extension MailCommand {
 
                 let pollOutcome: MailBridge.ListOutcome
                 do {
-                    pollOutcome = try MailBridge.listMessages(
-                        account: account, mailbox: mailbox, unread: false, limit: limit
-                    )
+                    pollOutcome = try await detachBlocking {
+                        try MailBridge.listMessages(
+                            account: account, mailbox: mailbox, unread: false, limit: limit
+                        )
+                    }
                 } catch {
                     fputs("poll error: \(error.localizedDescription)\n", stderr)
                     continue
