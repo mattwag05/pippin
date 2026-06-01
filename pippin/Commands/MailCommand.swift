@@ -326,14 +326,24 @@ public struct MailCommand: AsyncParsableCommand {
                 try await runPaginated()
                 return
             }
-            let outcome = try MailBridge.listMessages(
-                account: account,
-                mailbox: mailbox,
-                unread: unread,
-                limit: limit,
-                offset: (page - 1) * limit,
-                preview: preview
-            )
+            let account = self.account
+            let mailbox = self.mailbox
+            let unread = self.unread
+            let limit = self.limit
+            let page = self.page
+            let preview = self.preview
+            // listMessages spawns a blocking osascript subprocess (up to 60s
+            // cross-account); hop off the cooperative pool.
+            let outcome = try await detachBlocking {
+                try MailBridge.listMessages(
+                    account: account,
+                    mailbox: mailbox,
+                    unread: unread,
+                    limit: limit,
+                    offset: (page - 1) * limit,
+                    preview: preview
+                )
+            }
             let messages = outcome.messages
 
             if summarize {
@@ -407,14 +417,22 @@ public struct MailCommand: AsyncParsableCommand {
             let (offset, pageSize) = try Pagination.resolve(
                 pagination, defaultPageSize: limit, filterHash: hash
             )
-            let outcome = try MailBridge.listMessages(
-                account: account,
-                mailbox: mailbox,
-                unread: unread,
-                limit: pageSize + 1,
-                offset: offset,
-                preview: preview
-            )
+            let account = self.account
+            let mailbox = self.mailbox
+            let unread = self.unread
+            let preview = self.preview
+            // listMessages spawns a blocking osascript subprocess (up to 60s
+            // cross-account); hop off the cooperative pool.
+            let outcome = try await detachBlocking {
+                try MailBridge.listMessages(
+                    account: account,
+                    mailbox: mailbox,
+                    unread: unread,
+                    limit: pageSize + 1,
+                    offset: offset,
+                    preview: preview
+                )
+            }
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
             )

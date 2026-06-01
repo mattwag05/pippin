@@ -42,44 +42,55 @@ public struct MailIndex: AsyncParsableCommand {
         let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: embeddingModel)
         let store = try EmbeddingStore()
 
-        let indexOutcome = try MailBridge.listMessages(
-            account: account,
-            mailbox: mailbox,
-            unread: false,
-            limit: limit,
-            offset: 0
-        )
+        // Phase 1: Identify messages needing indexing (skip already-indexed — email bodies are immutable)
+        struct PendingItem: Sendable {
+            let id: String
+            let subject: String
+            let embedText: String
+            let bodyHash: String
+        }
+
+        let account = self.account
+        let mailbox = self.mailbox
+        let limit = self.limit
+        let isStructured = output.isStructured
+        // listMessages and the per-message readMessage loop both spawn blocking
+        // osascript subprocesses, and store.exists hits SQLite — hop the whole
+        // scan+read phase off the cooperative pool.
+        let (indexOutcome, toIndex, skipped) = try await detachBlocking {
+            () -> (MailBridge.ListOutcome, [PendingItem], Int) in
+            let indexOutcome = try MailBridge.listMessages(
+                account: account,
+                mailbox: mailbox,
+                unread: false,
+                limit: limit,
+                offset: 0
+            )
+            var toIndex: [PendingItem] = []
+            var skipped = 0
+            for message in indexOutcome.messages {
+                if store.exists(compoundId: message.id) {
+                    skipped += 1
+                    if !isStructured {
+                        fputs("  skip \(message.id)\n", stderr)
+                    }
+                    continue
+                }
+                let full = try MailBridge.readMessage(compoundId: message.id)
+                let body = (full.body ?? "") + full.subject
+                let hash = sha256Hex(body)
+                let embedText = "Subject: \(message.subject)\nFrom: \(message.from)\nDate: \(message.date)"
+                toIndex.append(PendingItem(id: message.id, subject: message.subject, embedText: embedText, bodyHash: hash))
+            }
+            return (indexOutcome, toIndex, skipped)
+        }
         if indexOutcome.timedOut {
             fputs("warning: mail scan timed out — only the messages returned before the soft cap will be indexed; re-run with a narrower --account/--mailbox or smaller --limit for full coverage\n", stderr)
         }
         let messages = indexOutcome.messages
 
         var indexed = 0
-        var skipped = 0
         let isoFormatter = ISO8601DateFormatter()
-
-        // Phase 1: Identify messages needing indexing (skip already-indexed — email bodies are immutable)
-        struct PendingItem {
-            let id: String
-            let subject: String
-            let embedText: String
-            let bodyHash: String
-        }
-        var toIndex: [PendingItem] = []
-        for message in messages {
-            if store.exists(compoundId: message.id) {
-                skipped += 1
-                if !output.isStructured {
-                    fputs("  skip \(message.id)\n", stderr)
-                }
-                continue
-            }
-            let full = try MailBridge.readMessage(compoundId: message.id)
-            let body = (full.body ?? "") + full.subject
-            let hash = sha256Hex(body)
-            let embedText = "Subject: \(message.subject)\nFrom: \(message.from)\nDate: \(message.date)"
-            toIndex.append(PendingItem(id: message.id, subject: message.subject, embedText: embedText, bodyHash: hash))
-        }
 
         // Phase 2: Embed in batches (reduces HTTP round-trips vs one-at-a-time)
         let batchSize = 32
