@@ -5,44 +5,11 @@ enum NotesBridge {
 
     /// Outcome of a JXA query that walks an unbounded collection (notes,
     /// folders). The `timedOut` flag is set when the script's internal
-    /// soft-timeout fires, so callers can surface a "partial results"
-    /// advisory to the user. See `MailBridge.SearchOutcome` for the parallel
-    /// pattern.
-    struct Outcome<T: Decodable>: Decodable {
-        let results: T
-        let timedOut: Bool
-
-        init(results: T, timedOut: Bool) {
-            self.results = results
-            self.timedOut = timedOut
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            results = try container.decode(T.self, forKey: .results)
-            let meta = try container.decodeIfPresent(Meta.self, forKey: .meta)
-            timedOut = meta?.timedOut ?? false
-        }
-
-        private enum CodingKeys: String, CodingKey {
-            case results, meta
-        }
-
-        /// Backward-compatible: legacy scripts that don't emit `timedOut`
-        /// default to `false` rather than failing decode.
-        private struct Meta: Decodable {
-            let timedOut: Bool
-
-            init(from decoder: Decoder) throws {
-                let container = try decoder.container(keyedBy: CodingKeys.self)
-                timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
-            }
-
-            private enum CodingKeys: String, CodingKey {
-                case timedOut
-            }
-        }
-    }
+    /// soft-timeout fires, so callers can surface a "partial results" advisory.
+    /// Shared with `ContactsBridge.Outcome` via `BridgeOutcome<T>` (the
+    /// `Decodable` conformance, used here to parse the JXA JSON, is conditional
+    /// on `T: Decodable`). `MailBridge.ScanOutcome` stays separate by design.
+    typealias Outcome<T: Decodable> = BridgeOutcome<T>
 
     /// Hard ceiling on a single `listNotes` fetch. Apple Notes JXA enumeration
     /// is slow, so the fetch is capped to bound execution time. Pagination
