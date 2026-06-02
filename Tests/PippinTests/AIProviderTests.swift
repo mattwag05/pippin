@@ -100,6 +100,41 @@ final class AIProviderTests: XCTestCase {
         XCTAssertEqual(aiRequestTimeoutSeconds(), 120)
     }
 
+    // MARK: - Embedding request timeout policy
+
+    //
+    // Regression: OllamaEmbeddingProvider hardcoded 120s (single) / 300s (batch)
+    // and ignored MCP context, so under PIPPIN_MCP=1 a slow embedding server
+    // blew past MCPServerRuntime's 60s child cap → SIGKILL misreported as a
+    // protocol error. requestTimeout(batch:) is now the single source of truth:
+    // MCP → aiRequestTimeoutSeconds() (50s, < 60); CLI → 120s/300s.
+
+    func testEmbeddingRequestTimeoutCLIBudgets() {
+        XCTAssertFalse(isMCPContext(), "precondition: tests run outside MCP")
+        XCTAssertEqual(OllamaEmbeddingProvider.requestTimeout(batch: false), 120,
+                       "CLI single embed keeps the standard 120s budget")
+        XCTAssertEqual(OllamaEmbeddingProvider.requestTimeout(batch: true), 300,
+                       "CLI batch keeps the generous 300s budget")
+    }
+
+    func testEmbeddingRequestTimeoutRoutesThroughMCPAwareBudgetUnderMCP() throws {
+        // Exercise the MCP branch by flipping the env var, restoring it after so
+        // sibling tests (e.g. testIsMCPContextDefaultsFalse) are unaffected.
+        let had = getenv("PIPPIN_MCP") != nil
+        setenv("PIPPIN_MCP", "1", 1)
+        defer { if !had { unsetenv("PIPPIN_MCP") } }
+        guard isMCPContext() else {
+            // ProcessInfo may snapshot env on some platforms; skip rather than flake.
+            throw XCTSkip("env mutation not observed by ProcessInfo in this runtime")
+        }
+        let single = OllamaEmbeddingProvider.requestTimeout(batch: false)
+        let batch = OllamaEmbeddingProvider.requestTimeout(batch: true)
+        XCTAssertEqual(single, aiRequestTimeoutSeconds(), "MCP single uses the MCP-aware budget")
+        XCTAssertEqual(batch, aiRequestTimeoutSeconds(), "MCP batch clamps to the MCP-aware budget")
+        // The +5 semaphore slack in sendSynchronousRequest must still clear the cap.
+        XCTAssertLessThan(Int(batch) + 5, 60, "MCP embedding budget must stay under the 60s child cap")
+    }
+
     func testOllamaPreflightFailsFastWhenServerDown() throws {
         // Point at a port nothing is listening on; preflight must fail quickly
         // with a typed providerUnreachable error rather than waiting the full
