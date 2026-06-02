@@ -9,15 +9,22 @@ public struct VoiceMemo: Codable, FetchableRecord, Sendable {
     public let filePath: String
     public let transcription: String?
 
-    /// Custom FetchableRecord init mapping Core Data columns
+    /// Custom FetchableRecord init mapping Core Data columns.
+    ///
+    /// Every column is decoded *optionally* with a fallback: GRDB traps
+    /// (fatalError) when a non-optional `row["COL"]` hits a NULL or absent
+    /// value, and Apple's Voice Memos DB legitimately stores NULLs — e.g.
+    /// `ZPATH`/`ZDURATION` are null for an iCloud recording not yet downloaded
+    /// or a capture still in progress. A single such row must not crash the
+    /// whole `memos list`; it degrades to empty/zero fields instead.
     public init(row: Row) {
-        id = row["ZUNIQUEID"]
+        id = (row["ZUNIQUEID"] as String?) ?? ""
         title = (row["ZCUSTOMLABELFORSORTING"] as String?) ?? "Untitled"
-        durationSeconds = row["ZDURATION"]
+        durationSeconds = (row["ZDURATION"] as Double?) ?? 0
         // Core Data epoch: seconds since 2001-01-01 UTC
-        let coreDataTimestamp: Double = row["ZDATE"]
+        let coreDataTimestamp = (row["ZDATE"] as Double?) ?? 0
         createdAt = Date(timeIntervalSinceReferenceDate: coreDataTimestamp)
-        filePath = row["ZPATH"]
+        filePath = (row["ZPATH"] as String?) ?? ""
         transcription = nil
     }
 

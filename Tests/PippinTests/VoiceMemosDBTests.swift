@@ -74,6 +74,81 @@ final class VoiceMemosDBTests: XCTestCase {
         XCTAssertThrowsError(try VoiceMemosDB(dbQueue: dbQueue))
     }
 
+    // MARK: - NULL column tolerance
+
+    //
+    // Regression: VoiceMemo.init(row:) force-decoded non-optional columns, and
+    // GRDB traps (fatalError) when `row["COL"]` hits NULL. Apple's Voice Memos
+    // DB stores NULLs for ZPATH/ZDURATION (iCloud recording not yet downloaded,
+    // capture in progress). A single such row previously crashed the whole list.
+
+    func testListMemosToleratesAllNullColumns() throws {
+        let dbQueue = try makeTestDB()
+        try dbQueue.write { db in
+            try db.execute(sql: """
+            INSERT INTO ZCLOUDRECORDING
+            (ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH, ZEVICTIONDATE)
+            VALUES (NULL, NULL, NULL, NULL, NULL, NULL)
+            """)
+        }
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+        let memos = try db.listMemos()
+        XCTAssertEqual(memos.count, 1, "the NULL row should still be listed, degraded — not crash the list")
+        let memo = try XCTUnwrap(memos.first)
+        XCTAssertEqual(memo.id, "", "NULL id degrades to empty string")
+        XCTAssertEqual(memo.title, "Untitled", "NULL label degrades to Untitled")
+        XCTAssertEqual(memo.durationSeconds, 0, "NULL duration degrades to 0")
+        XCTAssertEqual(memo.filePath, "", "NULL path degrades to empty string")
+    }
+
+    func testListMemosToleratesNullPathOnlyAlongsideValidRow() throws {
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "valid", coreDataDate: 725_760_000.0, path: "ok.m4a")
+        try dbQueue.write { db in
+            // A not-yet-downloaded recording: real id/date, NULL path + duration.
+            try db.execute(sql: """
+            INSERT INTO ZCLOUDRECORDING (ZUNIQUEID, ZDURATION, ZDATE, ZPATH)
+            VALUES ('pending', NULL, 725760100.0, NULL)
+            """)
+        }
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+        let memos = try db.listMemos()
+        XCTAssertEqual(memos.count, 2, "both rows listed; NULL path must not abort the fetch")
+        let pending = try XCTUnwrap(memos.first { $0.id == "pending" })
+        XCTAssertEqual(pending.filePath, "")
+        XCTAssertEqual(pending.durationSeconds, 0)
+    }
+
+    /// Data-loss guard: a NULL ZPATH must not cause deleteMemo to remove the
+    /// parent directory. `appendingPathComponent("")` returns `dir` itself, so
+    /// an unguarded delete would wipe the whole recordings folder.
+    func testDeleteMemoWithNullPathDoesNotDeleteParentDirectory() throws {
+        let tmpDir = NSTemporaryDirectory() as NSString
+        let workDir = tmpDir.appendingPathComponent("pippin-delete-null-\(getpid())")
+        try FileManager.default.createDirectory(atPath: workDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: workDir) }
+        let dbPath = (workDir as NSString).appendingPathComponent("CloudRecordings.db")
+
+        // Build a DB with the schema and one NULL-ZPATH row.
+        let setup = try DatabaseQueue(path: dbPath)
+        try setup.write { db in
+            try db.execute(sql: """
+            CREATE TABLE ZCLOUDRECORDING (
+                ZUNIQUEID TEXT, ZCUSTOMLABELFORSORTING TEXT, ZDURATION REAL,
+                ZDATE REAL, ZPATH TEXT, ZEVICTIONDATE REAL
+            );
+            INSERT INTO ZCLOUDRECORDING (ZUNIQUEID, ZPATH) VALUES ('nullpath', NULL);
+            """)
+        }
+
+        let deleted = try VoiceMemosDB.deleteMemo(id: "nullpath", dbPath: dbPath)
+        XCTAssertEqual(deleted, "", "NULL path → no file deleted, returns empty")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: workDir),
+            "parent recordings directory must still exist after deleting a NULL-path memo"
+        )
+    }
+
     // MARK: - Access-denied error surface
 
     /// The `accessDenied` case carries the underlying SQLite/GRDB message and
