@@ -110,6 +110,17 @@ When you discover a new gotcha, append to the appropriate file.
 
 End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.md](docs/skills/release/SKILL.md). After cloning, run `make link-skills` once so the skill is discoverable from `.claude/skills/`. Triggered by "release pippin", "ship vX.Y.Z", "bump pippin".
 
+## Changelog (UPDATE WITH EVERY CHANGE)
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/). **Every user-visible code change MUST add an entry to the `### [Unreleased]` block before (or with) its push** — do not let fixes land undocumented. This is mandatory, not optional.
+
+- **Format:** `- [bug|feat|perf|refactor|build|ci|docs] <concise user-facing description>. Closes pippin-XXX.` (omit the `Closes` clause if there's no bd issue).
+- **Subsection:** `feat` → `### Added`; `bug`/`perf` → `### Fixed`; `refactor`/`build`/`ci` → `### Changed`; `docs` → `### Documentation`.
+- **Describe the user-facing effect**, not the diff (e.g. "`calendar show <prefix>` now works for recurring events", not "fixed findEventByPrefix").
+- **Skip** pure housekeeping (beads status/export, gitignore tweaks, the changelog edit itself).
+- The changelog is **docs-only** → exempt from the `/simplify` pre-push gate; commit it alongside the fix or immediately after.
+- The release skill consumes `### [Unreleased]` to cut version notes, so keeping it current is load-bearing, not just courtesy.
+
 ## CI
 
 **The GitHub `ci.yml` workflow is DISABLED** (`gh workflow disable ci.yml`, 2026-06-01) — we run CI locally instead of on slow GitHub-hosted `macos-15` runners. CI is now `make ci-vm` (full parity in an isolated ephemeral macOS VM) or `make ci` (fast, native). See **Local CI** below. Re-enable with `gh workflow enable ci.yml` if needed. CodeQL / unicode-scan / release workflows remain active.
@@ -193,17 +204,18 @@ bd close <id>         # Complete work
 
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
 2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
+3. **Update `CHANGELOG.md`** (if user-visible code changed) - Add an entry to `### [Unreleased]` (see the **Changelog** section above). Mandatory.
+4. **Update issue status** - Close finished work, update in-progress items
+5. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
    bd dolt push
    git push
    git status  # MUST show "up to date with origin"
    ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+6. **Clean up** - Clear stashes, prune remote branches
+7. **Verify** - All changes committed AND pushed
+8. **Hand off** - Provide context for next session
 
 **CRITICAL RULES:**
 - Work is NOT complete until `git push` succeeds
