@@ -319,6 +319,28 @@ final class MemosCommandTests: XCTestCase {
         XCTAssertTrue(warnings[0].contains("4/10"), "reports how many were exported before the cutoff")
     }
 
+    // MARK: - parseDateString (locale-independent)
+
+    //
+    // Regression: the formatter lacked locale=en_US_POSIX, so a non-Gregorian
+    // device calendar could misparse "yyyy". The expected epoch is absolute, so
+    // this asserts the correct UTC-midnight instant regardless of environment.
+
+    func testParseDateStringYieldsUTCMidnightInstant() {
+        // 2024-03-01T00:00:00Z == 1_709_251_200 (2024 is a leap year).
+        XCTAssertEqual(parseDateString("2024-03-01")?.timeIntervalSince1970, 1_709_251_200)
+        // 2021-01-01T00:00:00Z == 1_609_459_200.
+        XCTAssertEqual(parseDateString("2021-01-01")?.timeIntervalSince1970, 1_609_459_200)
+    }
+
+    func testParseDateStringRejectsInvalid() {
+        XCTAssertNil(parseDateString("not-a-date"))
+        XCTAssertNil(parseDateString(""))
+        XCTAssertNil(parseDateString("March 1 2024"))
+        // Note: DateFormatter is lenient about separators, so "2024/03/01" is
+        // accepted as 2024-03-01 — intentional, not asserted here.
+    }
+
     func testExportWarningsCapsFailureDetailButKeepsFullCount() {
         let manyFailures = (1 ... 25).map { "memo\($0).m4a: error" }
         let warnings = MemosCommand.Export.exportWarnings(

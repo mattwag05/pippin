@@ -113,6 +113,16 @@ final class TextFormatterTests: XCTestCase {
         XCTAssertEqual(TextFormatter.compactDate(invalid), invalid, "Invalid input returned as-is")
     }
 
+    func testCompactDateUsesGregorianYear() {
+        // Regression: formatDate used Calendar.current, so a non-Gregorian device
+        // calendar (e.g. Buddhist) would render the wrong era year. The output
+        // must always carry the Gregorian year for a known instant — and never a
+        // Buddhist-era year (2025 + 543 = 2568).
+        let result = TextFormatter.compactDate("2025-06-15T14:30:00Z")
+        XCTAssertTrue(result.hasPrefix("2025-"), "expected Gregorian year 2025, got: \(result)")
+        XCTAssertFalse(result.hasPrefix("2568-"), "must not render a Buddhist-era year")
+    }
+
     // MARK: - Card formatting
 
     func testCardFormatting() {

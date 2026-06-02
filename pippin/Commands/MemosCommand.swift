@@ -565,6 +565,10 @@ let allMemosLimit = 10000
 /// Parse a YYYY-MM-DD string into a Date at midnight UTC.
 func parseDateString(_ s: String) -> Date? {
     let formatter = DateFormatter()
+    // en_US_POSIX pins the calendar/era so a non-Gregorian device calendar
+    // (Thai Buddhist, Japanese era, …) can't misparse "yyyy" — the canonical
+    // rule for fixed-format DateFormatters, used elsewhere in this codebase.
+    formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy-MM-dd"
     formatter.timeZone = TimeZone(identifier: "UTC")
     return formatter.date(from: s)
