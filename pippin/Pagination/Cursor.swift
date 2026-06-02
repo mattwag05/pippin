@@ -133,10 +133,20 @@ public enum Pagination {
             guard parsed.filterHash == filterHash else { throw CursorError.cursorMismatch }
             offset = max(0, parsed.offset)
         }
-        let pageSize = opts.pageSize ?? defaultPageSize
-        guard pageSize > 0 else { throw CursorError.invalidPageSize }
+        let requested = opts.pageSize ?? defaultPageSize
+        guard requested > 0 else { throw CursorError.invalidPageSize }
+        // Cap the page size at a sane ceiling. `--page-size` is an unbounded
+        // user option, and an enormous value would otherwise (a) overflow-trap
+        // `pageSize + 1` fetches and `offset + pageSize` cursor math, and
+        // (b) ask a bridge to materialize an absurd number of rows. The cap is
+        // far beyond any real page; deep pagination still walks via the cursor.
+        let pageSize = min(requested, maxPageSize)
         return (offset, pageSize)
     }
+
+    /// Upper bound for a single page (see `resolve`). Generous — real pages are
+    /// tens to low-hundreds of items; this only fences off pathological input.
+    static let maxPageSize = 100_000
 
     /// Slice an in-memory array into a Page<T>.
     public static func paginate<T: Encodable & Sendable>(
@@ -149,7 +159,12 @@ public enum Pagination {
         guard safeOffset < all.count else {
             return Page(items: [], nextCursor: nil)
         }
-        let end = min(all.count, safeOffset + pageSize)
+        // Compute `end` without `safeOffset + pageSize`, which overflow-traps for
+        // a huge pageSize. `take` is bounded by the remaining count, so the sum
+        // can never exceed all.count.
+        let remaining = all.count - safeOffset
+        let take = max(0, min(pageSize, remaining))
+        let end = safeOffset + take
         let items = Array(all[safeOffset ..< end])
         let nextCursor: String? = end < all.count
             ? try encode(Cursor(offset: end, filterHash: filterHash))
@@ -166,11 +181,16 @@ public enum Pagination {
         pageSize: Int,
         filterHash: String
     ) throws -> Page<T> {
-        let hasMore = fetched.count > pageSize
-        let items = Array(fetched.prefix(pageSize))
-        let nextCursor: String? = hasMore
-            ? try encode(Cursor(offset: offset + pageSize, filterHash: filterHash))
-            : nil
+        let take = max(0, pageSize)
+        let hasMore = fetched.count > take
+        let items = Array(fetched.prefix(take))
+        // `offset + pageSize` can overflow when a crafted cursor carries a huge
+        // offset; report-overflow and drop the next cursor rather than trap.
+        var nextCursor: String?
+        if hasMore {
+            let (nextOffset, overflowed) = offset.addingReportingOverflow(take)
+            nextCursor = overflowed ? nil : try encode(Cursor(offset: nextOffset, filterHash: filterHash))
+        }
         return Page(items: items, nextCursor: nextCursor)
     }
 }
