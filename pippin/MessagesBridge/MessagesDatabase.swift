@@ -340,7 +340,13 @@ public final class MessagesDatabase: Sendable {
     }
 
     static func appleNanos(from date: Date) -> Int64 {
-        Int64(date.timeIntervalSinceReferenceDate * 1_000_000_000)
+        // `Int64(Double)` traps if the value is outside Int64's range (a date
+        // beyond ~year 2293 overflows once multiplied by 1e9). Clamp instead of
+        // crashing — the result is only ever used as a "since" cutoff bound.
+        let nanos = date.timeIntervalSinceReferenceDate * 1_000_000_000
+        if nanos >= Double(Int64.max) { return Int64.max }
+        if nanos <= Double(Int64.min) { return Int64.min }
+        return Int64(nanos)
     }
 
     static func iso8601(fromAppleNanos nanos: Int64) -> String {

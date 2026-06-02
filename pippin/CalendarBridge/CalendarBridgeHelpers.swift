@@ -120,26 +120,32 @@ func formatAlertOffset(_ seconds: TimeInterval) -> String {
 ///   "month"      — start of current month to end of current month
 /// Returns nil for unrecognized formats.
 func parseRange(_ s: String) -> (start: Date, end: Date)? {
+    // Upper bound for the "today+N" shorthand. Guards against arithmetic
+    // overflow (`n + 1` traps at Int.max) and `Calendar.date(byAdding:)`
+    // returning nil for values beyond its representable range — both of which
+    // would crash the process on attacker/typo input like "today+<huge>".
+    let maxRangeDays = 3660 // ~10 years; well past any practical agenda window
     let cal = Calendar.current
     let now = Date()
     let today = cal.startOfDay(for: now)
-    let tomorrow = cal.date(byAdding: .day, value: 1, to: today)!
+    guard let tomorrow = cal.date(byAdding: .day, value: 1, to: today) else { return nil }
 
-    switch s.lowercased() {
+    let lower = s.lowercased()
+    switch lower {
     case "today":
         return (today, tomorrow)
     case "week":
-        let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
-        let weekEnd = cal.date(byAdding: .weekOfYear, value: 1, to: weekStart)!
+        guard let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)),
+              let weekEnd = cal.date(byAdding: .weekOfYear, value: 1, to: weekStart) else { return nil }
         return (weekStart, weekEnd)
     case "month":
-        let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: now))!
-        let monthEnd = cal.date(byAdding: .month, value: 1, to: monthStart)!
+        guard let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: now)),
+              let monthEnd = cal.date(byAdding: .month, value: 1, to: monthStart) else { return nil }
         return (monthStart, monthEnd)
     default:
         // "today+N"
-        if s.lowercased().hasPrefix("today+"), let n = Int(s.dropFirst(6)), n > 0 {
-            let rangeEnd = cal.date(byAdding: .day, value: n + 1, to: today)!
+        if lower.hasPrefix("today+"), let n = Int(s.dropFirst(6)), n > 0, n <= maxRangeDays {
+            guard let rangeEnd = cal.date(byAdding: .day, value: n + 1, to: today) else { return nil }
             return (today, rangeEnd)
         }
         return nil
