@@ -37,3 +37,7 @@ archive/**/.build/
 
 # Transient bd auto-import staging file
 .beads/.auto-import-issues.jsonl
+
+# Python bytecode (scripts/lint-detach-blocking.py)
+__pycache__/
+*.pyc
