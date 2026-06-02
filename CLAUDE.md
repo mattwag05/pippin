@@ -57,7 +57,7 @@ make version        # print current version from Version.swift
 | `pippin/SessionState.swift` | REPL session state at `~/.config/pippin/session.json` — active account, last-used IDs, command history |
 | `pippin-entry/` | Thin `@main` executable target |
 | `Tests/PippinTests/` | XCTest suite (1,700+ tests). Integration tests in `CLIIntegrationTests.swift` shell out to the built binary |
-| `.github/workflows/` | CI (`ci.yml`), advanced CodeQL (`codeql.yml`), copilot auto-fix (`copilot-ci-fix.yml`), unicode safety scan, release |
+| `.github/workflows/` | CI (`ci.yml`), advanced CodeQL (`codeql.yml`), unicode safety scan, release |
 
 **Reminders/Calendar flag footgun:** `reminders --list` and `calendar create --calendar` take EventKit **IDs** (from `reminders lists` / `calendar list`), not names. `reminders create`'s title is **positional**. Filter calendar events by name with `--calendar-name` (`--calendar` is an ID). `actions extract --list` and `calendar smart-create`, by contrast, *do* resolve list/calendar names.
 
@@ -140,7 +140,6 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 
 **The GitHub `ci.yml` workflow is DISABLED** (`gh workflow disable ci.yml`, 2026-06-01) — we run CI locally instead of on slow GitHub-hosted `macos-15` runners. CI is now `make ci-vm` (full parity in an isolated ephemeral macOS VM) or `make ci` (fast, native). See **Local CI** below. Re-enable with `gh workflow enable ci.yml` if needed. CodeQL / unicode-scan / release workflows remain active.
 
-- `copilot-ci-fix.yml` — `workflow_run` trigger fires when CI fails on `main`, files an issue, assigns to `copilot`. Copilot opens a PR with the fix. (Dormant while `ci.yml` is disabled — it never fires.)
 - `.forgejo/workflows/` is an **active self-hosted mirror** of the CI + release gates (runner label `macos`). Keep it in parity with `.github/workflows/` when changing gates — it intentionally omits Setup-Xcode (self-hosted runner has Xcode) but MUST keep the detach-blocking lint.
 - Workflow pinning, swiftformat traps, and other CI/build gotchas: [docs/gotchas/build.md](docs/gotchas/build.md).
 
