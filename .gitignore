@@ -49,3 +49,4 @@ graphify-out/.graphify_root
 graphify-out/manifest.json
 graphify-out/cost.json
 graphify-out/cache/
+graphify-out/.rebuild.lock

@@ -51,7 +51,7 @@ Work through each changed file. For anything that fails the bar below, fix it yo
 Run all three and fix failures caused by the changes:
 ```bash
 make lint    # swiftformat check
-make test    # all tests must pass (current baseline: ~1648)
+make test    # all tests must pass (run it for the current count; CHANGELOG records the latest baseline)
 make build   # release build must succeed
 ```
 

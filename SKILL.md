@@ -81,7 +81,7 @@ pippin calendar remaining                     # events from now until end of day
 pippin calendar upcoming                      # next 7 days
 pippin calendar events --from 2026-04-15 --to 2026-04-20
 pippin calendar show <event-id>               # full event details
-pippin calendar create --title "Meeting" --calendar Work --start "2026-04-15 14:00" --end "2026-04-15 15:00"
+pippin calendar create --title "Meeting" --calendar <calendar-id> --start "2026-04-15 14:00" --end "2026-04-15 15:00"  # --calendar is an ID from `calendar list`
 pippin calendar edit <event-id> --title "Updated"
 pippin calendar delete <event-id>
 pippin calendar search "standup" --from 2026-04-01 --to 2026-04-30
@@ -96,10 +96,10 @@ List, create, complete, edit, delete, and search reminders.
 ```bash
 pippin reminders lists                        # list all reminder lists
 pippin reminders list                         # incomplete reminders
-pippin reminders list --list-id <id> --completed
+pippin reminders list --list <list-id> --completed   # --list is an ID from `reminders lists`
 pippin reminders show <reminder-id>
-pippin reminders create --title "Buy groceries" --list Groceries
-pippin reminders create --title "Call dentist" --due "2026-04-15 09:00"
+pippin reminders create "Buy groceries" --list <list-id>   # title is positional
+pippin reminders create "Call dentist" --due "2026-04-15 09:00"
 pippin reminders complete <reminder-id>
 pippin reminders edit <reminder-id> --title "Updated task"
 pippin reminders delete <reminder-id>

@@ -13,6 +13,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - [docs] Refresh `SKILL.md` to current state: bump to 0.24.0, document the `messages`, `digest`, `actions`, `job`, `do`, `batch`, and `mcp-server` command groups, mark `audio`/`browser` as experimental (`PIPPIN_EXPERIMENTAL=1`), fix `completions` to positional-arg syntax, and replace the pre-envelope agent-output examples with envelope v1 + pagination guidance.
 - [docs] Add a graphify knowledge graph under `graphify-out/` for repo onboarding and register `/graphify` for Claude Code, Codex, OpenCode, Pi, Hermes, and OpenClaw.
+- [docs] Repo-wide doc drift sweep: fix `reminders list`/`create` (`--list` takes an ID, title is positional) and `calendar events --calendar-name` examples in `README.md`; rewrite the stale `.github/copilot-instructions.md` (was v0.1.0 / 5 subcommands / wrong deps); remove the dead SwiftLint section and correct the `.forgejo` "retired" note in `docs/gotchas/build.md`; fix the release skill's "wait for CI" step (GitHub CI is disabled — gate is local `make ci`); correct the `gastownhall/beads` URL and CHANGELOG pointer in `docs/ROADMAP.md`; fix the single-account `--body` search timeout (75s) and add the MCP-clamp note in `TIMEOUT_ANALYSIS.md`; drop ghost `copilot-setup-steps.yml` references; de-hardcode stale test counts.
+- [build] Untrack the stray repo-root `issues.jsonl` (accidental early commit; gitignored, no longer regenerated since `export.auto: false`).
+- [ci] Bring the Forgejo workflows into parity with GitHub: add the detach-blocking lint to `.forgejo/workflows/ci.yaml`, and fix `release.yaml` to use the self-hosted `macos` runner label (was `macos-15`) with a SHA-pinned checkout.
 
 ## [0.24.0] - 2026-06-02
 

@@ -1,6 +1,6 @@
 # Roadmap
 
-Tracked in [beads](https://github.com/plandex-ai/beads) — run `bd ready` to see actively claimable work.
+Tracked in [beads](https://github.com/gastownhall/beads) — run `bd ready` to see actively claimable work.
 
 The original v0.x roadmap (mail watch, triage rules engine, MCP server, unified
 digest, REPL completion, contacts write, smart-create for calendar/reminders,
@@ -41,6 +41,8 @@ new bridge method needs `timedOut` surfacing.
 ---
 
 ## Shipped (v0.16.0 → v0.22.0)
+
+> For v0.23.0 onward, [`CHANGELOG.md`](../CHANGELOG.md) is the authoritative shipped record — the per-version log below is kept only for the v0.16–v0.22 era.
 
 ### v0.22.x — Concurrency & MCP polish
 

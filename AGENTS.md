@@ -29,20 +29,14 @@ bd dolt push          # Push beads data to remote
 
 This repo has a Copilot coding agent configured for automatic CI troubleshooting.
 
+> **Currently dormant.** The GitHub `ci.yml` build/test workflow is **disabled** (CI runs locally via `make ci`/`make ci-vm`), so `copilot-ci-fix.yml`'s `workflow_run` trigger never fires. The flow below is retained for if `ci.yml` is re-enabled.
+
 ### How it works
 
 1. CI fails on `main` → `.github/workflows/copilot-ci-fix.yml` triggers
 2. Workflow extracts failed job logs and creates an issue (labels: `ci-fix`, `copilot`)
 3. Copilot agent picks up the issue, reads the logs, and opens a fix PR
 4. Human reviews and merges
-
-### Environment setup
-
-`.github/copilot-setup-steps.yml` defines the agent's build environment:
-- Xcode (latest stable)
-- SwiftFormat (`brew install swiftformat`)
-- Swift package resolution (`swift package resolve`)
-- Build verification (`swift build`)
 
 ### Common CI failure patterns for agents
 
@@ -55,14 +49,21 @@ This repo has a Copilot coding agent configured for automatic CI troubleshooting
 | Build failure | Missing import or type error | Check `swift build` output for the exact file and line |
 | Test failure | Assertion mismatch | Run `swift test --filter <TestName>` to isolate |
 
-### Quality gates (must pass before PR)
+### Quality gates (must pass before push)
+
+`make ci` is the single local gate (GitHub `ci.yml` is disabled). It runs all of:
 
 ```bash
-swift build                                    # Debug build
-swift test                                     # All tests
-swift build -c release                         # Release build
+make ci    # = swift build + swift test + swiftformat --lint + detach-blocking lint
+# equivalently, by hand:
+swift build                                     # Debug build
+swift test                                      # All tests
+swift build -c release                          # Release build
 swiftformat --lint pippin/ pippin-entry/ Tests/ # Lint
+python3 scripts/lint-detach-blocking.py         # Cooperative-pool blocking guard
 ```
+
+Use `make ci-vm` for full parity in an isolated macOS VM.
 
 ## Non-Interactive Shell Commands
 

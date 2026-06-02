@@ -2,17 +2,16 @@
 
 ## Project Overview
 
-Pippin is a macOS CLI toolkit (single `arm64` binary) that bridges Apple's sandboxed apps to automation pipelines. It is headless-safe and compatible with cron/launchd/N8N.
+Pippin is a macOS CLI toolkit (single `arm64` binary) that bridges Apple's sandboxed apps to automation pipelines. It is headless-safe and compatible with cron/launchd/MCP clients.
 
-**Language/Runtime:** Swift 6.0, macOS 15+, SPM (Swift Package Manager)  
-**Key dependencies:** `swift-argument-parser` ≥ 1.5.0, `GRDB.swift` ≥ 7.0.0
+**Language/Runtime:** Swift 6.0, macOS 15+, SPM (Swift Package Manager)
+**Key dependencies:** `swift-argument-parser` 1.7.0, `GRDB.swift` 7.10.0 (see `Package.resolved` for exact pins)
 
-### Subcommands
+> `CLAUDE.md` (repo root) and `README.md` are the authoritative, continuously-maintained references for the command surface and architecture. This file is a Copilot-specific summary — when in doubt, defer to those.
 
-- `pippin mail` — Apple Mail via `osascript` JXA (`accounts`, `mailboxes`, `list`, `search`, `show`, `send`, `move`, `mark`)
-- `pippin memos` — Voice Memos via read-only GRDB/SQLite (`list`, `info`, `export`)
-- `pippin completions <shell>` — generate zsh/bash/fish completion scripts
-- `pippin doctor` / `pippin init` — permission diagnostics and guided setup
+### Subcommands (top-level)
+
+`mail`, `memos`, `calendar`, `contacts`, `reminders`, `notes`, `messages`, `actions`, `digest`, `doctor`, `status`, `init`, `completions`, `shell`, `mcp-server`, `batch`, `job`, `do`. `audio` and `browser` are **experimental** and only registered when `PIPPIN_EXPERIMENTAL=1` is set. The MCP tool surface (`pippin mcp-server`) is generated from `pippin/MCP/ToolRegistry.swift` — currently 44 tools.
 
 ---
 
@@ -20,124 +19,94 @@ Pippin is a macOS CLI toolkit (single `arm64` binary) that bridges Apple's sandb
 
 ```
 Package.swift               # SPM manifest (swift-tools-version: 6.0)
-Makefile                    # build/test/lint/install helpers
+Makefile                    # build/test/lint/ci/install helpers
 pippin/                     # PippinLib target — all application logic
-  Commands/                 # ArgumentParser subcommand structs
-    MailCommand.swift
-    MemosCommand.swift
-    DoctorCommand.swift
-    InitCommand.swift
-    OutputOptions.swift     # shared --format text|json
-  Formatting/
-    TextFormatter.swift
-    JSONOutput.swift
-  MailBridge/
-    MailBridge.swift        # osascript JXA runner + all script builders
-  MemosBridge/
-    VoiceMemosDB.swift      # GRDB read-only DatabaseQueue
-    Transcriber.swift
-  Models/
-    MailModels.swift        # MailMessage, MailAccount, MailActionResult
-    MemosModels.swift       # VoiceMemo, ExportResult
-  Version.swift             # PippinVersion.version = "0.1.0"
+  Commands/                 # ArgumentParser subcommand structs (one file per command group)
+  Formatting/               # AgentOutput (envelope v1), JSONOutput, TextFormatter, BridgeOutcome, Remediation
+  MailBridge/               # osascript JXA runner + script builders (+ cross-account timeout scaling)
+  MailAIBridge/             # embeddings, semantic search, triage, prompt-injection scanner (Ollama-backed)
+  MemosBridge/              # GRDB read-only access to Voice Memos + transcription
+  CalendarBridge/ RemindersBridge/   # EventKit wrappers
+  NotesBridge/ ContactsBridge/       # JXA / CNContactStore wrappers
+  MessagesBridge/           # GRDB read of chat.db + gated send + audit log
+  BrowserBridge/ AudioBridge/        # experimental (PIPPIN_EXPERIMENTAL=1)
+  AIProvider/               # Ollama + Claude backends
+  Planner/                  # LLM plan-and-execute over the MCP tool registry (`pippin do`)
+  Jobs/                     # filesystem-backed background-job registry (`pippin job`)
+  Pagination/               # opaque-cursor tokens + filter-hash guards for list commands
+  MCP/                      # ToolRegistry (tool surface), MCPServerRuntime, JSON-RPC types
+  Models/                   # Codable, Sendable DTO structs per bridge
+  Templates/                # built-in summarization / smart-create / extract-actions prompts
+  DetachBlocking.swift      # load-bearing: hops sync blocking work off the cooperative pool
+  SoftTimeout.swift  BatchBudget.swift  SessionState.swift
+  Version.swift             # PippinVersion.version (e.g. "0.24.0")
 pippin-entry/
-  Pippin.swift              # @main entry point
-Tests/PippinTests/          # ~228 tests
-.github/
-  workflows/ci.yml          # CI: build → test → release build → swiftformat lint
+  Pippin.swift              # @main entry point + subcommand registration
+Tests/PippinTests/          # XCTest suite (1,700+ tests)
+.github/workflows/          # ci.yml (DISABLED), codeql.yml, copilot-ci-fix.yml, release.yml, unicode-scan.yml
 ```
 
 ---
 
 ## Build, Test, and Lint
 
-> These commands are validated for macOS with Xcode/Swift toolchain installed.
+> Validated for macOS with the Xcode/Swift toolchain installed. `make build`/`make test` route through `xcrun --sdk macosx`; on a CommandLineTools-only host, `swift test` fails with `no such module XCTest` — install Xcode or set `DEVELOPER_DIR`.
 
 ```bash
-# Debug build
-swift build
-
-# Release build
-swift build -c release
-
-# Run tests (run `swift build` first so CLIIntegrationTests can locate the binary)
-swift build && swift test
-
-# Lint (requires: brew install swiftformat)
-swiftformat --lint pippin/ pippin-entry/ Tests/
-
-# Auto-fix formatting issues (run before pushing)
-swiftformat pippin/ pippin-entry/ Tests/
-
-# Makefile shortcuts
 make build        # swift build -c release
-make test         # swift test
-make lint         # swiftformat --lint on all three dirs
+make test         # swift test (1,700+ tests, 0 failures expected)
+make lint         # swiftformat --lint on pippin/ pippin-entry/ Tests/
+make ci           # full local gate: build + test + swiftformat + detach-blocking lint
+make ci-vm        # same gates in an isolated ephemeral macOS VM (Tart)
 make install      # release build + completions + install to ~/.local/bin/pippin
-make clean        # clean build artifacts
 ```
 
-**Always lint all three directories together:** `pippin/ pippin-entry/ Tests/`  
-Linting only one dir can miss cross-dir issues and won't match CI.
+**Always lint all three directories together** (`pippin/ pippin-entry/ Tests/`) — linting one dir can miss cross-dir issues and won't match the gate. Auto-fix with `swiftformat pippin/ pippin-entry/ Tests/` (no `--lint`) before pushing.
 
 ---
 
-## CI Pipeline (`.github/workflows/ci.yml`)
+## CI
 
-Runs on every push/PR to `main` on `macos-15`:
+The GitHub `ci.yml` build/test workflow is **disabled** — CI runs **locally** via `make ci` (fast, native) or `make ci-vm` (full parity in a Tart VM). There is no push-time GitHub gate for build/test/format anymore, so `make ci` is mandatory before every push. The detach-blocking lint (`python3 scripts/lint-detach-blocking.py`) is part of `make ci` and a real gate — don't skip it.
 
-1. `swift build` (debug)
-2. `swift test`
-3. `swift build -c release`
-4. `brew install swiftformat && swiftformat --lint pippin/ pippin-entry/ Tests/`
-
-**A PR will fail CI if:**
-- The code does not compile (debug or release)
-- Any test fails
-- `swiftformat --lint` reports formatting issues — always run `swiftformat pippin/ pippin-entry/ Tests/` (no `--lint`) to auto-fix before pushing
+`codeql.yml`, `unicode-scan.yml`, and `release.yml` remain active on GitHub. `copilot-ci-fix.yml` is dormant (its `workflow_run` trigger keys on the disabled CI workflow, so it never fires).
 
 ---
 
 ## Architecture Notes
 
 ### Swift Concurrency (Swift 6 strict mode)
-- `.swiftLanguageMode(.v6)` is enforced across all targets — strict concurrency is on
-- All model structs and error enums must conform to `Sendable`
-- `VoiceMemosDB` is `final class: Sendable` (all-`let` stored properties)
-- Mutable GCD output buffers in `MailBridge` and `Transcriber` use `nonisolated(unsafe) var` — safe because each is written once before `group.wait()`
-- Mutable `static var` in `XCTestCase` requires `nonisolated(unsafe)` under Swift 6
+- `.swiftLanguageMode(.v6)` is enforced across all targets — strict concurrency is on.
+- All model structs and error enums must conform to `Sendable`.
+- **`detachBlocking { ... }` is load-bearing:** any sync, thread-blocking work (subprocess waits, `DispatchSemaphore.wait`, `sendSynchronousRequest`) called from an async command MUST be hopped off the cooperative pool via `detachBlocking`, or `pippin mcp-server` wedges under fanout. `scripts/lint-detach-blocking.py` enforces this.
+- Mutable GCD output buffers use `nonisolated(unsafe) var` — safe because each is written once before `group.wait()`. Mutable `static var` in `XCTestCase` requires `nonisolated(unsafe)` under Swift 6.
 
 ### mail (JXA via osascript)
-- All JXA calls are in `MailBridge.swift`; uses `osascript -l JavaScript` (not AppleScript)
-- Message ID: `account||mailbox||messageId` (compound, round-trip safe)
-- `jsEscape()` escapes in order: `\`, `\0`, `"`, `'`, `` ` ``, `\n`, `\r`, `\u2028`, `\u2029`
-- Use `mb.messages()` for unfiltered fetch — `mb.messages.whose({})()` is **invalid JXA**
-- Timeouts: 10s (list/show/accounts), 30s (search), 20s (mark), 45s (move/send)
-- All write operations require `--dry-run` flag
+- All JXA calls go through `pippin/Scripting/ScriptRunner.swift`; uses `osascript -l JavaScript` (not AppleScript).
+- Message ID: `account||mailbox||messageId` (compound, round-trip safe).
+- `jsEscape()` escapes in order: `\`, `\0`, `"`, `'`, `` ` ``, `\n`, `\r`, `U+2028`, `U+2029`.
+- Use `mb.messages()` for unfiltered fetch — `mb.messages.whose({})()` is **invalid JXA**.
+- **Timeouts are not fixed constants.** Single-account caps scale up for cross-account scans, and under MCP (`PIPPIN_MCP=1`) all caps are clamped to 55s by `MailBridge.clampHardTimeout`. The 22s soft cap (`SoftTimeout.defaultMs`) fires first in normal operation. See `TIMEOUT_ANALYSIS.md` and `pippin/MailBridge/MailBridge.swift` for the current numbers.
+
+### Agent output (envelope v1)
+- `--format agent` wraps every response in `{"v":1,"status":"ok","duration_ms":N,"data":<payload>}` (or `{...,"status":"error","error":{"code","message","remediation"?}}`). Canonical version constant: `AGENT_SCHEMA_VERSION` in `pippin/Formatting/AgentOutput.swift`. Changing a snake_case key or a CLI flag name is a breaking change for MCP clients.
 
 ### memos (GRDB/SQLite)
-- `VoiceMemosDB` opens a read-only `DatabaseQueue` (`configuration.readonly = true`)
-- DB path: `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/CloudRecordings.db`
-- Table: `ZCLOUDRECORDING`; key columns: `ZUNIQUEID`, `ZCUSTOMLABELFORSORTING`, `ZDURATION`, `ZDATE`, `ZPATH`, `ZEVICTIONDATE`
-- Core Data epoch offset is handled by `Date(timeIntervalSinceReferenceDate:)` automatically
-- Export filename format: `YYYY-MM-DD_sanitized-title.<ext>` with collision suffix (-2, -3…)
+- `VoiceMemosDB` opens a read-only `DatabaseQueue` (`configuration.readonly = true`).
+- Core Data epoch offset is handled via `Date(timeIntervalSinceReferenceDate:)`.
+- Use `COUNT(*) WHERE col IS NOT NULL` instead of `fetchOne` on a nullable column to avoid `Optional<Optional<T>>` ambiguity.
 
-### New Optional Fields on MailMessage
-Always add an explicit `public init(...)` with `= nil` defaults — Swift's synthesized memberwise init does NOT provide default `nil` for `Optional` properties. Use `encodeIfPresent` for new optional fields; only `body` uses `encode` (forces explicit `null` in JSON).
-
-### GRDB Nullable Columns
-Use `COUNT(*) WHERE col IS NOT NULL` instead of `fetchOne` on a nullable column to avoid `Optional<Optional<T>>` ambiguity.
+### New optional fields on models
+Always add an explicit `public init(...)` with `= nil` defaults — Swift's synthesized memberwise init does NOT default `Optional` properties to `nil`. Use `encodeIfPresent` for new optional fields.
 
 ---
 
 ## Test Notes
 
-- `CLIIntegrationTests` calls `swift build --show-bin-path` in `class setUp()` to find the binary — always run `swift build` before `swift test`
-- Use `#filePath` (not `#file`) for `XCTFail` file parameter under Swift 6
-- Assert on `lastPathComponent` when checking export paths — UUID-based temp dir names can contain `-2`
-
----
+- `CLIIntegrationTests` resolves the built binary in `setUp()` — run `make build` (or `swift build`) before `swift test`.
+- Use `#filePath` (not `#file`) for the `XCTFail` file parameter under Swift 6.
+- Assert on `lastPathComponent` when checking export paths — UUID-based temp dir names can contain `-2`.
 
 ## SourceKit / IDE
 
-SourceKit can't resolve SPM dependencies or cross-file types — ignore red squiggles. Run `swift build` to verify correctness.
+SourceKit can't always resolve SPM dependencies or cross-file types — ignore red squiggles and run `make build` to verify correctness.

@@ -1,5 +1,7 @@
 # Mail Command Timeout Analysis & Fix Plan
 
+> **Historical analysis (2026-05-19).** The authoritative, current timeout numbers live in `pippin/MailBridge/MailBridge.swift` (and the MailBridge row of `CLAUDE.md`). This doc records the original investigation and may lag the code on exact values.
+
 ## Test Date: 2026-05-19
 
 ## System: 5 Mail accounts (iCloud, Google, Gmail×2, Exchange, Yahoo), hundreds to thousands of messages per account
@@ -90,11 +92,11 @@ All MailBridge methods shared a single `timeoutSeconds` value, but cross-account
 #### `searchMessages` — 1 change
 1. Added `crossAccount: Bool` computed from `(account == nil) && (mailbox == nil)`
 2. Base: cross 50s, single 30s
-3. With --body: cross 95s (50+45), single 45s (30+15)
+3. `searchBody ? base + 45 : base + 15` → with `--body`: cross 95s (50+45), single **75s** (30+45); no `--body`: cross 65s (50+15), single 45s (30+15)
 
 ## 4. Testing
 
-- **Unit tests:** All 271 tests pass (no changes needed — script generation is agnostic to runtime)
+- **Unit tests:** full suite passes (run `make test` for the current count) — no changes needed, script generation is agnostic to runtime
 - **Integration:** All 3 previously-failing commands now return partial results gracefully
 - **Targeted commands** (with `--account`): Unchanged, still fast (<3s)
 
@@ -102,4 +104,4 @@ All MailBridge methods shared a single `timeoutSeconds` value, but cross-account
 
 1. **Search --body across all accounts** returns partial results at 22s but needs ~2min+ for full scan. Users should use `--account` or `--mailbox` for complete results.
 2. **Activity without `--account`** has 115s timeout (with preview) which is generous but still may not cover all messages for very large accounts. The soft timeout at 22s gives users partial results quickly.
-3. **MCP runChild cap** (60s) is a separate concern — operations with 60s+ ScriptRunner timeouts may be killed by MCP. This is acceptable for manual CLI use but worth monitoring for MCP callers.
+3. **MCP runChild cap** (60s) — RESOLVED. `MailBridge.clampHardTimeout` now clamps all three hard caps to 55s when `PIPPIN_MCP=1`, keeping them below the 60s `runChild` cap so a wedged osascript self-reaps with partial results instead of being SIGKILLed. The 22s soft cap fires first in normal operation, so the clamp only matters in the pathological wedge case.

@@ -139,7 +139,6 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 **The GitHub `ci.yml` workflow is DISABLED** (`gh workflow disable ci.yml`, 2026-06-01) — we run CI locally instead of on slow GitHub-hosted `macos-15` runners. CI is now `make ci-vm` (full parity in an isolated ephemeral macOS VM) or `make ci` (fast, native). See **Local CI** below. Re-enable with `gh workflow enable ci.yml` if needed. CodeQL / unicode-scan / release workflows remain active.
 
 - `copilot-ci-fix.yml` — `workflow_run` trigger fires when CI fails on `main`, files an issue, assigns to `copilot`. Copilot opens a PR with the fix. (Dormant while `ci.yml` is disabled — it never fires.)
-- `copilot-setup-steps.yml` — Xcode/SwiftFormat/deps for the Copilot coding agent.
 - Workflow pinning, swiftformat traps, and other CI/build gotchas: [docs/gotchas/build.md](docs/gotchas/build.md).
 
 ## Local CI (Tart VM — replaces GitHub-hosted runners)

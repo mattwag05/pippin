@@ -114,7 +114,7 @@ pippin memos templates list
 
 ```bash
 pippin calendar today
-pippin calendar events --from 2026-04-01 --to 2026-04-30 --calendar "Work"
+pippin calendar events --from 2026-04-01 --to 2026-04-30 --calendar-name "Work"
 pippin calendar agenda --days 3
 pippin calendar smart-create "Coffee with Alice next Tuesday at 2pm" --dry-run
 pippin calendar create --title "Team standup" --start "2026-04-07 09:00"
@@ -123,9 +123,9 @@ pippin calendar create --title "Team standup" --start "2026-04-07 09:00"
 ### Reminders
 
 ```bash
-pippin reminders lists
-pippin reminders list "Work" --due-before 2026-04-15 --priority high
-pippin reminders create "Submit report" --list "Work" --due "2026-04-10" --priority high
+pippin reminders lists                                          # get list IDs
+pippin reminders list --list <list-id> --due-before 2026-04-15 --priority high
+pippin reminders create "Submit report" --list <list-id> --due "2026-04-10" --priority high
 pippin reminders complete <id>
 pippin reminders search "report"
 ```
@@ -340,12 +340,12 @@ pippin memos summarize <id> --provider claude
 
 ```bash
 # Morning briefing (REPL mode — one process, multiple commands)
-echo -e "calendar today\nreminders list Work\nmail list --unread --limit 10" \
+echo -e "calendar today\nreminders list\nmail list --unread --limit 10" \
   | pippin shell --format agent
 
 # Same thing, one-shot style
 pippin calendar today --format agent
-pippin reminders list "Work" --format agent
+pippin reminders list --format agent
 pippin mail list --unread --limit 10 --format agent
 
 # Export and transcribe today's voice memos
