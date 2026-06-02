@@ -333,7 +333,10 @@ public final class VoiceMemosDB: Sendable {
             ) else {
                 throw VoiceMemosError.memoNotFound(id)
             }
-            return row["ZPATH"] as String
+            // ZPATH can be NULL (e.g. an iCloud recording not yet downloaded).
+            // Decode optionally so a NULL doesn't trap; the empty-path guard
+            // below then skips file deletion rather than targeting `dir` itself.
+            return (row["ZPATH"] as String?) ?? ""
         }
 
         // Delete DB row
@@ -344,7 +347,10 @@ public final class VoiceMemosDB: Sendable {
             )
         }
 
-        // Delete audio file
+        // Delete audio file. Guard against an empty path: appendingPathComponent("")
+        // returns `dir`, so an unguarded delete would remove the entire memos
+        // directory.
+        guard !filePath.isEmpty else { return "" }
         let audioPath = (dir as NSString).appendingPathComponent(filePath)
         if FileManager.default.fileExists(atPath: audioPath) {
             try FileManager.default.removeItem(atPath: audioPath)
