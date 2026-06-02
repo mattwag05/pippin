@@ -88,6 +88,7 @@ public final class MessagesDatabase: Sendable {
         limit: Int = 50,
         excluded: Set<String> = []
     ) throws -> (conversations: [MessageConversation], excludedCount: Int) {
+        let limit = Self.clampLimit(limit)
         let cutoffNs = since.map(Self.appleNanos(from:))
         return try readWrapping { db in
             var sql = """
@@ -164,6 +165,7 @@ public final class MessagesDatabase: Sendable {
         limit: Int = 50,
         excluded: Set<String> = []
     ) throws -> (matches: [MessageItem], excludedCount: Int) {
+        let limit = Self.clampLimit(limit)
         let cutoffNs = since.map(Self.appleNanos(from:))
         return try readWrapping { db in
             var sql = """
@@ -222,7 +224,8 @@ public final class MessagesDatabase: Sendable {
         conversationId: String,
         limit: Int = 50
     ) throws -> (conversation: MessageConversation, messages: [MessageItem], truncated: Bool) {
-        try readWrapping { db in
+        let limit = Self.clampLimit(limit)
+        return try readWrapping { db in
             guard let chatRow = try Row.fetchOne(
                 db,
                 sql: """
@@ -337,6 +340,17 @@ public final class MessagesDatabase: Sendable {
             ? TimeInterval(nanos) / 1_000_000_000
             : TimeInterval(nanos)
         return Date(timeIntervalSinceReferenceDate: seconds)
+    }
+
+    /// Normalize a caller-supplied row limit before it reaches SQL or arithmetic.
+    /// `--limit` is an unbounded CLI option, so two failure modes are possible:
+    ///   - negative → SQLite treats `LIMIT -1` as *unbounded*, fetching the whole
+    ///     (potentially huge) Messages DB into memory;
+    ///   - near `Int.max` → `limit + 1` / `limit + excluded.count` overflow-trap.
+    /// Clamp to `[0, maxLimit]` so every query method is safe regardless of input.
+    static func clampLimit(_ limit: Int) -> Int {
+        let maxLimit = 100_000 // far beyond any practical CLI/MCP request
+        return max(0, min(limit, maxLimit))
     }
 
     static func appleNanos(from date: Date) -> Int64 {

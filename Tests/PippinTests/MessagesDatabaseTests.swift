@@ -117,6 +117,52 @@ final class MessagesDatabaseTests: XCTestCase {
         XCTAssertEqual(dm?.unreadCount, 1)
     }
 
+    // MARK: - Limit clamping (overflow / unbounded-fetch guard)
+
+    //
+    // `--limit` is an unbounded CLI option. A negative value makes SQLite treat
+    // `LIMIT -1` as *unbounded* (whole-DB fetch into memory); a value near
+    // Int.max overflow-traps `limit + 1` (showConversation) and `limit +
+    // excluded.count` (list/search). clampLimit normalizes to [0, 100_000].
+
+    func testClampLimitNormalizesExtremes() {
+        XCTAssertEqual(MessagesDatabase.clampLimit(50), 50, "normal value passes through")
+        XCTAssertEqual(MessagesDatabase.clampLimit(0), 0)
+        XCTAssertEqual(MessagesDatabase.clampLimit(-1), 0, "negative clamps to 0, not unbounded")
+        XCTAssertEqual(MessagesDatabase.clampLimit(Int.min), 0)
+        XCTAssertEqual(MessagesDatabase.clampLimit(Int.max), 100_000, "huge clamps below overflow range")
+    }
+
+    func testListConversationsWithIntMaxLimitDoesNotTrap() throws {
+        // Regression: `limit + excluded.count` overflow-trapped at Int.max.
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (conversations, _) = try db.listConversations(limit: Int.max, excluded: ["x"])
+        XCTAssertEqual(conversations.count, 2, "huge limit returns all rows, no crash")
+    }
+
+    func testSearchMessagesWithIntMaxLimitDoesNotTrap() throws {
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (matches, _) = try db.searchMessages(query: "call", limit: Int.max, excluded: ["x"])
+        XCTAssertEqual(matches.count, 1, "huge limit returns matches, no crash")
+    }
+
+    func testShowConversationWithIntMaxLimitDoesNotTrap() throws {
+        // Regression: showConversation built `arguments: [chatRowId, limit + 1]`,
+        // which traps at Int.max.
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (_, messages, truncated) = try db.showConversation(
+            conversationId: "iMessage;-;+15551234567", limit: Int.max
+        )
+        XCTAssertEqual(messages.count, 2, "both DM messages returned")
+        XCTAssertFalse(truncated, "not truncated when limit exceeds message count")
+    }
+
+    func testListConversationsWithNegativeLimitReturnsNoneNotUnbounded() throws {
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (conversations, _) = try db.listConversations(limit: -1)
+        XCTAssertEqual(conversations.count, 0, "negative limit → 0 rows (clamped), not an unbounded scan")
+    }
+
     // MARK: - Search
 
     func testSearchMatchesSubstring() throws {
