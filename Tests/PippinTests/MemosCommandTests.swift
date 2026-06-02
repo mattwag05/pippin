@@ -284,4 +284,48 @@ final class MemosCommandTests: XCTestCase {
     func testDeleteAgentFormatPasses() {
         XCTAssertNoThrow(try MemosCommand.Delete.parse(["abc123", "--force", "--format", "agent"]))
     }
+
+    // MARK: - Export batch warnings
+
+    //
+    // Regression: a `memos export --all --format agent` where items failed
+    // silently dropped the failures (per-item "FAILED" prints only fire in
+    // non-structured mode), so an all-fail batch returned an empty result set
+    // with status "ok" and exit 0. exportWarnings now surfaces them.
+
+    func testExportWarningsSummarizesFailures() {
+        let warnings = MemosCommand.Export.exportWarnings(
+            failures: ["Meeting.m4a: no permission", "Note.m4a: file not found"],
+            totalMemos: 5, exported: 3, batchTimedOut: false, budgetSeconds: 50
+        )
+        XCTAssertTrue(warnings.contains { $0.contains("2 of 5 recordings failed") }, "leading summary carries the count")
+        XCTAssertTrue(warnings.contains { $0.contains("no permission") }, "per-failure detail is included")
+        XCTAssertTrue(warnings.contains { $0.contains("file not found") })
+    }
+
+    func testExportWarningsEmptyWhenAllSucceededAndNoTimeout() {
+        let warnings = MemosCommand.Export.exportWarnings(
+            failures: [], totalMemos: 5, exported: 5, batchTimedOut: false, budgetSeconds: 50
+        )
+        XCTAssertTrue(warnings.isEmpty, "clean batch produces no warnings (envelope stays status ok with none)")
+    }
+
+    func testExportWarningsIncludesBatchBudget() {
+        let warnings = MemosCommand.Export.exportWarnings(
+            failures: [], totalMemos: 10, exported: 4, batchTimedOut: true, budgetSeconds: 50
+        )
+        XCTAssertEqual(warnings.count, 1)
+        XCTAssertTrue(warnings[0].contains("budget"))
+        XCTAssertTrue(warnings[0].contains("4/10"), "reports how many were exported before the cutoff")
+    }
+
+    func testExportWarningsCapsFailureDetailButKeepsFullCount() {
+        let manyFailures = (1 ... 25).map { "memo\($0).m4a: error" }
+        let warnings = MemosCommand.Export.exportWarnings(
+            failures: manyFailures, totalMemos: 25, exported: 0, batchTimedOut: false, budgetSeconds: 50
+        )
+        XCTAssertTrue(warnings.contains { $0.contains("25 of 25 recordings failed") }, "summary keeps the true count")
+        // 1 summary line + at most 10 detail lines.
+        XCTAssertLessThanOrEqual(warnings.count, 11, "detail lines are capped to keep the envelope bounded")
+    }
 }
