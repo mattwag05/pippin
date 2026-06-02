@@ -162,6 +162,7 @@ public struct MemosCommand: AsyncParsableCommand {
             let cache: TranscriptCache? = transcribe ? try TranscriptCache() : nil
 
             var results: [ExportResult] = []
+            var exportWarnings: [String] = []
 
             var batchTimedOut = false
             if all {
@@ -170,6 +171,7 @@ public struct MemosCommand: AsyncParsableCommand {
                     Array(memos[i ..< min(i + jobs, memos.count)])
                 }
                 let budget = BatchBudget.forCurrentContext()
+                var failures: [String] = []
                 for chunk in chunks {
                     if budget.exceeded {
                         batchTimedOut = true
@@ -211,22 +213,31 @@ public struct MemosCommand: AsyncParsableCommand {
                         }
                         return out.sorted { $0.0 < $1.0 }
                     }
-                    for (_, result) in chunkResults {
+                    for (i, result) in chunkResults {
                         switch result {
                         case let .success(r):
                             results.append(r)
                             if !outputOptions.isStructured { print("done") }
                         case let .failure(e):
+                            let title = i < chunk.count ? chunk[i].title : "(unknown)"
+                            failures.append("\(title): \(e.localizedDescription)")
                             if !outputOptions.isStructured { print("FAILED: \(e.localizedDescription)") }
                         }
                     }
                 }
-                if batchTimedOut {
-                    fputs(
-                        "warning: export batch budget (\(budget.softTimeoutMs / 1000)s) exceeded — \(results.count)/\(memos.count) memos exported; narrow with smaller --jobs or per-memo invocations for the rest\n",
-                        stderr
-                    )
-                }
+                // Surface per-item failures and budget exhaustion as warnings.
+                // In --format agent these are the ONLY signal a caller gets: the
+                // per-item "FAILED" prints above only fire in non-structured mode,
+                // so without this a batch where every memo failed would return an
+                // empty result set with status "ok" and exit 0 — indistinguishable
+                // from "nothing to export".
+                exportWarnings = Self.exportWarnings(
+                    failures: failures,
+                    totalMemos: memos.count,
+                    exported: results.count,
+                    batchTimedOut: batchTimedOut,
+                    budgetSeconds: budget.softTimeoutMs / 1000
+                )
             } else if let id {
                 if !outputOptions.isStructured {
                     print("Exporting...", terminator: " ")
@@ -249,14 +260,45 @@ public struct MemosCommand: AsyncParsableCommand {
                 }
             }
 
-            if outputOptions.isJSON {
-                try printJSON(results)
-            } else if outputOptions.isAgent {
-                try outputOptions.printAgent(results)
+            if outputOptions.isAgent {
+                try outputOptions.printAgent(results, warnings: exportWarnings.isEmpty ? nil : exportWarnings)
             } else {
-                let noun = results.count == 1 ? "recording" : "recordings"
-                print("\nExported \(results.count) \(noun) to \(output)")
+                // Agent mode carries warnings in the envelope; JSON/plain modes
+                // surface them on stderr so they don't pollute machine output.
+                for warning in exportWarnings {
+                    fputs("warning: \(warning)\n", stderr)
+                }
+                if outputOptions.isJSON {
+                    try printJSON(results)
+                } else {
+                    let noun = results.count == 1 ? "recording" : "recordings"
+                    print("\nExported \(results.count) \(noun) to \(output)")
+                }
             }
+        }
+
+        /// Assemble non-fatal warnings for a batch export. Pure so it can be
+        /// unit-tested without driving the whole command. Failures are capped to
+        /// keep the envelope bounded; the leading summary always carries the
+        /// full count.
+        static func exportWarnings(
+            failures: [String],
+            totalMemos: Int,
+            exported: Int,
+            batchTimedOut: Bool,
+            budgetSeconds: Int
+        ) -> [String] {
+            var warnings: [String] = []
+            if !failures.isEmpty {
+                warnings.append("\(failures.count) of \(totalMemos) recordings failed to export")
+                warnings.append(contentsOf: failures.prefix(10))
+            }
+            if batchTimedOut {
+                warnings.append(
+                    "export batch budget (\(budgetSeconds)s) exceeded — \(exported)/\(totalMemos) recordings exported; narrow with smaller --jobs or per-memo invocations for the rest"
+                )
+            }
+            return warnings
         }
     }
 
