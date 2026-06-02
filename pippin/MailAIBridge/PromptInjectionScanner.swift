@@ -140,15 +140,25 @@ public enum PromptInjectionScanner {
         }
     }
 
-    private static func substringMatches(patterns: [String], in text: String) -> [String] {
-        var found: [String] = []
-        for pattern in patterns {
-            if let range = text.range(of: pattern, options: .caseInsensitive) {
-                let matched = String(text[range].prefix(100))
-                found.append(matched)
-            }
-        }
-        return found
+    /// Convert a literal phrase ("ignore previous instructions") into a regex
+    /// that tolerates any run of whitespace between words, so an attacker padding
+    /// or line-breaking between words ("ignore  previous\ninstructions") can't
+    /// slip past the always-on rule pass. Each word is regex-escaped; inter-word
+    /// whitespace becomes `\s+` (one-or-more, so the normal single-space form
+    /// still matches and existing detections don't regress). Internal for tests.
+    static func whitespaceTolerantPattern(_ phrase: String) -> String {
+        phrase
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { NSRegularExpression.escapedPattern(for: String($0)) }
+            .joined(separator: "\\s+")
+    }
+
+    /// First occurrence of each literal phrase, tolerating whitespace variation
+    /// between words. Returns the actual matched text (so `sanitize` redaction —
+    /// which already redacts every occurrence — maps back to original ranges).
+    /// One match per phrase preserves the prior threat-count semantics.
+    private static func phraseMatches(_ phrases: [String], in text: String) -> [String] {
+        phrases.compactMap { regexMatches(pattern: whitespaceTolerantPattern($0), in: text).first }
     }
 
     // MARK: - Category scanners
@@ -187,7 +197,7 @@ public enum PromptInjectionScanner {
         ]
         var threats: [Threat] = []
         for (pattern, confidence, explanation) in patterns {
-            let matches = substringMatches(patterns: [pattern], in: text)
+            let matches = phraseMatches([pattern], in: text)
             for match in matches {
                 threats.append(Threat(
                     category: .systemPromptOverride,
@@ -209,7 +219,7 @@ public enum PromptInjectionScanner {
         ]
         var threats: [Threat] = []
         for (pattern, explanation) in patterns {
-            let matches = substringMatches(patterns: [pattern], in: text)
+            let matches = phraseMatches([pattern], in: text)
             for match in matches {
                 threats.append(Threat(
                     category: .dataExfiltration,
@@ -231,7 +241,7 @@ public enum PromptInjectionScanner {
         ]
         var threats: [Threat] = []
         for (pattern, confidence, explanation) in patterns {
-            let matches = substringMatches(patterns: [pattern], in: text)
+            let matches = phraseMatches([pattern], in: text)
             for match in matches {
                 threats.append(Threat(
                     category: .roleHijacking,
