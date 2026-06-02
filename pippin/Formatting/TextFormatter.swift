@@ -119,7 +119,12 @@ public enum TextFormatter {
     }
 
     private static func formatDate(_ date: Date) -> String {
-        let cal = Calendar.current
+        // Force a Gregorian calendar so the "YYYY-MM-DD" string carries Gregorian
+        // year/month even when the device calendar is non-Gregorian (a Buddhist
+        // calendar would otherwise render year 2567 for 2024). Timezone stays
+        // local (Calendar defaults to TimeZone.current) so the wall-clock display
+        // is unchanged.
+        let cal = Calendar(identifier: .gregorian)
         let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         return String(
             format: "%04d-%02d-%02d %02d:%02d",
