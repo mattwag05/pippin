@@ -65,6 +65,32 @@ final class CalendarRangeTests: XCTestCase {
         XCTAssertNil(parseRange("next week"), "unrecognized shorthand should return nil")
     }
 
+    // MARK: - parseRange out-of-range / overflow guard
+
+    //
+    // Regression: "today+N" with a very large N previously crashed the process —
+    // `n + 1` traps at Int.max, and Calendar.date(byAdding:) returns nil past its
+    // representable range (force-unwrapped). These are reachable from the user's
+    // `--range` flag, so the helper must reject them gracefully (return nil).
+
+    func testParseTodayPlusIntMaxDoesNotCrash() {
+        XCTAssertNil(parseRange("today+\(Int.max)"), "today+Int.max must return nil, not trap on n+1 overflow")
+    }
+
+    func testParseTodayPlusOverflowingLiteralDoesNotCrash() {
+        // Larger than Int64 — Int(...) parse fails, so the prefix branch is skipped.
+        XCTAssertNil(parseRange("today+99999999999999999999999999"), "unparsable huge N should return nil")
+    }
+
+    func testParseTodayPlusBeyondCapReturnsNil() {
+        XCTAssertNil(parseRange("today+100000"), "N beyond the ~10-year cap should return nil")
+        XCTAssertNil(parseRange("today+3661"), "N just past the cap should return nil")
+    }
+
+    func testParseTodayPlusAtCapSucceeds() {
+        XCTAssertNotNil(parseRange("today+3660"), "N at the cap should still parse")
+    }
+
     // MARK: - parseRange case insensitivity
 
     func testParseTodayUppercase() {
