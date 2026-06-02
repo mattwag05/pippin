@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-06-02
+
 ### Documentation
 
 - [docs] Refresh `SKILL.md` to current state: bump to 0.24.0, document the `messages`, `digest`, `actions`, `job`, `do`, `batch`, and `mcp-server` command groups, mark `audio`/`browser` as experimental (`PIPPIN_EXPERIMENTAL=1`), fix `completions` to positional-arg syntax, and replace the pre-envelope agent-output examples with envelope v1 + pagination guidance.
@@ -618,7 +620,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.24.1...HEAD
+[0.24.1]: https://github.com/mattwag05/pippin/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/mattwag05/pippin/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/mattwag05/pippin/compare/v0.22.0...v0.23.0
 [0.20.2]: https://github.com/mattwag05/pippin/compare/v0.20.1...v0.20.2
