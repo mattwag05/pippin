@@ -70,18 +70,10 @@ public final class RemindersBridge: @unchecked Sendable {
 
         var filtered = allReminders.filter { $0.isCompleted == completed }
 
-        if let dueBefore {
+        if dueBefore != nil || dueAfter != nil {
             filtered = filtered.filter { reminder in
-                guard let components = reminder.dueDateComponents,
-                      let date = Calendar.current.date(from: components) else { return true }
-                return date < dueBefore
-            }
-        }
-        if let dueAfter {
-            filtered = filtered.filter { reminder in
-                guard let components = reminder.dueDateComponents,
-                      let date = Calendar.current.date(from: components) else { return true }
-                return date > dueAfter
+                let due = reminder.dueDateComponents.flatMap { Calendar.current.date(from: $0) }
+                return Self.passesDueFilters(dueDate: due, dueBefore: dueBefore, dueAfter: dueAfter)
             }
         }
         if let createdAfter {
@@ -301,6 +293,21 @@ public final class RemindersBridge: @unchecked Sendable {
         }
 
         return filtered.map { mapReminder($0) }
+    }
+
+    /// Whether a reminder with the given resolved due date passes the
+    /// `--due-before` / `--due-after` filters. A reminder with NO due date fails
+    /// any due filter — it can't be before or after a cutoff (and must not show
+    /// up in both `--due-before X` and `--due-after X`). Matches the
+    /// exclude-on-missing behavior of the created/modified filters.
+    static func passesDueFilters(dueDate: Date?, dueBefore: Date?, dueAfter: Date?) -> Bool {
+        if let dueBefore {
+            guard let dueDate, dueDate < dueBefore else { return false }
+        }
+        if let dueAfter {
+            guard let dueDate, dueDate > dueAfter else { return false }
+        }
+        return true
     }
 
     // MARK: - Private

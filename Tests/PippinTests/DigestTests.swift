@@ -229,4 +229,33 @@ final class DigestTests: XCTestCase {
         XCTAssertTrue(argv.contains("--format"))
         XCTAssertTrue(argv.contains("agent"))
     }
+
+    // MARK: - Upcoming calendar window (pippin-921)
+
+    //
+    // Regression: the upcoming window was anchored to start-of-today
+    // (`startOfDay + calendarDays`), which covered only `calendarDays - 1` full
+    // days beyond today — a 7-day request dropped the 7th day's events.
+
+    func testUpcomingWindowSpansCalendarDaysBeyondToday() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let start = cal.startOfDay(for: Date(timeIntervalSince1970: 1_750_000_000))
+        let endOfToday = try XCTUnwrap(cal.date(byAdding: .day, value: 1, to: start))
+        let upcomingEnd = try XCTUnwrap(DigestCommand.upcomingWindowEnd(endOfToday: endOfToday, calendarDays: 7, calendar: cal))
+        let days = cal.dateComponents([.day], from: endOfToday, to: upcomingEnd).day
+        XCTAssertEqual(days, 7, "the upcoming window must span calendarDays full days beyond today (not 6)")
+        let expected = try XCTUnwrap(cal.date(byAdding: .day, value: 7, to: endOfToday))
+        XCTAssertEqual(upcomingEnd, expected)
+    }
+
+    func testDigestRejectsCalendarDaysAboveCap() {
+        XCTAssertThrowsError(try DigestCommand.parse(["--calendar-days", "367"]))
+        XCTAssertThrowsError(try DigestCommand.parse(["--calendar-days", "999999999"]),
+                             "an unbounded value would overflow-trap the date math")
+    }
+
+    func testDigestAcceptsCalendarDaysAtCap() {
+        XCTAssertNoThrow(try DigestCommand.parse(["--calendar-days", "366"]))
+    }
 }
