@@ -43,7 +43,7 @@ pippin/                     # PippinLib target — all application logic
 pippin-entry/
   Pippin.swift              # @main entry point + subcommand registration
 Tests/PippinTests/          # XCTest suite (1,700+ tests)
-.github/workflows/          # ci.yml (DISABLED), codeql.yml, copilot-ci-fix.yml, release.yml, unicode-scan.yml
+.github/workflows/          # ci.yml (DISABLED), codeql.yml, release.yml, unicode-scan.yml
 ```
 
 ---
@@ -69,7 +69,7 @@ make install      # release build + completions + install to ~/.local/bin/pippin
 
 The GitHub `ci.yml` build/test workflow is **disabled** — CI runs **locally** via `make ci` (fast, native) or `make ci-vm` (full parity in a Tart VM). There is no push-time GitHub gate for build/test/format anymore, so `make ci` is mandatory before every push. The detach-blocking lint (`python3 scripts/lint-detach-blocking.py`) is part of `make ci` and a real gate — don't skip it.
 
-`codeql.yml`, `unicode-scan.yml`, and `release.yml` remain active on GitHub. `copilot-ci-fix.yml` is dormant (its `workflow_run` trigger keys on the disabled CI workflow, so it never fires).
+`codeql.yml`, `unicode-scan.yml`, and `release.yml` remain active on GitHub.
 
 ---
 
