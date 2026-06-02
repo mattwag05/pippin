@@ -92,3 +92,9 @@ In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — strin
 **`// MARK:` inside function bodies is a no-op:** Xcode's jump bar and SwiftFormat only index `// MARK:` at type/file scope. In-function MARKs look like section headers but add nothing — use plain `//` comments for inline section breaks.
 
 **mlx-audio has no `__version__` attribute:** `import mlx_audio; mlx_audio.__version__` raises `AttributeError`. Use `from importlib.metadata import version; version('mlx-audio')` — what `AudioBridge.installedMLXAudioVersion` already does.
+
+**Unbounded user input is the recurring crash class:** `@Option Int` (limit/page-size/calendar-days) → clamp at the bridge boundary; `Int64(Double)` and `n + 1` trap at the extremes; `Calendar.date(byAdding:)` returns nil for huge values. Guard-let, never force-unwrap a user-influenced value. See `MessagesDatabase.clampLimit`, `Cursor.resolve`, `JSONValue.intValue`, `parseRange`.
+
+**Fixed-format dates need POSIX + Gregorian:** set `DateFormatter.locale = Locale(identifier: "en_US_POSIX")` and extract components via `Calendar(identifier: .gregorian)` (not `.current`) — a non-Gregorian device calendar (Buddhist/Japanese) otherwise misparses `--since` or renders the wrong era year (2567 for 2024).
+
+**GRDB `row["col"]` TRAPS on NULL:** decode system-DB columns optionally (`row["col"] as T?`) with a fallback. Apple's Voice Memos/Messages DBs store NULLs (e.g. ZPATH for a not-yet-downloaded recording); one NULL row otherwise crashes the whole list.

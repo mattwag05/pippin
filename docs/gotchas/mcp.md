@@ -27,3 +27,7 @@ When the child exits non-zero, stdout contains an `AgentError` JSON (`{"error":{
 ## Optional `warnings` in agent envelope
 
 `AgentOkEnvelope` carries an optional top-level `warnings: [String]?` (omitted when nil/empty). Use `output.printAgent(payload, warnings: [...])` to surface non-fatal advisories alongside the data. Existing consumers reading only `.data` are unaffected.
+
+## ToolRegistry argv must be ArgumentParser-safe
+
+Bind option values as `--flag=value` (`ArgHelpers.option`), and append free-form positionals (search queries, titles) LAST behind a `--` separator (`ArgHelpers.appendPositionalLast`). A value starting with `-` (search body `-19%`, markdown-bullet title `- item`) otherwise trips ArgumentParser and fails the whole tool call. `JSONValue.intValue` clamps out-of-range doubles to nil so a huge `{"limit": 1e19}` can't crash the child.
