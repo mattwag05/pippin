@@ -223,12 +223,9 @@ final class DigestTests: XCTestCase {
             "calendarDays": .int(14),
         ])
         let argv = try tool.buildArgs(args)
-        XCTAssertTrue(argv.contains("--mail-limit"))
-        XCTAssertTrue(argv.contains("10"))
-        XCTAssertTrue(argv.contains("--notes-limit"))
-        XCTAssertTrue(argv.contains("3"))
-        XCTAssertTrue(argv.contains("--calendar-days"))
-        XCTAssertTrue(argv.contains("14"))
+        XCTAssertTrue(argv.contains("--mail-limit=10"))
+        XCTAssertTrue(argv.contains("--notes-limit=3"))
+        XCTAssertTrue(argv.contains("--calendar-days=14"))
         XCTAssertTrue(argv.contains("--format"))
         XCTAssertTrue(argv.contains("agent"))
     }

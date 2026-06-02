@@ -51,15 +51,11 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertEqual(argv[1], "list")
         XCTAssertTrue(argv.contains("--format"))
         XCTAssertTrue(argv.contains("agent"))
-        XCTAssertTrue(argv.contains("--account"))
-        XCTAssertTrue(argv.contains("iCloud"))
-        XCTAssertTrue(argv.contains("--mailbox"))
-        XCTAssertTrue(argv.contains("Work"))
+        XCTAssertTrue(argv.contains("--account=iCloud"))
+        XCTAssertTrue(argv.contains("--mailbox=Work"))
         XCTAssertTrue(argv.contains("--unread"))
-        XCTAssertTrue(argv.contains("--limit"))
-        XCTAssertTrue(argv.contains("5"))
-        XCTAssertTrue(argv.contains("--page"))
-        XCTAssertTrue(argv.contains("2"))
+        XCTAssertTrue(argv.contains("--limit=5"))
+        XCTAssertTrue(argv.contains("--page=2"))
     }
 
     func testBuildArgsForMailListOmitsAbsentFields() throws {
@@ -86,8 +82,7 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertTrue(argvWithId.contains("acct||INBOX||42"))
 
         let argvWithSubject = try tool.buildArgs(.object(["subject": .string("Hello")]))
-        XCTAssertTrue(argvWithSubject.contains("--subject"))
-        XCTAssertTrue(argvWithSubject.contains("Hello"))
+        XCTAssertTrue(argvWithSubject.contains("--subject=Hello"))
 
         XCTAssertThrowsError(try tool.buildArgs(.object([:])))
     }
@@ -117,8 +112,7 @@ final class ToolRegistryTests: XCTestCase {
             "messageId": .string("acct||INBOX||42"),
             "saveDir": .string("/tmp/out"),
         ]))
-        XCTAssertTrue(argv.contains("--save-dir"))
-        XCTAssertTrue(argv.contains("/tmp/out"))
+        XCTAssertTrue(argv.contains("--save-dir=/tmp/out"))
         XCTAssertFalse(argv.contains("--save-to-cache"))
     }
 
@@ -132,10 +126,8 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertEqual(argv[0], "reminders")
         XCTAssertEqual(argv[1], "create")
         XCTAssertTrue(argv.contains("Buy milk"))
-        XCTAssertTrue(argv.contains("--due"))
-        XCTAssertTrue(argv.contains("2026-04-15"))
-        XCTAssertTrue(argv.contains("--priority"))
-        XCTAssertTrue(argv.contains("high"))
+        XCTAssertTrue(argv.contains("--due=2026-04-15"))
+        XCTAssertTrue(argv.contains("--priority=high"))
     }
 
     func testEmptySchemaToolsProduceSimpleArgv() throws {
@@ -226,10 +218,8 @@ final class ToolRegistryTests: XCTestCase {
             "dryRun": .bool(true),
         ]))
         XCTAssertEqual(Array(argv.prefix(3)), ["memos", "capture", "--to-reminders"])
-        XCTAssertTrue(argv.contains("--memo"))
-        XCTAssertTrue(argv.contains("abc123"))
-        XCTAssertTrue(argv.contains("--list"))
-        XCTAssertTrue(argv.contains("Work"))
+        XCTAssertTrue(argv.contains("--memo=abc123"))
+        XCTAssertTrue(argv.contains("--list=Work"))
         XCTAssertTrue(argv.contains("--dry-run"))
         XCTAssertTrue(argv.contains("--format"))
         XCTAssertTrue(argv.contains("agent"))
@@ -281,10 +271,8 @@ final class ToolRegistryTests: XCTestCase {
         ]))
         XCTAssertEqual(argv[0], "messages")
         XCTAssertEqual(argv[1], "list")
-        XCTAssertTrue(argv.contains("--since-hours"))
-        XCTAssertTrue(argv.contains("24"))
-        XCTAssertTrue(argv.contains("--limit"))
-        XCTAssertTrue(argv.contains("10"))
+        XCTAssertTrue(argv.contains("--since-hours=24"))
+        XCTAssertTrue(argv.contains("--limit=10"))
         XCTAssertTrue(argv.contains("--format"))
         XCTAssertTrue(argv.contains("agent"))
     }
@@ -317,10 +305,8 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertEqual(argv[1], "send")
         XCTAssertTrue(argv.contains("--draft"), "MCP tool must always pass --draft")
         XCTAssertFalse(argv.contains("--autonomous"), "MCP tool must never pass --autonomous")
-        XCTAssertTrue(argv.contains("--to"))
-        XCTAssertTrue(argv.contains("+15551234567"))
-        XCTAssertTrue(argv.contains("--body"))
-        XCTAssertTrue(argv.contains("hi there"))
+        XCTAssertTrue(argv.contains("--to=+15551234567"))
+        XCTAssertTrue(argv.contains("--body=hi there"))
 
         XCTAssertThrowsError(try tool.buildArgs(.object(["to": .string("+1555")]))) { error in
             guard case MCPToolArgError.missingRequired("body") = error else {
@@ -379,7 +365,35 @@ final class ToolRegistryTests: XCTestCase {
             "timeout": .int(60),
         ]))
         XCTAssertTrue(argv.contains("abc"))
-        XCTAssertTrue(argv.contains("--timeout"))
-        XCTAssertTrue(argv.contains("60"))
+        XCTAssertTrue(argv.contains("--timeout=60"))
+    }
+
+    // MARK: - Option values are bound with `=` (flag-confusion guard)
+
+    //
+    // Regression: option values were emitted as two argv tokens ["--flag",
+    // value]. A value starting with "-" (an MCP client searching for "-19%", or
+    // a note/reminder title that's a markdown bullet "- item") was then misparsed
+    // by ArgumentParser as a stray flag, failing the whole tool call.
+
+    func testArgHelpersOptionBindsValueWithEquals() {
+        XCTAssertEqual(ArgHelpers.option("--body", "-x"), "--body=-x")
+        XCTAssertEqual(ArgHelpers.option("--title", "- bullet item"), "--title=- bullet item")
+    }
+
+    func testDashPrefixedOptionValueIsSingleEqualsToken() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_list"))
+        let argv = try tool.buildArgs(.object(["account": .string("-weird")]))
+        XCTAssertTrue(argv.contains("--account=-weird"),
+                      "dash-prefixed value must bind with = so ArgumentParser can't read it as a flag")
+        XCTAssertFalse(argv.contains("-weird"), "value must not appear as a bare argv token")
+        XCTAssertFalse(argv.contains("--account"), "flag must not appear as a separate token")
+    }
+
+    func testRequiredDashPrefixedOptionValueIsBound() throws {
+        // calendar_search --query is a required option; a "-"-leading query must bind.
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "calendar_search"))
+        let argv = try tool.buildArgs(.object(["query": .string("-quarterly review")]))
+        XCTAssertTrue(argv.contains("--query=-quarterly review"))
     }
 }

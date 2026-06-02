@@ -74,12 +74,22 @@ enum ArgHelpers {
         bool(args, key) == true ? [flagName] : []
     }
 
+    /// Bind an option and its value as a single `--flag=value` token. The `=`
+    /// form is load-bearing: a value supplied by an MCP client (e.g. a search
+    /// body, or a note/reminder title starting with "-" like a markdown bullet)
+    /// would otherwise be misparsed by ArgumentParser as a stray flag, failing
+    /// the whole tool call. Process argv is not shell-split, so spaces/quotes in
+    /// `value` are preserved verbatim.
+    static func option(_ flagName: String, _ value: String) -> String {
+        "\(flagName)=\(value)"
+    }
+
     static func optionIfString(
         _ args: JSONValue?,
         _ key: String,
         flagName: String
     ) -> [String] {
-        if let value = string(args, key) { return [flagName, value] }
+        if let value = string(args, key) { return [option(flagName, value)] }
         return []
     }
 
@@ -88,7 +98,7 @@ enum ArgHelpers {
         _ key: String,
         flagName: String
     ) -> [String] {
-        if let value = int(args, key) { return [flagName, String(value)] }
+        if let value = int(args, key) { return [option(flagName, String(value))] }
         return []
     }
 }
@@ -224,7 +234,7 @@ enum MCPToolRegistry {
                 if let id = ArgHelpers.string(args, "messageId") {
                     argv.append(id)
                 } else if let subject = ArgHelpers.string(args, "subject") {
-                    argv += ["--subject", subject]
+                    argv.append(ArgHelpers.option("--subject", subject))
                 } else {
                     throw MCPToolArgError.missingRequired("messageId or subject")
                 }
@@ -246,7 +256,7 @@ enum MCPToolRegistry {
                 let id = try ArgHelpers.requiredString(args, "messageId")
                 argv.append(id)
                 if let dir = ArgHelpers.string(args, "saveDir") {
-                    argv += ["--save-dir", dir]
+                    argv.append(ArgHelpers.option("--save-dir", dir))
                 } else {
                     argv.append("--save-to-cache")
                 }
@@ -358,7 +368,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "search")
-                try argv += ["--query", ArgHelpers.requiredString(args, "query")]
+                try argv.append(ArgHelpers.option("--query", ArgHelpers.requiredString(args, "query")))
                 argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
                 argv += ArgHelpers.optionIfString(args, "to", flagName: "--to")
                 argv += ArgHelpers.optionIfString(args, "calendarName", flagName: "--calendar-name")
@@ -385,8 +395,8 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "create")
-                try argv += ["--title", ArgHelpers.requiredString(args, "title")]
-                try argv += ["--start", ArgHelpers.requiredString(args, "start")]
+                try argv.append(ArgHelpers.option("--title", ArgHelpers.requiredString(args, "title")))
+                try argv.append(ArgHelpers.option("--start", ArgHelpers.requiredString(args, "start")))
                 argv += ArgHelpers.optionIfString(args, "end", flagName: "--end")
                 argv += ArgHelpers.optionIfString(args, "calendar", flagName: "--calendar")
                 argv += ArgHelpers.optionIfString(args, "location", flagName: "--location")
@@ -659,8 +669,8 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("messages", "send")
-                try argv += ["--to", ArgHelpers.requiredString(args, "to")]
-                try argv += ["--body", ArgHelpers.requiredString(args, "body")]
+                try argv.append(ArgHelpers.option("--to", ArgHelpers.requiredString(args, "to")))
+                try argv.append(ArgHelpers.option("--body", ArgHelpers.requiredString(args, "body")))
                 argv += ["--draft"]
                 return argv
             }
@@ -713,7 +723,7 @@ enum MCPToolRegistry {
             buildArgs: { args in
                 var argv = pippinArgv("memos", "export")
                 try ArgHelpers.appendIDOrAll(args, into: &argv)
-                try argv += ["--output", ArgHelpers.requiredString(args, "output")]
+                try argv.append(ArgHelpers.option("--output", ArgHelpers.requiredString(args, "output")))
                 argv += ArgHelpers.flagIfTrue(args, "transcribe", flagName: "--transcribe")
                 argv += ArgHelpers.optionIfString(args, "sidecarFormat", flagName: "--sidecar-format")
                 argv += ArgHelpers.flagIfTrue(args, "forceTranscribe", flagName: "--force-transcribe")
