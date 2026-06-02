@@ -14,6 +14,8 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 make build          # xcrun --sdk macosx swift build -c release
 make test           # xcrun --sdk macosx swift test (1,600+ tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
+make ci             # full CI gates natively (build + test + swiftformat + detach-lint) — fast
+make ci-vm          # full CI gates in an isolated ephemeral macOS VM (Tart) — see Local CI
 make install        # build + copy to ~/.local/bin/pippin + install zsh completions
 make release        # build + copy release binary to .build/release-artifacts/
 make tarball        # release + tar.gz artifact
@@ -110,9 +112,20 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 
 ## CI
 
-- `copilot-ci-fix.yml` — `workflow_run` trigger fires when CI fails on `main`, files an issue, assigns to `copilot`. Copilot opens a PR with the fix.
+**The GitHub `ci.yml` workflow is DISABLED** (`gh workflow disable ci.yml`, 2026-06-01) — we run CI locally instead of on slow GitHub-hosted `macos-15` runners. CI is now `make ci-vm` (full parity in an isolated ephemeral macOS VM) or `make ci` (fast, native). See **Local CI** below. Re-enable with `gh workflow enable ci.yml` if needed. CodeQL / unicode-scan / release workflows remain active.
+
+- `copilot-ci-fix.yml` — `workflow_run` trigger fires when CI fails on `main`, files an issue, assigns to `copilot`. Copilot opens a PR with the fix. (Dormant while `ci.yml` is disabled — it never fires.)
 - `copilot-setup-steps.yml` — Xcode/SwiftFormat/deps for the Copilot coding agent.
 - Workflow pinning, swiftformat traps, and other CI/build gotchas: [docs/gotchas/build.md](docs/gotchas/build.md).
+
+## Local CI (Tart VM — replaces GitHub-hosted runners)
+
+`make ci-vm` runs the `ci.yml` gates inside an ephemeral, isolated macOS VM on Apple Silicon — zero GitHub-hosted minutes, no listening self-hosted runner (so this public repo is never exposed to forked-PR code execution). Full guide: [docs/local-ci.md](docs/local-ci.md).
+
+- **What it does:** `scripts/ci-vm.sh` clones a fresh VM from the `pippin-ci-base` image (Cirrus Labs `macos-sequoia-xcode`, ~90 GB, **shared with SwiftClaw**), rsyncs the working tree in, runs `swift build`/`swift test` + swiftformat + the detach-blocking lint, then destroys the VM.
+- **One-time setup:** `brew install cirruslabs/cli/tart hudochenkov/sshpass/sshpass` then `tart clone ghcr.io/cirruslabs/macos-sequoia-xcode:latest pippin-ci-base`.
+- **`make ci`** runs the same gates natively (no VM) for fast pre-push feedback.
+- Gotchas (Homebrew PATH, swiftformat `--lint` paths, ssh `MaxAuthTries`) are baked into `scripts/ci-vm.sh` and documented in [docs/local-ci.md](docs/local-ci.md) / [docs/gotchas/build.md](docs/gotchas/build.md).
 
 ## CodeQL
 
