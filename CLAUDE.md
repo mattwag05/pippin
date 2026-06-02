@@ -8,6 +8,19 @@ Homebrew tap: `mattwag05/tap` — formula at `/opt/homebrew/Library/Taps/mattwag
 
 **CLAUDE.md auto-commit (pippin-only carve-out):** edits to this file (`CLAUDE.md`) are pre-authorized for autonomous commit + push. Don't ask before committing them — overrides the global "only commit when explicitly asked" rule for this single file. Keeps session learnings from stranding locally.
 
+## Onboarding — Knowledge Graph (`graphify-out/`)
+
+A queryable knowledge graph of the whole repo lives in [`graphify-out/`](graphify-out/) (committed map; built with [graphify](https://github.com/iruletheworld/graphify)). New here? Start with [`graphify-out/GRAPH_REPORT.md`](graphify-out/GRAPH_REPORT.md) (god nodes, community map, suggested questions), open `graphify-out/graph.html` for the interactive view, or query the graph instead of grepping:
+
+```bash
+graphify query "How does an MCP tool call reach a bridge?"   # BFS over graph.json
+graphify path "McpServerCommand" "MailBridge"                # shortest path between two concepts
+graphify explain "DetachBlocking"                            # plain-language node + neighbors
+graphify update .                                            # refresh AST nodes after code changes (no LLM)
+```
+
+4202 nodes / 6668 edges / 247 communities; AST (free, local) for Swift + agent-extracted semantic edges for docs/rationale. `/graphify` is registered for **Claude Code, Codex, OpenCode, Pi, Hermes, and OpenClaw** — on a fresh machine, run `graphify install --platform <claude|codex|opencode|pi|hermes|claw>` to wire it up, then rebuild with `/graphify .` (or `graphify update .` for code-only refreshes).
+
 ## Commands
 
 ```bash
@@ -190,6 +203,7 @@ bd close <id>         # Complete work
 ### Operating principles (learned the hard way)
 
 - **Verify "stale-open" issues against current code before implementing.** Many filed bugs were already fixed but never closed (mail_list/activity MCP timeouts, doctor latency probes, AIProvider MCP timeout, Voice Memos batch cap, Notes timedOut surfacing). Grep/read the code first and close-as-done if already implemented — don't re-build it.
+- **Broad "find bugs in area X" audits now mostly surface false-positives or documented-intended behavior** — this codebase is mature. Verify EACH finding against the actual code AND the `--help`/option text before acting (e.g. `contacts edit --email` "data loss" is the documented "replaces all"). Real bugs come from direct reads of a specific mechanism + an empirical binary test, not broad sweeps.
 - **Disable `export.auto` and `export.git-add` in CI/worktree setups.** The beads pre-commit hook (`prepare-commit-msg`) runs `bd` auto-export with `export.git-add=true`, which silently stages a root-level `/issues.jsonl` *in addition to* the canonical `.beads/issues.jsonl` that the hook also writes. Every commit picked up the stray root file until caught. Fix: `bd config set export.auto false` in each worktree (and main) — it's written to `.beads/config.yaml` so it ships with the repo. If you need a fresh JSONL snapshot, run `bd export -o .beads/issues.jsonl` manually.
 - **`export.path` resolves relative to `.beads/`, not repo root.** Setting `export.path=.beads/issues.jsonl` actually writes to `.beads/.beads/issues.jsonl` (and silently fails when the parent dir doesn't exist). The default `issues.jsonl` is correct — leave it alone; use `export.auto=false` to gate the hook.
 - **Worktrees have their own `.beads/` state.** `bd update --claim` / `bd close` run in the main repo do NOT propagate to a worktree's `.beads/issues.jsonl` until a commit or manual export. Run `bd` commands from whichever repo's history the change should land in. The worktree's bd database can diverge from main — it's not a bug, it's how bd worktrees work.

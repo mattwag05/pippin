@@ -58,3 +58,5 @@ GitHub `ci.yml` is disabled; CI runs locally via `make ci-vm` (Tart VM) or `make
 1. **Homebrew missing in the VM.** Non-interactive ssh skips `~/.zprofile` → minimal `PATH` without `/opt/homebrew/bin`, so `brew`/`swiftformat` aren't found. The script `export`s the Homebrew path in the remote command.
 2. **SwiftFormat `--lint` path parsing.** `swiftformat --lint pippin` (no trailing slash) errors `--lint argument does not expect a value` on SwiftFormat 0.61. Use trailing slashes: `pippin/ pippin-entry/ Tests/`.
 3. **ssh `MaxAuthTries`.** sshpass offers agent keys first and trips the VM sshd ("Too many authentication failures"). Force password-only auth: `-o PreferredAuthentications=password -o PubkeyAuthentication=no -o IdentitiesOnly=yes`.
+
+**SourceKit "no member" diagnostics go stale:** right after you add a new symbol (a helper, a static func), SourceKit may report `Type 'X' has no member 'Y'` while `swift build`/`swift test` compile and pass fine. Trust the build, not the in-editor diagnostic — it catches up after a reindex.
