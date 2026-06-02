@@ -394,8 +394,9 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 
 ```bash
 make build      # Release build
-make test       # Run tests (1,600+ tests, 0 failures)
+make test       # Run tests (1,700+ tests, 0 failures)
 make lint       # swiftformat lint
+make ci         # Full local gate: build + test + swiftformat + detach-lint
 make install    # Build + install to ~/.local/bin
 ```
 

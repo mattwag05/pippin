@@ -7,23 +7,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.23.0] - 2026-05-19
-
-### Added
-
-- [feat] MailBridge cross-account timeout scaling (`listMessages`, `listActivity`, `searchMessages`). When no `--account` filter is set (cross-account scan across all configured accounts), the ScriptRunner hard cap is auto-increased so commands no longer hard-timeout before JXA finishes: `list` 10s→60s, `list --preview` 50s→100s, `activity` 50s→75s (115s with preview), `search` 30s→50s, `search --body` 45s→95s. Single-account calls are unaffected. Closes pippin-j3g.
-
-### Fixed
-
-- [bug] `pippin mail list` (no `--account`) no longer hard-times out on multi-account setups — cross-account INBOX scan across 5+ accounts now gets 60s (was 10s). Partial results via the 22s soft timeout surface quickly; full scan finishes within the hard cap. Closes pippin-j3g.
-- [bug] `pippin mail search <query> --body` (no `--account`/`--mailbox`) no longer hard-times out — cross-account body search now gets 95s (was 30s). Searches across 5 accounts × ~30 mailboxes with per-message IMAP body fetches complete successfully.
-- [bug] `pippin mail activity` (no `--account`) no longer hard-times out — cross-account activity scan now gets 75s (was 50s), 115s with preview (was 90s). Scans 5 accounts × INBOX + Sent within the cap.
-
-### Changed
-
-- [refactor] `MailBridge.listMessages`, `listActivity`, `searchMessages` now auto-detect cross-account via `crossAccount = (account == nil)` (and `&& (mailbox == nil)` for search) and apply the appropriate timeout multiplier. No API surface change — all existing callers work unchanged.
-
-### [Unreleased]
+## [0.24.0] - 2026-06-02
 
 ### Added
 
@@ -85,6 +69,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [docs] `docs/gotchas/swift.md` — new "Cooperative-thread blocking — use `detachBlocking`" section covering where the blocking lives, the mechanical fix, and the two recurring traps (mutable struct self-capture, captured-var test counters).
 - [docs] Toolchain/CI/dependency drift cleanup: README Swift toolchain floor aligned to 6.0 (matches `Package.swift`); `copilot-setup-steps.yml` `setup-xcode` pin normalized to match ci/codeql/release (with a note on why Forgejo CI omitted it); the `.upToNextMinor` + `Package.resolved` revision-pin dependency policy documented in `Package.swift`. Closes pippin-7gb, pippin-n7q, pippin-9vh.
 - [docs] `docs/local-ci.md` + CLAUDE.md document the Tart `make ci-vm` / native `make ci` flow and that the GitHub `ci.yml` is disabled.
+
+---
+
+## [0.23.0] - 2026-05-19
+
+### Added
+
+- [feat] MailBridge cross-account timeout scaling (`listMessages`, `listActivity`, `searchMessages`). When no `--account` filter is set (cross-account scan across all configured accounts), the ScriptRunner hard cap is auto-increased so commands no longer hard-timeout before JXA finishes: `list` 10s→60s, `list --preview` 50s→100s, `activity` 50s→75s (115s with preview), `search` 30s→50s, `search --body` 45s→95s. Single-account calls are unaffected. Closes pippin-j3g.
+
+### Fixed
+
+- [bug] `pippin mail list` (no `--account`) no longer hard-times out on multi-account setups — cross-account INBOX scan across 5+ accounts now gets 60s (was 10s). Partial results via the 22s soft timeout surface quickly; full scan finishes within the hard cap. Closes pippin-j3g.
+- [bug] `pippin mail search <query> --body` (no `--account`/`--mailbox`) no longer hard-times out — cross-account body search now gets 95s (was 30s). Searches across 5 accounts × ~30 mailboxes with per-message IMAP body fetches complete successfully.
+- [bug] `pippin mail activity` (no `--account`) no longer hard-times out — cross-account activity scan now gets 75s (was 50s), 115s with preview (was 90s). Scans 5 accounts × INBOX + Sent within the cap.
+
+### Changed
+
+- [refactor] `MailBridge.listMessages`, `listActivity`, `searchMessages` now auto-detect cross-account via `crossAccount = (account == nil)` (and `&& (mailbox == nil)` for search) and apply the appropriate timeout multiplier. No API surface change — all existing callers work unchanged.
 
 ---
 
@@ -604,7 +606,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/mattwag05/pippin/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/mattwag05/pippin/compare/v0.22.0...v0.23.0
 [0.20.2]: https://github.com/mattwag05/pippin/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/mattwag05/pippin/compare/v0.20.0...v0.20.1
