@@ -25,7 +25,7 @@ graphify update .                                            # refresh AST nodes
 
 ```bash
 make build          # xcrun --sdk macosx swift build -c release
-make test           # xcrun --sdk macosx swift test (1,600+ tests, 0 failures expected)
+make test           # xcrun --sdk macosx swift test (1,700+ tests, 0 failures expected)
 make lint           # swiftformat --lint on all sources
 make ci             # full CI gates natively (build + test + swiftformat + detach-lint) — fast
 make ci-vm          # full CI gates in an isolated ephemeral macOS VM (Tart) — see Local CI
@@ -56,7 +56,7 @@ make version        # print current version from Version.swift
 | `pippin/BatchBudget.swift` | `BatchBudget.forCurrentContext()` — 50s wall-clock cap under MCP, unlimited in CLI. Used by `memos export/transcribe --all` for partial-results-with-warning instead of mid-batch SIGKILL |
 | `pippin/SessionState.swift` | REPL session state at `~/.config/pippin/session.json` — active account, last-used IDs, command history |
 | `pippin-entry/` | Thin `@main` executable target |
-| `Tests/PippinTests/` | XCTest suite (1,600+ tests). Integration tests in `CLIIntegrationTests.swift` shell out to the built binary |
+| `Tests/PippinTests/` | XCTest suite (1,700+ tests). Integration tests in `CLIIntegrationTests.swift` shell out to the built binary |
 | `.github/workflows/` | CI (`ci.yml`), advanced CodeQL (`codeql.yml`), copilot auto-fix (`copilot-ci-fix.yml`), unicode safety scan, release |
 
 ## AI Provider Configuration
