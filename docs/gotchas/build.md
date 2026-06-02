@@ -26,6 +26,20 @@ sudo xcode-select -s /Applications/Xcode.app
 
 `make test` and `make lint` inherit the same defect.
 
+## Verifying a flaky-test fix
+
+To confirm a probabilistic test is no longer flaky, build the bundle once and loop with `--skip-build` (avoids recompiling all ~1,700 tests each run):
+
+```bash
+xcrun --sdk macosx swift build --build-tests
+for i in $(seq 1 100); do
+  xcrun --sdk macosx swift test --skip-build --filter 'JobStoreTests/testJobIdGeneratesUniqueValues' \
+    2>&1 | grep -q "with 0 failures" || echo "run $i: FAIL"
+done
+```
+
+A single green `make ci` run does NOT prove a flake is fixed — a ~0.5% flake (e.g. the old `JobId` 20-bit-suffix birthday collision, pippin-84q) passes most runs. Loop it.
+
 ## Git worktree lifecycle
 
 - **Cleanup order:** `git worktree remove <path>` first, then `git branch -d <branch>`. Reverse order fails — branch can't be deleted while worktree is using it.
