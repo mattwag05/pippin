@@ -151,6 +151,46 @@ final class CursorTests: XCTestCase {
         XCTAssertNil(page.nextCursor)
     }
 
+    // MARK: - Overflow / huge-input guards
+
+    //
+    // Regression: `--page-size` is unbounded and the cursor offset is decoded
+    // from a user token, so `safeOffset + pageSize` (paginate) and
+    // `offset + pageSize` (pushdown) could overflow-trap. resolve() now caps
+    // pageSize and the additions are overflow-safe.
+
+    func testResolveCapsHugePageSize() throws {
+        let opts = try PaginationOptions.parse(["--page-size", "\(Int.max)"])
+        let (offset, size) = try Pagination.resolve(opts, defaultPageSize: 50, filterHash: "h")
+        XCTAssertEqual(offset, 0)
+        XCTAssertEqual(size, Pagination.maxPageSize, "huge page size is capped, not passed through")
+    }
+
+    func testResolveLeavesReasonablePageSizeUnchanged() throws {
+        let opts = try PaginationOptions.parse(["--page-size", "200"])
+        let (_, size) = try Pagination.resolve(opts, defaultPageSize: 50, filterHash: "h")
+        XCTAssertEqual(size, 200, "values under the cap pass through unchanged")
+    }
+
+    func testPaginateHugePageSizeWithOffsetDoesNotTrap() throws {
+        // safeOffset + pageSize would overflow at Int.max; must return the
+        // remainder instead of crashing.
+        let all = Array(1 ... 10)
+        let page = try Pagination.paginate(all: all, offset: 3, pageSize: Int.max, filterHash: "h")
+        XCTAssertEqual(page.items, [4, 5, 6, 7, 8, 9, 10])
+        XCTAssertNil(page.nextCursor)
+    }
+
+    func testPushdownHugeOffsetDoesNotTrapAndDropsCursor() throws {
+        // A crafted cursor offset near Int.max + pageSize overflows; drop the
+        // next cursor rather than trap.
+        let page = try Pagination.pageFromPushdown(
+            fetched: [1, 2, 3, 4], offset: Int.max, pageSize: 3, filterHash: "h"
+        )
+        XCTAssertEqual(page.items, [1, 2, 3])
+        XCTAssertNil(page.nextCursor, "offset+pageSize overflow → no next cursor instead of a crash")
+    }
+
     // MARK: - pageFromPushdown
 
     func testPushdownHasMore() throws {
