@@ -41,3 +41,11 @@ archive/**/.build/
 # Python bytecode (scripts/lint-detach-blocking.py)
 __pycache__/
 *.pyc
+
+# Graphify knowledge graph (onboarding map). Track graph.json / graph.html / GRAPH_REPORT.md
+# so a fresh checkout starts with the map; ignore machine-local + volatile bits.
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/manifest.json
+graphify-out/cost.json
+graphify-out/cache/
