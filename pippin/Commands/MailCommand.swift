@@ -878,7 +878,7 @@ public struct MailCommand: AsyncParsableCommand {
             let effectiveSaveDir = try saveToCache
                 ? Attachments.resolveCacheDir(for: messageId)
                 : saveDir
-            let msgId = self.messageId
+            let msgId = messageId
             // listAttachments spawns a blocking osascript subprocess; hop off the pool.
             let attachments = try await detachBlocking { try MailBridge.listAttachments(compoundId: msgId, saveDir: effectiveSaveDir) }
             if output.isJSON {
