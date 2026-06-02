@@ -21,6 +21,16 @@ public struct OllamaEmbeddingProvider: EmbeddingProvider {
         self.model = model
     }
 
+    /// Request timeout policy for embedding calls. Single source of truth so
+    /// both `embed` and `embedBatch` stay MCP-safe (see callers for rationale):
+    /// - Under MCP (`PIPPIN_MCP=1`) every call uses the MCP-aware budget
+    ///   (`aiRequestTimeoutSeconds()` = 50s), well under the 60s child cap.
+    /// - In CLI, a single embed gets 120s; a batch (potentially large) gets 300s.
+    static func requestTimeout(batch: Bool) -> TimeInterval {
+        if isMCPContext() { return aiRequestTimeoutSeconds() }
+        return batch ? 300 : aiRequestTimeoutSeconds()
+    }
+
     public func embed(text: String) throws -> [Float] {
         guard let url = URL(string: "\(baseURL)/api/embed") else {
             throw MailAIError.embeddingFailed("Invalid Ollama URL: \(baseURL)")
@@ -31,13 +41,17 @@ public struct OllamaEmbeddingProvider: EmbeddingProvider {
             "input": text,
         ]
 
-        var request = URLRequest(url: url, timeoutInterval: 120)
+        // MCP-aware budget (50s under PIPPIN_MCP=1) keeps a slow embedding
+        // server from blowing the 60s child cap and being SIGKILLed — see
+        // requestTimeout(batch:). (Was a hardcoded 120s that ignored MCP.)
+        let timeout = Self.requestTimeout(batch: false)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         // Uses sendSynchronousRequest() from AIProvider/AIProvider.swift (same PippinLib module)
-        let (data, httpResponse) = try sendSynchronousRequest(request)
+        let (data, httpResponse) = try sendSynchronousRequest(request, waitTimeoutSeconds: Int(timeout) + 5)
 
         guard httpResponse.statusCode == 200 else {
             let detail = String(data: data, encoding: .utf8) ?? "(no body)"
@@ -69,12 +83,16 @@ public struct OllamaEmbeddingProvider: EmbeddingProvider {
             "input": texts,
         ]
 
-        var request = URLRequest(url: url, timeoutInterval: 300)
+        // CLI keeps a generous 300s budget for large batches; under MCP this
+        // clamps to the 50s MCP-aware budget so the call can't be SIGKILLed past
+        // the 60s child cap. (Was an unconditional 300s that ignored MCP.)
+        let timeout = Self.requestTimeout(batch: true)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, httpResponse) = try sendSynchronousRequest(request)
+        let (data, httpResponse) = try sendSynchronousRequest(request, waitTimeoutSeconds: Int(timeout) + 5)
 
         guard httpResponse.statusCode == 200 else {
             let detail = String(data: data, encoding: .utf8) ?? "(no body)"
