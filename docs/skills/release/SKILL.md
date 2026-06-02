@@ -59,7 +59,7 @@ The annotated tag (`-a`) is **required** — bare `git tag vX.Y.Z` fails with "n
 git push origin main --tags
 ```
 
-Wait for CI to go green on GitHub before continuing — release artifacts depend on the tag being live.
+**Before tagging**, run `make ci` (or `make ci-vm`) locally and confirm green — the GitHub `ci.yml` build/test workflow is **disabled**, so nothing on push catches build/test failures. After the tag push, the still-active **`release.yml`** workflow builds the release artifacts from the tag; wait for *that* workflow (not `ci.yml`) to finish before continuing.
 
 ### 7. Update the Homebrew tap formula
 
@@ -103,7 +103,7 @@ The claude-plugins `pippin` plugin's `.mcp.json` uses bare `pippin`, so the shad
 
 ## Failure recovery
 
-- **CI red after push**: the tag is live but artifacts are stale. Fix forward (don't delete the tag — Homebrew users may have already pulled). Cut a patch release.
+- **`release.yml` red after push**: the tag is live but artifacts are stale. Fix forward (don't delete the tag — Homebrew users may have already pulled). Cut a patch release.
 - **Tap push rejected**: someone else updated the tap. `cd /opt/homebrew/Library/Taps/mattwag05/homebrew-tap && git pull --rebase && git push`.
 - **`brew upgrade` says "already up to date"**: `brew update` first, then retry.
 - **`pippin --version` still shows old version**: see step 10 — almost always the dual-install shadow.

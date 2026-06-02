@@ -77,4 +77,4 @@ Pattern (used by `MailBridge.buildSearchScript`, `NotesBridge.buildSearchScript`
 
 In Swift the bridge returns `Outcome<T> { results, timedOut }` (mail uses a domain-specific `SearchOutcome { messages, timedOut }`; notes uses a generic `Outcome<T>`). Commands surface the flag via `output.emit(payload, timedOut:, timedOutHint:) { renderText() }` — that helper writes a stderr `Warning:`, threads `[hint]` into the agent envelope's `warnings: [...]`, and appends a `(partial results — ...)` trailer in text mode.
 
-Defaults: 22s soft cap leaves ~8s headroom under the 30s ScriptRunner timeout and well under the 60s MCP `runChild` failsafe. Don't raise above ~50s without lowering the runChild cap to match.
+Defaults: the 22s soft cap (`SoftTimeout.defaultMs`) fires well before the caller-supplied ScriptRunner hard cap and the 60s MCP `runChild` failsafe (under MCP, `MailBridge.clampHardTimeout` pins hard caps to 55s). ScriptRunner's `timeoutSeconds` is caller-supplied, not a fixed constant — see `MailBridge.swift` for the per-method values. Don't raise a hard cap above the runChild failsafe without lowering it to match.

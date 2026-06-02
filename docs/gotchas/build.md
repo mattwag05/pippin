@@ -1,6 +1,6 @@
 # Build / CI / Worktree Gotchas
 
-Load when CI is failing, `swiftformat`/`swiftlint` is misbehaving, `swift test` won't resolve, or you're juggling worktrees.
+Load when CI is failing, `swiftformat` is misbehaving, `swift test` won't resolve, or you're juggling worktrees.
 
 ## SwiftFormat
 
@@ -13,16 +13,6 @@ cd /Users/matthewwagner/Projects/pippin && /opt/homebrew/bin/swiftformat --lint 
 Running from a worktree or with absolute paths skips the `.swiftformat` config and reports "0 eligible files".
 
 **Common CI failures:** trailing spaces in multiline string literals, `&&` vs `,` in conditions, modifier ordering (`public nonisolated(unsafe) static` not `public static nonisolated(unsafe)`).
-
-## SwiftLint in worktrees
-
-`.swiftlint.yml` only exists in the main worktree. In a linked worktree, run:
-
-```bash
-swiftlint lint --config /Users/matthewwagner/Projects/pippin/.swiftlint.yml ...
-```
-
-(absolute path required).
 
 ## `swift test` / XCTest module missing
 
@@ -44,12 +34,12 @@ sudo xcode-select -s /Applications/Xcode.app
 ## Beads in worktrees
 
 - The `.beads/` dir in a linked worktree is empty (synced export, not the live DB). Run all `bd` commands from the main repo: `cd /Users/matthewwagner/Projects/pippin && bd ...`.
-- **Beads pre-commit hook re-exports root `issues.jsonl`:** `.beads/hooks/pre-commit` runs `bd hooks run pre-commit` which restages the stray root-level `issues.jsonl` on every commit. `git rm issues.jsonl` is silently reverted. Treat it as cosmetic churn; don't fight it.
+- **Root `issues.jsonl` is gated, not regenerated:** `.beads/config.yaml` sets `export.auto: false` and `export.path: "issues.jsonl"` (which resolves *inside* `.beads/`, so the canonical export is `.beads/issues.jsonl`). The stray repo-root `issues.jsonl` was an accidental early commit; it's gitignored (`/issues.jsonl`) and `git rm --cached issues.jsonl` now sticks (the hook no longer restages it).
 
 ## CI workflow pinning
 
 - GitHub Actions in `.github/workflows/` are pinned to full commit SHAs (not `@v4` tags) for supply-chain security. Update SHAs when upgrading — don't revert to tag syntax.
-- Legacy `.forgejo/workflows/` retained on disk but the Forgejo instance was retired 2026-04-17. Safe to delete when convenient.
+- `.forgejo/workflows/` is an active self-hosted mirror of the CI/release gates (last normalized 2026-06-01). It deliberately omits the Setup-Xcode step (the self-hosted `macos` runner already has Xcode selected). Keep it in parity with `.github/workflows/` when changing gates.
 
 ## Local CI in a macOS VM (`make ci-vm`)
 

@@ -3,6 +3,7 @@
 | Path | Purpose |
 |------|---------|
 | [mcp-server.md](mcp-server.md) | User-facing: wire pippin's MCP server into Claude Code / Claude Desktop. Tool list, wire-up, debugging. |
+| [local-ci.md](local-ci.md) | Running CI locally in an ephemeral macOS VM (`make ci-vm`) now that GitHub `ci.yml` is disabled. |
 | [ROADMAP.md](ROADMAP.md) | Planned features and known bugs. Beads is the source of truth; this is a narrative slice. |
 | [gotchas/](gotchas/) | Hard-won patterns per subsystem — load on demand when editing the relevant area. |
 | [skills/](skills/) | Claude Code skills shipped with the repo. Run `make link-skills` once per clone. |

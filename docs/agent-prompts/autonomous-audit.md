@@ -14,7 +14,7 @@ Before making any changes:
 2. Run `make version` to confirm the current version
 3. Map the bridge modules: `pippin/{Mail,Memos,Calendar,Audio,Contacts,Browser,Reminders,Notes}Bridge/`
 4. Read `pippin/Commands/OutputOptions.swift` and `pippin/Formatting/AgentOutput.swift` to understand the output format contract
-5. Run `make test` to establish a passing baseline (~1648 tests as of v0.22)
+5. Run `make test` to establish a passing baseline (run it for the current count)
 6. Run `make lint` to check formatting baseline
 7. Check for open issues: `bd ready` (if beads is configured; skip if `bd` is not available)
 8. Read `docs/` for any active specs or design documents
@@ -80,7 +80,7 @@ For each issue found, in priority order:
 6. **Test coverage** — add missing tests
 
 After each fix:
-- Run `make test` — all tests must pass (current baseline: ~1648)
+- Run `make test` — all tests must pass (run it for the current count)
 - Run `make lint` — no formatting violations
 - Verify `swift build -c release` succeeds
 
