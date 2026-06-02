@@ -7,7 +7,7 @@ Load when CI is failing, `swiftformat`/`swiftlint` is misbehaving, `swift test` 
 **`swiftformat --lint` needs project root.** Run as:
 
 ```bash
-cd /Users/matthewwagner/Desktop/Projects/pippin && /opt/homebrew/bin/swiftformat --lint pippin/ Tests/
+cd /Users/matthewwagner/Projects/pippin && /opt/homebrew/bin/swiftformat --lint pippin/ Tests/
 ```
 
 Running from a worktree or with absolute paths skips the `.swiftformat` config and reports "0 eligible files".
@@ -43,10 +43,18 @@ sudo xcode-select -s /Applications/Xcode.app
 
 ## Beads in worktrees
 
-- The `.beads/` dir in a linked worktree is empty (synced export, not the live DB). Run all `bd` commands from the main repo: `cd /Users/matthewwagner/Desktop/Projects/pippin && bd ...`.
+- The `.beads/` dir in a linked worktree is empty (synced export, not the live DB). Run all `bd` commands from the main repo: `cd /Users/matthewwagner/Projects/pippin && bd ...`.
 - **Beads pre-commit hook re-exports root `issues.jsonl`:** `.beads/hooks/pre-commit` runs `bd hooks run pre-commit` which restages the stray root-level `issues.jsonl` on every commit. `git rm issues.jsonl` is silently reverted. Treat it as cosmetic churn; don't fight it.
 
 ## CI workflow pinning
 
 - GitHub Actions in `.github/workflows/` are pinned to full commit SHAs (not `@v4` tags) for supply-chain security. Update SHAs when upgrading — don't revert to tag syntax.
 - Legacy `.forgejo/workflows/` retained on disk but the Forgejo instance was retired 2026-04-17. Safe to delete when convenient.
+
+## Local CI in a macOS VM (`make ci-vm`)
+
+GitHub `ci.yml` is disabled; CI runs locally via `make ci-vm` (Tart VM) or `make ci` (native). Full guide: [../local-ci.md](../local-ci.md). Three gotchas, all already handled in `scripts/ci-vm.sh`:
+
+1. **Homebrew missing in the VM.** Non-interactive ssh skips `~/.zprofile` → minimal `PATH` without `/opt/homebrew/bin`, so `brew`/`swiftformat` aren't found. The script `export`s the Homebrew path in the remote command.
+2. **SwiftFormat `--lint` path parsing.** `swiftformat --lint pippin` (no trailing slash) errors `--lint argument does not expect a value` on SwiftFormat 0.61. Use trailing slashes: `pippin/ pippin-entry/ Tests/`.
+3. **ssh `MaxAuthTries`.** sshpass offers agent keys first and trips the VM sshd ("Too many authentication failures"). Force password-only auth: `-o PreferredAuthentications=password -o PubkeyAuthentication=no -o IdentitiesOnly=yes`.
