@@ -199,9 +199,25 @@ final class JobStoreTests: XCTestCase {
     // MARK: - JobId uniqueness
 
     func testJobIdGeneratesUniqueValues() {
-        let ids = (0 ..< 100).map { _ in JobId.generate() }
-        let unique = Set(ids)
-        XCTAssertEqual(unique.count, ids.count, "100 ids should all be unique, got \(unique.count) unique")
+        // JobId = 11-hex millisecond-timestamp prefix + 5-hex (20-bit) random
+        // suffix. Real job spawns are always >1ms apart, so the timestamp prefix
+        // guarantees uniqueness; within a single millisecond uniqueness rides on
+        // the 20-bit suffix (collision ~1-in-1M per pair, by design — see JobId).
+        // Space generations past the 1ms boundary so this asserts the real
+        // guarantee instead of flaking on the rare same-ms suffix birthday
+        // collision (100 same-ms IDs collide ~0.5% of runs — see pippin-84q).
+        var ids: [String] = []
+        for _ in 0 ..< 50 {
+            ids.append(JobId.generate())
+            Thread.sleep(forTimeInterval: 0.0012)
+        }
+        XCTAssertEqual(Set(ids).count, ids.count, "IDs generated >1ms apart must all be unique")
+
+        // Guard against a constant-suffix regression (the spacing alone would
+        // still pass on distinct timestamps). Only fails if all 50 random
+        // 20-bit draws are identical — probability ~0.
+        let suffixes = Set(ids.map { String($0.suffix(5)) })
+        XCTAssertGreaterThan(suffixes.count, 1, "random suffix should vary across IDs")
     }
 
     func testJobIdIsSixteenHexChars() {

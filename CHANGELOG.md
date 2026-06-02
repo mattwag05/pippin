@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.2] - 2026-06-02
+
+### Fixed
+
+- [bug] Make `JobStoreTests.testJobIdGeneratesUniqueValues` deterministic. It generated 100 job IDs within a single millisecond and asserted uniqueness on the 20-bit random suffix, flaking ~0.5% of runs on a birthday collision. The test now spaces generations past the 1 ms boundary (exercising the timestamp prefix that makes real spawns unique) and adds a constant-suffix guard. No change to `JobId.generate()`. Closes pippin-84q.
+
 ## [0.24.1] - 2026-06-02
 
 ### Documentation
@@ -620,7 +626,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.24.1...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.24.2...HEAD
+[0.24.2]: https://github.com/mattwag05/pippin/compare/v0.24.1...v0.24.2
 [0.24.1]: https://github.com/mattwag05/pippin/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/mattwag05/pippin/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/mattwag05/pippin/compare/v0.22.0...v0.23.0
