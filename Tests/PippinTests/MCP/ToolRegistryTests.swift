@@ -396,4 +396,35 @@ final class ToolRegistryTests: XCTestCase {
         let argv = try tool.buildArgs(.object(["query": .string("-quarterly review")]))
         XCTAssertTrue(argv.contains("--query=-quarterly review"))
     }
+
+    // MARK: - Positional values are terminated with `--` (pippin-bhn)
+
+    //
+    // Search queries and reminder titles are passed as POSITIONALS. A value
+    // starting with "-" must sit LAST, right after a "--" separator (with every
+    // option/flag and --format agent before it), or ArgumentParser reads it as a
+    // flag and fails the whole tool call.
+
+    func testPositionalSearchQueryIsTerminatedWithDashDash() throws {
+        for toolName in ["notes_search", "reminders_search", "contacts_search", "messages_search"] {
+            let tool = try XCTUnwrap(MCPToolRegistry.tool(named: toolName))
+            let argv = try tool.buildArgs(.object(["query": .string("-foo")]))
+            XCTAssertEqual(argv.last, "-foo", "\(toolName): query must be the last token")
+            XCTAssertEqual(argv[argv.count - 2], "--", "\(toolName): query must follow a -- separator")
+            let sep = try XCTUnwrap(argv.firstIndex(of: "--"))
+            XCTAssertTrue(argv[..<sep].contains("--format"), "\(toolName): --format must precede --")
+            XCTAssertTrue(argv[..<sep].contains("agent"), "\(toolName): agent must precede --")
+        }
+    }
+
+    func testPositionalReminderTitleIsTerminatedWithDashDash() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "reminders_create"))
+        let argv = try tool.buildArgs(.object([
+            "title": .string("- buy milk"),
+            "due": .string("2026-04-15"),
+        ]))
+        XCTAssertEqual(argv.last, "- buy milk", "title (a markdown bullet) must be the last token")
+        XCTAssertEqual(argv[argv.count - 2], "--")
+        XCTAssertTrue(argv.contains("--due=2026-04-15"), "options still bind before the separator")
+    }
 }

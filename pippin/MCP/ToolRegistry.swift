@@ -101,6 +101,18 @@ enum ArgHelpers {
         if let value = int(args, key) { return [option(flagName, String(value))] }
         return []
     }
+
+    /// Append a free-form positional value LAST, guarded by a `--` separator, so
+    /// a value beginning with "-" (a search query, a markdown-bullet title) is
+    /// read as the positional rather than a stray flag. ArgumentParser treats
+    /// everything after `--` as positional, so EVERY option/flag (including
+    /// `--format agent`) must already be in `argv` before this call. Verified:
+    /// `pippin contacts search --limit=5 --format agent -- -foo` parses, while
+    /// the same query without `--` errors with CommandError.
+    static func appendPositionalLast(_ value: String, into argv: inout [String]) {
+        argv.append("--")
+        argv.append(value)
+    }
 }
 
 // MARK: - Schema builder sugar
@@ -286,7 +298,6 @@ enum MCPToolRegistry {
             buildArgs: { args in
                 var argv = pippinArgv("mail", "search")
                 let query = try ArgHelpers.requiredString(args, "query")
-                argv.append(query)
                 argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
                 argv += ArgHelpers.optionIfString(args, "mailbox", flagName: "--mailbox")
                 argv += ArgHelpers.flagIfTrue(args, "body", flagName: "--body")
@@ -295,6 +306,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "to", flagName: "--to")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 argv += ArgHelpers.flagIfTrue(args, "semantic", flagName: "--semantic")
+                ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
             }
         ),
@@ -469,10 +481,11 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "search")
-                try argv.append(ArgHelpers.requiredString(args, "query"))
+                let query = try ArgHelpers.requiredString(args, "query")
                 argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
                 argv += ArgHelpers.flagIfTrue(args, "completed", flagName: "--completed")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
             }
         ),
@@ -492,12 +505,13 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "create")
-                try argv.append(ArgHelpers.requiredString(args, "title"))
+                let title = try ArgHelpers.requiredString(args, "title")
                 argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
                 argv += ArgHelpers.optionIfString(args, "due", flagName: "--due")
                 argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
                 argv += ArgHelpers.optionIfString(args, "notes", flagName: "--notes")
                 argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
+                ArgHelpers.appendPositionalLast(title, into: &argv)
                 return argv
             }
         ),
@@ -530,9 +544,10 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("contacts", "search")
-                try argv.append(ArgHelpers.requiredString(args, "query"))
+                let query = try ArgHelpers.requiredString(args, "query")
                 argv += ArgHelpers.flagIfTrue(args, "email", flagName: "--email")
                 argv += ArgHelpers.optionIfString(args, "fields", flagName: "--fields")
+                ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
             }
         ),
@@ -579,9 +594,10 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("notes", "search")
-                try argv.append(ArgHelpers.requiredString(args, "query"))
+                let query = try ArgHelpers.requiredString(args, "query")
                 argv += ArgHelpers.optionIfString(args, "folder", flagName: "--folder")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
             }
         ),
@@ -634,9 +650,10 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("messages", "search")
-                try argv.append(ArgHelpers.requiredString(args, "query"))
+                let query = try ArgHelpers.requiredString(args, "query")
                 argv += ArgHelpers.optionIfInt(args, "sinceHours", flagName: "--since-hours")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
             }
         ),
