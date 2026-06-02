@@ -19,7 +19,7 @@ graphify explain "DetachBlocking"                            # plain-language no
 graphify update .                                            # refresh AST nodes after code changes (no LLM)
 ```
 
-4202 nodes / 6668 edges / 247 communities; AST (free, local) for Swift + agent-extracted semantic edges for docs/rationale. `/graphify` is registered for **Claude Code, Codex, OpenCode, Pi, Hermes, and OpenClaw** — on a fresh machine, run `graphify install --platform <claude|codex|opencode|pi|hermes|claw>` to wire it up, then rebuild with `/graphify .` (or `graphify update .` for code-only refreshes).
+~4.8k nodes across ~320 communities; AST (free, local) for Swift + agent-extracted semantic edges for docs/rationale. `graphify update .` re-clusters from the AST and **preserves the committed community labels** in `graphify-out/.graphify_labels.json` (tracked — don't gitignore it). `/graphify` is registered for **Claude Code, Codex, OpenCode, Pi, Hermes, and OpenClaw** — on a fresh machine, run `graphify install --platform <claude|codex|opencode|pi|hermes|claw>` to wire it up, then rebuild with `/graphify .` (or `graphify update .` for code-only refreshes).
 
 ## Commands
 
@@ -45,7 +45,7 @@ make version        # print current version from Version.swift
 | `pippin/{Mail,Memos,Calendar,Reminders,Notes,Contacts,Messages,Audio,Browser}Bridge/` | Per-app bridges. JXA via `Scripting/ScriptRunner.swift` for Mail/Notes/Contacts; EventKit for Calendar/Reminders; GRDB for Memos/Messages |
 | `pippin/MailAIBridge/` | Embeddings, semantic search, triage, prompt-injection scanner — Ollama-backed |
 | `pippin/AIProvider/` | Ollama + Claude backends. `isMCPContext()` and `aiRequestTimeoutSeconds()` shorten budgets to 50s when `PIPPIN_MCP=1` |
-| `pippin/Commands/` | ArgumentParser entry points. REPL (`ShellCommand`), system dashboard (`StatusCommand`), MCP server (`McpServerCommand`), plan-and-execute (`DoCommand`), background jobs (`JobCommand`), parallel dispatch (`BatchCommand`) |
+| `pippin/Commands/` | ArgumentParser entry points. REPL (`ShellCommand`), system dashboard (`StatusCommand`), MCP server (`McpServerCommand`), plan-and-execute (`DoCommand`), background jobs (`JobCommand`), parallel dispatch (`BatchCommand`). **`audio`/`browser` are gated behind `PIPPIN_EXPERIMENTAL=1`** (hidden by default; see `Pippin.swift`) |
 | `pippin/MCP/ToolRegistry.swift` | Single source of truth for the MCP tool surface — adding a tool is one entry here |
 | `pippin/Models/` | DTO structs for each bridge. `Codable, Sendable`. Names: `{Mail,Calendar,Reminder,Note,Contact,Messages,MailAI,Audio,Browser}Models.swift` |
 | `pippin/Templates/` | Built-in summarization + smart-create + extract-actions prompt templates |
@@ -58,6 +58,8 @@ make version        # print current version from Version.swift
 | `pippin-entry/` | Thin `@main` executable target |
 | `Tests/PippinTests/` | XCTest suite (1,700+ tests). Integration tests in `CLIIntegrationTests.swift` shell out to the built binary |
 | `.github/workflows/` | CI (`ci.yml`), advanced CodeQL (`codeql.yml`), copilot auto-fix (`copilot-ci-fix.yml`), unicode safety scan, release |
+
+**Reminders/Calendar flag footgun:** `reminders --list` and `calendar create --calendar` take EventKit **IDs** (from `reminders lists` / `calendar list`), not names. `reminders create`'s title is **positional**. Filter calendar events by name with `--calendar-name` (`--calendar` is an ID). `actions extract --list` and `calendar smart-create`, by contrast, *do* resolve list/calendar names.
 
 ## AI Provider Configuration
 
@@ -139,6 +141,7 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 **The GitHub `ci.yml` workflow is DISABLED** (`gh workflow disable ci.yml`, 2026-06-01) — we run CI locally instead of on slow GitHub-hosted `macos-15` runners. CI is now `make ci-vm` (full parity in an isolated ephemeral macOS VM) or `make ci` (fast, native). See **Local CI** below. Re-enable with `gh workflow enable ci.yml` if needed. CodeQL / unicode-scan / release workflows remain active.
 
 - `copilot-ci-fix.yml` — `workflow_run` trigger fires when CI fails on `main`, files an issue, assigns to `copilot`. Copilot opens a PR with the fix. (Dormant while `ci.yml` is disabled — it never fires.)
+- `.forgejo/workflows/` is an **active self-hosted mirror** of the CI + release gates (runner label `macos`). Keep it in parity with `.github/workflows/` when changing gates — it intentionally omits Setup-Xcode (self-hosted runner has Xcode) but MUST keep the detach-blocking lint.
 - Workflow pinning, swiftformat traps, and other CI/build gotchas: [docs/gotchas/build.md](docs/gotchas/build.md).
 
 ## Local CI (Tart VM — replaces GitHub-hosted runners)
