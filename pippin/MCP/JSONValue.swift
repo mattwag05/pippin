@@ -63,7 +63,15 @@ enum JSONValue: Codable, Equatable, Sendable {
     var intValue: Int64? {
         switch self {
         case let .int(value): return value
-        case let .double(value): return Int64(value)
+        case let .double(value):
+            // A JSON number larger than Int64 decodes as `.double` (see init),
+            // and `Int64(Double)` TRAPS for a non-finite or out-of-range value.
+            // An MCP arg like `{"limit": 1e19}` must not crash the child — coerce
+            // only when it fits, otherwise treat the arg as absent (nil).
+            // Compare with `< Double(Int64.max)`: Int64.max isn't exactly
+            // representable as a Double and rounds up to Int64.max + 1.
+            guard value.isFinite, value >= Double(Int64.min), value < Double(Int64.max) else { return nil }
+            return Int64(value)
         default: return nil
         }
     }
