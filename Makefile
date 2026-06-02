@@ -1,7 +1,7 @@
 INSTALL_DIR := $(HOME)/.local/bin
 VERSION := $(shell grep 'static let version' pippin/Version.swift | sed 's/.*"\(.*\)"/\1/')
 
-.PHONY: build test lint install completions version release tarball clean link-skills
+.PHONY: build test lint ci ci-vm install completions version release tarball clean link-skills
 
 build:
 	xcrun --sdk macosx swift build -c release
@@ -28,6 +28,22 @@ test:
 
 lint:
 	swiftformat --lint pippin/ pippin-entry/ Tests/ 2>/dev/null || echo "swiftformat not installed — skipping lint"
+
+# Full CI gate run NATIVELY on this host (fast, no VM). Mirrors ci.yml.
+ci:
+	xcrun --sdk macosx swift build -c release
+	xcrun --sdk macosx swift test
+	swiftformat --lint pippin/ pippin-entry/ Tests/
+	python3 scripts/lint-detach-blocking.py --self-test
+	python3 scripts/lint-detach-blocking.py
+
+# Full CI gate run inside an isolated, ephemeral macOS VM (Tart + Cirrus Xcode
+# image) — local parity with the macos-15 GitHub runner, zero hosted minutes,
+# no listening runner exposed to public fork PRs. One-time setup:
+#   brew install cirruslabs/cli/tart hudochenkov/sshpass/sshpass
+#   tart clone ghcr.io/cirruslabs/macos-sequoia-xcode:latest pippin-ci-base
+ci-vm:
+	@bash scripts/ci-vm.sh
 
 completions: build
 	@mkdir -p "$(HOME)/.zfunc"
