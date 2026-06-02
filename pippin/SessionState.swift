@@ -89,33 +89,43 @@ public final class SessionManager: @unchecked Sendable {
         lock.withLock {
             state.activeAccount = account
             if account == nil { state.activeMailbox = nil }
+            persistLocked()
         }
-        save()
     }
 
     public func setActiveMailbox(_ mailbox: String?) {
-        lock.withLock { state.activeMailbox = mailbox }
-        save()
+        lock.withLock {
+            state.activeMailbox = mailbox
+            persistLocked()
+        }
     }
 
     public func setLastMessageId(_ id: String?) {
-        lock.withLock { state.lastMessageId = id }
-        save()
+        lock.withLock {
+            state.lastMessageId = id
+            persistLocked()
+        }
     }
 
     public func setLastEventId(_ id: String?) {
-        lock.withLock { state.lastEventId = id }
-        save()
+        lock.withLock {
+            state.lastEventId = id
+            persistLocked()
+        }
     }
 
     public func setLastReminderId(_ id: String?) {
-        lock.withLock { state.lastReminderId = id }
-        save()
+        lock.withLock {
+            state.lastReminderId = id
+            persistLocked()
+        }
     }
 
     public func setLastNoteId(_ id: String?) {
-        lock.withLock { state.lastNoteId = id }
-        save()
+        lock.withLock {
+            state.lastNoteId = id
+            persistLocked()
+        }
     }
 
     public func recordCommand(_ command: String) {
@@ -125,8 +135,8 @@ public final class SessionManager: @unchecked Sendable {
                 state.history.removeFirst(state.history.count - 100)
             }
             state.lastActive = Date()
+            persistLocked()
         }
-        save()
     }
 
     public func clearContext() {
@@ -137,23 +147,31 @@ public final class SessionManager: @unchecked Sendable {
             state.lastEventId = nil
             state.lastReminderId = nil
             state.lastNoteId = nil
+            persistLocked()
         }
-        save()
     }
 
     public func clearHistory() {
-        lock.withLock { state.history = [] }
-        save()
+        lock.withLock {
+            state.history = []
+            persistLocked()
+        }
     }
 
     // MARK: - Persistence
 
-    private func save() {
-        let snapshot = lock.withLock { state }
+    /// Encode the current state and write it atomically. **The caller must hold
+    /// `lock`.** Keeping the snapshot+write inside the same lock as the mutation
+    /// makes "mutate then persist" a single ordered operation: concurrent
+    /// mutators can no longer let an older snapshot's disk write land last and
+    /// revert a sibling field on disk (a lost update if the process exits during
+    /// concurrent session activity). The file is tiny, so holding the lock
+    /// across the atomic write is negligible.
+    private func persistLocked() {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(snapshot) else { return }
+        guard let data = try? encoder.encode(state) else { return }
 
         let dir = (path as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
