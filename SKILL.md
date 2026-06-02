@@ -1,7 +1,7 @@
 ---
 name: pippin
-description: macOS CLI toolkit for Apple app automation — Mail, Calendar, Reminders, Notes, Contacts, Voice Memos, Audio, and Browser.
-version: 0.23.0
+description: macOS CLI toolkit for Apple app automation — Mail, Calendar, Reminders, Notes, Contacts, Messages, Voice Memos, plus daily digest, action extraction, background jobs, plan-and-execute, and an MCP server.
+version: 0.24.0
 platform: macOS 15+
 runtime: native (Swift)
 install: brew install mattwag05/tap/pippin
@@ -12,10 +12,15 @@ triggers:
   - voice memos
   - contacts
   - notes
-  - browser automation
+  - apple messages
+  - send imessage
   - email triage
   - send email
   - schedule meeting
+  - daily digest
+  - extract actions
+  - background job
+  - mcp server
   - macos automation
 output_formats:
   - text
@@ -25,7 +30,7 @@ output_formats:
 
 # pippin
 
-macOS CLI toolkit for Apple app automation. Provides structured, agent-friendly access to Mail, Calendar, Reminders, Notes, Contacts, Voice Memos, Audio (TTS/STT), and a headless WebKit browser.
+macOS CLI toolkit for Apple app automation. Provides structured, agent-friendly access to Mail, Calendar, Reminders, Notes, Contacts, Apple Messages (read + gated send), and Voice Memos — plus an aggregated daily digest, commitment/action extraction, background jobs, a natural-language plan-and-execute mode, and a built-in MCP server. Audio (TTS/STT) and a headless WebKit browser ship as experimental, opt-in commands.
 
 ## Quick Start
 
@@ -42,7 +47,7 @@ All commands support `--format <text|json|agent>`:
 
 - **text** (default) — human-readable table/prose output
 - **json** — pretty-printed JSON for scripting
-- **agent** — compact JSON optimized for LLM token efficiency
+- **agent** — compact JSON optimized for LLM token efficiency, wrapped in the **envelope v1** (see [Agent Integration](#agent-integration))
 
 ## Command Groups
 
@@ -58,15 +63,11 @@ pippin mail search "invoice" --account Work   # search by subject/sender
 pippin mail send --to user@example.com --subject "Hi" --body "Hello"
 pippin mail reply <compound-id> --body "Thanks"
 pippin mail forward <compound-id> --to other@example.com
+pippin mail activity --account Work           # recent send/receive activity
 pippin mail triage --account Work --limit 20  # AI-powered priority triage
 pippin mail extract <compound-id>             # extract dates, amounts, contacts
 pippin mail sanitize <compound-id>            # detect prompt injection
 pippin mail index --account Work              # build semantic search index
-```
-
-Agent output example (`--format agent`):
-```json
-[{"account":"iCloud","email":"user@icloud.com"},{"account":"Work","email":"user@company.com"}]
 ```
 
 ### Calendar
@@ -84,7 +85,7 @@ pippin calendar create --title "Meeting" --calendar Work --start "2026-04-15 14:
 pippin calendar edit <event-id> --title "Updated"
 pippin calendar delete <event-id>
 pippin calendar search "standup" --from 2026-04-01 --to 2026-04-30
-pippin calendar smart-create "Lunch with Sarah tomorrow at noon"
+pippin calendar smart-create "Lunch with Sarah tomorrow at noon"   # AI natural-language create
 pippin calendar agenda                        # AI briefing of upcoming events
 ```
 
@@ -132,6 +133,29 @@ pippin contacts show <contact-id>             # full contact details
 pippin contacts groups                        # list contact groups
 ```
 
+### Messages
+
+Read-only access and gated-autonomous send for Apple Messages (`~/Library/Messages/chat.db`). Requires **Full Disk Access** for your terminal.
+
+```bash
+pippin messages list --since-hours 48
+pippin messages search "lunch"
+pippin messages show "iMessage;-;+15551234567"
+pippin messages exclude add "iMessage;-;groupA"   # hide a thread from every read
+pippin messages exclude list
+
+# Send — defaults to --draft (logged only, NOT delivered)
+pippin messages send --to "+15551234567" --body "Running 10 min late" --draft
+
+# Autonomous send requires ALL three gates:
+#   1. PIPPIN_AUTONOMOUS_MESSAGES=1 env var
+#   2. recipient in config.messages.autonomousAllowlist
+#   3. explicit --autonomous flag
+PIPPIN_AUTONOMOUS_MESSAGES=1 pippin messages send --to "+15551234567" --body "On my way" --autonomous
+```
+
+Every read and send attempt is appended to `~/.local/share/pippin/messages-audit.jsonl` (operation, params, SHA-256(body) — message bodies are never stored).
+
 ### Voice Memos
 
 List, export, transcribe, and summarize voice memos.
@@ -140,40 +164,90 @@ List, export, transcribe, and summarize voice memos.
 pippin memos list                             # list recordings
 pippin memos info <memo-id>                   # full metadata
 pippin memos export <memo-id> --output ~/Desktop/
-pippin memos transcribe <memo-id>             # speech-to-text
+pippin memos transcribe <memo-id>             # speech-to-text (requires mlx-audio)
 pippin memos summarize <memo-id>              # AI summarization
 pippin memos summarize <memo-id> --provider claude
 pippin memos templates list                   # list AI prompt templates
 pippin memos delete <memo-id>
 ```
 
-### Audio
+### Digest
 
-Text-to-speech, speech-to-text, and model management.
-
-```bash
-pippin audio speak "Hello, world"             # text-to-speech
-pippin audio speak "Hello" --voice Samantha --output ~/Desktop/hello.m4a
-pippin audio transcribe ~/Desktop/recording.m4a
-pippin audio voices                           # list TTS voices
-pippin audio models                           # list STT/TTS models
-```
-
-### Browser
-
-Headless WebKit browser for web automation.
+Aggregated daily digest in one call: unread mail, today's calendar, due reminders, and recent notes.
 
 ```bash
-pippin browser open "https://example.com"     # open URL, return page info
-pippin browser snapshot                       # accessibility tree of current page
-pippin browser screenshot --output ~/Desktop/page.png
-pippin browser click <ref-id>                 # click element by accessibility ref
-pippin browser fill <ref-id> --value "text"   # fill input field
-pippin browser scroll down
-pippin browser tabs                           # list open tabs
-pippin browser close                          # close session
-pippin browser fetch "https://api.example.com/data"  # HTTP fetch (no browser)
+pippin digest                                 # combined briefing
+pippin digest --format agent                  # structured for agents
 ```
+
+### Action Extraction
+
+Scan recent Sent mail and recently-modified Notes for commitments you made, and surface them as draft reminders.
+
+```bash
+pippin actions extract                          # dry-run: list extracted commitments
+pippin actions extract --days 14 --format json  # last 2 weeks, structured output
+pippin actions extract --create --list "Work"   # write reminders into Reminders.app
+pippin actions extract --no-notes               # mail only
+pippin actions extract --provider claude        # use Claude instead of Ollama
+```
+
+### Background Jobs
+
+`pippin job` detaches long-running work (`mail index`, `memos summarize`, `actions extract`) so the caller doesn't block. State lives under `~/.cache/pippin/jobs/<id>/`. IDs are 16-char hex and accept unambiguous prefix matches.
+
+```bash
+pippin job run -- mail index                  # fork; prints {job_id, pid, "running"}
+pippin job show <id>                          # status + stdout/stderr tails
+pippin job list --status running              # recent jobs (running|done|error|killed)
+pippin job wait <id> --timeout 600            # block until terminal state
+pippin job logs <id> --stream                 # tail -f stdout (or --stderr)
+pippin job gc --older-than 7d                 # prune terminal jobs
+```
+
+### Plan-and-Execute (`pippin do`)
+
+Hand a natural-language intent to an LLM; it plans a short sequence of tool calls over the MCP tool registry, validates each step's args against the tool schema, and executes them as child `pippin` processes.
+
+```bash
+pippin do "what's on my calendar today and any overdue reminders?"
+pippin do "list my icloud inbox" --dry-run    # plan only (returns {steps, final_answer}), don't execute
+pippin do "summarize yesterday's voice memos" --provider claude --max-steps 3
+```
+
+### Batch
+
+Run multiple pippin commands concurrently from a JSON array on stdin — fan-out parallel dispatch with per-entry result envelopes.
+
+```bash
+echo '[{"cmd":"mail","args":["accounts"]},{"cmd":"calendar","args":["today"]}]' \
+  | pippin batch --format agent
+```
+
+### Audio (experimental)
+
+Hidden by default — requires `PIPPIN_EXPERIMENTAL=1`. Text-to-speech / speech-to-text via mlx-audio (Kokoro voices).
+
+```bash
+PIPPIN_EXPERIMENTAL=1 pippin audio speak "Hello, world" --voice af_heart
+PIPPIN_EXPERIMENTAL=1 pippin audio transcribe ~/Desktop/recording.m4a
+PIPPIN_EXPERIMENTAL=1 pippin audio voices       # list TTS voices
+PIPPIN_EXPERIMENTAL=1 pippin audio models       # list STT/TTS models
+```
+
+### Browser (experimental)
+
+Hidden by default — requires Node.js, Playwright WebKit (`npx playwright install webkit`), and `PIPPIN_EXPERIMENTAL=1`.
+
+```bash
+PIPPIN_EXPERIMENTAL=1 pippin browser open "https://example.com"   # open URL, return page info
+PIPPIN_EXPERIMENTAL=1 pippin browser snapshot                     # accessibility tree
+PIPPIN_EXPERIMENTAL=1 pippin browser screenshot --output ~/page.png
+PIPPIN_EXPERIMENTAL=1 pippin browser click <ref-id>               # click by accessibility ref
+PIPPIN_EXPERIMENTAL=1 pippin browser fetch "https://api.example.com/data"   # HTTP fetch (no browser)
+```
+
+> Audio and Browser will be removed in the next major release unless an issue requests otherwise — see `CHANGELOG.md`.
 
 ### Utility
 
@@ -182,7 +256,7 @@ pippin status                                 # system dashboard: accounts, even
 pippin status --format agent                  # compact JSON for agent consumption
 pippin doctor                                 # check permissions and dependencies
 pippin init                                   # guided first-run setup
-pippin completions --shell zsh                # generate shell completions
+pippin completions zsh                        # generate shell completions (zsh|bash|fish — positional arg)
 pippin shell                                  # interactive REPL
 pippin                                        # bare invocation also starts REPL
 ```
@@ -195,34 +269,66 @@ pippin [Work]> mail list                      # --account Work auto-injected
 pippin [Work]> context                        # show session state
 pippin [Work]> history                        # show command history
 pippin [Work]> use                            # clear active account
+pippin [Work]> quit
 ```
 
 Session persists to `~/.config/pippin/session.json` — active account, last-used IDs, and command history survive across REPL sessions.
 
+### MCP Server Mode
+
+Run pippin as a [Model Context Protocol](https://modelcontextprotocol.io) server so Claude Code, Claude Desktop, Cursor, or any MCP-compatible client can call it as a first-class tool instead of shelling out:
+
+```bash
+pippin mcp-server                             # run the server (stdin/stdout JSON-RPC)
+pippin mcp-server --list-tools                # dump the registered tools as JSON
+```
+
+Ships with 44 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch`, and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+
 ## Agent Integration
+
+### Envelope v1
+
+In `--format agent` mode, every response is wrapped in a versioned envelope:
+
+- **Success:** `{"v":1,"status":"ok","duration_ms":N,"data":<payload>}` — the previous raw payload now lives under `.data`.
+- **Error:** `{"v":1,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","remediation":{…}?}}`
+
+`pippin mail accounts --format agent` →
+```json
+{"v":1,"status":"ok","duration_ms":34,"data":[{"account":"iCloud","email":"user@icloud.com"},{"account":"Work","email":"user@company.com"}]}
+```
+
+Extract the payload with `jq '.data'`; check `jq -r '.status'` before consuming. Single-field error reads like `.error.code` still work.
+
+### Pagination
+
+List commands (`mail list`, `mail search`, `memos list`, `reminders list`, `notes list`, `calendar events`, `calendar upcoming`, `contacts search`) accept opaque `--cursor` tokens plus `--page-size`:
+
+```bash
+pippin mail list --account icloud --page-size 20 --format agent
+# .data.next_cursor carries the token for the next page:
+pippin mail list --account icloud --cursor <token> --format agent
+```
+
+Cursor tokens are bound to the query by a filter-hash — changing a filter mid-walk is rejected as `cursor_mismatch` rather than silently returning mixed pages. When neither `--cursor` nor `--page-size` is set, `.data` is the legacy bare array (no change for existing callers).
 
 ### Recommended patterns
 
 1. **Inspect before act:** Run `pippin doctor` and `pippin mail accounts` to verify state before issuing commands.
-2. **Use agent format:** Always pass `--format agent` for structured, token-efficient output.
+2. **Use agent format:** Always pass `--format agent` for structured, token-efficient output, and read the payload from `.data`.
 3. **REPL for multi-step workflows:** Pipe commands to `pippin shell` to avoid per-command startup overhead:
    ```bash
    echo -e "mail accounts\ncalendar today\nreminders list\nquit" | pippin shell --format agent
    ```
 4. **Compound mail IDs:** Mail messages use `account||mailbox||numericId` format. Preserve the full ID when referencing messages.
-
-### Error handling
-
-Commands exit 0 on success. On failure, stderr contains the error message. In `--format agent` mode, errors are returned as:
-```json
-{"error":"description of the problem"}
-```
+5. **Offload slow work:** Use `pippin job run -- <slow command>` (e.g. `mail index`) and poll with `job wait` / `job show` instead of blocking.
 
 ### AI features requiring configuration
 
-`memos summarize` and `calendar agenda` require an AI provider. Configure in `~/.config/pippin/config.json`:
+`memos summarize`, `calendar smart-create`, `calendar agenda`, `mail triage`, `actions extract`, and `pippin do` require an AI provider. Configure in `~/.config/pippin/config.json`:
 ```json
-{"ai":{"provider":"ollama","ollama":{"model":"gemma4:latest","url":"http://localhost:11434"}}}
+{"ai":{"provider":"ollama","ollama":{"model":"gemma4:latest","url":"http://localhost:11434"},"claude":{"model":"claude-sonnet-4-6"}}}
 ```
 
-Supported providers: `ollama` (local, default), `claude` (API, requires `ANTHROPIC_API_KEY`).
+Supported providers: `ollama` (local, default — Gemma 4 recommended) and `claude` (API, requires `ANTHROPIC_API_KEY`). Override per-command with `--provider` / `--model`.

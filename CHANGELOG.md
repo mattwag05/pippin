@@ -7,6 +7,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Documentation
+
+- [docs] Refresh `SKILL.md` to current state: bump to 0.24.0, document the `messages`, `digest`, `actions`, `job`, `do`, `batch`, and `mcp-server` command groups, mark `audio`/`browser` as experimental (`PIPPIN_EXPERIMENTAL=1`), fix `completions` to positional-arg syntax, and replace the pre-envelope agent-output examples with envelope v1 + pagination guidance.
+- [docs] Add a graphify knowledge graph under `graphify-out/` for repo onboarding and register `/graphify` for Claude Code, Codex, OpenCode, Pi, Hermes, and OpenClaw.
+
 ## [0.24.0] - 2026-06-02
 
 ### Added
