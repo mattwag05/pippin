@@ -2,6 +2,19 @@
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
+## Onboarding — Knowledge Graph (`graphify-out/`)
+
+A committed, queryable knowledge graph of the whole repo lives in `graphify-out/`. Before grepping, read `graphify-out/GRAPH_REPORT.md` (subsystem map + suggested questions) or query it:
+
+```bash
+graphify query "How does an MCP tool call reach a bridge?"   # BFS over the graph
+graphify path "McpServerCommand" "MailBridge"                # shortest path between concepts
+graphify explain "DetachBlocking"                            # node + neighbors, plain language
+graphify update .                                            # refresh AST nodes after code edits (no LLM)
+```
+
+`/graphify` is registered for Claude Code, Codex, OpenCode, Pi, Hermes, and OpenClaw. On a new machine: `graphify install --platform <codex|opencode|pi|hermes|claw|claude>`, then `/graphify .` to rebuild.
+
 ## Quick Reference
 
 ```bash
