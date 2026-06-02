@@ -30,8 +30,8 @@ public struct DigestCommand: AsyncParsableCommand {
         guard notesLimit > 0 else {
             throw ValidationError("--notes-limit must be positive.")
         }
-        guard calendarDays > 0 else {
-            throw ValidationError("--calendar-days must be positive.")
+        guard calendarDays > 0, calendarDays <= 366 else {
+            throw ValidationError("--calendar-days must be between 1 and 366.")
         }
         let validSections: Set = ["mail", "calendar", "reminders", "notes"]
         for section in skip {
@@ -39,6 +39,16 @@ public struct DigestCommand: AsyncParsableCommand {
                 throw ValidationError("Unknown section '\(section)'. Valid values: mail, calendar, reminders, notes.")
             }
         }
+    }
+
+    /// End of the "upcoming" calendar window. `calendarDays` is days *beyond
+    /// today*, so the window spans the next `calendarDays` full days measured
+    /// from end-of-today — `--calendar-days 7` covers the next 7 days, not 6.
+    /// (Anchoring to start-of-today instead dropped the last requested day.)
+    /// Returns nil only if the date arithmetic overflows (`calendarDays` is
+    /// bounded in `validate()`, so that never happens via the CLI).
+    static func upcomingWindowEnd(endOfToday: Date, calendarDays: Int, calendar: Calendar = .current) -> Date? {
+        calendar.date(byAdding: .day, value: calendarDays, to: endOfToday)
     }
 
     public mutating func run() async throws {
@@ -94,7 +104,14 @@ public struct DigestCommand: AsyncParsableCommand {
         if !skipSet.contains("calendar") {
             do {
                 let bridge = CalendarBridge()
-                let upcomingEnd = cal.date(byAdding: .day, value: calendarDays, to: startOfDay)!
+                // `calendarDays` is "days beyond today", so the upcoming window
+                // is the next `calendarDays` full days starting at end-of-today.
+                // Anchoring to `startOfDay` instead dropped the last day (a 7-day
+                // request only covered 6). `calendarDays` is bounded in validate(),
+                // so date(byAdding:) can't overflow to nil here.
+                guard let upcomingEnd = Self.upcomingWindowEnd(endOfToday: endOfDay, calendarDays: calendarDays, calendar: cal) else {
+                    throw CalendarBridgeError.dateParseError("could not compute the \(calendarDays)-day upcoming window")
+                }
                 async let todayEvents = bridge.listEvents(from: startOfDay, to: endOfDay)
                 async let upcomingEvents = bridge.listEvents(from: endOfDay, to: upcomingEnd)
                 let (today, upcoming) = try await (todayEvents, upcomingEvents)

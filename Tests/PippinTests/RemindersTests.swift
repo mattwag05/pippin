@@ -236,4 +236,35 @@ final class RemindersTests: XCTestCase {
         // Should not throw
         _ = try await bridge.listReminders(completed: false, limit: 10)
     }
+
+    // MARK: - Due-date filters (pippin-cbr)
+
+    //
+    // Regression: `--due-before`/`--due-after` returned true (include) for an
+    // undated reminder, so undated reminders polluted every date-filtered query
+    // and showed up in BOTH `--due-before X` and `--due-after X`.
+
+    func testPassesDueFiltersExcludesUndatedReminders() {
+        let cutoff = Date(timeIntervalSince1970: 1_750_000_000)
+        XCTAssertFalse(RemindersBridge.passesDueFilters(dueDate: nil, dueBefore: cutoff, dueAfter: nil),
+                       "an undated reminder is not 'due before' a cutoff")
+        XCTAssertFalse(RemindersBridge.passesDueFilters(dueDate: nil, dueBefore: nil, dueAfter: cutoff),
+                       "an undated reminder is not 'due after' a cutoff")
+        XCTAssertTrue(RemindersBridge.passesDueFilters(dueDate: nil, dueBefore: nil, dueAfter: nil),
+                      "with no due filter, an undated reminder still passes")
+    }
+
+    func testPassesDueFiltersComparesDatedReminders() {
+        let cutoff = Date(timeIntervalSince1970: 1_750_000_000)
+        let before = cutoff.addingTimeInterval(-86400)
+        let after = cutoff.addingTimeInterval(86400)
+        XCTAssertTrue(RemindersBridge.passesDueFilters(dueDate: before, dueBefore: cutoff, dueAfter: nil))
+        XCTAssertFalse(RemindersBridge.passesDueFilters(dueDate: after, dueBefore: cutoff, dueAfter: nil))
+        XCTAssertTrue(RemindersBridge.passesDueFilters(dueDate: after, dueBefore: nil, dueAfter: cutoff))
+        XCTAssertFalse(RemindersBridge.passesDueFilters(dueDate: before, dueBefore: nil, dueAfter: cutoff))
+        // A window (both bounds): only a date strictly inside passes.
+        XCTAssertTrue(RemindersBridge.passesDueFilters(dueDate: cutoff, dueBefore: after, dueAfter: before))
+        XCTAssertFalse(RemindersBridge.passesDueFilters(dueDate: after, dueBefore: after, dueAfter: before),
+                       "the upper bound is exclusive")
+    }
 }
