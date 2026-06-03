@@ -11,6 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [feat] Local mail body cache. `mail show` and `mail index` now read message bodies through a SQLite cache (`~/.config/pippin/mail-cache.db`) keyed by compound id, so the expensive per-message `msg.content()` IMAP download happens once. Repeat reads are ~75× faster (≈1.3s → ≈17ms in local testing) and `mail index` re-runs skip already-fetched bodies. New `mail cache stats|clear|warm` subcommands (`warm` pre-fetches recent bodies; `clear --older-than-days N` prunes) and a `mail show --no-cache` escape hatch. Read/unread state is never cached — `mail list`/`search` stay live. Closes pippin-e6m. (The bulk `list --preview` / `search --body` timeout path fetches bodies inside the JXA loop and needs a separate restructure — tracked as a follow-up.)
 - [feat] `mail list` now accepts `--fields` (and the `mail_list` MCP tool a `fields` arg) to project the output to chosen JSON keys, trimming agent token usage. Closes pippin-1k0.
 
 ### Fixed

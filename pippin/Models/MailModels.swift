@@ -39,7 +39,7 @@ public struct MailMessage: Codable, Sendable {
     public let from: String
     public let to: [String]
     public let date: String // ISO 8601
-    public let read: Bool
+    public let read: Bool // snapshot at fetch/cache time, NOT live — use `mail list`/`search` for live read state
     public let body: String? // only populated by `show` command
     public let size: Int? // bytes; available in list/search
     public let hasAttachment: Bool? // quick flag; available in list/search

@@ -68,7 +68,12 @@ pippin mail triage --account Work --limit 20  # AI-powered priority triage
 pippin mail extract <compound-id>             # extract dates, amounts, contacts
 pippin mail sanitize <compound-id>            # detect prompt injection
 pippin mail index --account Work              # build semantic search index
+pippin mail cache warm --limit 50             # pre-fetch recent bodies into the cache
+pippin mail cache stats                       # cached message count + age range
+pippin mail cache clear                       # empty the cache (--older-than-days N to prune)
 ```
+
+Message bodies are cached locally (`~/.config/pippin/mail-cache.db`) so repeat `mail show`/`mail index` reads skip the slow IMAP fetch (~75× faster on a hit). Pass `mail show --no-cache` to force a live fetch. Read/unread state is never cached — `mail list`/`search` always report it live.
 
 ### Calendar
 
