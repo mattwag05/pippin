@@ -459,7 +459,7 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Argument(help: "Natural language description, e.g. 'coffee with Alice tomorrow at 3pm'.")
         public var description: String
 
-        @Option(name: .long, help: "AI provider: ollama or claude (default: ollama).")
+        @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
         public var provider: String?
 
         @Option(name: .long, help: "Model name (provider-specific default).")
@@ -586,7 +586,7 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Number of days to include, 1-7 (default: 1).")
         public var days: Int = 1
 
-        @Option(name: .long, help: "AI provider: ollama or claude (default: ollama).")
+        @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
         public var provider: String?
 
         @Option(name: .long, help: "Model name (provider-specific default).")

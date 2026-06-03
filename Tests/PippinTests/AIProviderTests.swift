@@ -74,6 +74,87 @@ final class AIProviderTests: XCTestCase {
         }
     }
 
+    // MARK: - OpenAIProvider (configurable OpenAI-compatible endpoints)
+
+    func testOpenAIProviderInitDefaults() {
+        let p = OpenAIProvider()
+        XCTAssertEqual(p.baseURL, "http://localhost:11434/v1")
+        XCTAssertEqual(p.model, "gpt-4o-mini")
+    }
+
+    func testOpenAIProviderTrimsTrailingSlash() {
+        // "<base>/" + "/chat/completions" must not double up the slash.
+        let p = OpenAIProvider(baseURL: "https://manifest.example/v1/", model: "x")
+        XCTAssertEqual(p.baseURL, "https://manifest.example/v1")
+    }
+
+    func testOpenAIBuildRequestEndpointHeadersAndBody() throws {
+        let p = OpenAIProvider(baseURL: "https://api.example/v1", model: "gpt-4o-mini", apiKey: "sk-test")
+        let req = try p.buildRequest(prompt: "hello", system: "be brief")
+        XCTAssertEqual(req.url?.absoluteString, "https://api.example/v1/chat/completions")
+        XCTAssertEqual(req.httpMethod, "POST")
+        XCTAssertEqual(req.value(forHTTPHeaderField: "Authorization"), "Bearer sk-test")
+        XCTAssertEqual(req.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(req.httpBody)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "gpt-4o-mini")
+        XCTAssertEqual(json["stream"] as? Bool, false)
+        let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages[0]["role"], "system")
+        XCTAssertEqual(messages[0]["content"], "be brief")
+        XCTAssertEqual(messages[1]["role"], "user")
+        XCTAssertEqual(messages[1]["content"], "hello")
+    }
+
+    func testOpenAIBuildRequestOmitsAuthAndSystemWhenEmpty() throws {
+        // Local endpoints ([local-llm], llama.cpp, Ollama /v1) need no auth header.
+        let p = OpenAIProvider(baseURL: "http://localhost:8080/v1", model: "local", apiKey: nil)
+        let req = try p.buildRequest(prompt: "hi", system: "")
+        XCTAssertNil(req.value(forHTTPHeaderField: "Authorization"))
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: XCTUnwrap(req.httpBody)) as? [String: Any])
+        let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
+        XCTAssertEqual(messages.count, 1, "empty system → only the user message")
+        XCTAssertEqual(messages[0]["role"], "user")
+    }
+
+    func testOpenAIEmptyApiKeyTreatedAsNoAuth() throws {
+        let p = OpenAIProvider(baseURL: "http://x/v1", model: "m", apiKey: "")
+        let req = try p.buildRequest(prompt: "hi", system: "")
+        XCTAssertNil(req.value(forHTTPHeaderField: "Authorization"), "empty key must not send an Authorization header")
+    }
+
+    func testOpenAIParseCompletion() throws {
+        let data = #"{"choices":[{"message":{"role":"assistant","content":"  Hello there.  "}}]}"#.data(using: .utf8)!
+        XCTAssertEqual(try OpenAIProvider.parseCompletion(data), "Hello there.")
+    }
+
+    func testOpenAIParseCompletionMalformedThrows() {
+        let data = #"{"choices":[]}"#.data(using: .utf8)!
+        XCTAssertThrowsError(try OpenAIProvider.parseCompletion(data))
+    }
+
+    func testMakeOpenAIProvider() throws {
+        let provider = try AIProviderFactory.make(providerFlag: "openai", modelFlag: "gpt-4o-mini")
+        XCTAssertTrue(provider is OpenAIProvider)
+        let o = try XCTUnwrap(provider as? OpenAIProvider)
+        XCTAssertEqual(o.model, "gpt-4o-mini")
+    }
+
+    func testLoadConfigOpenAIBlock() throws {
+        let tmpFile = NSTemporaryDirectory() + UUID().uuidString + ".json"
+        let json = """
+        {"ai":{"provider":"openai","openai":{"baseURL":"https://manifest.tail.ts.net/v1","model":"gpt-oss-120b","apiKey":"mnfst_x"}}}
+        """
+        try json.write(toFile: tmpFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: tmpFile) }
+        let config = AIProviderFactory.loadConfig(path: tmpFile)
+        XCTAssertEqual(config?.ai?.provider, "openai")
+        XCTAssertEqual(config?.ai?.openai?.baseURL, "https://manifest.tail.ts.net/v1")
+        XCTAssertEqual(config?.ai?.openai?.model, "gpt-oss-120b")
+        XCTAssertEqual(config?.ai?.openai?.apiKey, "mnfst_x")
+    }
+
     // MARK: - AIProviderError descriptions
 
     func testErrorDescriptions() {

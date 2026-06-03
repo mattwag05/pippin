@@ -152,7 +152,7 @@ public struct MailSanitize: AsyncParsableCommand {
     @Flag(name: .long, help: "Include AI-assisted scan in addition to rule-based patterns.")
     public var aiAssisted: Bool = false
 
-    @Option(name: .long, help: "AI provider for --ai-assisted (ollama or claude).")
+    @Option(name: .long, help: "AI provider for --ai-assisted (ollama, claude, or openai).")
     public var provider: String?
 
     @Option(name: .long, help: "Model name.")
@@ -219,7 +219,7 @@ public struct MailTriage: AsyncParsableCommand {
     @Option(name: .long, help: "Maximum messages to triage (default: 20, min: 1).")
     public var limit: Int = 20
 
-    @Option(name: .long, help: "AI provider: ollama or claude.")
+    @Option(name: .long, help: "AI provider: ollama, claude, or openai.")
     public var provider: String?
 
     @Option(name: .long, help: "Model name.")
@@ -320,7 +320,7 @@ public struct MailExtract: AsyncParsableCommand {
     @Argument(help: "Message ID (from `pippin mail list`).")
     public var messageId: String
 
-    @Option(name: .long, help: "AI provider: ollama or claude (default: ollama).")
+    @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
     public var provider: String?
 
     @Option(name: .long, help: "Model name (provider-specific default).")

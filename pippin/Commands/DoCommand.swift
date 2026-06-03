@@ -24,7 +24,7 @@ public struct DoCommand: AsyncParsableCommand {
     @Argument(help: "Natural-language intent for the planner.")
     public var intent: String
 
-    @Option(name: .long, help: "AI provider: ollama or claude (overrides config).")
+    @Option(name: .long, help: "AI provider: ollama, claude, or openai (overrides config).")
     public var provider: String?
 
     @Option(name: .long, help: "Model name (overrides config).")

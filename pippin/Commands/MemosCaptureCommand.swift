@@ -19,7 +19,7 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Preview items without creating reminders. Auto-on when stdout is a TTY.")
     public var dryRun: Bool = false
 
-    @Option(name: .long, help: "AI provider: ollama or claude (default: ollama).")
+    @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
     public var provider: String?
 
     @Option(name: .long, help: "Model name (provider-specific default).")
