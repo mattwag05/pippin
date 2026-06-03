@@ -804,73 +804,8 @@ extension MailBridge {
 
                 var msg = msgs[0];
 
-                // Trigger IMAP download by accessing plain-text content first
-                var bodyText = null;
-                try { bodyText = msg.content(); } catch(e) {}
-
-                // Attempt htmlContent (IMAP body should now be available)
-                var htmlBody = null;
-                try { htmlBody = msg.htmlContent(); } catch(e) {}
-                // Retry once after short delay if still null
-                if (htmlBody === null) {
-                    delay(0.5);
-                    try { htmlBody = msg.htmlContent(); } catch(e) {}
-                }
-
-                var headerDict = {};
-                try {
-                    var allHeaders = msg.allHeaders() || '';
-                    var lines = allHeaders.split('\\n');
-                    var currentKey = '';
-                    for (var h = 0; h < lines.length; h++) {
-                        var line = lines[h];
-                        if (/^[A-Za-z0-9-]+:/.test(line)) {
-                            var colonIdx = line.indexOf(':');
-                            currentKey = line.substring(0, colonIdx);
-                            headerDict[currentKey] = line.substring(colonIdx + 1).trim();
-                        } else if (currentKey && /^[ \\t]/.test(line)) {
-                            headerDict[currentKey] += ' ' + line.trim();
-                        }
-                    }
-                } catch(e) {}
-
-                // See docs/gotchas/jxa.md — per-attachment try/catch required.
-                var attachList = [];
-                var msgHasAtt = false;
-                var atts = [];
-                try { atts = msg.mailAttachments(); msgHasAtt = atts.length > 0; } catch(e) {}
-                for (var ai = 0; ai < atts.length; ai++) {
-                    var att = atts[ai];
-                    var attName = 'attachment_' + ai;
-                    try { attName = att.name(); } catch(e) {}
-                    var attMime = 'application/octet-stream';
-                    try { var m = att.mimeType(); if (m) attMime = m; } catch(e) {}
-                    var attSize = 0;
-                    try { attSize = att.fileSize(); } catch(e) {
-                        try { attSize = att.downloadedSize(); } catch(e2) {}
-                    }
-                    attachList.push({ name: attName, mimeType: attMime, size: attSize });
-                }
-
-                var msgSize = null;
-                try { msgSize = msg.messageSize(); } catch(e) {}
-
-                result = {
-                    id: acct.name() + '||' + mb.name() + '||' + String(msg.id()),
-                    account: acct.name(),
-                    mailbox: mb.name(),
-                    subject: msg.subject(),
-                    from: msg.sender(),
-                    to: msg.toRecipients().map(function(r) { return r.address(); }),
-                    date: msg.dateSent().toISOString(),
-                    read: msg.readStatus(),
-                    body: bodyText,
-                    size: msgSize,
-                    hasAttachment: msgHasAtt,
-                    htmlBody: htmlBody,
-                    headers: headerDict,
-                    attachments: attachList
-                };
+                \(jsExtractMessageRow())
+                result = __row;
                 break;
             }
             if (result !== null) break;
@@ -878,6 +813,97 @@ extension MailBridge {
 
         if (result === null) { throw new Error('Message not found'); }
         JSON.stringify(result);
+        """
+    }
+
+    /// Group of miss compound ids sharing an account + mailbox, injected into
+    /// `buildBatchBodiesScript` so each mailbox is resolved once (the efficiency
+    /// win over N single-message `readMessage` spawns).
+    struct BatchBodyGroup: Encodable {
+        let account: String
+        let mailbox: String
+        let ids: [String]
+    }
+
+    /// Fetch full message rows (body + htmlBody + headers + attachments) for a
+    /// specific set of compound ids in ONE osascript pass. Used by
+    /// `listMessagesCached` (pass 3) to fill bodies for cache misses; the result
+    /// rows decode as `MailMessage` and are written through `MailBodyCache` so a
+    /// later `mail show` gets a first-class hit (not a body-only entry).
+    ///
+    /// Mirrors `buildReadScript`'s per-message extraction but:
+    ///  - loops the explicit miss ids, grouped by (account, mailbox), resolving
+    ///    each mailbox once,
+    ///  - self-bounds with the documented soft-timeout idiom (see
+    ///    docs/gotchas/jxa.md) — ids not reached before the cap are simply absent
+    ///    from the result, treated by the assembler as "no preview",
+    ///  - shares `buildReadScript`'s per-message extraction (`jsExtractMessageRow`,
+    ///    including its `delay(0.5)` htmlContent retry) so a batch-warmed entry is
+    ///    byte-for-byte as complete as a `mail show` fetch. The compounded delay
+    ///    is bounded by `softTimeoutMs` — a large miss batch that overruns leaves
+    ///    later ids for the next run.
+    static func buildBatchBodiesScript(compoundIds: [String], softTimeoutMs: Int = SoftTimeout.defaultMs) -> String {
+        // Group ids by (account, mailbox), preserving first-seen order, so each
+        // mailbox is resolved once. Ids that don't parse are dropped (defense-in-
+        // depth; callers pass ids straight from a prior enumeration).
+        var order: [String] = []
+        var idsByKey: [String: [String]] = [:]
+        var metaByKey: [String: (account: String, mailbox: String)] = [:]
+        for cid in compoundIds {
+            guard let parsed = try? parseCompoundId(cid) else { continue }
+            let key = parsed.account + "||" + parsed.mailbox
+            if idsByKey[key] == nil {
+                order.append(key)
+                metaByKey[key] = (parsed.account, parsed.mailbox)
+            }
+            idsByKey[key, default: []].append(parsed.messageId)
+        }
+        let ordered = order.map { key in
+            BatchBodyGroup(account: metaByKey[key]!.account, mailbox: metaByKey[key]!.mailbox, ids: idsByKey[key]!)
+        }
+        let groupsJSON = (try? String(decoding: JSONEncoder().encode(ordered), as: UTF8.self)) ?? "[]"
+        let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
+
+        return """
+        var mail = Application('Mail');
+        \(jsMailReadyPoll(maxAttempts: 8))
+        var groups = \(groupsJSON);
+        var softTimeoutMs = \(safeSoftTimeoutMs);
+        var _start = Date.now();
+        var results = [];
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
+
+        var accounts = mail.accounts();
+        for (var g = 0; g < groups.length && !_meta.timedOut; g++) {
+            var grp = groups[g];
+            var acct = null;
+            for (var a = 0; a < accounts.length; a++) {
+                if (accounts[a].name() === grp.account) { acct = accounts[a]; break; }
+            }
+            if (acct === null) continue;
+            _meta.accountsScanned++;
+
+            var mbs = acct.mailboxes();
+            var mb = null;
+            for (var m = 0; m < mbs.length; m++) {
+                if (mbs[m].name() === grp.mailbox) { mb = mbs[m]; break; }
+            }
+            if (mb === null) continue;
+            _meta.mailboxesScanned++;
+
+            for (var i = 0; i < grp.ids.length; i++) {
+                if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
+                _meta.messagesExamined++;
+                var msgs = mb.messages.whose({id: grp.ids[i]})();
+                if (msgs.length === 0) continue;
+                var msg = msgs[0];
+
+                \(jsExtractMessageRow())
+                results.push(__row);
+            }
+        }
+
+        JSON.stringify({results: results, meta: _meta});
         """
     }
 

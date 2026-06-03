@@ -102,6 +102,20 @@ public struct MailMessage: Codable, Sendable {
     }
 }
 
+public extension MailMessage {
+    /// Return a copy with `bodyPreview` replaced, all other fields preserved.
+    /// Used by `MailBridge.assemblePreviews` to attach a derived preview to a
+    /// live metadata row without disturbing its read/unread or other fields.
+    func withBodyPreview(_ preview: String?) -> MailMessage {
+        MailMessage(
+            id: id, account: account, mailbox: mailbox, subject: subject,
+            from: from, to: to, date: date, read: read, body: body,
+            size: size, hasAttachment: hasAttachment, bodyPreview: preview,
+            htmlBody: htmlBody, headers: headers, attachments: attachments
+        )
+    }
+}
+
 public struct MailAccount: Codable, Sendable {
     public let name: String
     public let email: String
