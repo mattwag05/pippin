@@ -11,6 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [feat] `pippin agent-info` — a capability-probe command for orchestrating agents. One call returns pippin's contract as structured data (envelope v1): version, `schema_version`, output `formats`, the typed `exit_codes` map, `global_flags`, experimental-gate status, MCP `tool_count` (sourced from the tool registry so it can't drift from `mcp-server --list-tools`), and the visible top-level `commands`. Complements `mcp-server --list-tools`. Closes pippin-zgs.
 - [feat] Typed process exit codes. On failure `pippin` now sets a distinct exit code derived from the envelope's `error.code` so a calling shell or agent can branch on the failure *class* without parsing JSON: `3` not-found, `4` auth/permission/config, `5` tool/bridge failure (default), `7` timeout/rate-limit, `2` usage/bad-input. Argument-parsing failures keep ArgumentParser's `64`. Applies in `--format agent` mode and to catalogued errors in text/json mode; the MCP server passes the code through verbatim. Documented in SKILL.md and docs/mcp-server.md. Closes pippin-y7y.
 
 ## [0.24.3] - 2026-06-03

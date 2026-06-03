@@ -328,6 +328,10 @@ pippin mail list --account icloud --cursor <token> --format agent
 
 Cursor tokens are bound to the query by a filter-hash — changing a filter mid-walk is rejected as `cursor_mismatch` rather than silently returning mixed pages. When neither `--cursor` nor `--page-size` is set, `.data` is the legacy bare array (no change for existing callers).
 
+### Capability probe
+
+`pippin agent-info --format agent` returns a single structured description of pippin's contract — version, `schema_version`, output `formats`, the typed `exit_codes` map, `global_flags`, whether experimental commands are enabled, the MCP `tool_count`, and the top-level `commands`. Call it once to discover what you can rely on instead of scraping `--help`. (For the full per-tool MCP surface, use `pippin mcp-server --list-tools`.)
+
 ### Recommended patterns
 
 1. **Inspect before act:** Run `pippin doctor` and `pippin mail accounts` to verify state before issuing commands.
