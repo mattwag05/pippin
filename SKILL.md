@@ -328,6 +328,14 @@ pippin mail list --account icloud --cursor <token> --format agent
 
 Cursor tokens are bound to the query by a filter-hash — changing a filter mid-walk is rejected as `cursor_mismatch` rather than silently returning mixed pages. When neither `--cursor` nor `--page-size` is set, `.data` is the legacy bare array (no change for existing callers).
 
+### Field projection (`--fields`)
+
+`--fields id,subject,from` trims structured output to just those top-level keys, cutting tokens for scan workflows. Supported on `mail list`, `notes list`/`search`, `calendar events`/`today`/`remaining`/`upcoming`, and `reminders list`/`search`. Works in **both `--format json` and `--format agent`** (in agent mode it projects the envelope's `.data`, leaving `v`/`status`/`duration_ms` intact). For paginated output it projects each `items` element and preserves `next_cursor`.
+
+```bash
+pippin mail list --limit 20 --fields id,subject,from --format agent   # → [{id,subject,from}, ...] under .data
+```
+
 ### Capability probe
 
 `pippin agent-info --format agent` returns a single structured description of pippin's contract — version, `schema_version`, output `formats`, the typed `exit_codes` map, `global_flags`, whether experimental commands are enabled, the MCP `tool_count`, and the top-level `commands`. Call it once to discover what you can rely on instead of scraping `--help`. (For the full per-tool MCP surface, use `pippin mcp-server --list-tools`.)

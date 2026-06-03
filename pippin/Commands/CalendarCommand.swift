@@ -164,7 +164,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                     all: events, offset: offset, pageSize: pageSize, filterHash: hash
                 )
                 if output.isJSON {
-                    let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                    let fieldList = FieldProjection.parse(fields)
                     let itemsData = try page.items.jsonData(fields: fieldList)
                     let itemsJSON = try JSONSerialization.jsonObject(with: itemsData)
                     var dict: [String: Any] = ["items": itemsJSON]
@@ -172,7 +172,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else if output.isAgent {
-                    try output.printAgent(page)
+                    try output.printAgent(page, fields: FieldProjection.parse(fields))
                 } else {
                     printEventsTable(page.items)
                     if let cursor = page.nextCursor {
@@ -187,11 +187,11 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
 
             if output.isJSON {
-                let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let fieldList = FieldProjection.parse(fields)
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events)
+                try output.printAgent(events, fields: FieldProjection.parse(fields))
             } else {
                 printEventsTable(events)
             }
@@ -767,12 +767,12 @@ public struct CalendarCommand: AsyncParsableCommand {
             let (start, end) = parseRange("today")!
             let bridge = CalendarBridge()
             let events = try await bridge.listEvents(from: start, to: end, calendarId: nil)
-            let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            let fieldList = FieldProjection.parse(fields)
             if output.isJSON {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events)
+                try output.printAgent(events, fields: fieldList)
             } else {
                 printEventsTable(events)
             }
@@ -799,12 +799,12 @@ public struct CalendarCommand: AsyncParsableCommand {
             let endOfToday = parseRange("today")!.end
             let bridge = CalendarBridge()
             let events = try await bridge.listEvents(from: now, to: endOfToday, calendarId: nil)
-            let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            let fieldList = FieldProjection.parse(fields)
             if output.isJSON {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events)
+                try output.printAgent(events, fields: fieldList)
             } else {
                 printEventsTable(events)
             }
@@ -938,7 +938,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             let (start, end) = parseRange("today+6")! // today + 6 more days = 7 days total
             let bridge = CalendarBridge()
             let events = try await bridge.listEvents(from: start, to: end, calendarId: nil)
-            let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            let fieldList = FieldProjection.parse(fields)
 
             if pagination.isActive {
                 let hash = Pagination.filterHash([:])
@@ -956,7 +956,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else if output.isAgent {
-                    try output.printAgent(page)
+                    try output.printAgent(page, fields: fieldList)
                 } else {
                     printEventsTable(page.items)
                     if let cursor = page.nextCursor {
@@ -970,7 +970,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events)
+                try output.printAgent(events, fields: fieldList)
             } else {
                 printEventsTable(events)
             }

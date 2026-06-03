@@ -93,6 +93,36 @@ public func printAgentJSON<T: Encodable>(
     print(String(data: data, encoding: .utf8)!)
 }
 
+/// Like `printAgentJSON`, but projects `value` to the requested `fields` before
+/// wrapping it as the envelope's `data`. Used by `--fields` in agent mode,
+/// where the typed generic encoder can't drop keys. The envelope frame
+/// (`v`/`status`/`duration_ms`/`warnings`) is built by hand here because `data`
+/// is now an opaque, already-projected JSON object rather than a typed payload.
+public func printAgentProjectedJSON(
+    _ value: some Encodable,
+    fields: [String],
+    startedAt: Date = Date(),
+    warnings: [String]? = nil
+) throws {
+    let projected = try FieldProjection.projectedObject(value, fields: fields)
+    // This frame MUST stay in lockstep with `AgentOkEnvelope` (v/status/
+    // duration_ms/warnings) — it's hand-built because `data` here is an opaque,
+    // already-projected JSON object, not a typed `Encodable` the generic
+    // envelope can wrap. `AgentEnvelopeTests.testProjectedFrameMatchesTyped`
+    // fails if the two diverge.
+    var envelope: [String: Any] = [
+        "v": AGENT_SCHEMA_VERSION,
+        "status": "ok",
+        "duration_ms": durationMs(from: startedAt),
+        "data": projected,
+    ]
+    if let warnings, !warnings.isEmpty {
+        envelope["warnings"] = warnings
+    }
+    let data = try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])
+    print(String(data: data, encoding: .utf8)!)
+}
+
 // MARK: - Agent Error Output
 
 /// Structured error payload for agent mode.

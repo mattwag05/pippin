@@ -56,7 +56,7 @@ public struct NotesCommand: ParsableCommand {
             if output.isJSON {
                 try printFilteredNotes(notes, fields: fields)
             } else if output.isAgent {
-                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {}
+                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(fields)) {}
             } else {
                 try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
                     if notes.isEmpty {
@@ -88,7 +88,7 @@ public struct NotesCommand: ParsableCommand {
             if output.isJSON {
                 try printFilteredNotesPage(page, fields: fields)
             } else if output.isAgent {
-                try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {}
+                try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(fields)) {}
             } else {
                 try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
                     if page.items.isEmpty {
@@ -168,7 +168,7 @@ public struct NotesCommand: ParsableCommand {
             if output.isJSON {
                 try printFilteredNotes(notes, fields: fields)
             } else if output.isAgent {
-                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {}
+                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(fields)) {}
             } else {
                 try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
                     if notes.isEmpty {
@@ -386,11 +386,10 @@ private func printFoldersTable(_ folders: [NoteFolder]) -> String {
 }
 
 private func printFilteredNotes(_ notes: [NoteInfo], fields: String?) throws {
-    guard let fields else {
+    guard let fieldList = FieldProjection.parse(fields) else {
         try printJSON(notes)
         return
     }
-    let fieldList = fields.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
     let allDicts = try filteredNoteDicts(notes, fieldList: fieldList)
     let data = try JSONSerialization.data(withJSONObject: allDicts, options: [.prettyPrinted, .sortedKeys])
     print(String(data: data, encoding: .utf8)!)
@@ -398,8 +397,7 @@ private func printFilteredNotes(_ notes: [NoteInfo], fields: String?) throws {
 
 private func printFilteredNotesPage(_ page: Page<NoteInfo>, fields: String?) throws {
     var dict: [String: Any] = [:]
-    if let fields {
-        let fieldList = fields.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+    if let fieldList = FieldProjection.parse(fields) {
         dict["items"] = try filteredNoteDicts(page.items, fieldList: fieldList)
     } else {
         let itemsData = try JSONEncoder().encode(page.items)
@@ -410,16 +408,12 @@ private func printFilteredNotesPage(_ page: Page<NoteInfo>, fields: String?) thr
     print(String(data: data, encoding: .utf8)!)
 }
 
-private func filteredNoteDicts(_ notes: [NoteInfo], fieldList: [String]) throws -> [[String: Any]] {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    return try notes.map { note in
-        let noteData = try encoder.encode(note)
-        guard let dict = try JSONSerialization.jsonObject(with: noteData) as? [String: Any] else {
-            throw EncodingError.invalidValue(note, .init(codingPath: [], debugDescription: "Expected JSON object"))
-        }
-        return fieldList.reduce(into: [:]) { result, field in
-            if let val = dict[field] { result[field] = val }
-        }
+private func filteredNoteDicts(_ notes: [NoteInfo], fieldList: [String]) throws -> [Any] {
+    // Delegates to the shared projector so json- and agent-mode --fields stay
+    // in lockstep. `notes` is an array, so the result is an array of projected
+    // element objects.
+    guard let projected = try FieldProjection.projectedObject(notes, fields: fieldList) as? [Any] else {
+        return []
     }
+    return projected
 }
