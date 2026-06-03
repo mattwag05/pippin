@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] `mail list --preview N` now reads/writes through the local mail body cache (the same `~/.config/pippin/mail-cache.db` used by `mail show`/`mail index`). Previews are assembled in two passes — a cheap metadata-only enumeration, then a single batch osascript that fetches bodies only for cache misses and writes them through. A warm cache skips the expensive per-message `msg.content()` IMAP download entirely; a cold cache adds just one extra metadata pass. Read/unread and all other metadata stay live (only the body preview comes from the cache). Always-on; new `mail list --no-cache` forces live fetches. Closes pippin-8fq. (`mail search --body` remains deferred — tracked as pippin-1wy.)
+
 ## [0.25.0] - 2026-06-03
 
 ### Added
