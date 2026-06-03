@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-06-03
+
 ### Added
 
 - [feat] Configurable OpenAI-compatible AI backend. A new `openai` provider talks to any OpenAI-compatible Chat Completions endpoint (`POST {baseURL}/chat/completions`) — OpenAI, OpenRouter, a homelab gateway (e.g. Manifest), oMLX, vLLM, LM Studio, llama.cpp's server, or Ollama's own `/v1` shim. Configure via `ai.provider: "openai"` + `ai.openai.{baseURL, model, apiKey}` in `~/.config/pippin/config.json`, or per-command with `--provider openai --model <m> --api-key <k>`. The API key is optional (local endpoints that don't authenticate send no `Authorization` header). Lets `memos summarize`/`capture`, `calendar`/`reminders smart-create`, `actions`, `do`, and `mail --ai-assisted` run against any reachable model server instead of being tied to local Ollama. (Mail semantic-search embeddings remain Ollama-only.)
@@ -663,7 +665,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/mattwag05/pippin/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/mattwag05/pippin/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/mattwag05/pippin/compare/v0.24.3...v0.25.0
 [0.24.3]: https://github.com/mattwag05/pippin/compare/v0.24.2...v0.24.3
