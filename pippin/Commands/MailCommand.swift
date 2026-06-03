@@ -333,6 +333,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("summarize-api-key"), help: "API key for summary provider.")
         public var summarizeApiKey: String?
 
+        @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,subject,from). JSON/agent output only.")
+        public var fields: String?
+
         @OptionGroup public var pagination: PaginationOptions
 
         @OptionGroup public var output: OutputOptions
@@ -423,13 +426,13 @@ public struct MailCommand: AsyncParsableCommand {
         static let timedOutHint = "list exceeded soft timeout, returning partial results — narrow with --account, --mailbox, or a smaller --limit for complete results"
 
         private func emitMessages(_ messages: [MailMessage], timedOut: Bool) throws {
-            try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint) {
+            try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(fields)) {
                 printMessageTable(messages)
             }
         }
 
         private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) throws {
-            try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint) {
+            try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(fields)) {
                 printMessageTable(page.items)
                 if let cursor = page.nextCursor {
                     print("(more — re-run with --cursor \(cursor))")

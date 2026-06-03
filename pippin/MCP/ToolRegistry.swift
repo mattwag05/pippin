@@ -200,6 +200,7 @@ enum MCPToolRegistry {
                 "limit": Schema.integer("Maximum messages to return (default: 20).", default: 20),
                 "page": Schema.integer("Page number (1-based).", default: 1),
                 "preview": Schema.integer("Include a plain-text body preview of up to N chars per message (forces per-message IMAP fetch; use ~200 for scan workflows)."),
+                "fields": Schema.string("Comma-separated JSON field names to include (e.g. id,subject,from). Trims the payload to fewer tokens."),
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "list")
@@ -209,6 +210,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 argv += ArgHelpers.optionIfInt(args, "page", flagName: "--page")
                 argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
+                argv += ArgHelpers.optionIfString(args, "fields", flagName: "--fields")
                 return argv
             }
         ),
