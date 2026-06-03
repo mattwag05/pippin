@@ -285,13 +285,26 @@ enum MailBridge {
         return try decode([Mailbox].self, from: json)
     }
 
-    static func readMessage(compoundId: String) throws -> MailMessage {
+    /// Read a full message (body + headers + attachments) by compound id.
+    ///
+    /// The body fetch (`msg.content()`) is the expensive IMAP download. Because
+    /// a body is immutable for a given compound id, results are served from
+    /// `cache` when present and written through on a miss. Pass `cache: nil`
+    /// (e.g. `mail show --no-cache`) to force a live fetch. `mail list`/`search`
+    /// deliberately do NOT use this path, so their read/unread metadata stays
+    /// live.
+    static func readMessage(compoundId: String, cache: MailBodyCache? = MailBodyCache.shared) throws -> MailMessage {
+        if let cached = cache?.get(compoundId: compoundId) {
+            return cached
+        }
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         let script = buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
         // Large messages with attachments trigger a full IMAP body download via msg.content();
         // 10s default times out on multi-hundred-KB messages. 45s matches send/move timeouts.
         let json = try runScript(script, timeoutSeconds: 45)
-        return try decode(MailMessage.self, from: json)
+        let message = try decode(MailMessage.self, from: json)
+        cache?.put(message)
+        return message
     }
 
     // MARK: - Compound ID Parser

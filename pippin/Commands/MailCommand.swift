@@ -5,7 +5,7 @@ public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Activity.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, MailIndex.self, MailSanitize.self, MailExtract.self, MailTriage.self, Watch.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Activity.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, MailIndex.self, MailSanitize.self, MailExtract.self, MailTriage.self, Watch.self, Cache.self]
     )
 
     public init() {}
@@ -514,6 +514,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("summarize-api-key"), help: "API key for summary provider.")
         public var summarizeApiKey: String?
 
+        @Flag(name: .customLong("no-cache"), help: "Bypass the local body cache and force a live IMAP fetch.")
+        public var noCache: Bool = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -542,7 +545,8 @@ public struct MailCommand: AsyncParsableCommand {
             }
 
             // readMessage spawns a blocking osascript subprocess; hop off the pool.
-            let message = try await detachBlocking { try MailBridge.readMessage(compoundId: compoundId) }
+            let useCache = noCache ? nil : MailBodyCache.shared
+            let message = try await detachBlocking { try MailBridge.readMessage(compoundId: compoundId, cache: useCache) }
 
             if summarize {
                 let summaryProvider = try AIProviderFactory.make(
