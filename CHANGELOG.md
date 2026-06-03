@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- [ci] Bump Node-20 GitHub/Forgejo actions to their Node-24 releases ahead of GitHub's 2026-06-16 forced-migration / 2026-09-16 removal deadline: `actions/checkout` v4→v5.0.1, `softprops/action-gh-release` v2.5.0→v3.0.0, `actions/cache` v4.3.0→v5.0.5 (all re-pinned to full SHAs). `maxim-lobanov/setup-xcode` v1.7.0 and `github/codeql-action` v4.35.3 already run on Node 24, so they're unchanged. Closes pippin-e3x.
+
 ## [0.24.2] - 2026-06-02
 
 ### Fixed
