@@ -336,6 +336,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,subject,from). JSON/agent output only.")
         public var fields: String?
 
+        @Flag(name: .customLong("no-cache"), help: "Bypass the local body cache when using --preview and force live IMAP fetches.")
+        public var noCache: Bool = false
+
         @OptionGroup public var pagination: PaginationOptions
 
         @OptionGroup public var output: OutputOptions
@@ -359,24 +362,9 @@ public struct MailCommand: AsyncParsableCommand {
                 try await runPaginated()
                 return
             }
-            let account = self.account
-            let mailbox = self.mailbox
-            let unread = self.unread
             let limit = self.limit
             let page = self.page
-            let preview = self.preview
-            // listMessages spawns a blocking osascript subprocess (up to 60s
-            // cross-account); hop off the cooperative pool.
-            let outcome = try await detachBlocking {
-                try MailBridge.listMessages(
-                    account: account,
-                    mailbox: mailbox,
-                    unread: unread,
-                    limit: limit,
-                    offset: (page - 1) * limit,
-                    preview: preview
-                )
-            }
+            let outcome = try await fetchList(limit: limit, offset: (page - 1) * limit)
             let messages = outcome.messages
 
             if summarize {
@@ -450,26 +438,37 @@ public struct MailCommand: AsyncParsableCommand {
             let (offset, pageSize) = try Pagination.resolve(
                 pagination, defaultPageSize: limit, filterHash: hash
             )
-            let account = self.account
-            let mailbox = self.mailbox
-            let unread = self.unread
-            let preview = self.preview
-            // listMessages spawns a blocking osascript subprocess (up to 60s
-            // cross-account); hop off the cooperative pool.
-            let outcome = try await detachBlocking {
-                try MailBridge.listMessages(
-                    account: account,
-                    mailbox: mailbox,
-                    unread: unread,
-                    limit: pageSize + 1,
-                    offset: offset,
-                    preview: preview
-                )
-            }
+            let outcome = try await fetchList(limit: pageSize + 1, offset: offset)
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
             )
             try emitPage(page, timedOut: outcome.timedOut)
+        }
+
+        /// Fetch a list page, routing `--preview N` through the body cache
+        /// (`listMessagesCached`, always-on; `--no-cache` opts out) and the
+        /// no-preview case through the untouched single-pass `listMessages`.
+        /// Both spawn blocking osascript subprocesses (up to 60s cross-account),
+        /// so hop off the cooperative pool.
+        private func fetchList(limit: Int, offset: Int) async throws -> MailBridge.ListOutcome {
+            let account = self.account
+            let mailbox = self.mailbox
+            let unread = self.unread
+            let preview = self.preview
+            let noCache = self.noCache
+            return try await detachBlocking {
+                if let preview, preview > 0 {
+                    return try MailBridge.listMessagesCached(
+                        account: account, mailbox: mailbox, unread: unread,
+                        limit: limit, offset: offset, preview: preview,
+                        cache: noCache ? nil : MailBodyCache.shared
+                    )
+                }
+                return try MailBridge.listMessages(
+                    account: account, mailbox: mailbox, unread: unread,
+                    limit: limit, offset: offset, preview: preview
+                )
+            }
         }
     }
 

@@ -17,7 +17,22 @@ Format: `account||mailbox||numericId`. Parsed in `MailBridge` and `CompoundId` h
 
 - Always call `msg.content()` before `msg.htmlContent()` — `content()` triggers the IMAP body download.
 - Retry `htmlContent()` once after `delay(0.5)` if still null.
-- **`msg.content()` is THE expensive operation** (~1–2s/message; the root cause of `mail list --preview` / `search --body` / `show` timeouts). `MailBridge.readMessage` is the single Swift seam for it and now reads/writes through `MailBodyCache` (`pippin/MailBridge/MailBodyCache.swift`, `~/.config/pippin/mail-cache.db`), keyed by the immutable compound id — repeat reads are ~75× faster and `mail index`'s per-message N+1 is amortized. Pass `cache: nil` to `readMessage` to force a live fetch (`mail show --no-cache`). The cache stores the whole `MailMessage`, so read/unread state is as-of cache time; `mail list`/`search` deliberately bypass it and stay live. The **bulk** preview/search-body fetches happen inside the JXA loop (not via `readMessage`), so they don't hit this cache yet — that needs a fetch-metadata-then-cache-per-body restructure (deferred).
+- **`msg.content()` is THE expensive operation** (~1–2s/message; the root cause of `mail list --preview` / `search --body` / `show` timeouts). `MailBridge.readMessage` is the single Swift seam for it and now reads/writes through `MailBodyCache` (`pippin/MailBridge/MailBodyCache.swift`, `~/.config/pippin/mail-cache.db`), keyed by the immutable compound id — repeat reads are ~75× faster and `mail index`'s per-message N+1 is amortized. Pass `cache: nil` to `readMessage` to force a live fetch (`mail show --no-cache`). The cache stores the whole `MailMessage`, so read/unread state is as-of cache time; `mail search` (and any non-preview `mail list`) deliberately bypass it and stay live.
+
+### Bulk preview caching — `mail list --preview N` (pippin-8fq)
+
+`mail list --preview N` now reads/writes through `MailBodyCache` too, via a **2-pass** design in `MailBridge.listMessagesCached` (NOT N single-message `readMessage` spawns — that would be slower than today on a cold cache):
+
+1. **Metadata pass** — `listMessages(preview: nil)`: cheap enumeration, no `msg.content()`. Yields the **live** read/unread + metadata rows with compound ids.
+2. **Batch body pass** — for rows whose body is already cached, derive the preview locally; for misses, fetch every body in ONE osascript via `buildBatchBodiesScript` (miss ids grouped by account+mailbox, each mailbox resolved once), then write them through the cache.
+
+Key invariants:
+- **Always-on**, no flag; `mail list --preview --no-cache` opts out (every row treated as a miss → live fetch, no cache I/O). MCP clients / morning-briefing benefit automatically since they shell out to the CLI.
+- **Output borrows only `bodyPreview` from the cache** — read/unread and all other metadata stay live from pass 1 (the cached `read` snapshot is never surfaced). The truncation lives in Swift (`MailBridge.bodyPreview`, UTF-16 units to match JS `substring`), so cached-hit and fresh-miss previews are derived identically.
+- **`timedOut` is OR'd across both passes** (`pass1.timedOut || fetchTimedOut`) — either cutting off = partial results.
+- **Cache entries stay first-class**: `buildBatchBodiesScript` returns the full message shape (body + htmlBody + headers + attachments) like `buildReadScript` — *including* the `delay(0.5)` htmlContent retry — so a preview-warmed entry is byte-for-byte as complete as a `mail show` fetch and never poisons a later `mail show` (HTML mail returns null htmlBody on the first attempt right after `content()`, so the retry is load-bearing, not optional). The compounded per-message delay is bounded by `softTimeoutMs`; a large miss batch that overruns just leaves later ids for the next run.
+
+**`mail search --body` is still deferred (pippin-1wy)** — its body match lives inside the JXA loop interleaved with dedup / offset / limit / newest-first ordering, so moving it to Swift risks changing search output; revisit once the batch path bakes in.
 
 ## JXA `att.save()` attachment gotchas (pippin-20v, 2026-04-20)
 
