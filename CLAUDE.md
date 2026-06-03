@@ -75,14 +75,21 @@ Config file: `~/.config/pippin/config.json`
     },
     "claude": {
       "model": "claude-sonnet-4-6"
+    },
+    "openai": {
+      "baseURL": "https://manifest.tail6e035b.ts.net/v1",
+      "model": "gpt-oss-120b",
+      "apiKey": "mnfst_…"
     }
   }
 }
 ```
 
-**Supported providers:** `ollama` (default), `claude`
+**Supported providers:** `ollama` (default), `claude`, `openai`
 
-The `provider` field selects the active backend. Both providers can be configured simultaneously — the inactive one is ignored until `provider` is switched or `--provider` overrides it per-command.
+The `provider` field selects the active backend. All providers can be configured simultaneously — the inactive ones are ignored until `provider` is switched or `--provider` overrides it per-command.
+
+**`openai` = any OpenAI-compatible Chat Completions endpoint** (`POST {baseURL}/chat/completions`): OpenAI, OpenRouter, a homelab gateway (Manifest), oMLX, vLLM, LM Studio, llama.cpp's server, or Ollama's own `/v1` shim. `ai.openai.baseURL` is the API root `/chat/completions` is appended to; `apiKey` is **optional** (local endpoints that don't authenticate send no `Authorization` header) and also resolves from `--api-key` or `$OPENAI_API_KEY`. This is the recommended escape hatch when the local Ollama model is unavailable. Mail semantic-search embeddings remain Ollama-only.
 
 **Per-command override:** `pippin memos summarize <id> --provider ollama --model qwen3.5:latest`
 
