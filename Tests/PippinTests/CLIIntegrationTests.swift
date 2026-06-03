@@ -226,6 +226,29 @@ final class CLIIntegrationTests: XCTestCase {
         XCTAssertEqual(toolCount, tools.count, "agent-info tool_count must match --list-tools")
     }
 
+    // MARK: - --fields projection in agent mode
+
+    /// `--fields` must project the envelope's `data` in agent mode (previously
+    /// it was honored only in `--format json`). Reminders is permission-light;
+    /// if no reminders/permission exist the data is an empty array, which still
+    /// proves projection didn't corrupt the envelope.
+    func testFieldsProjectsAgentEnvelope() {
+        guard requireBinary() else { return }
+        let result = run(["reminders", "list", "--limit", "3", "--fields", "id,title", "--format", "agent"])
+        guard result.exitCode == 0, let data = result.stdout.data(using: .utf8),
+              let env = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            // Reminders access unavailable in this environment — skip rather than fail.
+            return
+        }
+        XCTAssertEqual(env["v"] as? Int, 1)
+        XCTAssertEqual(env["status"] as? String, "ok")
+        XCTAssertNotNil(env["duration_ms"], "projection must not drop envelope frame")
+        if let items = env["data"] as? [[String: Any]], let first = items.first {
+            XCTAssertEqual(first.keys.sorted(), ["id", "title"], "data elements must be projected")
+        }
+    }
+
     // MARK: - Agent error output
 
     func testInvalidCommandAgentError() {

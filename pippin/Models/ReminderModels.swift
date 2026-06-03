@@ -106,40 +106,17 @@ public struct ReminderActionResult: Codable, Sendable {
 public extension ReminderItem {
     /// Encode only the specified fields to JSON. Pass nil to get all fields (standard encoding).
     func jsonData(fields: [String]?) throws -> Data {
-        let encoder = JSONEncoder()
-        guard let fields else {
-            return try encoder.encode(self)
-        }
-        let reminderData = try encoder.encode(self)
-        guard let all = try JSONSerialization.jsonObject(with: reminderData) as? [String: Any] else {
-            throw EncodingError.invalidValue(self, .init(codingPath: [], debugDescription: "Expected JSON object"))
-        }
-        var dict: [String: Any] = [:]
-        for field in fields {
-            if let val = all[field] {
-                dict[field] = val
-            }
-        }
-        return try JSONSerialization.data(withJSONObject: dict, options: .sortedKeys)
+        guard let fields else { return try JSONEncoder().encode(self) }
+        let projected = try FieldProjection.projectedObject(self, fields: fields)
+        return try JSONSerialization.data(withJSONObject: projected, options: .sortedKeys)
     }
 }
 
 public extension Array where Element == ReminderItem {
     /// Encode each reminder with only the specified fields. Pass nil to get all fields.
     func jsonData(fields: [String]?) throws -> Data {
-        let encoder = JSONEncoder()
-        guard let fields else {
-            return try encoder.encode(self)
-        }
-        let allDicts = try map { reminder -> [String: Any] in
-            let reminderData = try encoder.encode(reminder)
-            guard let dict = try JSONSerialization.jsonObject(with: reminderData) as? [String: Any] else {
-                throw EncodingError.invalidValue(reminder, .init(codingPath: [], debugDescription: "Expected JSON object"))
-            }
-            return fields.reduce(into: [:]) { result, field in
-                if let val = dict[field] { result[field] = val }
-            }
-        }
-        return try JSONSerialization.data(withJSONObject: allDicts, options: .sortedKeys)
+        guard let fields else { return try JSONEncoder().encode(self) }
+        let projected = try FieldProjection.projectedObject(self, fields: fields)
+        return try JSONSerialization.data(withJSONObject: projected, options: .sortedKeys)
     }
 }

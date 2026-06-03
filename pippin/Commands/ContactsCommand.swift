@@ -36,7 +36,7 @@ public struct ContactsCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let fieldList = parseFields(fields)
+            let fieldList = FieldProjection.parse(fields)
             let group = self.group
             // listContacts enumerates the full contact store (sync, can be slow
             // on large address books); hop off the cooperative pool.
@@ -100,7 +100,7 @@ public struct ContactsCommand: AsyncParsableCommand {
         }
 
         public mutating func run() async throws {
-            let fieldList = parseFields(fields)
+            let fieldList = FieldProjection.parse(fields)
             let query = self.query
             let contacts: [ContactInfo]
             let timedOut: Bool
@@ -369,11 +369,6 @@ public struct ContactsCommand: AsyncParsableCommand {
 }
 
 // MARK: - Shared helpers
-
-private func parseFields(_ fields: String?) -> [String]? {
-    guard let fields else { return nil }
-    return fields.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-}
 
 /// Mask an email address to avoid logging it in cleartext while retaining some identifiability.
 /// Examples:
