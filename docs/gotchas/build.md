@@ -54,6 +54,7 @@ A single green `make ci` run does NOT prove a flake is fixed — a ~0.5% flake (
 
 - GitHub Actions in `.github/workflows/` are pinned to full commit SHAs (not `@v4` tags) for supply-chain security. Update SHAs when upgrading — don't revert to tag syntax.
 - `.forgejo/workflows/` is an active self-hosted mirror of the CI/release gates (last normalized 2026-06-01). It deliberately omits the Setup-Xcode step (the self-hosted `macos` runner already has Xcode selected). Keep it in parity with `.github/workflows/` when changing gates.
+- **When bumping for a Node-runtime deprecation, verify `action.yml` `runs.using:` — don't trust the version number.** An action's latest *tag* may still be on the old runtime: e.g. `softprops/action-gh-release`'s latest v2 (v2.6.2) was still `node20`; upstream cut a separate major **v3.0.0** for Node 24. Check with: `gh api repos/<owner>/<repo>/contents/action.yml?ref=<sha> --jq '.content' | base64 -d | grep -i using`. (2026-06: checkout v4→v5.0.1, action-gh-release v2.5.0→v3.0.0, cache v4.3.0→v5.0.5; setup-xcode v1.7.0 + codeql-action v4.35.3 were already node24.)
 
 ## Local CI in a macOS VM (`make ci-vm`)
 
