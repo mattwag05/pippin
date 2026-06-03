@@ -486,7 +486,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Argument(help: "Natural language description, e.g. 'call dentist next Tuesday at 9am priority high'.")
         public var description: String
 
-        @Option(name: .long, help: "AI provider: ollama or claude (default: ollama).")
+        @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
         public var provider: String?
 
         @Option(name: .long, help: "Model name (provider-specific default).")

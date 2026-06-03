@@ -10,6 +10,7 @@ public struct PippinConfig: Codable, Sendable {
         public var provider: String?
         public var ollama: OllamaConfig?
         public var claude: ClaudeConfig?
+        public var openai: OpenAIConfig?
 
         public struct OllamaConfig: Codable, Sendable {
             public var url: String?
@@ -18,6 +19,17 @@ public struct PippinConfig: Codable, Sendable {
 
         public struct ClaudeConfig: Codable, Sendable {
             public var model: String?
+        }
+
+        /// Any OpenAI-compatible Chat Completions endpoint (OpenAI, OpenRouter,
+        /// a homelab gateway, oMLX, vLLM, LM Studio, Ollama `/v1`, …).
+        /// `baseURL` is the API root that `/chat/completions` is appended to
+        /// (e.g. `https://manifest.tail6e035b.ts.net/v1`). `apiKey` is optional —
+        /// omit it for local endpoints that don't authenticate.
+        public struct OpenAIConfig: Codable, Sendable {
+            public var baseURL: String?
+            public var model: String?
+            public var apiKey: String?
         }
     }
 
@@ -87,8 +99,17 @@ public enum AIProviderFactory {
             let key = try resolveClaudeAPIKey(flagValue: apiKeyFlag)
             return ClaudeProvider(model: model, apiKey: key)
 
+        case "openai", "openai-compatible":
+            let base = config?.ai?.openai?.baseURL ?? "http://localhost:11434/v1"
+            let model = modelFlag ?? config?.ai?.openai?.model ?? "gpt-4o-mini"
+            // Optional: local endpoints (oMLX, llama.cpp, Ollama /v1) need no key.
+            let key = resolveOpenAIAPIKey(flagValue: apiKeyFlag, configKey: config?.ai?.openai?.apiKey)
+            return OpenAIProvider(baseURL: base, model: model, apiKey: key)
+
         default:
-            throw AIProviderError.networkError("Unknown provider '\(providerName)'. Use 'ollama' or 'claude'.")
+            throw AIProviderError.networkError(
+                "Unknown provider '\(providerName)'. Use 'ollama', 'claude', or 'openai'."
+            )
         }
     }
 
@@ -102,6 +123,17 @@ public enum AIProviderFactory {
         // 3. Vaultwarden via get-secret helper
         if let key = tryGetSecret("Anthropic API"), !key.isEmpty { return key }
         throw AIProviderError.missingAPIKey
+    }
+
+    /// Resolve the (optional) OpenAI-compatible API key: `--api-key` flag, then
+    /// config `ai.openai.apiKey`, then `OPENAI_API_KEY`. Returns nil when none
+    /// is set — local endpoints that don't authenticate are valid, so this
+    /// never throws.
+    private static func resolveOpenAIAPIKey(flagValue: String?, configKey: String?) -> String? {
+        if let key = flagValue, !key.isEmpty { return key }
+        if let key = configKey, !key.isEmpty { return key }
+        if let key = ProcessInfo.processInfo.environment["OPENAI_API_KEY"], !key.isEmpty { return key }
+        return nil
     }
 
     /// Try to retrieve a secret from Vaultwarden via the get-secret shell script.

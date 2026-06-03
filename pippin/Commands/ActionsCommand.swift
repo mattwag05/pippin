@@ -36,7 +36,7 @@ public struct ActionsCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Minimum confidence (0.0-1.0) to include an extracted action. Default: 0.5.")
         public var minConfidence: Float = 0.5
 
-        @Option(name: .long, help: "AI provider: ollama or claude (default: ollama).")
+        @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
         public var provider: String?
 
         @Option(name: .long, help: "Model name (provider-specific default).")
