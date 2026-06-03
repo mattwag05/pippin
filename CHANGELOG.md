@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.3] - 2026-06-03
+
+### Added
+
+- [feat] `reminders list` and `reminders search` now surface a partial-results advisory when the underlying EventKit fetch hits its 15s wall-clock cap (store hang / permission edge). Previously the timeout signal was discarded after a lone stderr line; MCP/agent clients now get a structured `warnings` entry in the envelope (and JSON/text parity), mirroring the Mail/Contacts soft-timeout pattern. `reminders` is also reflected in the `digest` reminders-section warnings. Lighter, ship-now alternative to the still-deferred generic async-timeout helper (pippin-91n). Closes pippin-w3y.
+
 ### Changed
 
 - [ci] Bump Node-20 GitHub/Forgejo actions to their Node-24 releases ahead of GitHub's 2026-06-16 forced-migration / 2026-09-16 removal deadline: `actions/checkout` v4→v5.0.1, `softprops/action-gh-release` v2.5.0→v3.0.0, `actions/cache` v4.3.0→v5.0.5 (all re-pinned to full SHAs). `maxim-lobanov/setup-xcode` v1.7.0 and `github/codeql-action` v4.35.3 already run on Node 24, so they're unchanged. Closes pippin-e3x.
@@ -630,7 +636,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.24.2...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.24.3...HEAD
+[0.24.3]: https://github.com/mattwag05/pippin/compare/v0.24.2...v0.24.3
 [0.24.2]: https://github.com/mattwag05/pippin/compare/v0.24.1...v0.24.2
 [0.24.1]: https://github.com/mattwag05/pippin/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/mattwag05/pippin/compare/v0.23.0...v0.24.0
