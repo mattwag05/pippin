@@ -41,6 +41,7 @@ Key invariants:
 - Prefer `msg.source()` over `msg.content()` to trigger IMAP fetch for attachments. `content()` only guarantees the text body — attachment binaries can stay as metadata stubs. Fall back to `content()` if `source()` throws.
 - Wrap `att.mimeType()` in try/catch with a fallback (e.g. `'application/octet-stream'`). It raises "AppleEvent handler failed" (-10000) on some IMAP-backed attachments even when the attachment is fully usable.
 - Gmail label'd compound ids (e.g. `||Important||`) may not resolve cleanly via `resolveMailbox`; when the message isn't in the resolved mailbox, fall back to `collectAllMailboxes` + `.messages.whose({id})()` across every mailbox (skip the already-tried one).
+- `mb.messages.whose({id: x})()` accepts `x` as a **string** as well as a number — JXA coerces it to the numeric id match (confirmed via `buildBatchBodiesScript`, which injects ids as JSON strings). So a batch of ids serialized through `JSONEncoder` works without converting them back to `Int`.
 
 ## Per-attachment try/catch required in *read* scripts too
 
