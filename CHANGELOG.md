@@ -9,19 +9,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-06-03
+
 ### Added
 
 - [feat] Local mail body cache. `mail show` and `mail index` now read message bodies through a SQLite cache (`~/.config/pippin/mail-cache.db`) keyed by compound id, so the expensive per-message `msg.content()` IMAP download happens once. Repeat reads are ~75× faster (≈1.3s → ≈17ms in local testing) and `mail index` re-runs skip already-fetched bodies. New `mail cache stats|clear|warm` subcommands (`warm` pre-fetches recent bodies; `clear --older-than-days N` prunes) and a `mail show --no-cache` escape hatch. Read/unread state is never cached — `mail list`/`search` stay live. Closes pippin-e6m. (The bulk `list --preview` / `search --body` timeout path fetches bodies inside the JXA loop and needs a separate restructure — tracked as a follow-up.)
 - [feat] `mail list` now accepts `--fields` (and the `mail_list` MCP tool a `fields` arg) to project the output to chosen JSON keys, trimming agent token usage. Closes pippin-1k0.
+- [feat] `pippin agent-info` — a capability-probe command for orchestrating agents. One call returns pippin's contract as structured data (envelope v1): version, `schema_version`, output `formats`, the typed `exit_codes` map, `global_flags`, experimental-gate status, MCP `tool_count` (sourced from the tool registry so it can't drift from `mcp-server --list-tools`), and the visible top-level `commands`. Complements `mcp-server --list-tools`. Closes pippin-zgs.
+- [feat] Typed process exit codes. On failure `pippin` now sets a distinct exit code derived from the envelope's `error.code` so a calling shell or agent can branch on the failure *class* without parsing JSON: `3` not-found, `4` auth/permission/config, `5` tool/bridge failure (default), `7` timeout/rate-limit, `2` usage/bad-input. Argument-parsing failures keep ArgumentParser's `64`. Applies in `--format agent` mode and to catalogued errors in text/json mode; the MCP server passes the code through verbatim. Documented in SKILL.md and docs/mcp-server.md. Closes pippin-y7y.
 
 ### Fixed
 
 - [bug] `--fields` projection now works in `--format agent`, not just `--format json`. It was previously silent in agent mode — the exact format AI agents/MCP clients use — so `notes`/`calendar`/`reminders` list/search calls returned full objects despite `--fields`. Projection now applies inside the envelope's `data` (leaving `v`/`status`/`duration_ms`/`warnings` intact) and preserves `next_cursor` on paginated output. The three duplicated field-filter implementations (ReminderModels/CalendarModels `jsonData`, NotesCommand `filteredNoteDicts`) were consolidated onto one shared `FieldProjection` helper so json- and agent-mode stay in lockstep. Closes pippin-1k0.
-
-### Added
-
-- [feat] `pippin agent-info` — a capability-probe command for orchestrating agents. One call returns pippin's contract as structured data (envelope v1): version, `schema_version`, output `formats`, the typed `exit_codes` map, `global_flags`, experimental-gate status, MCP `tool_count` (sourced from the tool registry so it can't drift from `mcp-server --list-tools`), and the visible top-level `commands`. Complements `mcp-server --list-tools`. Closes pippin-zgs.
-- [feat] Typed process exit codes. On failure `pippin` now sets a distinct exit code derived from the envelope's `error.code` so a calling shell or agent can branch on the failure *class* without parsing JSON: `3` not-found, `4` auth/permission/config, `5` tool/bridge failure (default), `7` timeout/rate-limit, `2` usage/bad-input. Argument-parsing failures keep ArgumentParser's `64`. Applies in `--format agent` mode and to catalogued errors in text/json mode; the MCP server passes the code through verbatim. Documented in SKILL.md and docs/mcp-server.md. Closes pippin-y7y.
 
 ## [0.24.3] - 2026-06-03
 
@@ -650,7 +649,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.24.3...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/mattwag05/pippin/compare/v0.24.3...v0.25.0
 [0.24.3]: https://github.com/mattwag05/pippin/compare/v0.24.2...v0.24.3
 [0.24.2]: https://github.com/mattwag05/pippin/compare/v0.24.1...v0.24.2
 [0.24.1]: https://github.com/mattwag05/pippin/compare/v0.24.0...v0.24.1

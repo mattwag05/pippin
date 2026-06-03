@@ -96,6 +96,9 @@ pippin mail send --to user@example.com --subject "Hello" --body "Hi there" --dry
 pippin mail attachments "acct||INBOX||12345" --save-dir ~/Downloads
 pippin mail mark "acct||INBOX||12345" --read
 pippin mail move "acct||INBOX||12345" --to Archive
+pippin mail list --fields id,subject,from        # project to fewer JSON keys (token-light)
+pippin mail cache warm --limit 50                # pre-fetch bodies; show/index hits are ~75× faster
+pippin mail show "acct||INBOX||12345" --no-cache  # force a live fetch
 ```
 
 ### Voice Memos
@@ -272,6 +275,16 @@ Every command supports three modes:
 | `--format text` | Human-readable tables and cards (default) |
 | `--format json` | Pretty-printed JSON for scripting |
 | `--format agent` | Compact JSON, minimal tokens — built for LLM pipelines |
+
+`--fields id,subject,...` projects structured output (json + agent) to just the named keys, trimming tokens for scan workflows.
+
+### Agent discovery & exit codes
+
+```bash
+pippin agent-info --format agent     # version, formats, exit-code map, tool count, commands
+```
+
+On failure pippin sets a typed exit code so a calling shell can branch without parsing JSON: `2` usage, `3` not-found, `4` auth/permission/config, `5` tool/bridge failure, `7` timeout/rate-limit (`64` for argument-parsing errors).
 
 ### Pagination
 
