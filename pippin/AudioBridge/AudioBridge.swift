@@ -87,6 +87,67 @@ public enum AudioBridge {
         }
     }
 
+    // MARK: - STT Argument Construction
+
+    /// Whether a resolved STT entry uses the mlx-audio 0.4.2+ `stt.generate`
+    /// contract (named `--audio`/`--output-path` flags, full Hugging Face model
+    /// ids, file-based JSON output) versus the pre-0.4.2 `mlx_audio.stt` legacy
+    /// contract (positional audio file, short model aliases, stdout output).
+    ///
+    /// The pipx console-script (`~/.local/bin/mlx_audio.stt.generate`, empty
+    /// prefixArgs) and the `-m mlx_audio.stt.generate` module form are both the
+    /// new contract; only `-m mlx_audio.stt` is legacy.
+    static func sttEntryIsGenerate(_ entry: STTEntry) -> Bool {
+        entry.executable.lastPathComponent == "mlx_audio.stt.generate"
+            || entry.prefixArgs.contains("mlx_audio.stt.generate")
+    }
+
+    /// Short STT model aliases → the full Hugging Face repo ids that mlx-audio
+    /// 0.4.2's `stt.generate` requires. Keep the default in `MLXAudioTranscriber`
+    /// in sync with the keys here.
+    static let sttModelAliases = [
+        "parakeet": "mlx-community/parakeet-tdt-0.6b-v2",
+    ]
+
+    /// Map a pippin STT model alias to the full Hugging Face repo id that
+    /// mlx-audio 0.4.2's `stt.generate` requires (bare "parakeet" no longer
+    /// resolves — it gets treated as a literal repo id and 404s). Ids that are
+    /// already fully qualified (contain "/") or are unknown bare names pass
+    /// through unchanged so explicit user overrides still work.
+    static func resolveSTTModelID(_ model: String) -> String {
+        if model.contains("/") { return model }
+        return sttModelAliases[model.lowercased()] ?? model
+    }
+
+    /// Build the mlx-audio STT argument vector for the given entry's contract.
+    ///
+    /// - generate (0.4.2+): `<prefix> --model <hf-id> --audio <file>
+    ///   --output-path <base> --format json` — the transcript is written to
+    ///   `<base>.json`, so the caller reads that file rather than stdout.
+    /// - legacy (pre-0.4.2): `<prefix> <file> --model <alias> --format text` —
+    ///   positional file, short alias, transcript on stdout. `outputBase` is
+    ///   ignored.
+    static func buildSTTArgs(
+        entry: STTEntry,
+        filePath: String,
+        model: String,
+        outputBase: String
+    ) -> [String] {
+        if sttEntryIsGenerate(entry) {
+            return entry.prefixArgs + [
+                "--model", resolveSTTModelID(model),
+                "--audio", filePath,
+                "--output-path", outputBase,
+                "--format", "json",
+            ]
+        }
+        return entry.prefixArgs + [
+            filePath,
+            "--model", model,
+            "--format", "text",
+        ]
+    }
+
     // MARK: - Public API
 
     /// Synthesize speech from text using the specified TTS model and voice.
@@ -157,33 +218,86 @@ public enum AudioBridge {
             throw AudioBridgeError.notAvailable
         }
 
-        let args = entry.prefixArgs + [
-            filePath,
-            "--model", model,
-            "--format", outputFormat,
-        ]
+        if sttEntryIsGenerate(entry) {
+            return try transcribeViaGenerate(entry: entry, filePath: filePath, model: model)
+        }
 
+        // Legacy pre-0.4.2 `mlx_audio.stt`: positional file, transcript on stdout.
+        let args = buildSTTArgs(entry: entry, filePath: filePath, model: model, outputBase: "")
         let stdout = try runProcess(
             executable: entry.executable,
             arguments: args,
             timeoutSeconds: 300
         )
 
-        // Attempt JSON decode first.
+        // Attempt JSON decode first; fall through to plain text if it isn't JSON.
         if outputFormat == "json",
-           let data = stdout.data(using: .utf8)
+           let data = stdout.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         {
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let text = json["text"] as? String ?? stdout
-                let language = json["language"] as? String
-                let duration = json["duration"] as? Double
-                return TranscriptionResult(text: text, language: language, duration: duration, modelUsed: model)
-            }
-            // JSON format requested but output wasn't valid JSON — fall through to plain text.
+            return transcriptionResult(fromJSON: json, fallbackText: stdout, modelUsed: model)
         }
 
         // Plain text or SRT: return raw output as text.
         return TranscriptionResult(text: stdout, modelUsed: model)
+    }
+
+    /// Build a `TranscriptionResult` from an mlx-audio JSON payload. The shape is
+    /// the same whether the JSON arrived on stdout (legacy) or in an output file
+    /// (0.4.2): a `text` field (with a caller-supplied fallback) plus optional
+    /// `language`/`duration`.
+    private static func transcriptionResult(
+        fromJSON json: [String: Any]?,
+        fallbackText: String,
+        modelUsed: String
+    ) -> TranscriptionResult {
+        TranscriptionResult(
+            text: (json?["text"] as? String) ?? fallbackText,
+            language: json?["language"] as? String,
+            duration: json?["duration"] as? Double,
+            modelUsed: modelUsed
+        )
+    }
+
+    /// Transcribe under the mlx-audio 0.4.2+ `stt.generate` contract: the tool
+    /// writes the transcript to `<output-path>.json` and (unhelpfully) exits 0
+    /// even on failure — so success is detected by a readable, parseable output
+    /// file, not the exit code. The temp file is always cleaned up.
+    private static func transcribeViaGenerate(
+        entry: STTEntry,
+        filePath: String,
+        model: String
+    ) throws -> TranscriptionResult {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pippin-stt-\(UUID().uuidString)")
+        let outFile = base.appendingPathExtension("json")
+        defer { try? FileManager.default.removeItem(at: outFile) }
+
+        let args = buildSTTArgs(entry: entry, filePath: filePath, model: model, outputBase: base.path)
+        let result = try runProcessCapturing(
+            executable: entry.executable,
+            arguments: args,
+            timeoutSeconds: 300
+        )
+        if result.timedOut { throw AudioBridgeError.timeout }
+
+        // 0.4.2 returns exit 0 on errors (e.g. unresolved model), so the only
+        // reliable success signal is a parseable output file.
+        guard let data = try? Data(contentsOf: outFile) else {
+            let detail = result.stderr.isEmpty ? result.stdout : result.stderr
+            throw AudioBridgeError.processFailed(
+                detail.isEmpty ? "mlx-audio produced no transcript output" : detail
+            )
+        }
+
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let fallbackText = (String(data: data, encoding: .utf8) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return transcriptionResult(
+            fromJSON: json,
+            fallbackText: fallbackText,
+            modelUsed: resolveSTTModelID(model)
+        )
     }
 
     /// List available voices for a given TTS model.
@@ -354,14 +468,25 @@ public enum AudioBridge {
         return try runProcess(executable: pythonURL, arguments: arguments, timeoutSeconds: timeoutSeconds)
     }
 
-    /// Core subprocess runner: launch, drain stdout/stderr concurrently,
-    /// apply a SIGTERM→SIGKILL timeout, and return stdout. Callers decide
-    /// how to resolve the executable (python interpreter vs console-script binary).
-    private static func runProcess(
+    /// Captured result of a subprocess run: drained stdout/stderr, exit status,
+    /// and whether the timeout fired. Lets callers that can't trust the exit
+    /// code (mlx-audio 0.4.2's `stt.generate` exits 0 on failure) inspect stderr
+    /// and decide success by other means.
+    struct ProcessOutcome {
+        let stdout: String
+        let stderr: String
+        let status: Int32
+        let timedOut: Bool
+    }
+
+    /// Core subprocess runner: launch, drain stdout/stderr concurrently, apply a
+    /// SIGTERM→SIGKILL timeout, and return the full outcome WITHOUT throwing on a
+    /// nonzero exit. Callers decide how to interpret status/stderr.
+    private static func runProcessCapturing(
         executable: URL,
         arguments: [String],
         timeoutSeconds: Int
-    ) throws -> String {
+    ) throws -> ProcessOutcome {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
@@ -408,19 +533,36 @@ public enum AudioBridge {
         timeoutItem.cancel()
         group.wait()
 
-        if process.terminationReason == .uncaughtSignal {
-            throw AudioBridgeError.timeout
-        }
-
         let stdoutStr = (String(data: stdoutData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let stderrStr = (String(data: stderrData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard process.terminationStatus == 0 else {
-            let detail = stderrStr.isEmpty ? stdoutStr : stderrStr
+        return ProcessOutcome(
+            stdout: stdoutStr,
+            stderr: stderrStr,
+            status: process.terminationStatus,
+            timedOut: process.terminationReason == .uncaughtSignal
+        )
+    }
+
+    /// Core subprocess runner: launch, drain stdout/stderr concurrently,
+    /// apply a SIGTERM→SIGKILL timeout, and return stdout. Callers decide
+    /// how to resolve the executable (python interpreter vs console-script binary).
+    private static func runProcess(
+        executable: URL,
+        arguments: [String],
+        timeoutSeconds: Int
+    ) throws -> String {
+        let outcome = try runProcessCapturing(
+            executable: executable,
+            arguments: arguments,
+            timeoutSeconds: timeoutSeconds
+        )
+        if outcome.timedOut { throw AudioBridgeError.timeout }
+        guard outcome.status == 0 else {
+            let detail = outcome.stderr.isEmpty ? outcome.stdout : outcome.stderr
             throw AudioBridgeError.processFailed(detail)
         }
-
-        return stdoutStr
+        return outcome.stdout
     }
 
     /// Attempt to extract a file path from a line of text output.
