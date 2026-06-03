@@ -89,6 +89,15 @@ public struct RemindersCommand: AsyncParsableCommand {
 
         public init() {}
 
+        /// Advisory surfaced when the EventKit fetch hits its 15s wall-clock cap
+        /// (store hang / permission edge). `--list` scopes the underlying
+        /// predicate, so it's the one flag that actually shrinks the fetch.
+        static let timedOutHint = "reminders fetch did not complete within 15s — returning partial results; scope to a single list with --list for a complete, faster fetch"
+
+        private func warnTimedOut() {
+            FileHandle.standardError.write(Data("Warning: \(Self.timedOutHint)\n".utf8))
+        }
+
         public mutating func validate() throws {
             if let dueBefore, parseCalendarDate(dueBefore) == nil {
                 throw ValidationError("--due-before must be in YYYY-MM-DD or ISO 8601 format.")
@@ -137,9 +146,13 @@ public struct RemindersCommand: AsyncParsableCommand {
                     limit: offset + pageSize + 1
                 )
                 let page = try Pagination.paginate(
-                    all: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+                    all: fetched.results, offset: offset, pageSize: pageSize, filterHash: hash
                 )
                 if output.isJSON {
+                    // --fields projects at encode time via jsonData(fields:), which
+                    // OutputOptions.emit (plain printJSON) can't preserve, so this
+                    // branch stays custom and surfaces the timeout warning itself.
+                    if fetched.timedOut { warnTimedOut() }
                     let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
                     let itemsData = try page.items.jsonData(fields: fieldList)
                     let itemsJSON = try JSONSerialization.jsonObject(with: itemsData)
@@ -147,18 +160,18 @@ public struct RemindersCommand: AsyncParsableCommand {
                     if let cursor = page.nextCursor { dict["next_cursor"] = cursor }
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
-                } else if output.isAgent {
-                    try output.printAgent(page)
                 } else {
-                    printRemindersTable(page.items)
-                    if let cursor = page.nextCursor {
-                        print("(more — re-run with --cursor \(cursor))")
+                    try output.emit(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint) {
+                        printRemindersTable(page.items)
+                        if let cursor = page.nextCursor {
+                            print("(more — re-run with --cursor \(cursor))")
+                        }
                     }
                 }
                 return
             }
 
-            let reminders = try await bridge.listReminders(
+            let outcome = try await bridge.listReminders(
                 listId: list,
                 completed: completed,
                 dueBefore: dueBefore.flatMap { parseCalendarDate($0) },
@@ -168,14 +181,17 @@ public struct RemindersCommand: AsyncParsableCommand {
                 priority: priority.flatMap { parseReminderPriority($0) },
                 limit: limit
             )
+            let reminders = outcome.results
             if output.isJSON {
+                // --fields projection can't flow through emit's plain printJSON.
+                if outcome.timedOut { warnTimedOut() }
                 let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
-            } else if output.isAgent {
-                try output.printAgent(reminders)
             } else {
-                printRemindersTable(reminders)
+                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
+                    printRemindersTable(reminders)
+                }
             }
         }
     }
@@ -422,6 +438,14 @@ public struct RemindersCommand: AsyncParsableCommand {
 
         public init() {}
 
+        /// See `List.timedOutHint` — same 15s EventKit fetch cap; `--list` is the
+        /// only flag that narrows the underlying predicate.
+        static let timedOutHint = List.timedOutHint
+
+        private func warnTimedOut() {
+            FileHandle.standardError.write(Data("Warning: \(Self.timedOutHint)\n".utf8))
+        }
+
         public mutating func validate() throws {
             guard limit > 0 else {
                 throw ValidationError("--limit must be positive.")
@@ -430,20 +454,23 @@ public struct RemindersCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let bridge = RemindersBridge()
-            let reminders = try await bridge.searchReminders(
+            let outcome = try await bridge.searchReminders(
                 query: query,
                 listId: list,
                 completed: completed,
                 limit: limit
             )
+            let reminders = outcome.results
             if output.isJSON {
+                // --fields projection can't flow through emit's plain printJSON.
+                if outcome.timedOut { warnTimedOut() }
                 let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
-            } else if output.isAgent {
-                try output.printAgent(reminders)
             } else {
-                printRemindersTable(reminders)
+                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
+                    printRemindersTable(reminders)
+                }
             }
         }
     }
