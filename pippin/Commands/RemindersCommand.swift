@@ -153,7 +153,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                     // OutputOptions.emit (plain printJSON) can't preserve, so this
                     // branch stays custom and surfaces the timeout warning itself.
                     if fetched.timedOut { warnTimedOut() }
-                    let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                    let fieldList = FieldProjection.parse(fields)
                     let itemsData = try page.items.jsonData(fields: fieldList)
                     let itemsJSON = try JSONSerialization.jsonObject(with: itemsData)
                     var dict: [String: Any] = ["items": itemsJSON]
@@ -161,7 +161,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else {
-                    try output.emit(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint) {
+                    try output.emit(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(fields)) {
                         printRemindersTable(page.items)
                         if let cursor = page.nextCursor {
                             print("(more — re-run with --cursor \(cursor))")
@@ -185,11 +185,11 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 // --fields projection can't flow through emit's plain printJSON.
                 if outcome.timedOut { warnTimedOut() }
-                let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let fieldList = FieldProjection.parse(fields)
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else {
-                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
+                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(fields)) {
                     printRemindersTable(reminders)
                 }
             }
@@ -464,11 +464,11 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 // --fields projection can't flow through emit's plain printJSON.
                 if outcome.timedOut { warnTimedOut() }
-                let fieldList = fields?.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                let fieldList = FieldProjection.parse(fields)
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else {
-                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
+                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(fields)) {
                     printRemindersTable(reminders)
                 }
             }

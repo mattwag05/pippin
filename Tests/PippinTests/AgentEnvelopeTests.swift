@@ -134,6 +134,33 @@ final class AgentEnvelopeTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(durationMs, 40, "OutputOptions.startedAt must be threaded through")
     }
 
+    // MARK: - Projected envelope (--fields) frame parity
+
+    /// `printAgentProjectedJSON` hand-builds the envelope frame because its
+    /// `data` is opaque projected JSON. This guards against the hand-built frame
+    /// drifting from the typed `AgentOkEnvelope` if the envelope shape evolves.
+    func testProjectedFrameMatchesTyped() throws {
+        let payload = [Sample(name: "foo", count: 3)]
+        let typed = try decodeObject(captureStdout { try printAgentJSON(payload) })
+        let projected = try decodeObject(captureStdout { try printAgentProjectedJSON(payload, fields: ["name"]) })
+        // Same top-level frame keys (everything except the payload itself).
+        let frameKeys: (([String: Any]) -> Set<String>) = { Set($0.keys).subtracting(["data"]) }
+        XCTAssertEqual(frameKeys(typed), frameKeys(projected), "projected envelope frame must match the typed envelope")
+        XCTAssertEqual(projected["v"] as? Int, 1)
+        XCTAssertEqual(projected["status"] as? String, "ok")
+        XCTAssertNotNil(projected["duration_ms"] as? Int)
+        // Projection actually trimmed the data.
+        let items = try XCTUnwrap(projected["data"] as? [[String: Any]])
+        XCTAssertEqual(items.first?.keys.sorted(), ["name"])
+    }
+
+    func testProjectedEnvelopeIncludesWarnings() throws {
+        let projected = try decodeObject(captureStdout {
+            try printAgentProjectedJSON([Sample(name: "x", count: 1)], fields: ["name"], warnings: ["partial"])
+        })
+        XCTAssertEqual(projected["warnings"] as? [String], ["partial"])
+    }
+
     // MARK: - Helpers
 
     private func decodeObject(_ text: String) throws -> [String: Any] {
