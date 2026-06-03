@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] Typed process exit codes. On failure `pippin` now sets a distinct exit code derived from the envelope's `error.code` so a calling shell or agent can branch on the failure *class* without parsing JSON: `3` not-found, `4` auth/permission/config, `5` tool/bridge failure (default), `7` timeout/rate-limit, `2` usage/bad-input. Argument-parsing failures keep ArgumentParser's `64`. Applies in `--format agent` mode and to catalogued errors in text/json mode; the MCP server passes the code through verbatim. Documented in SKILL.md and docs/mcp-server.md. Closes pippin-y7y.
+
 ## [0.24.3] - 2026-06-03
 
 ### Added
