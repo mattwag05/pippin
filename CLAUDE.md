@@ -163,6 +163,8 @@ Every `pippin <cmd> --format agent` response is wrapped in a versioned envelope.
 - `data` carries the previous raw payload shape unchanged, so single-field extractions like `.error.code` still work; iterations like `jq 'length'` must be rewritten as `jq '.data | length'`.
 - Schema version bumps on any future breaking change. Canonical constant is `AGENT_SCHEMA_VERSION` in [pippin/Formatting/AgentOutput.swift](pippin/Formatting/AgentOutput.swift).
 
+**Typed exit codes (v0.25.0):** runtime failures set a distinct process exit code derived from `error.code` — `2` usage, `3` not-found, `4` auth/permission/config, `5` tool/bridge (default), `7` timeout/rate-limit (`64` stays ArgumentParser usage). Mapping in [pippin/Formatting/PippinExitCode.swift](pippin/Formatting/PippinExitCode.swift), applied at the two `Darwin.exit` sites in [pippin-entry/Pippin.swift](pippin-entry/Pippin.swift). MCP passes the child code through verbatim — shells/agents branch on it, so don't collapse it back to `exit(1)`.
+
 **Morning briefing scheduled task** (`~/.claude/scheduled-tasks/morning-briefing/SKILL.md`):
 Invoked from Claude Cowork via Desktop Commander MCP. Depends on:
 - `pippin mail list --account <acc> --format agent` (one call per configured account)
