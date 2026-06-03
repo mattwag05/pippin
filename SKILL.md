@@ -301,6 +301,21 @@ In `--format agent` mode, every response is wrapped in a versioned envelope:
 
 Extract the payload with `jq '.data'`; check `jq -r '.status'` before consuming. Single-field error reads like `.error.code` still work.
 
+### Exit codes
+
+On failure, `pippin` sets a typed process exit code so a calling shell can branch on the *class* of failure without parsing the envelope. The code is derived from the same `error.code` surfaced in the envelope:
+
+| Code | Meaning | Retryable | Example `error.code` |
+|------|---------|-----------|----------------------|
+| `0` | success | — | — |
+| `2` | usage / bad input | no | `invalid_cursor`, `invalid_json`, `missing_required` |
+| `3` | resource not found | no | `event_not_found`, `memo_not_found`, `job_not_found` |
+| `4` | auth / permission / config | no | `access_denied`, `missing_api_key`, `not_available` |
+| `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
+| `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
+
+Argument-parsing failures (bad flags, `--help`/`--version`) keep ArgumentParser's own codes (`64` usage, `0` for help/version) so its formatted usage text is preserved. Typed codes apply to runtime errors in `--format agent` mode and to errors with a catalogued remediation in text/json mode.
+
 ### Pagination
 
 List commands (`mail list`, `mail search`, `memos list`, `reminders list`, `notes list`, `calendar events`, `calendar upcoming`, `contacts search`) accept opaque `--cursor` tokens plus `--page-size`:

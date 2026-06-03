@@ -187,6 +187,23 @@ final class CLIIntegrationTests: XCTestCase {
         XCTAssertNotEqual(result.exitCode, 0)
     }
 
+    // MARK: - Typed exit codes
+
+    /// A not-found resource error maps to exit code 3. `job show` is chosen
+    /// because it needs no system permissions (pure filesystem job store), so
+    /// the assertion is deterministic in CI and headless environments.
+    func testNotFoundExitsWith3() {
+        guard requireBinary() else { return }
+        let result = run(["job", "show", "definitely-not-a-real-job-id", "--format", "agent"])
+        XCTAssertEqual(result.exitCode, 3, "not-found should exit 3, got \(result.exitCode); stderr=\(result.stderr)")
+        // Envelope still well-formed.
+        if let data = result.stdout.data(using: .utf8),
+           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        {
+            XCTAssertEqual(dict["status"] as? String, "error")
+        }
+    }
+
     // MARK: - Agent error output
 
     func testInvalidCommandAgentError() {

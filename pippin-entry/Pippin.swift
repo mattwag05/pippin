@@ -57,7 +57,9 @@ struct Pippin: AsyncParsableCommand {
                 Pippin.exit(withError: error)
             } else if isAgentMode() {
                 printAgentError(error)
-                Darwin.exit(1)
+                // Typed exit code so a calling shell can branch on the failure
+                // class without parsing the JSON envelope.
+                Darwin.exit(PippinExitCode.from(error))
             } else if let remediation = RemediationCatalog.forError(error) {
                 // Catalogued errors print ourselves so we can append remediation.
                 // Uncatalogued errors (ValidationError, etc.) fall through to
@@ -69,7 +71,7 @@ struct Pippin: AsyncParsableCommand {
                     fputs("  $ \(cmd)\n", stderr)
                 }
                 fputs("Run 'pippin doctor' for diagnostics.\n", stderr)
-                Darwin.exit(1)
+                Darwin.exit(PippinExitCode.from(error))
             } else {
                 Pippin.exit(withError: error)
             }
