@@ -108,6 +108,21 @@ Fields:
 
 The inner `data` / `error` shapes are unchanged, so single-field extractions like `.error.code` and `.error.message` keep working unchanged. Only consumers that iterate the top-level response (expecting a bare array or a specific object shape) need to rebind one level deeper.
 
+## Exit codes
+
+On failure, the `pippin` child process exits with a typed code derived from the same `error.code` in the envelope, so a calling shell or orchestrator can branch on the failure *class* without parsing JSON:
+
+| Code | Meaning | Retryable | Example `error.code` |
+|------|---------|-----------|----------------------|
+| `0` | success | — | — |
+| `2` | usage / bad input | no | `invalid_cursor`, `invalid_json`, `missing_required` |
+| `3` | resource not found | no | `event_not_found`, `memo_not_found`, `job_not_found` |
+| `4` | auth / permission / config | no | `access_denied`, `missing_api_key`, `not_available` |
+| `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
+| `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
+
+Argument-parsing failures keep ArgumentParser's `64` (usage). The MCP server passes the child's exit code through verbatim, so MCP clients see the same codes. The mapping lives in [`pippin/Formatting/PippinExitCode.swift`](../pippin/Formatting/PippinExitCode.swift).
+
 ## Wire into Claude Code
 
 Create or edit a `.mcp.json` file in the project root (machine-local, gitignored):
