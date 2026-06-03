@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [bug] Voice Memos transcription now works with mlx-audio 0.4.2. `memos transcribe`, `memos summarize`, and `memos capture` previously failed with an opaque `mlx_audio.stt.generate` usage error: pippin passed the pre-0.4.2 CLI shape (positional audio file, `--format text`, short model alias) but 0.4.2 requires a named `--audio` flag, a `--output-path` (the transcript is written there, not to stdout), `--format json`, and a full Hugging Face model id. pippin now builds the correct 0.4.2 argument vector, maps the `parakeet` alias to `mlx-community/parakeet-tdt-0.6b-v2`, reads the transcript from the output file, and treats a missing/empty output file as failure (0.4.2 exits 0 even on error). The legacy `mlx_audio.stt` path is preserved for pre-0.4.2 installs. Closes pippin-8ik.
+
 ### Added
 
 - [feat] `mail list --preview N` now reads/writes through the local mail body cache (the same `~/.config/pippin/mail-cache.db` used by `mail show`/`mail index`). Previews are assembled in two passes — a cheap metadata-only enumeration, then a single batch osascript that fetches bodies only for cache misses and writes them through. A warm cache skips the expensive per-message `msg.content()` IMAP download entirely; a cold cache adds just one extra metadata pass. Read/unread and all other metadata stay live (only the body preview comes from the cache). Always-on; new `mail list --no-cache` forces live fetches. Closes pippin-8fq. (`mail search --body` remains deferred — tracked as pippin-1wy.)

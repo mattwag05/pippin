@@ -197,4 +197,88 @@ final class AudioTests: XCTestCase {
         XCTAssertEqual(result.modelUsed, "kokoro")
         XCTAssertEqual(result.voiceUsed, "af_heart")
     }
+
+    // MARK: - STT 0.4.2 argument construction (regression: pippin-8ik)
+
+    //
+    // mlx-audio 0.4.2 renamed the STT entry point to `stt.generate` and changed
+    // its CLI contract: the audio file is a named `--audio` flag (no longer
+    // positional), `--output-path` is REQUIRED, `--format` values are
+    // {txt,srt,vtt,json} (not "text"), and the transcript is written to
+    // `<output-path>.<format>` rather than stdout. Short model aliases like
+    // "parakeet" no longer resolve — a full Hugging Face id is required. These
+    // tests pin the arg vector pippin builds for each contract.
+
+    private func valueAfter(_ args: [String], _ flag: String) -> String? {
+        guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+
+    private func generateEntry() -> AudioBridge.STTEntry {
+        AudioBridge.STTEntry(
+            executable: URL(fileURLWithPath: "/usr/bin/python3"),
+            prefixArgs: ["-m", "mlx_audio.stt.generate"]
+        )
+    }
+
+    private func pipxEntry() -> AudioBridge.STTEntry {
+        AudioBridge.STTEntry(
+            executable: URL(fileURLWithPath: "/Users/x/.local/bin/mlx_audio.stt.generate"),
+            prefixArgs: []
+        )
+    }
+
+    private func legacyEntry() -> AudioBridge.STTEntry {
+        AudioBridge.STTEntry(
+            executable: URL(fileURLWithPath: "/usr/bin/python3"),
+            prefixArgs: ["-m", "mlx_audio.stt"]
+        )
+    }
+
+    func testSTTEntryIsGenerate() {
+        XCTAssertTrue(AudioBridge.sttEntryIsGenerate(generateEntry()))
+        XCTAssertTrue(AudioBridge.sttEntryIsGenerate(pipxEntry()), "pipx console-script is the 0.4.2 generate entry")
+        XCTAssertFalse(AudioBridge.sttEntryIsGenerate(legacyEntry()))
+    }
+
+    func testResolveSTTModelIDMapsParakeetAlias() {
+        // The bare "parakeet" alias must map to the full HF id 0.4.2 requires.
+        XCTAssertEqual(AudioBridge.resolveSTTModelID("parakeet"), "mlx-community/parakeet-tdt-0.6b-v2")
+        // Already-qualified ids pass through untouched.
+        XCTAssertEqual(AudioBridge.resolveSTTModelID("mlx-community/whisper-large-v3-turbo"),
+                       "mlx-community/whisper-large-v3-turbo")
+        // Unknown bare names pass through (explicit user override).
+        XCTAssertEqual(AudioBridge.resolveSTTModelID("some-custom-model"), "some-custom-model")
+    }
+
+    func testBuildSTTArgsGenerateContract() {
+        let args = AudioBridge.buildSTTArgs(
+            entry: generateEntry(),
+            filePath: "/tmp/a b.m4a",
+            model: "parakeet",
+            outputBase: "/tmp/out-base"
+        )
+        XCTAssertEqual(Array(args.prefix(2)), ["-m", "mlx_audio.stt.generate"])
+        XCTAssertEqual(valueAfter(args, "--audio"), "/tmp/a b.m4a", "audio file must be a named --audio flag")
+        XCTAssertEqual(valueAfter(args, "--output-path"), "/tmp/out-base", "--output-path is required in 0.4.2")
+        XCTAssertEqual(valueAfter(args, "--format"), "json", "json is parseable; 'text' is rejected by 0.4.2")
+        XCTAssertEqual(valueAfter(args, "--model"), "mlx-community/parakeet-tdt-0.6b-v2")
+        // The 0.4.2 regression: every occurrence of the audio path must be
+        // immediately preceded by --audio — never a bare positional arg.
+        for (i, arg) in args.enumerated() where arg == "/tmp/a b.m4a" {
+            XCTAssertTrue(i > 0 && args[i - 1] == "--audio",
+                          "audio file must never be passed positionally under the generate contract")
+        }
+    }
+
+    func testBuildSTTArgsLegacyContractUnchanged() {
+        let args = AudioBridge.buildSTTArgs(
+            entry: legacyEntry(),
+            filePath: "/tmp/x.m4a",
+            model: "parakeet",
+            outputBase: "/tmp/ignored"
+        )
+        // pre-0.4.2: positional file, short alias preserved, --format text, no --output-path.
+        XCTAssertEqual(args, ["-m", "mlx_audio.stt", "/tmp/x.m4a", "--model", "parakeet", "--format", "text"])
+    }
 }
