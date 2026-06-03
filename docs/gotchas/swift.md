@@ -42,6 +42,8 @@ Calling `try await command.run()` directly on a `ParsableCommand` existential in
 
 **Agent error interception — `ExitCode` passthrough:** Both `CleanExit` (--help/--version) AND `ExitCode` (e.g. `throw ExitCode(1)` from `DoctorCommand`) must pass through to `Pippin.exit(withError:)`, not be treated as agent errors. Check `error is CleanExit || error is ExitCode` before the agent branch.
 
+**`OutputOptions.emit(_:timedOut:timedOutHint:renderText:)` vs `--fields` JSON projection:** `emit` centralizes soft-timeout surfacing (stderr warning + agent-envelope `warnings` + text trailer) across output modes, but its JSON path calls plain `printJSON(payload)` — which ignores custom `jsonData(fields:)` field filtering. For commands supporting `--fields` (reminders/mail/etc.), route ONLY the agent+text branches through `emit`; keep the `isJSON` branch custom (`jsonData(fields:)` + manual `print`) and emit its own stderr warning there. See `RemindersCommand.List`/`Search`.
+
 ## `TextFormatter.actionResult` dict overload
 
 Use `TextFormatter.actionResult(success:action:details:[String:String])` — never hand-roll `.map { "\($0.key)=\($0.value)" }.sorted().joined()` inline.
