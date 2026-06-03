@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-06-03
+
 ### Fixed
 
 - [bug] Voice Memos transcription now works with mlx-audio 0.4.2. `memos transcribe`, `memos summarize`, and `memos capture` previously failed with an opaque `mlx_audio.stt.generate` usage error: pippin passed the pre-0.4.2 CLI shape (positional audio file, `--format text`, short model alias) but 0.4.2 requires a named `--audio` flag, a `--output-path` (the transcript is written there, not to stdout), `--format json`, and a full Hugging Face model id. pippin now builds the correct 0.4.2 argument vector, maps the `parakeet` alias to `mlx-community/parakeet-tdt-0.6b-v2`, reads the transcript from the output file, and treats a missing/empty output file as failure (0.4.2 exits 0 even on error). The legacy `mlx_audio.stt` path is preserved for pre-0.4.2 installs. Closes pippin-8ik.
@@ -657,7 +659,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/mattwag05/pippin/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/mattwag05/pippin/compare/v0.24.3...v0.25.0
 [0.24.3]: https://github.com/mattwag05/pippin/compare/v0.24.2...v0.24.3
 [0.24.2]: https://github.com/mattwag05/pippin/compare/v0.24.1...v0.24.2
