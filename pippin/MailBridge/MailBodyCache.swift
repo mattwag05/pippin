@@ -84,6 +84,25 @@ public final class MailBodyCache: Sendable {
         return message
     }
 
+    /// Batch read: return the cached messages for `compoundIds` in a single
+    /// query (the `mail list --preview` partition step — one transaction instead
+    /// of N single-key reads). Misses are simply absent from the returned map;
+    /// corrupt rows are skipped, never crash.
+    public func getMany(compoundIds: [String]) -> [String: MailMessage] {
+        guard !compoundIds.isEmpty,
+              let records = try? dbQueue.read({ db in try MailBodyRecord.filter(keys: compoundIds).fetchAll(db) })
+        else { return [:] }
+        let decoder = JSONDecoder()
+        var out: [String: MailMessage] = [:]
+        out.reserveCapacity(records.count)
+        for record in records {
+            if let message = try? decoder.decode(MailMessage.self, from: record.messageData) {
+                out[record.compoundId] = message
+            }
+        }
+        return out
+    }
+
     /// Write-through store. Best-effort: cache failures never propagate to the
     /// caller (a read that can't be cached still returns its live result).
     public func put(_ message: MailMessage, at date: Date = Date()) {
