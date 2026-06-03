@@ -8,6 +8,15 @@ public final class RemindersBridge: @unchecked Sendable {
         store = EKEventStore()
     }
 
+    // MARK: - Soft timeout
+
+    /// Outcome of a reminders query whose underlying EventKit fetch is bounded
+    /// by `fetchRemindersSync`'s 15s wall-clock cap. `timedOut` is surfaced as a
+    /// "partial results" advisory, mirroring `ContactsBridge.Outcome` /
+    /// `MailBridge.ScanOutcome`. Results are built directly in Swift, so the
+    /// shared type's conditional `Decodable` conformance is never exercised here.
+    public typealias Outcome<T> = BridgeOutcome<T>
+
     // MARK: - Access
 
     public func ensureAccess() async throws {
@@ -54,7 +63,7 @@ public final class RemindersBridge: @unchecked Sendable {
         modifiedAfter: Date? = nil,
         priority: Int? = nil,
         limit: Int = 50
-    ) async throws -> [ReminderItem] {
+    ) async throws -> Outcome<[ReminderItem]> {
         try await ensureAccess()
 
         var filterCalendars: [EKCalendar]?
@@ -66,7 +75,8 @@ public final class RemindersBridge: @unchecked Sendable {
         }
 
         let predicate = store.predicateForReminders(in: filterCalendars)
-        let allReminders = fetchRemindersSync(predicate: predicate)
+        let fetch = fetchRemindersSync(predicate: predicate)
+        let allReminders = fetch.reminders
 
         var filtered = allReminders.filter { $0.isCompleted == completed }
 
@@ -111,7 +121,7 @@ public final class RemindersBridge: @unchecked Sendable {
             filtered = Array(filtered.prefix(limit))
         }
 
-        return filtered.map { mapReminder($0) }
+        return Outcome(results: filtered.map { mapReminder($0) }, timedOut: fetch.timedOut)
     }
 
     // MARK: - Show
@@ -265,7 +275,7 @@ public final class RemindersBridge: @unchecked Sendable {
         listId: String? = nil,
         completed: Bool = false,
         limit: Int = 50
-    ) async throws -> [ReminderItem] {
+    ) async throws -> Outcome<[ReminderItem]> {
         try await ensureAccess()
 
         var filterCalendars: [EKCalendar]?
@@ -277,7 +287,8 @@ public final class RemindersBridge: @unchecked Sendable {
         }
 
         let predicate = store.predicateForReminders(in: filterCalendars)
-        let allReminders = fetchRemindersSync(predicate: predicate)
+        let fetch = fetchRemindersSync(predicate: predicate)
+        let allReminders = fetch.reminders
 
         let q = query.lowercased()
         var filtered = allReminders.filter { reminder in
@@ -292,7 +303,7 @@ public final class RemindersBridge: @unchecked Sendable {
             filtered = Array(filtered.prefix(limit))
         }
 
-        return filtered.map { mapReminder($0) }
+        return Outcome(results: filtered.map { mapReminder($0) }, timedOut: fetch.timedOut)
     }
 
     /// Whether a reminder with the given resolved due date passes the
@@ -314,7 +325,13 @@ public final class RemindersBridge: @unchecked Sendable {
 
     /// Fetch reminders synchronously using DispatchSemaphore to avoid Swift 6
     /// Sendable errors from passing EKReminder across continuation boundaries.
-    private func fetchRemindersSync(predicate: NSPredicate) -> [EKReminder] {
+    ///
+    /// Returns `timedOut == true` when EventKit's callback doesn't fire within
+    /// the 15s wall-clock cap (store hang / permission edge) — callers surface
+    /// it as a "partial results" advisory rather than the bridge writing to
+    /// stderr directly, so MCP/agent clients get a structured warning and don't
+    /// see duplicate noise (matches the `ContactsBridge.Outcome` contract).
+    private func fetchRemindersSync(predicate: NSPredicate) -> (reminders: [EKReminder], timedOut: Bool) {
         let semaphore = DispatchSemaphore(value: 0)
         nonisolated(unsafe) var result: [EKReminder] = []
         store.fetchReminders(matching: predicate) { fetched in
@@ -324,10 +341,8 @@ public final class RemindersBridge: @unchecked Sendable {
         // Bound the wait: if EventKit's callback never fires (store hang /
         // permission edge), return partial results instead of hanging forever.
         // Matches the 15s ceiling used elsewhere; a healthy fetch is near-instant.
-        if semaphore.wait(timeout: .now() + .seconds(15)) == .timedOut {
-            FileHandle.standardError.write(Data("warning: reminders fetch timed out after 15s — returning partial results\n".utf8))
-        }
-        return result
+        let timedOut = semaphore.wait(timeout: .now() + .seconds(15)) == .timedOut
+        return (result, timedOut)
     }
 
     private func findReminderByPrefix(id: String) throws -> EKReminder? {
@@ -336,9 +351,10 @@ public final class RemindersBridge: @unchecked Sendable {
             return item
         }
 
-        // Fetch all and prefix-match
+        // Fetch all and prefix-match. A 15s-timeout here just means a partial
+        // set to match against (→ not-found), so the flag isn't surfaced.
         let predicate = store.predicateForReminders(in: nil)
-        let allReminders = fetchRemindersSync(predicate: predicate)
+        let allReminders = fetchRemindersSync(predicate: predicate).reminders
 
         let matches = allReminders.filter { $0.calendarItemIdentifier.hasPrefix(id) }
         if matches.count > 1 {

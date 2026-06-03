@@ -127,7 +127,11 @@ public struct DigestCommand: AsyncParsableCommand {
         if !skipSet.contains("reminders") {
             do {
                 let bridge = RemindersBridge()
-                let allReminders = try await bridge.listReminders(completed: false, limit: 500)
+                let outcome = try await bridge.listReminders(completed: false, limit: 500)
+                let allReminders = outcome.results
+                if outcome.timedOut {
+                    warnings.append("reminders: fetch did not complete within 15s — section may be incomplete")
+                }
                 let dueToday = allReminders.filter { r in
                     guard let due = r.dueDate, let date = parseCalendarDate(due) else { return false }
                     return date >= startOfDay && date < endOfDay
