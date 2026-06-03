@@ -86,15 +86,9 @@ The `provider` field selects the active backend. Both providers can be configure
 
 **Per-command override:** `pippin memos summarize <id> --provider ollama --model qwen3.5:latest`
 
-### Model comparison (tested 2026-04-03 on MacBook Air M4, 24 GB)
+### Model recommendation
 
-| Model | Size | Response time | Tokens | Notes |
-|-------|------|--------------|--------|-------|
-| `gemma4:latest` (Q4_K_M, 8B) | 9.6 GB | ~22s | 238 | Fast, concise responses. Recommended default for pippin's summarization tasks. |
-| `qwen3.5:latest` (Q4_K_M, 9.7B) | 6.6 GB | ~45s | 589 | Heavy chain-of-thought reasoning overhead — generates extensive internal deliberation even for simple prompts. Better suited for complex analytical tasks, not structured summarization. |
-| `claude-sonnet-4-6` (API) | — | ~2-3s | varies | Fastest option but requires API key and internet. Best quality. |
-
-**Recommendation:** Use **Gemma 4** as the default Ollama model for pippin. It's ~2x faster than Qwen 3.5 for equivalent output quality on summarization tasks. Qwen 3.5's thinking mode adds latency without proportional quality gains for structured extraction work. Fall back to Claude when speed or quality is critical.
+Default Ollama model is **`gemma4:latest`** — fast, concise summaries. Benchmark (MacBook Air M4, 24 GB, 2026-04-03): gemma4 ~22s/238 tok vs `qwen3.5:latest` ~45s/589 tok (qwen's chain-of-thought adds latency without quality gains for structured extraction); `claude-sonnet-4-6` is fastest (~2-3s) and highest quality but needs an API key + internet. Fall back to Claude when speed or quality is critical.
 
 ### Config resolution order (AIProviderFactory.swift)
 
