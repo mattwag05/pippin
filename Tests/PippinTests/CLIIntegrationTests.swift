@@ -204,6 +204,28 @@ final class CLIIntegrationTests: XCTestCase {
         }
     }
 
+    // MARK: - agent-info probe
+
+    func testAgentInfoEnvelopeAndToolCountParity() throws {
+        guard requireBinary() else { return }
+        let probe = run(["agent-info", "--format", "agent"])
+        XCTAssertEqual(probe.exitCode, 0)
+        let data = try XCTUnwrap(probe.stdout.data(using: .utf8))
+        let env = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(env["v"] as? Int, 1)
+        XCTAssertEqual(env["status"] as? String, "ok")
+        let payload = try XCTUnwrap(env["data"] as? [String: Any])
+        let mcp = try XCTUnwrap(payload["mcp"] as? [String: Any])
+        let toolCount = try XCTUnwrap(mcp["tool_count"] as? Int)
+
+        // Parity: the advertised count must equal `mcp-server --list-tools`.
+        let listed = run(["mcp-server", "--list-tools"])
+        let listData = try XCTUnwrap(listed.stdout.data(using: .utf8))
+        let listObj = try XCTUnwrap(JSONSerialization.jsonObject(with: listData) as? [String: Any])
+        let tools = try XCTUnwrap(listObj["tools"] as? [[String: Any]])
+        XCTAssertEqual(toolCount, tools.count, "agent-info tool_count must match --list-tools")
+    }
+
     // MARK: - Agent error output
 
     func testInvalidCommandAgentError() {
