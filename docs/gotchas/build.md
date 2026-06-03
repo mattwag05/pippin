@@ -42,6 +42,10 @@ done
 
 A single green `make ci` run does NOT prove a flake is fixed — a ~0.5% flake (e.g. the old `JobId` 20-bit-suffix birthday collision, pippin-84q) passes most runs. Loop it.
 
+## Capturing `make ci` / `swift test` output
+
+Redirecting `make ci` (or `swift test`) to a file (`> log 2>&1`) can yield a **truncated log missing the grand-total `Executed N tests` line** — the file looked like ~60 lines even though all ~1700 tests ran. **Trust the process exit code** (`make ci` exits 0 only if build + test + swiftformat + detach-lint all pass). To get the authoritative pass/fail count, run `xcrun --sdk macosx swift test` directly (unredirected) and grep `Executed [0-9]+ tests`. Beware: a trailing `grep` with no match returns exit 1, which can mask a successful `make ci` in a compound command.
+
 ## Git worktree lifecycle
 
 - **Cleanup order:** `git worktree remove <path>` first, then `git branch -d <branch>`. Reverse order fails — branch can't be deleted while worktree is using it.
