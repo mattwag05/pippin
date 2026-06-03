@@ -12,6 +12,7 @@ struct Pippin: AsyncParsableCommand {
             ActionsCommand.self,
             DigestCommand.self,
             DoctorCommand.self, StatusCommand.self, InitCommand.self, CompletionsCommand.self,
+            AgentInfoCommand.self,
             ShellCommand.self, McpServerCommand.self,
             BatchCommand.self,
             JobCommand.self, JobRunnerInternalCommand.self,
@@ -35,6 +36,13 @@ struct Pippin: AsyncParsableCommand {
         ShellCommand.parser = { args in
             try Pippin.parseAsRoot(args)
         }
+
+        // Let `agent-info` advertise the live subcommand list without
+        // duplicating it — resolved once here (on the main actor) from the root
+        // command's own registry, then read as a plain array.
+        AgentInfoCommand.commandNames = configuration.subcommands
+            .filter { $0.configuration.shouldDisplay }
+            .compactMap { $0.configuration.commandName }
 
         do {
             var command = try parseAsRoot(nil)
