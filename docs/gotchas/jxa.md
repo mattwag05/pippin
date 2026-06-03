@@ -17,6 +17,7 @@ Format: `account||mailbox||numericId`. Parsed in `MailBridge` and `CompoundId` h
 
 - Always call `msg.content()` before `msg.htmlContent()` — `content()` triggers the IMAP body download.
 - Retry `htmlContent()` once after `delay(0.5)` if still null.
+- **`msg.content()` is THE expensive operation** (~1–2s/message; the root cause of `mail list --preview` / `search --body` / `show` timeouts). `MailBridge.readMessage` is the single Swift seam for it and now reads/writes through `MailBodyCache` (`pippin/MailBridge/MailBodyCache.swift`, `~/.config/pippin/mail-cache.db`), keyed by the immutable compound id — repeat reads are ~75× faster and `mail index`'s per-message N+1 is amortized. Pass `cache: nil` to `readMessage` to force a live fetch (`mail show --no-cache`). The cache stores the whole `MailMessage`, so read/unread state is as-of cache time; `mail list`/`search` deliberately bypass it and stay live. The **bulk** preview/search-body fetches happen inside the JXA loop (not via `readMessage`), so they don't hit this cache yet — that needs a fetch-metadata-then-cache-per-body restructure (deferred).
 
 ## JXA `att.save()` attachment gotchas (pippin-20v, 2026-04-20)
 
