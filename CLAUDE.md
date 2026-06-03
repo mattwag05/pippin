@@ -146,6 +146,7 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 - **`make ci`** runs the same gates natively (no VM) for fast pre-push feedback.
 - Gotchas (Homebrew PATH, swiftformat `--lint` paths, ssh `MaxAuthTries`) are baked into `scripts/ci-vm.sh` and documented in [docs/local-ci.md](docs/local-ci.md) / [docs/gotchas/build.md](docs/gotchas/build.md).
 - **`make ci` (or `ci-vm`) is the ONLY gate before pushing** now that `ci.yml` is disabled — nothing on GitHub catches build/format/test failures anymore. Run it every push; a `redundantSelf` swiftformat violation reached `main` this session for exactly this reason.
+- **`git push origin main` succeeds despite a `remote: - Changes must be made through a pull request` ruleset notice** — it's non-blocking (evaluate-mode / owner bypass); the ref still updates (look for the `oldsha..newsha  main -> main` line). Don't mistake it for a rejected push.
 
 ## CodeQL
 
@@ -203,6 +204,7 @@ bd close <id>         # Complete work
 - **`export.path` resolves relative to `.beads/`, not repo root.** Setting `export.path=.beads/issues.jsonl` actually writes to `.beads/.beads/issues.jsonl` (and silently fails when the parent dir doesn't exist). The default `issues.jsonl` is correct — leave it alone; use `export.auto=false` to gate the hook.
 - **Worktrees have their own `.beads/` state.** `bd update --claim` / `bd close` run in the main repo do NOT propagate to a worktree's `.beads/issues.jsonl` until a commit or manual export. Run `bd` commands from whichever repo's history the change should land in. The worktree's bd database can diverge from main — it's not a bug, it's how bd worktrees work.
 - **`bd config set` writes to `.beads/config.yaml`**, which is tracked — fixes propagate via commit to every clone and worktree.
+- **`bd` runs in embedded Dolt mode here** (`.beads/embeddeddolt/`) — `bd doctor` and `bd dolt status` print "not supported in embedded mode"; use `bd list`/`bd stats` to inspect and `bd dolt push` to sync (it works).
 - **`/issues.jsonl` is gitignored** as belt-and-suspenders in case the hook's `git add` is ever re-enabled; the hook's explicit `git add` bypasses gitignore, so the config fix is the real guard.
 
 ## Session Completion

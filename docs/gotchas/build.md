@@ -14,6 +14,8 @@ Running from a worktree or with absolute paths skips the `.swiftformat` config a
 
 **Common CI failures:** trailing spaces in multiline string literals, `&&` vs `,` in conditions, modifier ordering (`public nonisolated(unsafe) static` not `public static nonisolated(unsafe)`).
 
+**The PostToolUse auto-format hook does NOT fix the version-gated `redundant*` rules** (no `.swift-version` is set, so they're disabled in format mode) — but `swiftformat --lint` in `make ci` still flags them. Strip these before push: `redundantThrows` (test funcs using only `try?` must drop `throws`), `redundantSendable` (non-public structs/enums must not declare `Sendable`), `redundantSelf`.
+
 ## `swift test` / XCTest module missing
 
 If `xcode-select -p` points at `/Library/Developer/CommandLineTools`, `swift test` fails with `no such module 'XCTest'`. Fix:
