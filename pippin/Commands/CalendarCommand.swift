@@ -64,10 +64,10 @@ public struct CalendarCommand: AsyncParsableCommand {
             abstract: "List calendar events. Defaults to today."
         )
 
-        @Option(name: .long, help: "Start date/time: YYYY-MM-DD or ISO 8601 (default: start of today).")
+        @Option(name: .long, help: "Start date/time: YYYY-MM-DD, 'YYYY-MM-DD HH:MM', or ISO 8601 (default: start of today).")
         public var from: String?
 
-        @Option(name: .long, help: "End date/time: YYYY-MM-DD or ISO 8601 (default: end of today).")
+        @Option(name: .long, help: "End date/time: YYYY-MM-DD, 'YYYY-MM-DD HH:MM', or ISO 8601 (default: end of today).")
         public var to: String?
 
         @Option(name: .long, help: "Calendar ID to filter events.")
@@ -237,7 +237,7 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Event title (required).")
         public var title: String
 
-        @Option(name: .long, help: "Start date/time: YYYY-MM-DD or ISO 8601 (required).")
+        @Option(name: .long, help: "Start date/time: YYYY-MM-DD, 'YYYY-MM-DD HH:MM', or ISO 8601 (required).")
         public var start: String
 
         @Option(name: .long, help: "End date/time (default: start + 1 hour).")
