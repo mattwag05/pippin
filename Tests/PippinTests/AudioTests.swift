@@ -217,28 +217,41 @@ final class AudioTests: XCTestCase {
     private func generateEntry() -> AudioBridge.STTEntry {
         AudioBridge.STTEntry(
             executable: URL(fileURLWithPath: "/usr/bin/python3"),
-            prefixArgs: ["-m", "mlx_audio.stt.generate"]
+            prefixArgs: ["-m", "mlx_audio.stt.generate"],
+            contract: .generate
         )
     }
 
     private func pipxEntry() -> AudioBridge.STTEntry {
         AudioBridge.STTEntry(
             executable: URL(fileURLWithPath: "/Users/x/.local/bin/mlx_audio.stt.generate"),
-            prefixArgs: []
+            prefixArgs: [],
+            contract: .generate
         )
     }
 
     private func legacyEntry() -> AudioBridge.STTEntry {
         AudioBridge.STTEntry(
             executable: URL(fileURLWithPath: "/usr/bin/python3"),
-            prefixArgs: ["-m", "mlx_audio.stt"]
+            prefixArgs: ["-m", "mlx_audio.stt"],
+            contract: .legacy
         )
     }
 
-    func testSTTEntryIsGenerate() {
-        XCTAssertTrue(AudioBridge.sttEntryIsGenerate(generateEntry()))
-        XCTAssertTrue(AudioBridge.sttEntryIsGenerate(pipxEntry()), "pipx console-script is the 0.4.2 generate entry")
-        XCTAssertFalse(AudioBridge.sttEntryIsGenerate(legacyEntry()))
+    func testSTTEntryCarriesContract() {
+        XCTAssertEqual(generateEntry().contract, .generate)
+        XCTAssertEqual(pipxEntry().contract, .generate, "pipx console-script is the 0.4.2 generate contract")
+        XCTAssertEqual(legacyEntry().contract, .legacy)
+    }
+
+    /// resolveSTTEntry is the single place that assigns the contract — whatever
+    /// it resolves on this host must match the entry-point shape it picked, so
+    /// buildSTTArgs/transcribe branch correctly.
+    func testResolveSTTEntryContractMatchesEntryPoint() {
+        guard let entry = AudioBridge.resolveSTTEntry() else { return } // mlx-audio not installed
+        let isGenerateShape = entry.executable.lastPathComponent == "mlx_audio.stt.generate"
+            || entry.prefixArgs.contains("mlx_audio.stt.generate")
+        XCTAssertEqual(entry.contract, isGenerateShape ? .generate : .legacy)
     }
 
     func testResolveSTTModelIDMapsParakeetAlias() {

@@ -60,6 +60,17 @@ public enum PippinExitCode {
     /// agent error code (the same string surfaced as `error.code` in the
     /// agent-mode envelope), then classifying.
     public static func from(_ error: Error) -> Int32 {
-        classify(agentErrorCode(for: error))
+        // ArgumentParser wraps thrown `ValidationError`s and parse-time failures
+        // (missing required arg, unknown flag) in its own error types, whose
+        // derived codes (`validation_error`/`command_error`) would otherwise
+        // fall to the default tool-failure bucket. These are bad-input/usage
+        // errors → exit 2, matching ArgumentParser's own EX_USAGE intent and the
+        // agent-mode message recovery in `AgentError`. `CleanExit`/`ExitCode`
+        // (--help/--version) never reach here — `Pippin.main` intercepts them
+        // first. (pippin-3sy)
+        if String(reflecting: type(of: error)).hasPrefix("ArgumentParser.") {
+            return 2
+        }
+        return classify(agentErrorCode(for: error))
     }
 }

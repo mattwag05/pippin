@@ -121,7 +121,7 @@ On failure, the `pippin` child process exits with a typed code derived from the 
 | `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
 | `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
 
-Argument-parsing failures keep ArgumentParser's `64` (usage). The MCP server passes the child's exit code through verbatim, so MCP clients see the same codes. The mapping lives in [`pippin/Formatting/PippinExitCode.swift`](../pippin/Formatting/PippinExitCode.swift).
+In `--format agent` mode (what the MCP server uses), argument validation and parse failures (a bad `--start`, a missing required flag, an unknown flag) map to `2` (usage) like any other bad input. Outside agent mode, ArgumentParser handles those itself and keeps its own `64` so its formatted usage help is preserved. The MCP server passes the child's exit code through verbatim, so MCP clients see the same codes. The mapping lives in [`pippin/Formatting/PippinExitCode.swift`](../pippin/Formatting/PippinExitCode.swift).
 
 ## Wire into Claude Code
 

@@ -13,6 +13,21 @@ public enum AudioBridge {
 
     // MARK: - STT Entry Resolution
 
+    /// The mlx-audio STT argument contract a resolved entry point speaks.
+    /// - `generate` (0.4.2+ `stt.generate`): named `--audio`/`--output-path`
+    ///   flags, full Hugging Face model ids, transcript written to a JSON file.
+    /// - `legacy` (pre-0.4.2 `mlx_audio.stt`): positional audio file, short model
+    ///   aliases, transcript on stdout.
+    ///
+    /// Stored on `STTEntry` and set once by `resolveSTTEntry` (the only place that
+    /// knows which entry point it picked), so call sites branch on the typed enum
+    /// instead of re-deriving it by string-matching the executable/prefixArgs —
+    /// and adding a third contract becomes a compile-checked `switch`.
+    public enum STTContract: Sendable, Equatable {
+        case generate
+        case legacy
+    }
+
     /// Describes how to invoke mlx-audio's STT entry point. Three-tier fallback:
     /// 1. A pipx-exposed console-script binary (`~/.local/bin/mlx_audio.stt.generate`).
     /// 2. `-m mlx_audio.stt.generate` via the discovered python interpreter (0.4.2+).
@@ -20,25 +35,32 @@ public enum AudioBridge {
     public struct STTEntry: Sendable {
         public let executable: URL
         public let prefixArgs: [String]
+        public let contract: STTContract
+
+        public init(executable: URL, prefixArgs: [String], contract: STTContract) {
+            self.executable = executable
+            self.prefixArgs = prefixArgs
+            self.contract = contract
+        }
     }
 
     /// Memoized STT entry resolver — safe initializer, first access runs the probe.
     private static let cachedSTTEntry: STTEntry? = resolveSTTEntry()
 
     public static func resolveSTTEntry() -> STTEntry? {
-        // Tier 1: pipx console-script binary.
+        // Tier 1: pipx console-script binary (the 0.4.2 generate contract).
         let home = FileManager.default.homeDirectoryForCurrentUser
         let pipxBin = home.appendingPathComponent(".local/bin/mlx_audio.stt.generate")
         if FileManager.default.isExecutableFile(atPath: pipxBin.path) {
-            return STTEntry(executable: pipxBin, prefixArgs: [])
+            return STTEntry(executable: pipxBin, prefixArgs: [], contract: .generate)
         }
         // Tier 2 / Tier 3: need a Python with mlx_audio importable.
         guard let python = findPythonWithMLXAudio() else { return nil }
         if canImportModule("mlx_audio.stt.generate", pythonURL: python) {
-            return STTEntry(executable: python, prefixArgs: ["-m", "mlx_audio.stt.generate"])
+            return STTEntry(executable: python, prefixArgs: ["-m", "mlx_audio.stt.generate"], contract: .generate)
         }
         if canImportModule("mlx_audio.stt", pythonURL: python) {
-            return STTEntry(executable: python, prefixArgs: ["-m", "mlx_audio.stt"])
+            return STTEntry(executable: python, prefixArgs: ["-m", "mlx_audio.stt"], contract: .legacy)
         }
         return nil
     }
@@ -89,19 +111,6 @@ public enum AudioBridge {
 
     // MARK: - STT Argument Construction
 
-    /// Whether a resolved STT entry uses the mlx-audio 0.4.2+ `stt.generate`
-    /// contract (named `--audio`/`--output-path` flags, full Hugging Face model
-    /// ids, file-based JSON output) versus the pre-0.4.2 `mlx_audio.stt` legacy
-    /// contract (positional audio file, short model aliases, stdout output).
-    ///
-    /// The pipx console-script (`~/.local/bin/mlx_audio.stt.generate`, empty
-    /// prefixArgs) and the `-m mlx_audio.stt.generate` module form are both the
-    /// new contract; only `-m mlx_audio.stt` is legacy.
-    static func sttEntryIsGenerate(_ entry: STTEntry) -> Bool {
-        entry.executable.lastPathComponent == "mlx_audio.stt.generate"
-            || entry.prefixArgs.contains("mlx_audio.stt.generate")
-    }
-
     /// Short STT model aliases → the full Hugging Face repo ids that mlx-audio
     /// 0.4.2's `stt.generate` requires. Keep the default in `MLXAudioTranscriber`
     /// in sync with the keys here.
@@ -133,7 +142,7 @@ public enum AudioBridge {
         model: String,
         outputBase: String
     ) -> [String] {
-        if sttEntryIsGenerate(entry) {
+        if entry.contract == .generate {
             return entry.prefixArgs + [
                 "--model", resolveSTTModelID(model),
                 "--audio", filePath,
@@ -230,7 +239,7 @@ public enum AudioBridge {
             throw AudioBridgeError.notAvailable
         }
 
-        if sttEntryIsGenerate(entry) {
+        if entry.contract == .generate {
             return try transcribeViaGenerate(entry: entry, filePath: filePath, model: model)
         }
 

@@ -1,3 +1,4 @@
+import ArgumentParser
 @testable import PippinLib
 import XCTest
 
@@ -52,4 +53,32 @@ final class PippinExitCodeTests: XCTestCase {
         // jobNotFound("...") → "job_not_found" → 3
         XCTAssertEqual(PippinExitCode.from(JobStoreError.jobNotFound("abc")), 3)
     }
+
+    // MARK: - ArgumentParser errors → usage (pippin-3sy)
+
+    /// A thrown `ValidationError` is bad input, not a tool/bridge failure — it
+    /// must exit 2 (usage) so an agent can distinguish "fix my args and retry"
+    /// from "the tool broke." Its derived code `validation_error` doesn't match
+    /// the string buckets, so the routing keys off the ArgumentParser type.
+    func testValidationErrorMapsTo2() {
+        XCTAssertEqual(PippinExitCode.from(ValidationError("--start must be YYYY-MM-DD")), 2)
+    }
+
+    /// ArgumentParser's parse-time failures (missing required arg, unknown flag)
+    /// surface as `CommandError` in agent mode — also usage → 2.
+    func testArgumentParserCommandErrorMapsTo2() {
+        let commandError: Error
+        do {
+            _ = try ProbeArgs.parse(["--unknown"])
+            commandError = ValidationError("unreachable")
+        } catch {
+            commandError = error
+        }
+        XCTAssertTrue(String(reflecting: type(of: commandError)).hasPrefix("ArgumentParser."))
+        XCTAssertEqual(PippinExitCode.from(commandError), 2)
+    }
+}
+
+private struct ProbeArgs: ParsableArguments {
+    @Option var start: String = ""
 }

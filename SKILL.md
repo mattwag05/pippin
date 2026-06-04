@@ -319,7 +319,7 @@ On failure, `pippin` sets a typed process exit code so a calling shell can branc
 | `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
 | `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
 
-Argument-parsing failures (bad flags, `--help`/`--version`) keep ArgumentParser's own codes (`64` usage, `0` for help/version) so its formatted usage text is preserved. Typed codes apply to runtime errors in `--format agent` mode and to errors with a catalogued remediation in text/json mode.
+In `--format agent` mode, argument validation and parse failures (bad flags, missing required args) map to `2` (usage) like any other bad input. Outside agent mode they keep ArgumentParser's own codes (`64` usage, `0` for help/version) so its formatted usage text is preserved. Typed codes apply to runtime errors in `--format agent` mode and to errors with a catalogued remediation in text/json mode.
 
 ### Pagination
 
