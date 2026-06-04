@@ -139,7 +139,9 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 
 ## CI
 
-**The GitHub `ci.yml` workflow is DISABLED** (`gh workflow disable ci.yml`, 2026-06-01) — we run CI locally instead of on slow GitHub-hosted `macos-15` runners. CI is now `make ci-vm` (full parity in an isolated ephemeral macOS VM) or `make ci` (fast, native). See **Local CI** below. Re-enable with `gh workflow enable ci.yml` if needed. CodeQL / unicode-scan / release workflows remain active.
+**The GitHub `ci.yml` workflow is DISABLED** (`gh workflow disable ci.yml`, 2026-06-01) — we run CI locally instead of on slow GitHub-hosted `macos-15` runners. CI is now `make ci-vm` (full parity in an isolated ephemeral macOS VM) or `make ci` (fast, native). See **Local CI** below. Re-enable with `gh workflow enable ci.yml` if needed. CodeQL / unicode-scan remain active.
+
+**The GitHub `release.yml` workflow is also DISABLED** (`gh workflow disable release.yml`, 2026-06-04, pippin-6qi) — its `macos-15` runner consistently **cancelled** the `swift test` step (same slow/queued/billing problem as `ci.yml`), so the GitHub release + tarball were never published. GitHub releases are now **published locally** as a standard release step (`make tarball` → `gh release create` — see the **release skill**'s failure-recovery recipe). The self-hosted **`.forgejo/workflows/release.yaml`** (runner label `macos`) still fires on tag push and publishes to the tailnet Forgejo reliably. Neither release path is needed for Homebrew — the tap formula builds from source (tag + revision), not the release tarball.
 
 - `.forgejo/workflows/` is an **active self-hosted mirror** of the CI + release gates (runner label `macos`). Keep it in parity with `.github/workflows/` when changing gates — it intentionally omits Setup-Xcode (self-hosted runner has Xcode) but MUST keep the detach-blocking lint.
 - Workflow pinning, swiftformat traps, and other CI/build gotchas: [docs/gotchas/build.md](docs/gotchas/build.md).
