@@ -63,6 +63,12 @@ JXA/subprocess bridges follow MailBridge's pattern — `nonisolated(unsafe)` var
 
 `EKEventStore.fetchReminders(matching:)` uses a completion handler and `EKReminder` is not `Sendable` — cannot use `withCheckedThrowingContinuation` in Swift 6 strict mode. Use `DispatchSemaphore` + `nonisolated(unsafe) var` instead. See `RemindersBridge.fetchRemindersSync()`.
 
+## Verifying privacy-gated commands — TCC blocks the freshly-built binary
+
+Running `.build/release/pippin calendar create` / `reminders` / `contacts` / `memos transcribe` from a test shell often fails with `access_denied` (exit 4) even when the code is correct: macOS TCC attaches the Calendars/Contacts/Reminders/Full-Disk grant to the *launching app* (Terminal/iTerm/the test runner), not the unsigned freshly-built binary. That's an environment limit, not your change.
+
+To verify parse/validation logic without the grant, branch on the exit code: **exit 4** = input parsed + validated, reached the bridge (only TCC stopped it); **exit 2** = rejected at validation. Lock the actual semantics (wall-clock time, etc.) in unit tests against the pure helper, and use the real binary only to confirm "reached the bridge, didn't reject."
+
 ## JXA typed error trap
 
 JXA script errors always arrive as `scriptFailed(String)` — never as a typed Swift case like `noteNotFound`. Don't add typed not-found cases to JXA bridge error enums; they'll be dead code.

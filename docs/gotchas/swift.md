@@ -99,4 +99,6 @@ In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — strin
 
 **Fixed-format dates need POSIX + Gregorian:** set `DateFormatter.locale = Locale(identifier: "en_US_POSIX")` and extract components via `Calendar(identifier: .gregorian)` (not `.current`) — a non-Gregorian device calendar (Buddhist/Japanese) otherwise misparses `--since` or renders the wrong era year (2567 for 2024).
 
+**Multi-format date parsing — most-specific pattern first:** when trying a list of `DateFormatter` patterns, order with-seconds before minute-only and datetime before date-only. `DateFormatter` matches a *prefix*, so a `yyyy-MM-dd` pattern will happily parse `2026-06-04` out of `2026-06-04 12:30` and silently drop the time if it's tried first. See `parseCalendarDate` (pippin-3gp).
+
 **GRDB `row["col"]` TRAPS on NULL:** decode system-DB columns optionally (`row["col"] as T?`) with a fallback. Apple's Voice Memos/Messages DBs store NULLs (e.g. ZPATH for a not-yet-downloaded recording); one NULL row otherwise crashes the whole list.
