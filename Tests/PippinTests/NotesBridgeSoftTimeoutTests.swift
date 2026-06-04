@@ -62,6 +62,23 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
         XCTAssertTrue(script.contains("var note = pairs[i].note;"))
     }
 
+    /// Regression for pippin-mo7: the modificationDate materialization must use a
+    /// single bulk Apple Event off the collection specifier, NOT one Apple Event
+    /// per note. The per-note form spent the entire soft-timeout building `pairs`
+    /// on large vaults, so the sort loop broke with `pairs` empty and the call
+    /// returned ZERO results (unusable default `notes search`).
+    func testSearchScriptBulkFetchesModDatesNotPerNote() {
+        let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
+        XCTAssertFalse(
+            script.contains("notes[j].modificationDate()"),
+            "Per-note modificationDate() in the sort loop is O(n) Apple Events — must be bulk-fetched"
+        )
+        XCTAssertTrue(
+            script.contains("_notesRef.modificationDate()"),
+            "modificationDate must be bulk-fetched off the specifier in one Apple Event"
+        )
+    }
+
     // MARK: - buildListScript
 
     func testListScriptDefaultSoftTimeoutIs22000() {
@@ -101,10 +118,27 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
             script.contains("pairs.sort(function(a, b) { return b.mod - a.mod; })"),
             "Sort must operate on the materialized numeric `mod` field"
         )
-        // modificationDate must be read exactly once per note (into _d), and the
-        // results loop must reuse the cached ISO string rather than re-fetching.
-        XCTAssertTrue(script.contains("_d = notes[j].modificationDate();"))
+        // The results loop must reuse the cached ISO string rather than re-fetching.
         XCTAssertTrue(script.contains("modificationDate: pairs[i].iso"))
+    }
+
+    /// Regression for pippin-mo7: the modificationDate materialization must use a
+    /// single bulk Apple Event off the collection specifier, NOT one Apple Event
+    /// per note. The per-note form (`notes[j].modificationDate()`) spent the
+    /// entire soft-timeout building `pairs` on large vaults, so the sort loop
+    /// broke with `pairs` empty and `notes list` returned ZERO results without
+    /// `--folder`. Narrowing with `--folder` worked only because the collection
+    /// was small enough to scan inside the cap.
+    func testListScriptBulkFetchesModDatesNotPerNote() {
+        let script = NotesBridge.buildListScript(folder: nil, limit: 10)
+        XCTAssertFalse(
+            script.contains("notes[j].modificationDate()"),
+            "Per-note modificationDate() in the sort loop is O(n) Apple Events — must be bulk-fetched"
+        )
+        XCTAssertTrue(
+            script.contains("_notesRef.modificationDate()"),
+            "modificationDate must be bulk-fetched off the specifier in one Apple Event"
+        )
     }
 
     // MARK: - buildListFoldersScript

@@ -281,4 +281,27 @@ final class AudioTests: XCTestCase {
         // pre-0.4.2: positional file, short alias preserved, --format text, no --output-path.
         XCTAssertEqual(args, ["-m", "mlx_audio.stt", "/tmp/x.m4a", "--model", "parakeet", "--format", "text"])
     }
+
+    // MARK: - expectedSTTFlags (doctor arg-shape probe, pippin-xua)
+
+    func testExpectedSTTFlagsGenerateContract() {
+        // doctor asserts each of these appears in the installed CLI's --help.
+        let flags = AudioBridge.expectedSTTFlags(for: generateEntry())
+        XCTAssertTrue(flags.contains("--audio"), "generate contract requires --audio")
+        XCTAssertTrue(flags.contains("--output-path"), "generate contract requires --output-path")
+        XCTAssertTrue(flags.contains("--model"))
+        XCTAssertTrue(flags.contains("--format"))
+        // Only --flags, no positional values or prefix module path.
+        XCTAssertTrue(flags.allSatisfy { $0.hasPrefix("--") })
+        XCTAssertFalse(flags.contains("probe.wav"))
+    }
+
+    func testExpectedSTTFlagsLegacyContract() {
+        let flags = AudioBridge.expectedSTTFlags(for: legacyEntry())
+        XCTAssertTrue(flags.contains("--model"))
+        XCTAssertTrue(flags.contains("--format"))
+        // The legacy contract passes the file positionally, not via --audio.
+        XCTAssertFalse(flags.contains("--audio"))
+        XCTAssertFalse(flags.contains("--output-path"))
+    }
 }

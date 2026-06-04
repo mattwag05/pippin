@@ -95,23 +95,46 @@ enum NotesBridge {
         s.map { "'\(jsEscape($0))'" } ?? "null"
     }
 
-    /// JXA fragment shared by `buildListScript` / `buildSearchScript`. Reads
-    /// each note's `modificationDate` exactly once (one Apple Event per note)
-    /// into a plain JS array `pairs = [{note, mod, iso}]`, then sorts it
-    /// newest-first on the in-memory `mod` key. A comparator that read the date
-    /// off the live note objects would fire an Apple Event per comparison
-    /// (O(n log n) round-trips) and could blow the ScriptRunner hard cap on
-    /// large vaults before any partial result is returned. The loop honors the
-    /// soft-timeout budget, so a huge vault self-bounds and returns partial
-    /// results with `timedOut=true`. `iso` caches the ISO-8601 string so the
-    /// results loop doesn't re-fetch the date. Expects `notes`, `_start`,
-    /// `softTimeoutMs`, and `_meta` to already be declared in the script.
+    /// JXA fragment shared by `buildListScript` / `buildSearchScript` that
+    /// resolves the collection specifier `_notesRef`, materializes the element
+    /// array `notes`, and bulk-fetches every note's `modificationDate` in a
+    /// SINGLE Apple Event (`_notesRef.modificationDate()` → `_mods`). A prior
+    /// loop read `notes[j].modificationDate()` once per note — O(n) Apple Events
+    /// — which on large vaults spent the entire soft-timeout before the sort,
+    /// leaving `pairs` empty and returning ZERO results (pippin-mo7). Bulk
+    /// property access off the plural specifier is one round-trip regardless of
+    /// vault size. Falls back to an empty `_mods` (notes keep `mod: 0`, native
+    /// order) if the bulk getter throws, so results stay non-empty either way.
+    /// Expects `folderFilter`, `app`, `_start`, `softTimeoutMs`, and `_meta` to
+    /// already be declared in the script.
+    static let jsResolveNotesAndBulkMods = """
+    var _notesRef = null;
+    if (folderFilter !== null) {
+        var folders = app.folders.whose({name: folderFilter})();
+        if (folders.length > 0) { _notesRef = folders[0].notes; }
+    } else {
+        _notesRef = app.notes;
+    }
+    var notes = _notesRef ? _notesRef() : [];
+    var _mods = [];
+    if (_notesRef) { try { _mods = _notesRef.modificationDate(); } catch (e) { _mods = []; } }
+    """
+
+    /// JXA fragment shared by `buildListScript` / `buildSearchScript`. Builds a
+    /// plain JS array `pairs = [{note, mod, iso}]` from the already-materialized
+    /// `notes` + bulk `_mods` arrays (see `jsResolveNotesAndBulkMods`), then
+    /// sorts it newest-first on the in-memory `mod` key. The loop fires ZERO
+    /// Apple Events (pure array indexing), so it completes near-instantly even
+    /// on huge vaults — the soft-timeout check remains only as a backstop. A
+    /// comparator that read the date off live note objects would fire an Apple
+    /// Event per comparison (O(n log n) round-trips). `iso` caches the ISO-8601
+    /// string so the results loop doesn't re-fetch the date. Expects `notes`,
+    /// `_mods`, `_start`, `softTimeoutMs`, and `_meta` to already be declared.
     static let jsSortNotesByModDate = """
     var pairs = [];
     for (var j = 0; j < notes.length; j++) {
         if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
-        var _d = null;
-        try { _d = notes[j].modificationDate(); } catch (e) {}
+        var _d = _mods[j] || null;
         pairs.push({ note: notes[j], mod: _d ? _d.getTime() : 0, iso: _d ? _d.toISOString() : '' });
     }
     pairs.sort(function(a, b) { return b.mod - a.mod; });
@@ -131,16 +154,9 @@ enum NotesBridge {
         var softTimeoutMs = \(clampedTimeout);
         var _start = Date.now();
         var _meta = { timedOut: false };
-        var notes = [];
-        if (folderFilter !== null) {
-            var folders = app.folders.whose({name: folderFilter})();
-            if (folders.length > 0) {
-                notes = folders[0].notes();
-            }
-        } else {
-            notes = app.notes();
-        }
-        // Materialize + sort by modificationDate (see jsSortNotesByModDate).
+        // Resolve specifier + bulk-fetch modificationDate (see jsResolveNotesAndBulkMods).
+        \(jsResolveNotesAndBulkMods)
+        // Sort by modificationDate, newest first (see jsSortNotesByModDate).
         \(jsSortNotesByModDate)
         // Native offset: skip the first `offset` sorted notes and emit only the
         // `limit` window. Body/plaintext (the expensive per-note Apple Events)
@@ -230,18 +246,11 @@ enum NotesBridge {
         var softTimeoutMs = \(clampedTimeout);
         var _start = Date.now();
         var _meta = { timedOut: false };
-        var notes = [];
-        if (folderFilter !== null) {
-            var folders = app.folders.whose({name: folderFilter})();
-            if (folders.length > 0) {
-                notes = folders[0].notes();
-            }
-        } else {
-            notes = app.notes();
-        }
-        // Materialize + sort by modificationDate (see jsSortNotesByModDate).
-        // Sorting before filtering preserves "most recently modified matches
-        // first" while keeping the pre-filter work bounded.
+        // Resolve specifier + bulk-fetch modificationDate (see jsResolveNotesAndBulkMods).
+        \(jsResolveNotesAndBulkMods)
+        // Sort by modificationDate before filtering — preserves "most recently
+        // modified matches first" while keeping the pre-filter work bounded
+        // (see jsSortNotesByModDate).
         \(jsSortNotesByModDate)
         var results = [];
         for (var i = 0; i < pairs.length && results.length < limit; i++) {
