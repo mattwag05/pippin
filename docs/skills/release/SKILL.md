@@ -103,7 +103,14 @@ The claude-plugins `pippin` plugin's `.mcp.json` uses bare `pippin`, so the shad
 
 ## Failure recovery
 
-- **`release.yml` red after push**: the tag is live but artifacts are stale. Fix forward (don't delete the tag — Homebrew users may have already pulled). Cut a patch release.
+- **`release.yml` cancelled / red after push (common)**: the GitHub-hosted `macos-15` runner frequently cancels the `swift test` step (same slow/queued-runner problem that disabled `ci.yml`), so the "Create GitHub release" step is skipped and **no tarball is published**. The tag is live and brew/[agent] are unaffected (the formula builds from source, not the release tarball), so this only leaves the GitHub Releases page empty. **Publish the release locally instead of re-running CI** (don't delete the tag):
+  ```bash
+  make tarball   # → .build/release-artifacts/pippin-X.Y.Z-arm64-macos.tar.gz
+  awk "/^## \[X.Y.Z\]/{f=1;next} f&&/^## \[/{exit} f{print}" CHANGELOG.md > /tmp/notes.md
+  gh release create vX.Y.Z --title "vX.Y.Z — pippin" --notes-file /tmp/notes.md --verify-tag \
+    .build/release-artifacts/pippin-X.Y.Z-arm64-macos.tar.gz
+  ```
+  This reproduces exactly what `release.yml` would have built (title, changelog body, arm64 asset, not a pre-release). Tracked as pippin-6qi.
 - **Tap push rejected**: someone else updated the tap. `cd /opt/homebrew/Library/Taps/mattwag05/homebrew-tap && git pull --rebase && git push`.
 - **`brew upgrade` says "already up to date"**: `brew update` first, then retry.
 - **`pippin --version` still shows old version**: see step 10 — almost always the dual-install shadow.
