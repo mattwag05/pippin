@@ -14,6 +14,10 @@ The child `pippin` process produces compact agent JSON that the server wraps ver
 
 When the child exits non-zero, stdout contains an `AgentError` JSON (`{"error":{"code":"snake_case","message":"..."}}`) from `printAgentError`. The server passes this through as the tool result text with `isError: true`. Do NOT convert it to a JSON-RPC-level `-326xx` error — those are reserved for protocol-level failures (unknown method, malformed request, launch failure).
 
+## ArgumentParser error messages in agent mode (pippin-kzi)
+
+ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`ValidationError` whose `localizedDescription` is the opaque "(ArgumentParser.CommandError error 1.)" — so `--format agent` (and every MCP tool call) lost the actionable text humans see. `AgentError.from` recovers it via `AgentError.argumentParserMessage`, an injected `{ Pippin.message(for: $0) }` hook set in `Pippin.main()` (same injection pattern as `ShellCommand.parser`), gated on `String(reflecting: type(of: error)).hasPrefix("ArgumentParser.")`. Don't replace the hook with `error.localizedDescription` — it regresses to the opaque form.
+
 ## Binary path resolution
 
 `MCPServerRuntime.resolvePippinPath()` uses `CommandLine.arguments[0]` + `realpath` so the child is the exact same binary as the parent, not whatever `pippin` resolves to on `$PATH`. This matters when pippin is run via a symlink (Homebrew shim).
