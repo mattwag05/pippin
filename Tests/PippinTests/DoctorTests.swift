@@ -297,7 +297,8 @@ final class DoctorTests: XCTestCase {
         // by the installed 0.4.2 CLI → nothing missing → doctor stays green.
         let expected = AudioBridge.expectedSTTFlags(for: AudioBridge.STTEntry(
             executable: URL(fileURLWithPath: "/usr/bin/python3"),
-            prefixArgs: ["-m", "mlx_audio.stt.generate"]
+            prefixArgs: ["-m", "mlx_audio.stt.generate"],
+            contract: .generate
         ))
         let missing = sttFlagsMissing(fromHelp: Self.mlxAudio042Help, expected: expected)
         XCTAssertEqual(missing, [], "All generate-contract flags are present in 0.4.2 help")
