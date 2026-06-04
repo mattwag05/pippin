@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-06-03
+
 ### Added
 
 - [feat] Calendar date options now accept a **space** between date and time, not just strict `T`-separated ISO 8601. `calendar create --start '2026-06-04 14:30'` (and `--end`, plus `agenda`/`list`'s `--from`/`--to`) parse the natural `'YYYY-MM-DD HH:MM'` / `'YYYY-MM-DD HH:MM:SS'` forms agents and humans reach for, interpreting them at local time — the same instant as the `T`-separated form. Minute-precision `T` forms (`2026-06-04T14:30`, previously rejected for lacking seconds) now parse too. Strict ISO stays canonical; date-only and timezone-qualified inputs are unchanged. Closes pippin-3gp.
@@ -680,7 +682,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/mattwag05/pippin/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/mattwag05/pippin/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/mattwag05/pippin/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/mattwag05/pippin/compare/v0.24.3...v0.25.0
