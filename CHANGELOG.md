@@ -9,6 +9,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- [build] `doctor`'s mlx-audio probe now validates the STT CLI's argument contract, not just that it's importable and responds to `--help`. It captures `mlx_audio.stt.generate --help` and asserts every flag pippin will actually pass (`--model`, `--audio`, `--output-path`, `--format`) is advertised, failing with a named-flag remediation when one is missing. Previously the probe only checked `--help` exit 0, so a version skew that renamed or dropped a required flag (the class of break behind pippin-8ik) reported all-green while `memos transcribe`/`summarize`/`capture` failed. The expected-flag list is derived from the same `buildSTTArgs` the real invocation uses, so the probe and the call path can't drift. Closes pippin-xua.
+
+### Fixed
+
+- [bug] `--format agent` (and therefore every MCP tool call) now surfaces ArgumentParser validation messages instead of an opaque envelope. A malformed flag like `calendar create --start "2026-06-04 12:00"` returned `error.message: "The operation couldn’t be completed. (ArgumentParser.CommandError error 1.)"` in agent mode while default (human) mode showed the actionable "`--start must be in YYYY-MM-DD or ISO 8601 format.`" The agent error path now recovers ArgumentParser's real text via the root command's `message(for:)`, so agents/MCP clients get the same guidance humans do (covers validation errors, missing required args, and unknown flags). Closes pippin-kzi.
+- [bug] `notes list` / `notes search` no longer return zero results on large Notes libraries. The newest-first sort materialized each note's `modificationDate` with one Apple Event *per note* — O(n) round-trips that, on a big vault, spent the entire 22s soft-timeout before the sort, so the page came back empty (only `--folder <name>` worked, because that collection was small enough to scan in time). The dates are now bulk-fetched off the collection specifier in a single Apple Event, so the sort loop fires zero Apple Events and the default listing returns a non-empty newest-first prefix that agents can chain `notes show` from. Closes pippin-mo7.
+
 ## [0.27.0] - 2026-06-03
 
 ### Added

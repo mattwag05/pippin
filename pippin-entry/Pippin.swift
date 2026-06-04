@@ -37,6 +37,12 @@ struct Pippin: AsyncParsableCommand {
             try Pippin.parseAsRoot(args)
         }
 
+        // Let agent-mode error envelopes recover ArgumentParser's actionable
+        // validation text (which localizedDescription swallows) via the root
+        // command's `message(for:)`. PippinLib can't reference Pippin directly.
+        // See pippin-kzi.
+        AgentError.argumentParserMessage = { Pippin.message(for: $0) }
+
         // Let `agent-info` advertise the live subcommand list without
         // duplicating it — resolved once here (on the main actor) from the root
         // command's own registry, then read as a plain array.

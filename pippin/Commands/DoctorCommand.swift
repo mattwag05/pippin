@@ -520,15 +520,33 @@ private func checkMLXAudio() -> DiagnosticCheck {
     // Entry resolves — record installed version + run a dry invocation to
     // catch broken installs beyond the version string.
     let installedVersion = AudioBridge.installedMLXAudioVersion() ?? "unknown"
-    let dryOK = runSTTDryInvocation(entry: entry)
-
-    if !dryOK {
+    guard let helpText = runSTTHelp(entry: entry) else {
         return DiagnosticCheck(
             name: "mlx-audio",
             status: .fail,
             detail: "installed \(installedVersion), dry invocation failed",
             remediation: Remediation(
                 humanHint: "mlx-audio is installed but `--help` on the STT entry fails. Reinstall the pinned version.",
+                doctorCheck: "mlx-audio",
+                shellCommand: "pipx install 'mlx-audio==\(pinned)' --force"
+            )
+        )
+    }
+
+    // The `--help` text parsed — assert the flags `buildSTTArgs` will pass are
+    // actually advertised by the installed CLI. `--help` returning exit 0 is not
+    // enough: mlx-audio 0.4.2 exits 0 on `--help` but a version skew that renames
+    // or drops `--audio`/`--output-path` would still fail every real
+    // transcription (pippin-xua). Catch the arg-shape mismatch here.
+    let missingFlags = sttFlagsMissing(fromHelp: helpText, expected: AudioBridge.expectedSTTFlags(for: entry))
+    if !missingFlags.isEmpty {
+        let missingList = missingFlags.joined(separator: ", ")
+        return DiagnosticCheck(
+            name: "mlx-audio",
+            status: .fail,
+            detail: "installed \(installedVersion), STT CLI does not accept required flag(s): \(missingList)",
+            remediation: Remediation(
+                humanHint: "The installed mlx-audio STT CLI is missing flag(s) pippin requires (\(missingList)) — `memos transcribe`/`summarize`/`capture` will fail. Reinstall the pinned version.",
                 doctorCheck: "mlx-audio",
                 shellCommand: "pipx install 'mlx-audio==\(pinned)' --force"
             )
@@ -544,17 +562,20 @@ private func checkMLXAudio() -> DiagnosticCheck {
     return DiagnosticCheck(name: "mlx-audio", status: .ok, detail: detail)
 }
 
-/// Runs `<entry> --help` with a short timeout; true iff exit status 0.
-private func runSTTDryInvocation(entry: AudioBridge.STTEntry) -> Bool {
+/// Runs `<entry> --help` with a short timeout. Returns the combined
+/// stdout+stderr help text on exit status 0, else nil (broken/unresponsive
+/// install). The text is then matched against the flags pippin will pass.
+private func runSTTHelp(entry: AudioBridge.STTEntry) -> String? {
     let process = Process()
     process.executableURL = entry.executable
     process.arguments = entry.prefixArgs + ["--help"]
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = pipe // argparse may print usage to either stream
     do {
         try process.run()
     } catch {
-        return false
+        return nil
     }
     let deadline = DispatchTime.now() + .seconds(10)
     let sem = DispatchSemaphore(value: 0)
@@ -564,9 +585,34 @@ private func runSTTDryInvocation(entry: AudioBridge.STTEntry) -> Bool {
     }
     if sem.wait(timeout: deadline) == .timedOut {
         process.terminate()
-        return false
+        return nil
     }
-    return process.terminationStatus == 0
+    // `--help` output is small (a few KB), well under the pipe buffer, so
+    // reading after exit cannot deadlock.
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    guard process.terminationStatus == 0 else { return nil }
+    return String(data: data, encoding: .utf8) ?? ""
+}
+
+/// The subset of `expected` flag tokens that do NOT appear in the CLI's
+/// `--help` text. Pure (no I/O) so it's unit-testable against a captured help
+/// fixture. A flag counts as present only when SOME occurrence ends on a token
+/// boundary (space, `=`, `,`, `]`, `)`, `/`, whitespace, or end-of-text) — so
+/// `--format` is not satisfied by `--format-version` alone, and a real
+/// `--format` elsewhere in the text still counts.
+func sttFlagsMissing(fromHelp help: String, expected: [String]) -> [String] {
+    let boundary: Set<Character> = [" ", "=", ",", "]", ")", "\n", "\t", "/", "\r"]
+    return expected.filter { flag in
+        var searchStart = help.startIndex
+        while let range = help.range(of: flag, range: searchStart ..< help.endIndex) {
+            let after = range.upperBound
+            if after == help.endIndex || boundary.contains(help[after]) {
+                return false // found a whole-token occurrence → present
+            }
+            searchStart = range.upperBound
+        }
+        return true // no whole-token occurrence → missing
+    }
 }
 
 private func checkOllama() -> DiagnosticCheck {

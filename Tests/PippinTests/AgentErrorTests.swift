@@ -1,3 +1,4 @@
+import ArgumentParser
 @testable import PippinLib
 import XCTest
 
@@ -41,6 +42,43 @@ final class AgentErrorTests: XCTestCase {
         let agentError = AgentError.from(err)
         XCTAssertEqual(agentError.error.code, "script_failed")
         XCTAssertFalse(agentError.error.code.contains("some long"), "Associated value must not leak into code")
+    }
+
+    // MARK: - ArgumentParser error message recovery (pippin-kzi)
+
+    /// Regression for pippin-kzi: ArgumentParser wraps a thrown `ValidationError`
+    /// in a non-public error whose `localizedDescription` is the opaque
+    /// "(ArgumentParser.ValidationError error 1.)". The agent envelope must
+    /// surface the real validation text instead, via the injected
+    /// `argumentParserMessage` extractor (`ParsableCommand.message(for:)`).
+    func testAgentErrorRecoversArgumentParserValidationMessage() {
+        let previous = AgentError.argumentParserMessage
+        defer { AgentError.argumentParserMessage = previous }
+        // Stand in for `Pippin.message(for:)`, which the executable injects.
+        AgentError.argumentParserMessage = { _ in "--start must be in YYYY-MM-DD or ISO 8601 format." }
+
+        let err = ValidationError("--start must be in YYYY-MM-DD or ISO 8601 format.")
+        let agentError = AgentError.from(err)
+        XCTAssertTrue(
+            agentError.error.message.contains("YYYY-MM-DD"),
+            "ArgumentParser validation text must survive into the agent envelope, got: \(agentError.error.message)"
+        )
+        XCTAssertFalse(
+            agentError.error.message.contains("couldn’t be completed"),
+            "Opaque localizedDescription must not be used for ArgumentParser errors"
+        )
+    }
+
+    /// Without the extractor (or for non-ArgumentParser errors) the existing
+    /// LocalizedError path must remain unchanged.
+    func testAgentErrorNonArgumentParserUnaffectedByExtractor() {
+        let previous = AgentError.argumentParserMessage
+        defer { AgentError.argumentParserMessage = previous }
+        AgentError.argumentParserMessage = { _ in "SHOULD NOT BE USED" }
+
+        let agentError = AgentError.from(CalendarBridgeError.accessDenied)
+        XCTAssertTrue(agentError.error.message.contains("Calendar access denied"))
+        XCTAssertFalse(agentError.error.message.contains("SHOULD NOT BE USED"))
     }
 
     // MARK: - JSON shape

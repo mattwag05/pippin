@@ -273,4 +273,57 @@ final class DoctorTests: XCTestCase {
             XCTAssertLessThan(p, s, "Pipx venv should be probed before system python")
         }
     }
+
+    // MARK: - sttFlagsMissing (mlx-audio arg-shape probe, pippin-xua)
+
+    /// Real `mlx_audio.stt.generate --help` (0.4.2) usage/options excerpt.
+    private static let mlxAudio042Help = """
+    usage: mlx_audio.stt.generate [-h] [--model MODEL] --audio AUDIO
+                                  --output-path OUTPUT_PATH
+                                  [--format {txt,srt,vtt,json}] [--verbose]
+
+    options:
+      -h, --help            show this help message and exit
+      --model MODEL         Path to the model
+      --audio AUDIO         Path to the audio file
+      --output-path OUTPUT_PATH
+                            Path to save the output
+      --format {txt,srt,vtt,json}
+                            Output format (txt, srt, vtt, or json)
+    """
+
+    func testSTTFlagsMissingNoneOnRealHelp() {
+        // The flags pippin passes under the generate contract are all advertised
+        // by the installed 0.4.2 CLI → nothing missing → doctor stays green.
+        let expected = AudioBridge.expectedSTTFlags(for: AudioBridge.STTEntry(
+            executable: URL(fileURLWithPath: "/usr/bin/python3"),
+            prefixArgs: ["-m", "mlx_audio.stt.generate"]
+        ))
+        let missing = sttFlagsMissing(fromHelp: Self.mlxAudio042Help, expected: expected)
+        XCTAssertEqual(missing, [], "All generate-contract flags are present in 0.4.2 help")
+    }
+
+    /// Regression for pippin-xua: a version skew that drops/renames `--audio`
+    /// must be caught — exactly the class of break that let pippin-8ik ship
+    /// while doctor reported all-green.
+    func testSTTFlagsMissingDetectsDroppedFlag() {
+        let skewedHelp = Self.mlxAudio042Help.replacingOccurrences(of: "--audio", with: "--input")
+        let expected = ["--model", "--audio", "--output-path", "--format"]
+        let missing = sttFlagsMissing(fromHelp: skewedHelp, expected: expected)
+        XCTAssertEqual(missing, ["--audio"], "A renamed --audio flag must be reported missing")
+    }
+
+    func testSTTFlagsMissingRespectsTokenBoundary() {
+        // `--format` must NOT be satisfied by a longer flag that merely shares
+        // its prefix.
+        let help = "options:\n  --format-version VER   unrelated flag\n"
+        XCTAssertEqual(
+            sttFlagsMissing(fromHelp: help, expected: ["--format"]),
+            ["--format"],
+            "--format must not match --format-version"
+        )
+        // But a genuine --format elsewhere does satisfy it.
+        let help2 = help + "  --format FMT   the real one\n"
+        XCTAssertEqual(sttFlagsMissing(fromHelp: help2, expected: ["--format"]), [])
+    }
 }

@@ -148,6 +148,18 @@ public enum AudioBridge {
         ]
     }
 
+    /// The `--flag` tokens `buildSTTArgs` will pass for the given entry's
+    /// contract. `doctor` asserts each appears in the STT CLI's `--help` output,
+    /// so a version skew that renames or drops a flag pippin depends on is caught
+    /// before a real `memos transcribe` fails (pippin-xua, relates to pippin-8ik
+    /// where pippin's arg vector and the installed mlx-audio drifted apart).
+    /// Derived from `buildSTTArgs` so the doctor probe and the real invocation
+    /// can never diverge.
+    static func expectedSTTFlags(for entry: STTEntry) -> [String] {
+        buildSTTArgs(entry: entry, filePath: "probe.wav", model: "parakeet", outputBase: "probe")
+            .filter { $0.hasPrefix("--") }
+    }
+
     // MARK: - Public API
 
     /// Synthesize speech from text using the specified TTS model and voice.

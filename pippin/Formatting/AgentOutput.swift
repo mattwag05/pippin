@@ -154,15 +154,37 @@ public struct AgentError: Encodable {
         error = ErrorPayload(code: code, message: message, remediation: remediation)
     }
 
+    /// Injected by the executable entry point with `ParsableCommand.message(for:)`
+    /// on the root command. ArgumentParser wraps thrown `ValidationError`s (and
+    /// parsing failures) in non-public error types whose `localizedDescription`
+    /// is the opaque "(ArgumentParser.CommandError error N.)" — the actionable
+    /// validation text is only recoverable via `message(for:)`. PippinLib can't
+    /// reference the root `Pippin` command (it lives in the executable target),
+    /// so the entry point injects the extractor here. See pippin-kzi.
+    public nonisolated(unsafe) static var argumentParserMessage: ((Error) -> String)?
+
     /// Derive an AgentError from any Swift Error.
     /// - `code`: snake_case case name derived from the error enum case (e.g. `accessDenied` → `access_denied`)
-    /// - `message`: `errorDescription` if LocalizedError, otherwise `localizedDescription`
+    /// - `message`: the ArgumentParser validation text for ArgumentParser errors,
+    ///   else `errorDescription` if LocalizedError, otherwise `localizedDescription`
     /// - `remediation`: enrichment from `RemediationCatalog`, if the code is registered
     public static func from(_ error: Error) -> AgentError {
-        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        let message = resolveMessage(for: error)
         let code = agentErrorCode(for: error)
         let remediation = RemediationCatalog.forCode(code)
         return AgentError(code: code, message: message, remediation: remediation)
+    }
+
+    /// Resolve the user-facing message for an error, recovering ArgumentParser's
+    /// validation text (which `localizedDescription` swallows) when available.
+    private static func resolveMessage(for error: Error) -> String {
+        if String(reflecting: type(of: error)).hasPrefix("ArgumentParser."),
+           let extractor = argumentParserMessage
+        {
+            let recovered = extractor(error).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !recovered.isEmpty { return recovered }
+        }
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 }
 
