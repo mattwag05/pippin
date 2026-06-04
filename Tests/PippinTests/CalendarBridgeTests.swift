@@ -158,6 +158,50 @@ final class CalendarBridgeTests: XCTestCase {
         XCTAssertNil(parseCalendarDate("yesterday"))
     }
 
+    // MARK: - Space-separated + minute-precision datetimes (pippin-3gp)
+
+    /// The headline ergonomic case: agents/humans naturally write a space
+    /// between date and time, which must parse to that exact local wall-clock
+    /// time (not midnight, not nil).
+    func testParseSpaceSeparatedMinutePrecision() {
+        guard let date = parseCalendarDate("2026-06-04 12:30") else {
+            return XCTFail("Space-separated 'YYYY-MM-DD HH:MM' must parse")
+        }
+        let cal = Calendar.current
+        XCTAssertEqual(cal.component(.year, from: date), 2026)
+        XCTAssertEqual(cal.component(.month, from: date), 6)
+        XCTAssertEqual(cal.component(.day, from: date), 4)
+        XCTAssertEqual(cal.component(.hour, from: date), 12)
+        XCTAssertEqual(cal.component(.minute, from: date), 30)
+    }
+
+    func testParseSpaceSeparatedWithSeconds() {
+        guard let date = parseCalendarDate("2026-06-04 12:30:45") else {
+            return XCTFail("Space-separated 'YYYY-MM-DD HH:MM:SS' must parse")
+        }
+        let cal = Calendar.current
+        XCTAssertEqual(cal.component(.hour, from: date), 12)
+        XCTAssertEqual(cal.component(.minute, from: date), 30)
+        XCTAssertEqual(cal.component(.second, from: date), 45)
+    }
+
+    /// `T`-separated without seconds was also rejected before — round it out.
+    func testParseTSeparatedMinutePrecision() {
+        guard let date = parseCalendarDate("2026-06-04T12:30") else {
+            return XCTFail("'YYYY-MM-DDTHH:MM' must parse")
+        }
+        XCTAssertEqual(Calendar.current.component(.minute, from: date), 30)
+    }
+
+    /// Space-separated and `T`-separated minute-precision must denote the SAME
+    /// instant — i.e. the space form is just sugar for local-time ISO.
+    func testParseSpaceAndTSeparatedAgree() {
+        XCTAssertEqual(
+            parseCalendarDate("2026-06-04 12:30"),
+            parseCalendarDate("2026-06-04T12:30")
+        )
+    }
+
     // MARK: - colorHex helper
 
     func testColorHexBlack() throws {

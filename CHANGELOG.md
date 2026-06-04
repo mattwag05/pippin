@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] Calendar date options now accept a **space** between date and time, not just strict `T`-separated ISO 8601. `calendar create --start '2026-06-04 14:30'` (and `--end`, plus `agenda`/`list`'s `--from`/`--to`) parse the natural `'YYYY-MM-DD HH:MM'` / `'YYYY-MM-DD HH:MM:SS'` forms agents and humans reach for, interpreting them at local time — the same instant as the `T`-separated form. Minute-precision `T` forms (`2026-06-04T14:30`, previously rejected for lacking seconds) now parse too. Strict ISO stays canonical; date-only and timezone-qualified inputs are unchanged. Closes pippin-3gp.
+
 ### Changed
 
 - [refactor] `AudioBridge.STTEntry` now carries its mlx-audio argument contract as a typed `STTContract` (`.generate`/`.legacy`) enum, set once by `resolveSTTEntry` where the entry point is chosen. `buildSTTArgs`/`transcribe` branch on `entry.contract` instead of re-deriving it by string-matching the executable path and prefix args at each call site — removing the duplicated string-match and making a future third contract a compile-checked change. No behavior change. Closes pippin-dzf.

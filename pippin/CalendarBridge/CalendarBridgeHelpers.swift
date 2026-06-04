@@ -44,22 +44,37 @@ func colorHex(_ cgColor: CGColor) -> String {
 /// - `2026-03-07T10:00:00Z`           — ISO 8601 with UTC
 /// - `2026-03-07T10:00:00+05:00`      — ISO 8601 with offset
 /// - `2026-03-07T10:00:00`            — ISO 8601, no timezone (treated as local)
+/// - `2026-03-07T10:00`               — `T`-separated, minute precision (local)
+/// - `2026-03-07 10:00:00`            — space-separated, with seconds (local)
+/// - `2026-03-07 10:00`               — space-separated, minute precision (local)
 /// - `2026-03-07`                     — date only, midnight in local timezone
+///
+/// The space-separated forms are sugar agents and humans reach for naturally
+/// (`calendar create --start '2026-03-07 10:00'`); they denote the same local
+/// instant as the strict `T`-separated ISO form (pippin-3gp). Strict ISO stays
+/// canonical — it's tried first.
 func parseCalendarDate(_ s: String) -> Date? {
-    // ISO 8601 with timezone
+    // ISO 8601 with timezone (canonical).
     let isoFormatter = ISO8601DateFormatter()
     isoFormatter.formatOptions = [.withInternetDateTime]
     if let date = isoFormatter.date(from: s) { return date }
 
-    // ISO 8601 without timezone — treat as local time
+    // Timezone-less local-time forms, most-specific first so a string carrying
+    // seconds isn't truncated by a coarser pattern's prefix match. Both `T` and
+    // space separators, with optional seconds.
     let localFormatter = DateFormatter()
     localFormatter.locale = Locale(identifier: "en_US_POSIX")
-    localFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-    if let date = localFormatter.date(from: s) { return date }
-
-    // YYYY-MM-DD — midnight in local timezone
-    localFormatter.dateFormat = "yyyy-MM-dd"
-    return localFormatter.date(from: s)
+    for pattern in [
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd'T'HH:mm",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm",
+        "yyyy-MM-dd", // date only — midnight in local timezone
+    ] {
+        localFormatter.dateFormat = pattern
+        if let date = localFormatter.date(from: s) { return date }
+    }
+    return nil
 }
 
 /// Format a Date as ISO 8601 with timezone (e.g. "2026-03-07T10:00:00Z").
