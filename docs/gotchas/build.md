@@ -62,6 +62,10 @@ Redirecting `make ci` (or `swift test`) to a file (`> log 2>&1`) can yield a **t
 - `.forgejo/workflows/` is an active self-hosted mirror of the CI/release gates (last normalized 2026-06-01). It deliberately omits the Setup-Xcode step (the self-hosted `macos` runner already has Xcode selected). Keep it in parity with `.github/workflows/` when changing gates.
 - **When bumping for a Node-runtime deprecation, verify `action.yml` `runs.using:` — don't trust the version number.** An action's latest *tag* may still be on the old runtime: e.g. `softprops/action-gh-release`'s latest v2 (v2.6.2) was still `node20`; upstream cut a separate major **v3.0.0** for Node 24. Check with: `gh api repos/<owner>/<repo>/contents/action.yml?ref=<sha> --jq '.content' | base64 -d | grep -i using`. (2026-06: checkout v4→v5.0.1, action-gh-release v2.5.0→v3.0.0, cache v4.3.0→v5.0.5; setup-xcode v1.7.0 + codeql-action v4.35.3 were already node24.)
 
+## `gh run watch --exit-status` returns 0 on a *cancelled* run
+
+`gh run watch <id> --exit-status` exits non-zero only for conclusion `failure` — a run that ends `cancelled` (e.g. a GitHub-hosted `macos-15` runner reclaimed/queued-out mid-step, common here) still exits **0**. Don't trust the exit code alone: after the watch returns, confirm `gh run view <id> --json conclusion` is `success` before declaring a release/CI green. A cancelled `release.yml` silently skips the "Create GitHub release" step, so the tag is live but no release/tarball is published (see the release skill's step 6 — publish locally).
+
 ## Local CI in a macOS VM (`make ci-vm`)
 
 GitHub `ci.yml` is disabled; CI runs locally via `make ci-vm` (Tart VM) or `make ci` (native). Full guide: [../local-ci.md](../local-ci.md). Three gotchas, all already handled in `scripts/ci-vm.sh`:
