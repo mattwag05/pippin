@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-06-08
+
 ### Added
 
 - [feat] `--fields` is now a universal option on every structured command. It was lifted into the shared output option group, so commands that previously lacked field projection — **`mail search`**, **`mail activity`**, and **`calendar search`** — now support `--fields` for projecting JSON/agent output to just the requested keys (e.g. `pippin mail search invoice --fields id,subject --format agent`). Existing per-command `--fields` behavior and output formatting are unchanged. Closes pippin-yux.
@@ -710,7 +712,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/mattwag05/pippin/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/mattwag05/pippin/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/mattwag05/pippin/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/mattwag05/pippin/compare/v0.26.0...v0.27.0
