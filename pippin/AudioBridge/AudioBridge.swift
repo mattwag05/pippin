@@ -289,36 +289,37 @@ public enum AudioBridge {
         filePath: String,
         model: String
     ) throws -> TranscriptionResult {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pippin-stt-\(UUID().uuidString)")
-        let outFile = base.appendingPathExtension("json")
-        defer { try? FileManager.default.removeItem(at: outFile) }
+        // The tool writes to `<outputBase>.json`; `withTemporaryFile` owns the
+        // `.json` output file, and `outputBase` is that URL minus its extension.
+        try withTemporaryFile(prefix: "pippin-stt-", extension: "json") { outFile in
+            let base = outFile.deletingPathExtension()
 
-        let args = buildSTTArgs(entry: entry, filePath: filePath, model: model, outputBase: base.path)
-        let result = try runProcessCapturing(
-            executable: entry.executable,
-            arguments: args,
-            timeoutSeconds: 300
-        )
-        if result.timedOut { throw AudioBridgeError.timeout }
+            let args = buildSTTArgs(entry: entry, filePath: filePath, model: model, outputBase: base.path)
+            let result = try runProcessCapturing(
+                executable: entry.executable,
+                arguments: args,
+                timeoutSeconds: 300
+            )
+            if result.timedOut { throw AudioBridgeError.timeout }
 
-        // 0.4.2 returns exit 0 on errors (e.g. unresolved model), so the only
-        // reliable success signal is a parseable output file.
-        guard let data = try? Data(contentsOf: outFile) else {
-            let detail = result.stderr.isEmpty ? result.stdout : result.stderr
-            throw AudioBridgeError.processFailed(
-                detail.isEmpty ? "mlx-audio produced no transcript output" : detail
+            // 0.4.2 returns exit 0 on errors (e.g. unresolved model), so the only
+            // reliable success signal is a parseable output file.
+            guard let data = try? Data(contentsOf: outFile) else {
+                let detail = result.stderr.isEmpty ? result.stdout : result.stderr
+                throw AudioBridgeError.processFailed(
+                    detail.isEmpty ? "mlx-audio produced no transcript output" : detail
+                )
+            }
+
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let fallbackText = (String(data: data, encoding: .utf8) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return transcriptionResult(
+                fromJSON: json,
+                fallbackText: fallbackText,
+                modelUsed: resolveSTTModelID(model)
             )
         }
-
-        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        let fallbackText = (String(data: data, encoding: .utf8) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return transcriptionResult(
-            fromJSON: json,
-            fallbackText: fallbackText,
-            modelUsed: resolveSTTModelID(model)
-        )
     }
 
     /// List available voices for a given TTS model.

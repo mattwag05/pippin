@@ -146,7 +146,7 @@ final class RemindersCommandTests: XCTestCase {
 
     func testListFieldsOptionPasses() throws {
         let cmd = try RemindersCommand.List.parse(["--fields", "id,title"])
-        XCTAssertEqual(cmd.fields, "id,title")
+        XCTAssertEqual(cmd.output.fields, "id,title")
     }
 
     // MARK: - List pagination flags (pippin-gb3)
@@ -321,7 +321,7 @@ final class RemindersCommandTests: XCTestCase {
 
     func testSearchFieldsOptionPasses() throws {
         let cmd = try RemindersCommand.Search.parse(["test query", "--fields", "id,dueDate"])
-        XCTAssertEqual(cmd.fields, "id,dueDate")
+        XCTAssertEqual(cmd.output.fields, "id,dueDate")
     }
 
     // MARK: - SmartCreate subcommand

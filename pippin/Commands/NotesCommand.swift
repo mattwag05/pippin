@@ -31,9 +31,6 @@ public struct NotesCommand: ParsableCommand {
         @Option(name: .long, help: "Maximum notes to return (default: 50). Ignored when --cursor or --page-size is set.")
         public var limit: Int = 50
 
-        @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,title). JSON output only.")
-        public var fields: String?
-
         @OptionGroup public var pagination: PaginationOptions
 
         @OptionGroup public var output: OutputOptions
@@ -54,9 +51,9 @@ public struct NotesCommand: ParsableCommand {
             let outcome = try NotesBridge.listNotes(folder: folder, limit: limit)
             let notes = outcome.results
             if output.isJSON {
-                try printFilteredNotes(notes, fields: fields)
+                try printFilteredNotes(notes, fields: output.fields)
             } else if output.isAgent {
-                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(fields)) {}
+                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(output.fields)) {}
             } else {
                 try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
                     if notes.isEmpty {
@@ -86,9 +83,9 @@ public struct NotesCommand: ParsableCommand {
                 fetched: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
             )
             if output.isJSON {
-                try printFilteredNotesPage(page, fields: fields)
+                try printFilteredNotesPage(page, fields: output.fields)
             } else if output.isAgent {
-                try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(fields)) {}
+                try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(output.fields)) {}
             } else {
                 try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
                     if page.items.isEmpty {
@@ -149,9 +146,6 @@ public struct NotesCommand: ParsableCommand {
         @Option(name: .long, help: "Maximum results to return (default: 50).")
         public var limit: Int = 50
 
-        @Option(name: .long, help: "Comma-separated JSON field names to include. JSON output only.")
-        public var fields: String?
-
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -166,9 +160,9 @@ public struct NotesCommand: ParsableCommand {
             let outcome = try NotesBridge.searchNotes(query: query, folder: folder, limit: limit)
             let notes = outcome.results
             if output.isJSON {
-                try printFilteredNotes(notes, fields: fields)
+                try printFilteredNotes(notes, fields: output.fields)
             } else if output.isAgent {
-                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(fields)) {}
+                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(output.fields)) {}
             } else {
                 try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
                     if notes.isEmpty {

@@ -79,9 +79,6 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum events to return (default: 50). Ignored when --cursor or --page-size is set.")
         public var limit: Int = 50
 
-        @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. title,startDate,endDate). JSON output only.")
-        public var fields: String?
-
         @Option(name: .long, help: "Date range shorthand: today, today+N (e.g. today+3), week, or month. Overrides --from/--to.")
         public var range: String?
 
@@ -164,7 +161,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                     all: events, offset: offset, pageSize: pageSize, filterHash: hash
                 )
                 if output.isJSON {
-                    let fieldList = FieldProjection.parse(fields)
+                    let fieldList = FieldProjection.parse(output.fields)
                     let itemsData = try page.items.jsonData(fields: fieldList)
                     let itemsJSON = try JSONSerialization.jsonObject(with: itemsData)
                     var dict: [String: Any] = ["items": itemsJSON]
@@ -172,7 +169,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else if output.isAgent {
-                    try output.printAgent(page, fields: FieldProjection.parse(fields))
+                    try output.printAgent(page, fields: FieldProjection.parse(output.fields))
                 } else {
                     printEventsTable(page.items)
                     if let cursor = page.nextCursor {
@@ -187,11 +184,11 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
 
             if output.isJSON {
-                let fieldList = FieldProjection.parse(fields)
+                let fieldList = FieldProjection.parse(output.fields)
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events, fields: FieldProjection.parse(fields))
+                try output.printAgent(events, fields: FieldProjection.parse(output.fields))
             } else {
                 printEventsTable(events)
             }
@@ -595,9 +592,6 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "API key for Claude provider.")
         public var apiKey: String?
 
-        @Option(name: .long, help: "Comma-separated JSON field names to include (briefing, days, eventCount). JSON output only.")
-        public var fields: String?
-
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -661,7 +655,10 @@ public struct CalendarCommand: AsyncParsableCommand {
                 "days": "\(days)",
                 "eventCount": "\(events.count)",
             ]
-            if let fieldList = fields?.components(separatedBy: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+            // Flat [String:String] payload (not a model array), so this filters
+            // by key directly rather than going through jsonData(fields:); reuse
+            // FieldProjection.parse for the comma-split so it matches everywhere.
+            if let fieldList = FieldProjection.parse(output.fields) {
                 result = result.filter { fieldList.contains($0.key) }
             }
             if output.isJSON {
@@ -738,10 +735,12 @@ public struct CalendarCommand: AsyncParsableCommand {
                 events = Array(events.prefix(limit))
             }
 
+            let fieldList = FieldProjection.parse(output.fields)
             if output.isJSON {
-                try printJSON(events)
+                let data = try events.jsonData(fields: fieldList)
+                print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events)
+                try output.printAgent(events, fields: fieldList)
             } else {
                 printEventsTable(events)
             }
@@ -758,16 +757,13 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         @OptionGroup public var output: OutputOptions
 
-        @Option(name: .long, help: "Comma-separated JSON field names to include. JSON output only.")
-        public var fields: String?
-
         public init() {}
 
         public mutating func run() async throws {
             let (start, end) = parseRange("today")!
             let bridge = CalendarBridge()
             let events = try await bridge.listEvents(from: start, to: end, calendarId: nil)
-            let fieldList = FieldProjection.parse(fields)
+            let fieldList = FieldProjection.parse(output.fields)
             if output.isJSON {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
@@ -789,9 +785,6 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         @OptionGroup public var output: OutputOptions
 
-        @Option(name: .long, help: "Comma-separated JSON field names to include. JSON output only.")
-        public var fields: String?
-
         public init() {}
 
         public mutating func run() async throws {
@@ -799,7 +792,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             let endOfToday = parseRange("today")!.end
             let bridge = CalendarBridge()
             let events = try await bridge.listEvents(from: now, to: endOfToday, calendarId: nil)
-            let fieldList = FieldProjection.parse(fields)
+            let fieldList = FieldProjection.parse(output.fields)
             if output.isJSON {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
@@ -918,9 +911,6 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         @OptionGroup public var output: OutputOptions
 
-        @Option(name: .long, help: "Comma-separated JSON field names to include. JSON output only.")
-        public var fields: String?
-
         @Option(name: .long, help: "Default page size when --page-size is omitted (default: 50).")
         public var limit: Int = 50
 
@@ -938,7 +928,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             let (start, end) = parseRange("today+6")! // today + 6 more days = 7 days total
             let bridge = CalendarBridge()
             let events = try await bridge.listEvents(from: start, to: end, calendarId: nil)
-            let fieldList = FieldProjection.parse(fields)
+            let fieldList = FieldProjection.parse(output.fields)
 
             if pagination.isActive {
                 let hash = Pagination.filterHash([:])

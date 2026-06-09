@@ -37,6 +37,12 @@ final class MailActivityTests: XCTestCase {
         XCTAssertThrowsError(try MailCommand.Activity.parse(["--limit", "0"]))
     }
 
+    // pippin-yux: activity now inherits --fields via OutputOptions.
+    func testActivityAcceptsFields() throws {
+        let cmd = try MailCommand.Activity.parse(["--fields", "id,from"])
+        XCTAssertEqual(cmd.output.fields, "id,from")
+    }
+
     func testActivityNegativePreviewFails() {
         XCTAssertThrowsError(try MailCommand.Activity.parse(["--preview", "-1"]))
     }

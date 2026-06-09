@@ -80,9 +80,6 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum reminders to return (default: 50). Ignored when --cursor or --page-size is set.")
         public var limit: Int = 50
 
-        @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,title,dueDate). JSON output only.")
-        public var fields: String?
-
         @OptionGroup public var pagination: PaginationOptions
 
         @OptionGroup public var output: OutputOptions
@@ -153,7 +150,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                     // OutputOptions.emit (plain printJSON) can't preserve, so this
                     // branch stays custom and surfaces the timeout warning itself.
                     if fetched.timedOut { warnTimedOut() }
-                    let fieldList = FieldProjection.parse(fields)
+                    let fieldList = FieldProjection.parse(output.fields)
                     let itemsData = try page.items.jsonData(fields: fieldList)
                     let itemsJSON = try JSONSerialization.jsonObject(with: itemsData)
                     var dict: [String: Any] = ["items": itemsJSON]
@@ -161,7 +158,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else {
-                    try output.emit(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(fields)) {
+                    try output.emit(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                         printRemindersTable(page.items)
                         if let cursor = page.nextCursor {
                             print("(more — re-run with --cursor \(cursor))")
@@ -185,11 +182,11 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 // --fields projection can't flow through emit's plain printJSON.
                 if outcome.timedOut { warnTimedOut() }
-                let fieldList = FieldProjection.parse(fields)
+                let fieldList = FieldProjection.parse(output.fields)
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else {
-                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(fields)) {
+                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                     printRemindersTable(reminders)
                 }
             }
@@ -431,9 +428,6 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Search completed reminders instead of incomplete.")
         public var completed: Bool = false
 
-        @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,title,dueDate). JSON output only.")
-        public var fields: String?
-
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -464,11 +458,11 @@ public struct RemindersCommand: AsyncParsableCommand {
             if output.isJSON {
                 // --fields projection can't flow through emit's plain printJSON.
                 if outcome.timedOut { warnTimedOut() }
-                let fieldList = FieldProjection.parse(fields)
+                let fieldList = FieldProjection.parse(output.fields)
                 let data = try reminders.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else {
-                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(fields)) {
+                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                     printRemindersTable(reminders)
                 }
             }

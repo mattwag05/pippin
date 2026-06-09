@@ -33,8 +33,9 @@ public enum AudioConverter {
         keepOutput _: Bool = false
     ) throws -> URL {
         let sourceURL = URL(fileURLWithPath: sourcePath)
-        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("pippin-audio-\(UUID().uuidString).wav")
+        // Caller owns cleanup (see `keepOutput`), so this returns a bare URL
+        // rather than using the scoped `withTemporaryFile`.
+        let tempURL = temporaryFileURL(prefix: "pippin-audio-", extension: "wav")
 
         let inputFile = try AVAudioFile(forReading: sourceURL)
         let inputFormat = inputFile.processingFormat

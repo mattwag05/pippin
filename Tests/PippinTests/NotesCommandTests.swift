@@ -75,7 +75,7 @@ final class NotesCommandTests: XCTestCase {
 
     func testListFieldsOptionPasses() throws {
         let cmd = try NotesCommand.List.parse(["--fields", "id,title"])
-        XCTAssertEqual(cmd.fields, "id,title")
+        XCTAssertEqual(cmd.output.fields, "id,title")
     }
 
     func testListJsonFormatPasses() {
@@ -137,7 +137,7 @@ final class NotesCommandTests: XCTestCase {
 
     func testSearchFieldsOptionPasses() throws {
         let cmd = try NotesCommand.Search.parse(["query", "--fields", "id,title,folder"])
-        XCTAssertEqual(cmd.fields, "id,title,folder")
+        XCTAssertEqual(cmd.output.fields, "id,title,folder")
     }
 
     func testSearchJsonFormatPasses() {

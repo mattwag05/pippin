@@ -61,7 +61,7 @@ public extension MailCommand {
                 )
             }
             let messages = outcome.messages
-            try output.emit(messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
+            try output.emit(messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(messages)
             }
         }

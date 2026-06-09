@@ -85,7 +85,7 @@ final class ContactsCommandTests: XCTestCase {
 
     func testListContactsFieldsDefault() throws {
         let cmd = try ContactsCommand.ListContacts.parse([])
-        XCTAssertNil(cmd.fields)
+        XCTAssertNil(cmd.output.fields)
     }
 
     func testListContactsGroupOption() throws {
@@ -95,13 +95,13 @@ final class ContactsCommandTests: XCTestCase {
 
     func testListContactsFieldsOption() throws {
         let cmd = try ContactsCommand.ListContacts.parse(["--fields", "name,email"])
-        XCTAssertEqual(cmd.fields, "name,email")
+        XCTAssertEqual(cmd.output.fields, "name,email")
     }
 
     func testListContactsGroupAndFieldsTogether() throws {
         let cmd = try ContactsCommand.ListContacts.parse(["--group", "Work", "--fields", "email,phone"])
         XCTAssertEqual(cmd.group, "Work")
-        XCTAssertEqual(cmd.fields, "email,phone")
+        XCTAssertEqual(cmd.output.fields, "email,phone")
     }
 
     // MARK: - SearchContacts Parse Tests
@@ -131,19 +131,19 @@ final class ContactsCommandTests: XCTestCase {
 
     func testSearchContactsFieldsDefault() throws {
         let cmd = try ContactsCommand.SearchContacts.parse(["query"])
-        XCTAssertNil(cmd.fields)
+        XCTAssertNil(cmd.output.fields)
     }
 
     func testSearchContactsFieldsOption() throws {
         let cmd = try ContactsCommand.SearchContacts.parse(["query", "--fields", "name,phone"])
-        XCTAssertEqual(cmd.fields, "name,phone")
+        XCTAssertEqual(cmd.output.fields, "name,phone")
     }
 
     func testSearchContactsAllOptions() throws {
         let cmd = try ContactsCommand.SearchContacts.parse(["Alice", "--email", "--fields", "email"])
         XCTAssertEqual(cmd.query, "Alice")
         XCTAssertTrue(cmd.email)
-        XCTAssertEqual(cmd.fields, "email")
+        XCTAssertEqual(cmd.output.fields, "email")
     }
 
     // MARK: - ShowContact Parse Tests
