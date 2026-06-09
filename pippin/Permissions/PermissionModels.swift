@@ -94,6 +94,18 @@ public enum PermissionPriming {
     public static func isInteractiveTerminal() -> Bool {
         isatty(STDIN_FILENO) != 0 && isatty(STDOUT_FILENO) != 0
     }
+
+    /// True when a bridge may safely *block on* a `requestAccess` call for a
+    /// `.notDetermined` permission during a normal command: there's an
+    /// interactive user at a TTY and we're not under MCP. When false, callers
+    /// must fail fast with `accessDenied` instead — `requestFullAccess*` blocks
+    /// on a dialog that can never appear in a non-interactive/background context,
+    /// which would hang the command. This matters acutely once pippin disclaims
+    /// TCC responsibility (pippin-0vr): pippin then sees its own `.notDetermined`
+    /// status under every launcher, so the un-promptable path is the common one.
+    public static func canRequestAccess() -> Bool {
+        isInteractiveTerminal() && !isMCPContext()
+    }
 }
 
 // MARK: - Pure status mapping (testable without TCC)

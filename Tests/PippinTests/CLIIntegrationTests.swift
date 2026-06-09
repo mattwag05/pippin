@@ -47,9 +47,14 @@ final class CLIIntegrationTests: XCTestCase {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
-        if let env {
-            process.environment = env
-        }
+        // Integration tests cover command behavior, not the disclaim re-exec
+        // wrapper (unit-tested in DisclaimRespawnTests + verified out-of-band).
+        // Skipping it keeps the suite fast and deterministic: a disclaimed binary
+        // would run under pippin's own (un-granted) TCC identity and block
+        // Mail/Notes automation calls to their soft-timeout. See pippin-0vr.
+        var childEnv = env ?? ProcessInfo.processInfo.environment
+        childEnv[DisclaimRespawn.optOutKey] = "1"
+        process.environment = childEnv
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

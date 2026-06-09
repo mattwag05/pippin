@@ -22,6 +22,13 @@ let package = Package(
         ),
     ],
     targets: [
+        // Tiny C shim: re-exec disclaimed so pippin is its own TCC responsible
+        // process (pippin-0vr). Isolated in C because it needs posix_spawn + the
+        // private responsibility_spawnattrs_setdisclaim SPI.
+        .target(
+            name: "CDisclaimSpawn",
+            path: "CDisclaimSpawn"
+        ),
         // Library target — all application logic (importable by tests)
         .target(
             name: "PippinLib",
@@ -35,7 +42,7 @@ let package = Package(
         // Executable entry point — just the @main struct
         .executableTarget(
             name: "pippin",
-            dependencies: ["PippinLib", .product(name: "ArgumentParser", package: "swift-argument-parser")],
+            dependencies: ["PippinLib", "CDisclaimSpawn", .product(name: "ArgumentParser", package: "swift-argument-parser")],
             path: "pippin-entry",
             exclude: ["Info.plist"],
             swiftSettings: [.swiftLanguageMode(.v6)],
