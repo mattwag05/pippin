@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- [build] `make install` now removes the target binary before copying. Overwriting a signed binary in place reused its inode and left macOS AMFI's cached code signature stale, SIGKILLing the next launch ("Killed: 9") despite an on-disk-valid signature; a fresh inode avoids it.
+
 ### Fixed
 
 - [bug] `messages show`/`messages search` now return message body text. Modern macOS leaves the `message.text` column NULL and stores the body in `attributedBody` as a typedstream (NSArchiver) blob, which pippin wasn't decoding — so `messages show` returned metadata with no text and `search` couldn't match recent messages. pippin now decodes `attributedBody` (via `NSUnarchiver` in a crash-safe ObjC shim) when `text` is empty, and `search` decode-scans recent attributedBody-only messages. Conversation last-message previews are decoded too. Closes pippin-cc1.

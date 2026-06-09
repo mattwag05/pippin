@@ -75,3 +75,14 @@ GitHub `ci.yml` is disabled; CI runs locally via `make ci-vm` (Tart VM) or `make
 3. **ssh `MaxAuthTries`.** sshpass offers agent keys first and trips the VM sshd ("Too many authentication failures"). Force password-only auth: `-o PreferredAuthentications=password -o PubkeyAuthentication=no -o IdentitiesOnly=yes`.
 
 **SourceKit "no member" diagnostics go stale:** right after you add a new symbol (a helper, a static func), SourceKit may report `Type 'X' has no member 'Y'` while `swift build`/`swift test` compile and pass fine. Trust the build, not the in-editor diagnostic — it catches up after a reindex.
+
+## `make install` over an existing signed binary → "Killed: 9" (fixed: rm before cp)
+
+`cp` over an existing `~/.local/bin/pippin` reuses the file's inode. macOS AMFI caches
+a code signature per vnode, so overwriting a *signed* binary in place leaves a stale
+cached signature → the next launch is **SIGKILLed (exit 137, "Killed: 9")** even though
+`codesign --verify` reports the on-disk binary valid. Symptom: every invocation
+(including `pippin --version`) dies instantly with no output. It's intermittent — only
+bites when the kernel has the old binary's signature cached (i.e. it was recently run).
+Fix: `rm -f` the target before `cp` (a fresh inode has no stale cache) — the `install`
+target does this. If you hand-copy a signed pippin, `rm` first.
