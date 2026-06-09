@@ -171,7 +171,11 @@ public struct AgentError: Encodable {
     public static func from(_ error: Error) -> AgentError {
         let message = resolveMessage(for: error)
         let code = agentErrorCode(for: error)
-        let remediation = RemediationCatalog.forCode(code)
+        // Prefer an error's own typed remediation over the code-based catalog:
+        // several permission errors share the `access_denied` code but need
+        // different System Settings panes (pippin-ci2). Falls back to the
+        // catalog for errors that don't supply one.
+        let remediation = (error as? RemediableError)?.remediation ?? RemediationCatalog.forCode(code)
         return AgentError(code: code, message: message, remediation: remediation)
     }
 

@@ -30,6 +30,49 @@ public struct Remediation: Codable, Sendable, Equatable {
     // is omitted (not null) when nil, matching the prior hand-rolled shape.
 }
 
+public extension Remediation {
+    /// Remediation for an EventKit/Contacts privacy permission that was not
+    /// granted. These all collapse to the shared `access_denied` agent code, so
+    /// the code-based `RemediationCatalog` can't tell them apart (it returns the
+    /// Voice Memos Full Disk Access hint for every one). `RemediableError`
+    /// conformances use this to supply the correct System Settings pane.
+    ///
+    /// - Parameters:
+    ///   - permission: human label + System Settings pane (e.g. "Reminders").
+    ///   - listCommand: a pippin command that triggers the first-use prompt.
+    ///   - doctorCheck: matching `pippin doctor` check name.
+    static func privacyAccess(
+        permission: String,
+        listCommand: String,
+        doctorCheck: String
+    ) -> Remediation {
+        Remediation(
+            humanHint: """
+            \(permission) access is not granted. Open System Settings > Privacy \
+            & Security > \(permission) and enable the app that launches pippin \
+            (your terminal, or the agent/MCP client that spawns it) — macOS TCC \
+            attaches the grant to the launching app, not the pippin binary. A \
+            background agent (LaunchAgent) cannot show the first-use prompt, so \
+            run `\(listCommand)` once from an interactive terminal to trigger it, \
+            then re-run.
+            """,
+            doctorCheck: doctorCheck
+        )
+    }
+}
+
+/// An error that supplies its own structured remediation, taking precedence
+/// over the code-based `RemediationCatalog` lookup in `AgentError.from(_:)`.
+///
+/// Needed because several distinct permission errors collapse to the same
+/// snake_case code (`access_denied`): Reminders, Calendar, and Contacts each
+/// require their own System Settings pane, not the Voice Memos Full Disk Access
+/// hint the catalog returns for that shared code. Conformances return `nil` for
+/// cases that should fall through to the catalog. (pippin-ci2)
+public protocol RemediableError {
+    var remediation: Remediation? { get }
+}
+
 /// Closed set of error codes that have a catalogued remediation. The raw
 /// value is the snake_case string that `agentErrorCode(for:)` produces from
 /// the matching Swift error case — keeping them coupled means a typo on
