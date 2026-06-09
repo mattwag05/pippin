@@ -1,4 +1,5 @@
 import Contacts
+import Darwin
 import EventKit
 import Foundation
 
@@ -43,7 +44,9 @@ public enum PermissionState: String, Codable, Sendable {
 
 /// One integration's permission, its mechanism, and how to obtain it. The
 /// stable serialized shape consumed by `pippin permissions --status` /
-/// `--format agent`.
+/// `--format agent`. All field names are already snake-case-free single words,
+/// so synthesized Codable is exact — and (like `Remediation`) it omits a nil
+/// `remediation` rather than emitting `null`.
 public struct PermissionReport: Codable, Sendable, Equatable {
     /// Human label, e.g. "Reminders", "Mail".
     public let integration: String
@@ -68,21 +71,6 @@ public struct PermissionReport: Codable, Sendable, Equatable {
         self.detail = detail
         self.remediation = remediation
     }
-
-    private enum CodingKeys: String, CodingKey {
-        case integration, mechanism, state, promptable, detail, remediation
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(integration, forKey: .integration)
-        try c.encode(mechanism, forKey: .mechanism)
-        try c.encode(state, forKey: .state)
-        try c.encode(promptable, forKey: .promptable)
-        try c.encode(detail, forKey: .detail)
-        // Omit (not null) when absent, matching the AgentError/Remediation shape.
-        try c.encodeIfPresent(remediation, forKey: .remediation)
-    }
 }
 
 /// Decision logic for whether onboarding/`permissions` may proactively trigger
@@ -99,6 +87,12 @@ public enum PermissionPriming {
         isStructuredOutput: Bool
     ) -> Bool {
         interactive && !isMCP && !isStructuredOutput
+    }
+
+    /// True when both stdin and stdout are a terminal — i.e. there's a user who
+    /// can answer a TCC dialog. The `interactive` input to `shouldPrime`.
+    public static func isInteractiveTerminal() -> Bool {
+        isatty(STDIN_FILENO) != 0 && isatty(STDOUT_FILENO) != 0
     }
 }
 

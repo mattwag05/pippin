@@ -1,5 +1,4 @@
 import ArgumentParser
-import Darwin
 import Foundation
 
 /// `pippin permissions` — resolve and report the macOS privacy permissions each
@@ -30,7 +29,7 @@ public struct PermissionsCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        let interactive = isatty(STDIN_FILENO) != 0 && isatty(STDOUT_FILENO) != 0
+        let interactive = PermissionPriming.isInteractiveTerminal()
         let willPrime = !status && PermissionPriming.shouldPrime(
             interactive: interactive,
             isMCP: isMCPContext(),
