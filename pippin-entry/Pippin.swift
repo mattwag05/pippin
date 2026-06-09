@@ -1,4 +1,5 @@
 import ArgumentParser
+import CDisclaimSpawn
 import Foundation
 import PippinLib
 
@@ -32,6 +33,13 @@ struct Pippin: AsyncParsableCommand {
     }()
 
     static func main() async {
+        // Before anything else: re-exec as our own TCC responsible process so
+        // EventKit/Contacts/Automation grants key on pippin's signed identity
+        // regardless of which app launched us (Terminal, Codex, the Hermes
+        // gateway, launchd). One grant to pippin then works under every launcher.
+        // See pippin-0vr.
+        becomeOwnResponsibleProcess()
+
         // Inject the parser so ShellCommand can dispatch subcommands
         // without a circular dependency on the Pippin root command.
         ShellCommand.parser = { args in
@@ -91,6 +99,30 @@ struct Pippin: AsyncParsableCommand {
                 Pippin.exit(withError: error)
             }
         }
+    }
+
+    /// Re-exec disclaimed (once per process tree) so pippin is its own TCC
+    /// responsible process. No-op when already disclaimed, opted out
+    /// (`PIPPIN_NO_DISCLAIM=1`), or when the disclaim SPI is unavailable. See
+    /// pippin-0vr / `DisclaimRespawn`.
+    private static func becomeOwnResponsibleProcess() {
+        guard DisclaimRespawn.shouldRespawn(environment: ProcessInfo.processInfo.environment) else {
+            return
+        }
+        // Set before spawning so the child (and anything it spawns) inherits the
+        // guard via environ and won't re-exec again.
+        setenv(DisclaimRespawn.guardKey, "1", 1)
+        // `pippin_respawn_disclaimed` blocks in waitpid for the child's lifetime.
+        // That's a deliberate exception to the detach-blocking rule: this is the
+        // very first statement of `main()`, a supervisor that does nothing but
+        // wait — no cooperative work has been scheduled and no fan-out exists yet,
+        // so it cannot starve the cooperative pool. detach-lint:allow
+        let status = pippin_respawn_disclaimed(CommandLine.unsafeArgv)
+        if status >= 0 {
+            // The disclaimed child ran to completion — propagate its exit status.
+            Darwin.exit(status)
+        }
+        // status < 0: SPI unavailable (-2) or spawn failed (-1) — run in-process.
     }
 
     /// Returns true if `--format agent` was passed on the command line.

@@ -69,6 +69,12 @@ public final class CalendarBridge: @unchecked Sendable {
         case .authorized: // deprecated but handle defensively
             return
         case .notDetermined:
+            // Only block on the prompt when a user can actually answer it;
+            // otherwise fail fast (requestFullAccess* hangs on an un-showable
+            // dialog in non-interactive/background contexts). See pippin-0vr.
+            guard PermissionPriming.canRequestAccess() else {
+                throw CalendarBridgeError.accessDenied
+            }
             let granted = try await store.requestFullAccessToEvents()
             guard granted else { throw CalendarBridgeError.accessDenied }
         default:

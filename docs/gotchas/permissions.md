@@ -99,11 +99,30 @@ to another. (Earlier wording here claimed EventKit keys on pippin's own identity
 that was wrong; pippin's user-facing remediation, which says the grant attaches to
 the launching app, is the accurate description.)
 
-**Implication for agents (Hermes/Talia):** the EventKit grant must be established
-for *the launcher that runs pippin*. Granting Terminal doesn't help an
-agent-spawned pippin. Durable fixes: (a) run the gateway as a **signed app** with a
-stable Developer ID identity (e.g. Hermes.app) and grant *that* the EventKit perms
-once; or (b) have the launcher spawn pippin with
-`responsibility_spawnattrs_setdisclaim` (or pippin re-exec itself disclaimed) so
-pippin becomes its own responsible process and its signed identity holds the grant
-regardless of launcher — see pippin-0vr.
+**Resolution (pippin-0vr): pippin disclaims responsibility for itself.** As of
+v0.31.0 pippin re-execs itself at startup with
+`responsibility_spawnattrs_setdisclaim` (a private SPI resolved via `dlsym`;
+`CDisclaimSpawn` C target + `DisclaimRespawn` + the `becomeOwnResponsibleProcess()`
+call in `@main`). The re-exec'd process is its own responsible process, so TCC keys
+consent on pippin's own code identity (`com.mattwag05.pippin`) regardless of
+launcher. **Grant pippin once and it works under Terminal, Codex, the Hermes
+gateway, launchd — everywhere.** Notes:
+
+- One disclaim per process tree: the child sets `PIPPIN_DISCLAIMED=1`, so the MCP
+  server's per-tool-call children inherit pippin's responsibility (no per-call
+  re-exec). Opt out with `PIPPIN_NO_DISCLAIM=1`.
+- The re-exec inherits argv/stdio/environ and forwards termination signals, so it
+  is transparent to terminals and the MCP JSON-RPC pipe. ~one extra process
+  startup per *direct* CLI invocation (not per MCP tool call).
+- **One-time migration cost:** because consent now attaches to pippin's identity
+  (not the launcher's), every permission must be re-granted once after upgrading —
+  run `pippin permissions` from a terminal and approve. Until then, EventKit
+  commands fail fast (see below) and Mail/Notes **Automation** calls block to their
+  soft-timeout when un-granted in a non-interactive context (pippin-qjf tracks a
+  fast-fail for that; interactive Terminal use self-heals because the automation
+  prompt appears on first call).
+- Bridges only block on `requestFullAccess*` when a user can answer the dialog
+  (`PermissionPriming.canRequestAccess()` = interactive TTY && not MCP); otherwise
+  they throw `accessDenied` immediately instead of hanging on an un-showable prompt
+  — now the common path, since a disclaimed pippin sees its own `.notDetermined`
+  status under background launchers.
