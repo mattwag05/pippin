@@ -1,4 +1,4 @@
 public enum PippinVersion {
-    public static let version = "0.30.0"
+    public static let version = "0.31.0"
     public static let tagline = "macOS CLI toolkit for Apple app automation"
 }
