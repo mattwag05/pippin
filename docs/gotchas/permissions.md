@@ -71,13 +71,15 @@ across both install paths. `scripts/sign.sh` does this; `make install` /
   `codesign -dvv "$(command -v pippin)"`.
 - After (re)signing with a *new* identity the DR changes once → one re-grant via
   `pippin permissions`, then it persists.
-- **Homebrew caveat (pippin-jt9):** `brew install/upgrade` builds in a sandbox
-  with no access to the login keychain, so `sign.sh` finds no identity and falls
-  back to ad-hoc — brew-built binaries are NOT Developer ID signed and their
-  grants won't persist. In practice `~/.local/bin/pippin` (from `make install`,
-  signed) shadows the brew copy on PATH, so the active/MCP binary is the signed
-  one. If you rely on the brew copy directly, re-sign it:
-  `bash scripts/sign.sh "$(brew --prefix)/bin/pippin"`.
+- **Homebrew (pippin-jt9):** `brew install/upgrade` builds in a sandbox with no
+  login-keychain access, so it *cannot* Developer-ID-sign a from-source build.
+  Resolved by having the formula install the **pre-signed release tarball** (the
+  `make tarball` asset, signed on a real machine at release time) for tagged
+  versions — so `brew install pippin` lands a Developer-ID-signed binary with
+  persistent grants. Only `brew install --HEAD` builds from source and is
+  ad-hoc. **Release implication:** the asset must be built+signed+uploaded to the
+  GitHub release *before* the formula is pointed at it (url + sha256). See the
+  release skill.
 
 ### Apple Events responsible-process caveat
 
