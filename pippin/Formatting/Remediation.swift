@@ -138,4 +138,16 @@ public enum RemediationCatalog {
     public static func forError(_ error: Error) -> Remediation? {
         forCode(agentErrorCode(for: error))
     }
+
+    /// The single source of truth for "what's the remediation for this error?",
+    /// shared by the agent-mode envelope (`AgentError.from`) and the human-mode
+    /// CLI error path. An error's own typed remediation (`RemediableError`)
+    /// wins over the code-based catalog, which can't disambiguate errors that
+    /// share a snake_case code (e.g. the four `access_denied` cases — Reminders/
+    /// Calendar/Contacts each need a different System Settings pane than Voice
+    /// Memos' Full Disk Access). Both paths must call this so they can't drift
+    /// apart again. (pippin-oxy)
+    public static func resolve(for error: Error) -> Remediation? {
+        (error as? RemediableError)?.remediation ?? forError(error)
+    }
 }

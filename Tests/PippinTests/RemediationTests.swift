@@ -163,4 +163,49 @@ final class RemediationTests: XCTestCase {
     func testRemediableErrorFallsThroughForNonAccessCases() {
         XCTAssertNil(AgentError.from(RemindersBridgeError.reminderNotFound("abc")).error.remediation)
     }
+
+    // MARK: - Centralized resolution (pippin-oxy)
+
+    //
+    // `resolve(for:)` is the single source of truth shared by the agent-mode
+    // envelope (`AgentError.from`) and the human-mode CLI error path
+    // (`Pippin.swift`). Before it existed, the human path called
+    // `forError(_:)` directly, so a Reminders/Calendar/Contacts accessDenied
+    // printed the Voice Memos Full Disk Access hint in human mode.
+
+    func testResolvePrefersTypedRemediationOverCatalog() throws {
+        let r = try XCTUnwrap(RemediationCatalog.resolve(for: RemindersBridgeError.accessDenied))
+        XCTAssertTrue(r.humanHint.contains("Reminders"))
+        XCTAssertFalse(
+            r.humanHint.contains("Full Disk Access"),
+            "resolve() must not return the Voice Memos hint for Reminders, got: \(r.humanHint)"
+        )
+    }
+
+    func testResolveFallsBackToCatalogForVoiceMemos() throws {
+        let r = try XCTUnwrap(RemediationCatalog.resolve(for: VoiceMemosError.accessDenied("x")))
+        XCTAssertTrue(r.humanHint.contains("Full Disk Access"))
+        XCTAssertEqual(r.doctorCheck, "Voice Memos access")
+    }
+
+    func testResolveReturnsNilForUncatalogued() {
+        XCTAssertNil(RemediationCatalog.resolve(for: RemindersBridgeError.reminderNotFound("x")))
+    }
+
+    /// `resolve(for:)` and `AgentError.from(_:).error.remediation` must agree —
+    /// the agent and human paths can't diverge again.
+    func testResolveMatchesAgentErrorRemediation() {
+        for error: Error in [
+            RemindersBridgeError.accessDenied,
+            CalendarBridgeError.accessDenied,
+            ContactsBridgeError.accessDenied,
+            VoiceMemosError.accessDenied("x"),
+        ] {
+            XCTAssertEqual(
+                RemediationCatalog.resolve(for: error)?.humanHint,
+                AgentError.from(error).error.remediation?.humanHint,
+                "resolve() diverged from AgentError.from() for \(error)"
+            )
+        }
+    }
 }

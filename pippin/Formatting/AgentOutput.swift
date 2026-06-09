@@ -171,11 +171,11 @@ public struct AgentError: Encodable {
     public static func from(_ error: Error) -> AgentError {
         let message = resolveMessage(for: error)
         let code = agentErrorCode(for: error)
-        // Prefer an error's own typed remediation over the code-based catalog:
+        // Single source of truth shared with the human-mode CLI path: prefer an
+        // error's own typed remediation over the code-based catalog, since
         // several permission errors share the `access_denied` code but need
-        // different System Settings panes (pippin-ci2). Falls back to the
-        // catalog for errors that don't supply one.
-        let remediation = (error as? RemediableError)?.remediation ?? RemediationCatalog.forCode(code)
+        // different System Settings panes (pippin-ci2, pippin-oxy).
+        let remediation = RemediationCatalog.resolve(for: error)
         return AgentError(code: code, message: message, remediation: remediation)
     }
 
@@ -220,11 +220,27 @@ private func durationMs(from start: Date) -> Int {
 
 /// Derive a snake_case error code from an error's case name.
 /// Examples: `scriptFailed("...")` → `"script_failed"`, `accessDenied` → `"access_denied"`
+///
+/// Foreign / bridged errors (NSError, URLError, CocoaError, DecodingError of
+/// unexpected shape) have `String(describing:)` values that are full sentences
+/// — e.g. `Error Domain=NSURLErrorDomain Code=-1001 "timed out"`. Those would
+/// snake-case into per-instance junk like `error _domain=_n_s_u_r_l...` in the
+/// `error.code` contract field. We only treat the leading token as a case name
+/// when it's a bare identifier; otherwise we emit a stable, classifiable
+/// `unknown_error`. Typed PippinLib enum codes are unaffected. (pippin-2tg)
 public func agentErrorCode(for error: Error) -> String {
     // String(describing:) on an enum case gives "caseName(assoc)" or just "caseName"
     let description = String(describing: error)
     // Strip associated values
     let caseName = description.components(separatedBy: "(").first ?? description
+    // Reject anything that isn't a bare Swift identifier (a real enum/struct
+    // case name): the leading char must be a letter, and every char must be a
+    // letter, digit, or underscore. Sentences (spaces, '=', quotes, '.') fail.
+    guard let first = caseName.first, first.isLetter,
+          caseName.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" })
+    else {
+        return "unknown_error"
+    }
     // Convert camelCase to snake_case
     return camelToSnakeCase(caseName)
 }
