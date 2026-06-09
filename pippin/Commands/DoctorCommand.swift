@@ -161,6 +161,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkMacOSVersion())
     checks.append(checkMailAutomation())
     checks.append(checkVoiceMemosDB())
+    checks.append(checkMessagesAccess())
     checks.append(checkCalendarAccess())
     checks.append(checkRemindersAccess())
     checks.append(checkContactsAccess())
@@ -200,7 +201,7 @@ private func checkMacOSVersion() -> DiagnosticCheck {
     }
 }
 
-private func checkMailAutomation() -> DiagnosticCheck {
+func checkMailAutomation() -> DiagnosticCheck {
     do {
         _ = try MailBridge.listAccounts()
         return DiagnosticCheck(
@@ -213,7 +214,38 @@ private func checkMailAutomation() -> DiagnosticCheck {
     }
 }
 
-private func checkVoiceMemosDB() -> DiagnosticCheck {
+func checkMessagesAccess() -> DiagnosticCheck {
+    let dbPath = MessagesDatabase.defaultDBPath()
+    do {
+        _ = try MessagesDatabase(dbPath: dbPath)
+        return DiagnosticCheck(name: "Messages access", status: .ok, detail: "database readable")
+    } catch let error as MessagesError {
+        switch error {
+        case .databaseNotFound:
+            return DiagnosticCheck(
+                name: "Messages access",
+                status: .skip,
+                detail: "no Messages database (Messages.app never used on this Mac)"
+            )
+        default:
+            return DiagnosticCheck(
+                name: "Messages access",
+                status: .fail,
+                detail: "permission denied",
+                remediation: .fullDiskAccess(integration: "Messages", listCommand: "pippin messages list")
+            )
+        }
+    } catch {
+        return DiagnosticCheck(
+            name: "Messages access",
+            status: .fail,
+            detail: "permission denied",
+            remediation: .fullDiskAccess(integration: "Messages", listCommand: "pippin messages list")
+        )
+    }
+}
+
+func checkVoiceMemosDB() -> DiagnosticCheck {
     let dbPath = VoiceMemosDB.defaultDBPath()
     do {
         _ = try VoiceMemosDB(dbPath: dbPath)
@@ -282,7 +314,12 @@ private func checkCalendarAccess() -> DiagnosticCheck {
         return DiagnosticCheck(
             name: "Calendar access",
             status: .skip,
-            detail: "not determined (grant on first use of `pippin calendar`)"
+            detail: "not yet granted — run `pippin permissions` to grant interactively",
+            remediation: .privacyAccess(
+                permission: "Calendar",
+                listCommand: "pippin calendar list",
+                doctorCheck: "Calendar access"
+            )
         )
     case .denied, .restricted:
         return DiagnosticCheck(
@@ -313,7 +350,12 @@ private func checkRemindersAccess() -> DiagnosticCheck {
         return DiagnosticCheck(
             name: "Reminders access",
             status: .skip,
-            detail: "not determined (grant on first use of `pippin reminders`)"
+            detail: "not yet granted — run `pippin permissions` to grant interactively",
+            remediation: .privacyAccess(
+                permission: "Reminders",
+                listCommand: "pippin reminders list",
+                doctorCheck: "Reminders access"
+            )
         )
     case .denied, .restricted:
         return DiagnosticCheck(
@@ -335,7 +377,7 @@ private func checkRemindersAccess() -> DiagnosticCheck {
     }
 }
 
-private func checkNotesAccess() -> DiagnosticCheck {
+func checkNotesAccess() -> DiagnosticCheck {
     // Fast pre-check: is Notes.app running? Avoids 30s JXA timeout when it's not.
     let pgrep = Process()
     pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
@@ -431,7 +473,12 @@ private func checkContactsAccess() -> DiagnosticCheck {
         return DiagnosticCheck(
             name: "Contacts access",
             status: .skip,
-            detail: "not determined (grant on first use of `pippin contacts`)"
+            detail: "not yet granted — run `pippin permissions` to grant interactively",
+            remediation: .privacyAccess(
+                permission: "Contacts",
+                listCommand: "pippin contacts list",
+                doctorCheck: "Contacts access"
+            )
         )
     case .denied, .restricted:
         return DiagnosticCheck(

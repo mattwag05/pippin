@@ -119,6 +119,7 @@ Hard-won patterns live in [`docs/gotchas/`](docs/gotchas/) — load the file mat
 | `pippin/Commands/`, ArgumentParser, Swift 6 concurrency, agent JSON | [docs/gotchas/swift.md](docs/gotchas/swift.md) |
 | CI failures, swiftformat/swiftlint, `swift test`, worktrees | [docs/gotchas/build.md](docs/gotchas/build.md) |
 | `pippin/MCP/`, `McpServerCommand.swift` | [docs/gotchas/mcp.md](docs/gotchas/mcp.md) |
+| `pippin/Permissions/`, `init`/`permissions`/`doctor`, TCC, `ensureAccess()`, embedded Info.plist | [docs/gotchas/permissions.md](docs/gotchas/permissions.md) |
 
 When you discover a new gotcha, append to the appropriate file.
 

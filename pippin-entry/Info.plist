@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Embedded into the pippin executable's __TEXT,__info_plist section via the
+  linker flags in Package.swift (-sectcreate). This gives the CLI a stable TCC
+  identity and the per-service usage-description strings macOS requires before
+  it will present (rather than silently deny or crash on) a permission request.
+
+  Without these keys, EventKit's requestFullAccess* APIs are unreliable outside
+  an interactive terminal — the exact failure mode behind background launches
+  (e.g. the Hermes LaunchAgent) hitting unexpected/silent permission denials.
+  See pippin-1zv / docs/gotchas/permissions.md.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.mattwag05.pippin</string>
+	<key>CFBundleName</key>
+	<string>pippin</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>pippin reads and creates your reminders when you run `pippin reminders` commands.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>pippin reads and creates your calendar events when you run `pippin calendar` commands.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>pippin reads your contacts when you run `pippin contacts` commands.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>pippin controls Mail, Notes, and Messages on your behalf when you run those commands.</string>
+</dict>
+</plist>

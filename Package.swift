@@ -37,7 +37,24 @@ let package = Package(
             name: "pippin",
             dependencies: ["PippinLib", .product(name: "ArgumentParser", package: "swift-argument-parser")],
             path: "pippin-entry",
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            exclude: ["Info.plist"],
+            swiftSettings: [.swiftLanguageMode(.v6)],
+            // Embed Info.plist into the binary's __TEXT,__info_plist section so
+            // the CLI has a stable TCC identity + the usage-description strings
+            // macOS requires before presenting a permission prompt. Without
+            // this, EventKit/Contacts requests are unreliable outside an
+            // interactive terminal (the background-LaunchAgent failure behind
+            // the permission-coverage work). `.unsafeFlags` is fine here: pippin
+            // is an app, never consumed as a versioned library dependency.
+            // The path is resolved by the linker from the package root. (pippin-1zv)
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate",
+                    "-Xlinker", "__TEXT",
+                    "-Xlinker", "__info_plist",
+                    "-Xlinker", "pippin-entry/Info.plist",
+                ]),
+            ]
         ),
         // Test target
         .testTarget(
