@@ -10,6 +10,13 @@ public struct MessagesCommand: AsyncParsableCommand {
 
     public init() {}
 
+    /// Build the Contacts reverse index for sender/participant name resolution,
+    /// unless disabled. Best-effort: an empty index when Contacts isn't authorized
+    /// (resolution silently no-ops). See ContactsBridge.contactIndex.
+    static func contactIndex(disabled: Bool) -> ContactIndex {
+        disabled ? ContactIndex() : ContactsBridge.contactIndex()
+    }
+
     // MARK: - List
 
     public struct List: AsyncParsableCommand {
@@ -24,6 +31,9 @@ public struct MessagesCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum conversations to return (default: 50).")
         public var limit: Int = 50
 
+        @Flag(name: .customLong("no-contacts"), help: "Don't resolve participant handles to Apple Contacts names.")
+        public var noContacts = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -37,7 +47,8 @@ public struct MessagesCommand: AsyncParsableCommand {
             let (convs, excludedCount) = try db.listConversations(
                 since: since,
                 limit: limit,
-                excluded: excluded
+                excluded: excluded,
+                contactIndex: MessagesCommand.contactIndex(disabled: noContacts)
             )
             let payload = MessagesListResult(
                 conversations: convs,
@@ -92,6 +103,9 @@ public struct MessagesCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum messages to return (default: 50).")
         public var limit: Int = 50
 
+        @Flag(name: .customLong("no-contacts"), help: "Don't resolve sender handles to Apple Contacts names.")
+        public var noContacts = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -104,7 +118,8 @@ public struct MessagesCommand: AsyncParsableCommand {
                 query: query,
                 since: since,
                 limit: limit,
-                excluded: excluded
+                excluded: excluded,
+                contactIndex: MessagesCommand.contactIndex(disabled: noContacts)
             )
             let payload = MessagesSearchResult(
                 matches: matches,
@@ -127,7 +142,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 return
             }
             for m in payload.matches {
-                let who = m.isFromMe ? "me" : (m.fromHandle ?? "unknown")
+                let who = m.isFromMe ? "me" : (m.fromDisplayName ?? m.fromHandle ?? "unknown")
                 let text = m.text ?? "(no text)"
                 print("• \(m.date)  \(who): \(MessagesDatabase.preview(text))")
             }
@@ -148,6 +163,9 @@ public struct MessagesCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum messages (default: 50).")
         public var limit: Int = 50
 
+        @Flag(name: .customLong("no-contacts"), help: "Don't resolve sender handles to Apple Contacts names.")
+        public var noContacts = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -156,7 +174,8 @@ public struct MessagesCommand: AsyncParsableCommand {
             let db = try MessagesDatabase(dbPath: MessagesDatabase.defaultDBPath())
             let (conv, messages, truncated) = try db.showConversation(
                 conversationId: conversationId,
-                limit: limit
+                limit: limit,
+                contactIndex: MessagesCommand.contactIndex(disabled: noContacts)
             )
             let payload = MessagesShowResult(conversation: conv, messages: messages, truncated: truncated)
             MessagesAuditLog.record(
@@ -175,7 +194,7 @@ public struct MessagesCommand: AsyncParsableCommand {
             print("Thread: \(label)")
             print("")
             for m in payload.messages {
-                let who = m.isFromMe ? "me" : (m.fromHandle ?? "unknown")
+                let who = m.isFromMe ? "me" : (m.fromDisplayName ?? m.fromHandle ?? "unknown")
                 let text = m.text ?? "(no text)"
                 print("[\(m.date)] \(who): \(text)")
             }

@@ -315,6 +315,49 @@ final class MessagesDatabaseTests: XCTestCase {
         "TlNTdHJpbmcBlIQBKx5IZWxsbywgdHlwZWRzdHJlYW0gd29ybGQhIPCfjI2GhAJpSQEckoSEhAxOU0Rp" +
         "Y3Rpb25hcnkAlIQBaQCGhg=="
 
+    // MARK: - Contact name resolution (handle → Apple Contacts)
+
+    private func contactFixtureIndex() -> ContactIndex {
+        var idx = ContactIndex()
+        idx.add(name: "Bob Caller", phones: ["+15551234567"], emails: [])
+        idx.add(name: "Alice Example", phones: [], emails: ["alice@example.com"])
+        return idx
+    }
+
+    func testShowResolvesSenderAndOneToOneConversationName() throws {
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (conv, messages, _) = try db.showConversation(
+            conversationId: "iMessage;-;+15551234567", contactIndex: contactFixtureIndex()
+        )
+        // 1:1 thread has no chat name → falls back to the resolved participant.
+        XCTAssertEqual(conv.displayName, "Bob Caller")
+        // Inbound message's sender handle resolves; outbound (from me) stays nil.
+        XCTAssertEqual(messages.first(where: { !$0.isFromMe })?.fromDisplayName, "Bob Caller")
+        XCTAssertNil(messages.first(where: { $0.isFromMe })?.fromDisplayName)
+    }
+
+    func testListResolvesParticipantsButKeepsGroupName() throws {
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (convs, _) = try db.listConversations(limit: 50, contactIndex: contactFixtureIndex())
+        let dm = convs.first { $0.id == "iMessage;-;+15551234567" }
+        let group = convs.first { $0.id == "iMessage;-;groupA" }
+        XCTAssertEqual(dm?.displayName, "Bob Caller") // 1:1 → contact name
+        XCTAssertEqual(group?.displayName, "Team Group") // explicit group name wins
+        XCTAssertEqual(group?.participants.first { $0.handle == "alice@example.com" }?.displayName, "Alice Example")
+    }
+
+    func testSearchResolvesSenderName() throws {
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (matches, _) = try db.searchMessages(query: "lunch", contactIndex: contactFixtureIndex())
+        XCTAssertEqual(matches.first?.fromDisplayName, "Alice Example")
+    }
+
+    func testNoContactIndexLeavesNamesNil() throws {
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (_, messages, _) = try db.showConversation(conversationId: "iMessage;-;+15551234567")
+        XCTAssertNil(messages.first?.fromDisplayName)
+    }
+
     func testShowAndSearchDecodeAttributedBodyWhenTextNull() throws {
         let blob = try XCTUnwrap(Data(base64Encoded: Self.goldenAttributedBody))
         let queue = try makeEmptySchemaDB()
