@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-06-09
+
 ### Changed
 
 - [feat] **pippin now runs as its own macOS TCC "responsible process."** At startup it re-execs itself disclaimed (via `responsibility_spawnattrs_setdisclaim`), so Reminders/Calendar/Contacts/Automation consent keys on pippin's own signed identity instead of whichever app launched it (Terminal, Codex, the [agent-runtime] gateway, launchd). This fixes agent/background callers being denied even though the same binary worked from a terminal: grant pippin **once** (interactively, `pippin permissions`) and it works under every launcher. **One-time migration:** because grants now attach to pippin's identity, existing permissions must be re-granted once after upgrading — run `pippin permissions` from a terminal and approve the prompts. Opt out with `PIPPIN_NO_DISCLAIM=1`. Closes pippin-0vr.
@@ -720,7 +722,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/mattwag05/pippin/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/mattwag05/pippin/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/mattwag05/pippin/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/mattwag05/pippin/compare/v0.27.0...v0.28.0
