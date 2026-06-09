@@ -63,6 +63,32 @@ public struct StatusReport: Codable, Sendable {
     public let notes: NotesStatus?
     public let contacts: ContactsStatus?
     public let permissions: [PermissionEntry]
+    /// `true` when at least one section was dropped because the whole-dashboard
+    /// wall-clock budget elapsed (pippin-0nk). The dropped section reads as
+    /// `nil`; this flag tells callers the dashboard is partial, not empty.
+    public let timedOut: Bool
+
+    public init(
+        version: String,
+        mail: MailStatus?,
+        calendar: CalendarStatus?,
+        reminders: RemindersStatus?,
+        memos: MemosStatus?,
+        notes: NotesStatus?,
+        contacts: ContactsStatus?,
+        permissions: [PermissionEntry],
+        timedOut: Bool = false
+    ) {
+        self.version = version
+        self.mail = mail
+        self.calendar = calendar
+        self.reminders = reminders
+        self.memos = memos
+        self.notes = notes
+        self.contacts = contacts
+        self.permissions = permissions
+        self.timedOut = timedOut
+    }
 }
 
 public struct StatusCommand: AsyncParsableCommand {
@@ -76,38 +102,60 @@ public struct StatusCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        let report = await detachBlocking { buildStatusReport() }
+        // MCP caps the whole dashboard at 50s (under the 60s runChild cap) so a
+        // slow section yields partial results instead of a SIGKILL; CLI is
+        // unbounded. See pippin-0nk.
+        let budgetMs = BatchBudget.forCurrentContext().softTimeoutMs
+        let report = await detachBlocking { buildStatusReport(budgetMs: budgetMs) }
 
-        if output.isAgent {
-            try output.printAgent(report)
-        } else if output.isJSON {
-            try printJSON(report)
-        } else {
-            printTextReport(report)
-        }
+        try output.emit(
+            report,
+            timedOut: report.timedOut,
+            timedOutHint: "status exceeded its \(budgetMs)ms budget; some sections were skipped",
+            renderText: { printTextReport(report) }
+        )
     }
 }
 
 // MARK: - Report Building
 
-private func buildStatusReport() -> StatusReport {
-    let mail = gatherMailStatus()
-    let calendar = gatherCalendarStatus()
-    let reminders = gatherRemindersStatus()
-    let memos = gatherMemosStatus()
-    let notes = gatherNotesStatus()
-    let contacts = gatherContactsStatus()
-    let permissions = gatherPermissions()
+/// Gathers every section concurrently and bounds the total wait by `budgetMs`.
+/// The sections are independent subsystems, so running them in parallel turns
+/// the old sequential sum (which blew past the MCP runChild cap on multi-account
+/// setups) into the cost of the single slowest section. A section that misses
+/// the budget is left `nil` and `timedOut` is set. See pippin-0nk.
+private func buildStatusReport(budgetMs: Int) -> StatusReport {
+    let mail = ConcurrentSlot<StatusReport.MailStatus?>()
+    let calendar = ConcurrentSlot<StatusReport.CalendarStatus?>()
+    let reminders = ConcurrentSlot<StatusReport.RemindersStatus?>()
+    let memos = ConcurrentSlot<StatusReport.MemosStatus?>()
+    let notes = ConcurrentSlot<StatusReport.NotesStatus?>()
+    let contacts = ConcurrentSlot<StatusReport.ContactsStatus?>()
+    let permissions = ConcurrentSlot<[StatusReport.PermissionEntry]>()
+
+    let completed = runConcurrentlyWithBudget(budgetMs: budgetMs, [
+        { mail.set(gatherMailStatus()) },
+        { calendar.set(gatherCalendarStatus()) },
+        { reminders.set(gatherRemindersStatus()) },
+        { memos.set(gatherMemosStatus()) },
+        { notes.set(gatherNotesStatus()) },
+        { contacts.set(gatherContactsStatus()) },
+        { permissions.set(gatherPermissions()) },
+    ])
 
     return StatusReport(
         version: PippinVersion.version,
-        mail: mail,
-        calendar: calendar,
-        reminders: reminders,
-        memos: memos,
-        notes: notes,
-        contacts: contacts,
-        permissions: permissions
+        // Outer optional: `nil` = section missed the budget. Inner: `nil` = ran
+        // but no access. Both render as a `nil` section; only the former trips
+        // `timedOut` (via `completed`).
+        mail: mail.get() ?? nil,
+        calendar: calendar.get() ?? nil,
+        reminders: reminders.get() ?? nil,
+        memos: memos.get() ?? nil,
+        notes: notes.get() ?? nil,
+        contacts: contacts.get() ?? nil,
+        permissions: permissions.get() ?? [],
+        timedOut: !completed
     )
 }
 

@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [perf] `pippin status` no longer times out on multi-account setups. The dashboard's seven sections (Mail, Calendar, Reminders, Voice Memos, Notes, Contacts, Permissions) were gathered sequentially with no overall deadline, so their times summed — on a multi-account Mail setup the N+1 mailbox enumeration alone could push the total past the 60s MCP `runChild` cap and the whole call was SIGKILLed (works fine with narrow queries). The sections now run concurrently (total cost ≈ the single slowest section) under a wall-clock budget (50s under MCP, unbounded in CLI); a section that exceeds the budget is dropped to `nil` and the report's new top-level `timedOut` flag marks the dashboard partial instead of returning nothing. Closes pippin-0nk.
+
 ## [0.29.0] - 2026-06-08
 
 ### Added
