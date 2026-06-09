@@ -365,6 +365,12 @@ final class CalendarCommandTests: XCTestCase {
         XCTAssertThrowsError(try CalendarCommand.Search.parse(["--query", "x", "--limit", "0"]))
     }
 
+    // pippin-yux: search now inherits --fields via OutputOptions.
+    func testSearchAcceptsFields() throws {
+        let cmd = try CalendarCommand.Search.parse(["--query", "x", "--fields", "id,title"])
+        XCTAssertEqual(cmd.output.fields, "id,title")
+    }
+
     func testSearchDefaultLimit() throws {
         let cmd = try CalendarCommand.Search.parse(["--query", "x"])
         XCTAssertEqual(cmd.limit, 50)
@@ -406,7 +412,7 @@ final class CalendarCommandTests: XCTestCase {
 
     func testTodayFieldsOptionPasses() throws {
         let cmd = try CalendarCommand.Today.parse(["--fields", "title,startDate"])
-        XCTAssertEqual(cmd.fields, "title,startDate")
+        XCTAssertEqual(cmd.output.fields, "title,startDate")
     }
 
     // MARK: - Remaining subcommand
@@ -429,7 +435,7 @@ final class CalendarCommandTests: XCTestCase {
 
     func testRemainingFieldsOptionPasses() throws {
         let cmd = try CalendarCommand.Remaining.parse(["--fields", "title,endDate"])
-        XCTAssertEqual(cmd.fields, "title,endDate")
+        XCTAssertEqual(cmd.output.fields, "title,endDate")
     }
 
     // MARK: - Upcoming subcommand
@@ -452,7 +458,7 @@ final class CalendarCommandTests: XCTestCase {
 
     func testUpcomingFieldsOptionPasses() throws {
         let cmd = try CalendarCommand.Upcoming.parse(["--fields", "id,title,startDate"])
-        XCTAssertEqual(cmd.fields, "id,title,startDate")
+        XCTAssertEqual(cmd.output.fields, "id,title,startDate")
     }
 
     // MARK: - Conflicts subcommand

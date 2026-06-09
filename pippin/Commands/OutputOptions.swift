@@ -11,15 +11,19 @@ public struct OutputOptions: ParsableArguments {
     @Option(name: .long, help: "Output format: text (default), json, or agent (compact JSON for AI agents).")
     public var format: OutputFormat = .text
 
+    @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,title). JSON/agent output only.")
+    public var fields: String?
+
     /// Wall-clock time when this option group was constructed (during
     /// ArgumentParser's `parse()`). Threaded into agent-mode envelopes as
     /// `duration_ms`.
     public let startedAt: Date = .init()
 
-    /// Only `format` is a parsed argument. `startedAt` is initialized from its
-    /// default expression and must be excluded from Codable synthesis.
+    /// `format` and `fields` are parsed arguments. `startedAt` is initialized
+    /// from its default expression and must be excluded from Codable synthesis.
     private enum CodingKeys: String, CodingKey {
         case format
+        case fields
     }
 
     public init() {}

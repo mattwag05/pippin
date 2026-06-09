@@ -367,16 +367,20 @@ public enum BrowserBridge {
 
     /// Run an inline Node.js script and return stdout.
     static func runNodeScript(_ script: String, timeoutSeconds: Int = 15) throws -> String {
-        // Write the script to a temp file to avoid shell quoting issues
-        let tmpFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pippin-browser-\(UUID().uuidString).js")
-        do {
-            try script.write(to: tmpFile, atomically: true, encoding: .utf8)
-        } catch {
-            throw BrowserBridgeError.scriptFailed("Failed to write temp script: \(error.localizedDescription)")
+        // Write the script to a temp file to avoid shell quoting issues.
+        try withTemporaryFile(prefix: "pippin-browser-", extension: "js") { tmpFile in
+            do {
+                try script.write(to: tmpFile, atomically: true, encoding: .utf8)
+            } catch {
+                throw BrowserBridgeError.scriptFailed("Failed to write temp script: \(error.localizedDescription)")
+            }
+            return try runNodeScriptFile(tmpFile, timeoutSeconds: timeoutSeconds)
         }
-        defer { try? FileManager.default.removeItem(at: tmpFile) }
+    }
 
+    /// Runs an already-written Node script file and returns stdout. Split out so
+    /// `runNodeScript` owns the temp-file lifetime via `withTemporaryFile`.
+    private static func runNodeScriptFile(_ tmpFile: URL, timeoutSeconds: Int) throws -> String {
         let process = Process()
         // Use env to pick up PATH-installed node
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")

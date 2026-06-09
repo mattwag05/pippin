@@ -379,6 +379,12 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertEqual(cmd.page, 2)
     }
 
+    // pippin-yux: search now inherits --fields via OutputOptions.
+    func testSearchAcceptsFields() throws {
+        let cmd = try MailCommand.Search.parse(["invoice", "--fields", "id,subject"])
+        XCTAssertEqual(cmd.output.fields, "id,subject")
+    }
+
     func testSearchPageZeroFails() {
         XCTAssertThrowsError(try MailCommand.Search.parse(["invoice", "--page", "0"]))
     }

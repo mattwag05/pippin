@@ -28,15 +28,16 @@ public struct ContactsCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Filter by group name.")
         public var group: String?
 
-        @Option(name: .long, help: "Comma-separated fields to include (e.g. id,fullName,emails).")
-        public var fields: String?
-
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
         public mutating func run() async throws {
-            let fieldList = FieldProjection.parse(fields)
+            // Contacts drives --fields server-side: fieldList selects which
+            // CNContact keys are fetched (avoids reading email/phone bodies
+            // across the whole store), unlike the client-side jsonData/emit
+            // projection other commands use. Semantics intentionally differ.
+            let fieldList = FieldProjection.parse(output.fields)
             let group = self.group
             // listContacts enumerates the full contact store (sync, can be slow
             // on large address books); hop off the cooperative pool.
@@ -81,9 +82,6 @@ public struct ContactsCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Search by email instead of name.")
         public var email: Bool = false
 
-        @Option(name: .long, help: "Comma-separated fields to include (e.g. id,fullName,emails).")
-        public var fields: String?
-
         @Option(name: .long, help: "Maximum results to return; also the default page size when paginating (default: 50).")
         public var limit: Int = 50
 
@@ -100,7 +98,7 @@ public struct ContactsCommand: AsyncParsableCommand {
         }
 
         public mutating func run() async throws {
-            let fieldList = FieldProjection.parse(fields)
+            let fieldList = FieldProjection.parse(output.fields)
             let query = self.query
             let contacts: [ContactInfo]
             let timedOut: Bool
