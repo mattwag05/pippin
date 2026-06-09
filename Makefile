@@ -60,6 +60,11 @@ sign: build
 
 install: build completions sign
 	@mkdir -p "$(INSTALL_DIR)"
+	@# rm before cp: overwriting a signed binary in place reuses the inode, and
+	@# AMFI's cached code signature for that vnode goes stale → the next launch is
+	@# SIGKILLed ("Killed: 9") even though `codesign --verify` passes on disk.
+	@# A fresh inode avoids the stale-cache kill.
+	rm -f "$(INSTALL_DIR)/pippin"
 	cp "$$(swift build -c release --show-bin-path)/pippin" "$(INSTALL_DIR)/pippin"
 	@echo "Installed: $(INSTALL_DIR)/pippin ($(VERSION))"
 	@echo "Run 'pippin permissions' once to grant access (grants now persist if signed)."
