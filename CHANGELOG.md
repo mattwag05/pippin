@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-06-09
+
 ### Added
 
 - [feat] Messages and Mail now tie senders to Apple Contacts automatically. `messages list/show/search` populate `from_display_name` and participant `display_name` from Contacts (a 1:1 thread now shows the contact's name instead of a bare phone number), and `mail list/search/activity/show` add a `fromContact` field with the sender's Contacts name. Resolution uses a one-pass Contacts reverse index (phone numbers normalized to digits + last-10 so E.164 handles match free-form stored numbers; emails matched case-insensitively, unwrapping `Name <addr>` headers). Best-effort: silently skipped when Contacts isn't authorized, never prompting or failing the command. Opt out per command with `--no-contacts`. Closes pippin-2nv.
@@ -734,7 +736,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/mattwag05/pippin/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/mattwag05/pippin/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/mattwag05/pippin/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/mattwag05/pippin/compare/v0.28.0...v0.29.0
