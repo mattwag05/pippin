@@ -74,7 +74,9 @@ This reproduces exactly what the old `release.yml` produced (title, changelog bo
 
 ### 7. Update the Homebrew tap formula
 
-The formula installs the **pre-signed release tarball** (not a from-source build) so brew binaries carry a stable Developer ID signature and TCC grants persist (pippin-jt9). **Step 6 must have run first** — the asset has to exist on the GitHub release before the formula points at it. Edit `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb` and update:
+The formula installs the **pre-signed release tarball** (not a from-source build) so brew binaries carry a stable Developer ID signature. **Step 6 must have run first** — the asset has to exist on the GitHub release before the formula points at it. Edit `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb` and update:
+
+> **Note (pippin-6sf, corrects pippin-jt9):** the signature gives a stable code identity, but **brew TCC grants do NOT persist across upgrades** — macOS keys a bare-CLI grant on the binary's resolved path, and brew's path is the versioned `Cellar/<ver>/bin/pippin`, so each upgrade re-prompts. The durable, TCC-granted home is `~/.local/bin/pippin` (stable copied path via `make install` — step 10). Agents/scheduled tasks point there, not at brew.
 - `url` → `https://github.com/mattwag05/pippin/releases/download/vX.Y.Z/pippin-X.Y.Z-arm64-macos.tar.gz`
 - `version` → `X.Y.Z`
 - `sha256` → `shasum -a 256 .build/release-artifacts/pippin-X.Y.Z-arm64-macos.tar.gz` (must match the uploaded asset)
