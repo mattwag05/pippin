@@ -289,12 +289,9 @@ private func checkCalendarAccess() -> DiagnosticCheck {
             name: "Calendar access",
             status: .fail,
             detail: "permission denied",
-            remediation: Remediation(
-                humanHint: """
-                Open System Settings > Privacy & Security > Calendars
-                Grant access to Terminal.app (or the pippin binary).
-                Then run: pippin calendar list
-                """,
+            remediation: .privacyAccess(
+                permission: "Calendar",
+                listCommand: "pippin calendar list",
                 doctorCheck: "Calendar access"
             )
         )
@@ -323,12 +320,9 @@ private func checkRemindersAccess() -> DiagnosticCheck {
             name: "Reminders access",
             status: .fail,
             detail: "permission denied",
-            remediation: Remediation(
-                humanHint: """
-                Open System Settings > Privacy & Security > Reminders
-                Grant access to Terminal.app (or the pippin binary).
-                Then run: pippin reminders list
-                """,
+            remediation: .privacyAccess(
+                permission: "Reminders",
+                listCommand: "pippin reminders list",
                 doctorCheck: "Reminders access"
             )
         )
@@ -444,12 +438,9 @@ private func checkContactsAccess() -> DiagnosticCheck {
             name: "Contacts access",
             status: .fail,
             detail: "permission denied",
-            remediation: Remediation(
-                humanHint: """
-                Open System Settings > Privacy & Security > Contacts
-                Grant access to Terminal.app (or the pippin binary).
-                Then run: pippin contacts list
-                """,
+            remediation: .privacyAccess(
+                permission: "Contacts",
+                listCommand: "pippin contacts list",
                 doctorCheck: "Contacts access"
             )
         )

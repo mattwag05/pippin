@@ -111,4 +111,56 @@ final class RemediationTests: XCTestCase {
         let string = try XCTUnwrap(String(data: data, encoding: .utf8))
         XCTAssertTrue(string.contains("\"shell_command\""))
     }
+
+    // MARK: - Per-permission remediation (pippin-ci2)
+
+    //
+    // RemindersBridgeError / CalendarBridgeError / ContactsBridgeError all
+    // derive the snake_case code `access_denied`, which collides with
+    // VoiceMemosError.accessDenied in the code-based catalog. Before the fix,
+    // all four returned the Voice Memos "Full Disk Access" remediation — so an
+    // MCP client ([agent]) hitting a Reminders permission failure was told to
+    // grant Full Disk Access for Voice Memos. Each must now carry its own
+    // permission-specific remediation via `RemediableError`.
+
+    func testRemindersAccessDeniedHasRemindersRemediation() throws {
+        let remediation = try XCTUnwrap(AgentError.from(RemindersBridgeError.accessDenied).error.remediation)
+        XCTAssertTrue(remediation.humanHint.contains("Reminders"))
+        XCTAssertFalse(
+            remediation.humanHint.contains("Full Disk Access"),
+            "Reminders remediation must not mention Voice Memos' Full Disk Access, got: \(remediation.humanHint)"
+        )
+        XCTAssertEqual(remediation.doctorCheck, "Reminders access")
+        // Code stays stable so exit-code classification + MCP branching are unaffected.
+        XCTAssertEqual(AgentError.from(RemindersBridgeError.accessDenied).error.code, "access_denied")
+    }
+
+    func testCalendarAccessDeniedHasCalendarRemediation() throws {
+        let remediation = try XCTUnwrap(AgentError.from(CalendarBridgeError.accessDenied).error.remediation)
+        XCTAssertTrue(remediation.humanHint.contains("Calendar"))
+        XCTAssertFalse(remediation.humanHint.contains("Full Disk Access"))
+        XCTAssertEqual(remediation.doctorCheck, "Calendar access")
+    }
+
+    func testContactsAccessDeniedHasContactsRemediation() throws {
+        let remediation = try XCTUnwrap(AgentError.from(ContactsBridgeError.accessDenied).error.remediation)
+        XCTAssertTrue(remediation.humanHint.contains("Contacts"))
+        XCTAssertFalse(remediation.humanHint.contains("Full Disk Access"))
+        XCTAssertEqual(remediation.doctorCheck, "Contacts access")
+    }
+
+    /// Voice Memos must still resolve to the Full Disk Access remediation (it
+    /// genuinely needs FDA) — the fix must not regress the one error whose
+    /// `access_denied` remediation was always correct.
+    func testVoiceMemosAccessDeniedStillHasFullDiskAccess() throws {
+        let remediation = try XCTUnwrap(AgentError.from(VoiceMemosError.accessDenied("x")).error.remediation)
+        XCTAssertTrue(remediation.humanHint.contains("Full Disk Access"))
+        XCTAssertEqual(remediation.doctorCheck, "Voice Memos access")
+    }
+
+    /// Non-access errors on a RemediableError bridge must still fall through to
+    /// the catalog (returning nil here, since they aren't catalogued).
+    func testRemediableErrorFallsThroughForNonAccessCases() {
+        XCTAssertNil(AgentError.from(RemindersBridgeError.reminderNotFound("abc")).error.remediation)
+    }
 }

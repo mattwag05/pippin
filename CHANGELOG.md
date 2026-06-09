@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [bug] Permission-denied errors for **Reminders**, **Calendar**, and **Contacts** now return the correct fix-it guidance. All three (and Voice Memos) derive the same agent error code `access_denied`, and the structured `remediation.human_hint` was looked up purely by that code — so a Reminders/Calendar/Contacts permission failure (e.g. an MCP `reminders_create` call from a background agent) was told to "grant **Full Disk Access** for **Voice Memos**", the wrong System Settings pane and wrong permission entirely. Each error now carries its own permission-specific remediation pointing at the right pane (Privacy & Security > Reminders/Calendars/Contacts), explaining that the grant attaches to the launching app (terminal or MCP/agent client) rather than the pippin binary, and noting that a background agent that can't show the first-use prompt should run `pippin <area> list` once interactively. The `access_denied` code is unchanged, so exit-code classification and MCP branching are unaffected. The `doctor` Calendar/Reminders/Contacts hints were updated to match. Closes pippin-ci2.
+
 ## [0.28.0] - 2026-06-03
 
 ### Added

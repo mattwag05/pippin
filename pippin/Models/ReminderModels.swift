@@ -13,8 +13,11 @@ public enum RemindersBridgeError: LocalizedError, Sendable {
         case .accessDenied:
             return """
             Reminders access denied.
-            → Open System Settings > Privacy & Security > Reminders
-              Grant access to Terminal.app (or the pippin binary), then retry.
+            → Open System Settings > Privacy & Security > Reminders and enable the
+              app that launches pippin (your terminal, or the MCP/agent client).
+              The grant attaches to the launching app, not the pippin binary; a
+              background agent that can't show the prompt needs `pippin reminders
+              list` run once in a terminal first. Then retry.
             """
         case let .reminderNotFound(id):
             return "Reminder not found: \(id)"
@@ -26,6 +29,21 @@ public enum RemindersBridgeError: LocalizedError, Sendable {
             return "Ambiguous ID prefix '\(id)' — matches multiple reminders. Use more characters."
         case .noDefaultCalendar:
             return "No default Reminders list is set. Open Reminders and set a default list, then retry."
+        }
+    }
+}
+
+extension RemindersBridgeError: RemediableError {
+    public var remediation: Remediation? {
+        switch self {
+        case .accessDenied:
+            return .privacyAccess(
+                permission: "Reminders",
+                listCommand: "pippin reminders list",
+                doctorCheck: "Reminders access"
+            )
+        default:
+            return nil
         }
     }
 }

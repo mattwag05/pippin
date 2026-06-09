@@ -124,8 +124,11 @@ public enum ContactsBridgeError: LocalizedError, Sendable {
         case .accessDenied:
             return """
             Contacts access denied.
-            → Open System Settings > Privacy & Security > Contacts
-              Grant access to Terminal.app (or the pippin binary), then retry.
+            → Open System Settings > Privacy & Security > Contacts and enable the
+              app that launches pippin (your terminal, or the MCP/agent client).
+              The grant attaches to the launching app, not the pippin binary; a
+              background agent that can't show the prompt needs `pippin contacts
+              list` run once in a terminal first. Then retry.
             """
         case let .contactNotFound(id):
             return "Contact not found: \(id)"
@@ -137,6 +140,21 @@ public enum ContactsBridgeError: LocalizedError, Sendable {
             return "Failed to save contact: \(msg)"
         case let .deleteFailed(msg):
             return "Failed to delete contact: \(msg)"
+        }
+    }
+}
+
+extension ContactsBridgeError: RemediableError {
+    public var remediation: Remediation? {
+        switch self {
+        case .accessDenied:
+            return .privacyAccess(
+                permission: "Contacts",
+                listCommand: "pippin contacts list",
+                doctorCheck: "Contacts access"
+            )
+        default:
+            return nil
         }
     }
 }

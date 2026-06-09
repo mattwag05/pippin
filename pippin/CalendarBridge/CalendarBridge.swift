@@ -15,8 +15,11 @@ public enum CalendarBridgeError: LocalizedError, Sendable {
         case .accessDenied:
             return """
             Calendar access denied.
-            → Open System Settings > Privacy & Security > Calendars
-              Grant access to Terminal.app (or the pippin binary), then retry.
+            → Open System Settings > Privacy & Security > Calendars and enable the
+              app that launches pippin (your terminal, or the MCP/agent client).
+              The grant attaches to the launching app, not the pippin binary; a
+              background agent that can't show the prompt needs `pippin calendar
+              list` run once in a terminal first. Then retry.
             """
         case let .eventNotFound(id):
             return "Event not found: \(id)"
@@ -30,6 +33,21 @@ public enum CalendarBridgeError: LocalizedError, Sendable {
             return "Could not parse date from AI response: \(value)"
         case let .aiParseError(detail):
             return "AI response could not be parsed as event JSON: \(detail)"
+        }
+    }
+}
+
+extension CalendarBridgeError: RemediableError {
+    public var remediation: Remediation? {
+        switch self {
+        case .accessDenied:
+            return .privacyAccess(
+                permission: "Calendar",
+                listCommand: "pippin calendar list",
+                doctorCheck: "Calendar access"
+            )
+        default:
+            return nil
         }
     }
 }
