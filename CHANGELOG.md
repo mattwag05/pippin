@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-06-08
+
 ### Added
 
 - [build] Stable-identity code signing so macOS TCC permission grants persist across rebuilds/upgrades. SwiftPM ad-hoc/linker-signs by default — the code identity is the CDHash, which changes every build, so TCC orphaned the prior grant on every `make install` / `brew upgrade` (and the two install paths got separate grants). `make install`/`make release` and the Homebrew formula now run `scripts/sign.sh`, which signs with a Developer ID Application identity + a fixed `com.mattwag05.pippin` identifier (guarded: ad-hoc fallback when no identity is present, so CI/other machines still build). `pippin doctor` gained a **Code signing** row reporting whether grants will persist. Notarization is not required for TCC (only for distributing downloaded binaries to other Macs; `PIPPIN_SIGN_HARDENED=1` enables it). Closes pippin-xzu.
@@ -696,7 +698,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/mattwag05/pippin/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/mattwag05/pippin/compare/v0.27.0...v0.28.0
 [0.27.0]: https://github.com/mattwag05/pippin/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/mattwag05/pippin/compare/v0.25.0...v0.26.0

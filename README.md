@@ -64,23 +64,30 @@ make install
 pippin accesses sandboxed Apple apps — macOS needs explicit permission grants.
 
 ```bash
-pippin init     # Guided setup — walks through each permission
-pippin doctor   # Verify everything works
-pippin status   # Dashboard: accounts, events, reminders, permissions
+pippin permissions  # Grant every promptable permission in one interactive pass
+pippin init         # Guided setup — also primes permissions, plus dependency checks
+pippin doctor       # Verify everything works (incl. code-signing status)
+pippin status       # Dashboard: accounts, events, reminders, permissions
 ```
 
-You'll need to grant permissions in **System Settings > Privacy & Security**:
+`pippin permissions` (or `pippin init`), run interactively, triggers each macOS
+prompt up front so it's answered once — the reliable way to avoid an unexpected
+or silently-denied prompt later (e.g. when an agent invokes pippin in the
+background). Run it again any time TCC resets (e.g. after a macOS upgrade).
 
-| Permission | For |
-|---|---|
-| Full Disk Access > Terminal.app | Voice Memos |
-| Automation > Mail > Terminal.app | Mail |
-| Calendars > Terminal.app / pippin | Calendar |
-| Reminders > Terminal.app / pippin | Reminders |
-| Contacts > Terminal.app / pippin | Contacts |
-| Automation > Notes > Terminal.app | Notes |
+| Permission | For | Promptable |
+|---|---|---|
+| Reminders | Reminders | ✅ `pippin permissions` |
+| Calendars | Calendar | ✅ `pippin permissions` |
+| Contacts | Contacts | ✅ `pippin permissions` |
+| Automation > Mail | Mail | ✅ `pippin permissions` |
+| Automation > Notes | Notes | ✅ `pippin permissions` |
+| Full Disk Access | Voice Memos, Messages | ❌ grant manually (no prompt exists) |
 
-> **Tip:** Permission is per binary path. After a new build or install, run each subcommand once interactively to trigger the TCC prompt.
+> **Persistence:** grants stick across upgrades only if the binary is signed
+> with a stable identity. `make install` / the Homebrew formula sign with your
+> Developer ID when available; `pippin doctor`'s **Code signing** row reports
+> whether grants will persist. Full Disk Access is always a manual toggle.
 
 ## Commands
 
