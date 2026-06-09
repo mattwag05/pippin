@@ -74,10 +74,13 @@ This reproduces exactly what the old `release.yml` produced (title, changelog bo
 
 ### 7. Update the Homebrew tap formula
 
-Edit `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb`. Update three fields:
-- `tag` → `vX.Y.Z`
-- `revision` → output of `git rev-parse vX.Y.Z^{}` (the `^{}` dereferences the annotated tag to a commit SHA — plain `git rev-parse vX.Y.Z` returns the tag object SHA, which fails Homebrew's integrity check)
+The formula installs the **pre-signed release tarball** (not a from-source build) so brew binaries carry a stable Developer ID signature and TCC grants persist (pippin-jt9). **Step 6 must have run first** — the asset has to exist on the GitHub release before the formula points at it. Edit `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb` and update:
+- `url` → `https://github.com/mattwag05/pippin/releases/download/vX.Y.Z/pippin-X.Y.Z-arm64-macos.tar.gz`
+- `version` → `X.Y.Z`
+- `sha256` → `shasum -a 256 .build/release-artifacts/pippin-X.Y.Z-arm64-macos.tar.gz` (must match the uploaded asset)
 - `assert_match` version string → the new version
+
+Then lint: `brew style mattwag05/tap/pippin` (must be clean). The `test do` block asserts both the version and a `Developer ID Application` signature — if the asset is ad-hoc, the formula test fails by design.
 
 ### 8. Commit and push the tap
 
