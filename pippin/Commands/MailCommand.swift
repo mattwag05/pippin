@@ -10,6 +10,22 @@ public struct MailCommand: AsyncParsableCommand {
 
     public init() {}
 
+    /// Tie each message's sender to an Apple Contacts name (`fromContact`), unless
+    /// disabled. Builds the Contacts reverse index once and resolves the `From`
+    /// header (which `ContactIndex` unwraps from `Name <addr>` form). Best-effort:
+    /// an empty index (Contacts not authorized) leaves messages unchanged. Runs
+    /// after the JXA bridge fetch — CNContactStore is native Swift, never in osascript.
+    static func enrichContacts(_ messages: [MailMessage], disabled: Bool) async -> [MailMessage] {
+        guard !disabled, !messages.isEmpty else { return messages }
+        // CNContactStore enumeration is synchronous/blocking — hop off the
+        // cooperative pool (per ContactsBridge.contactIndex's contract).
+        let index = await detachBlocking { ContactsBridge.contactIndex() }
+        guard !index.isEmpty else { return messages }
+        return messages.map { msg in
+            index.displayName(for: msg.from).map { msg.withFromContact($0) } ?? msg
+        }
+    }
+
     // MARK: - Accounts
 
     public struct Accounts: AsyncParsableCommand {
@@ -101,6 +117,9 @@ public struct MailCommand: AsyncParsableCommand {
 
         @Flag(name: .long, help: "Print search diagnostics (accounts/mailboxes scanned, messages examined).")
         public var verbose: Bool = false
+
+        @Flag(name: .customLong("no-contacts"), help: "Don't resolve the sender to an Apple Contacts name.")
+        public var noContacts = false
 
         @Option(name: .long, help: "Maximum number of results to return (default: 10).")
         public var limit: Int = 10
@@ -202,18 +221,20 @@ public struct MailCommand: AsyncParsableCommand {
                     verbose: verbose
                 )
             }
-            try emitMessages(outcome.messages, timedOut: outcome.timedOut)
+            try await emitMessages(outcome.messages, timedOut: outcome.timedOut)
         }
 
         static let timedOutHint = "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results"
 
-        private func emitMessages(_ messages: [MailMessage], timedOut: Bool) throws {
+        private func emitMessages(_ messages: [MailMessage], timedOut: Bool) async throws {
+            let messages = await MailCommand.enrichContacts(messages, disabled: noContacts)
             try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(messages)
             }
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) throws {
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) async throws {
+            let page = Page(items: await MailCommand.enrichContacts(page.items, disabled: noContacts), nextCursor: page.nextCursor)
             try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(page.items)
                 if let cursor = page.nextCursor {
@@ -288,7 +309,7 @@ public struct MailCommand: AsyncParsableCommand {
                     fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
                 )
             }
-            try emitPage(page, timedOut: paginatedTimedOut)
+            try await emitPage(page, timedOut: paginatedTimedOut)
         }
     }
 
@@ -335,6 +356,9 @@ public struct MailCommand: AsyncParsableCommand {
 
         @Flag(name: .customLong("no-cache"), help: "Bypass the local body cache when using --preview and force live IMAP fetches.")
         public var noCache: Bool = false
+
+        @Flag(name: .customLong("no-contacts"), help: "Don't resolve senders to Apple Contacts names.")
+        public var noContacts = false
 
         @OptionGroup public var pagination: PaginationOptions
 
@@ -404,19 +428,21 @@ public struct MailCommand: AsyncParsableCommand {
                     ))
                 }
             } else {
-                try emitMessages(messages, timedOut: outcome.timedOut)
+                try await emitMessages(messages, timedOut: outcome.timedOut)
             }
         }
 
         static let timedOutHint = "list exceeded soft timeout, returning partial results — narrow with --account, --mailbox, or a smaller --limit for complete results"
 
-        private func emitMessages(_ messages: [MailMessage], timedOut: Bool) throws {
+        private func emitMessages(_ messages: [MailMessage], timedOut: Bool) async throws {
+            let messages = await MailCommand.enrichContacts(messages, disabled: noContacts)
             try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(messages)
             }
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) throws {
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) async throws {
+            let page = Page(items: await MailCommand.enrichContacts(page.items, disabled: noContacts), nextCursor: page.nextCursor)
             try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(page.items)
                 if let cursor = page.nextCursor {
@@ -439,7 +465,7 @@ public struct MailCommand: AsyncParsableCommand {
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
             )
-            try emitPage(page, timedOut: outcome.timedOut)
+            try await emitPage(page, timedOut: outcome.timedOut)
         }
 
         /// Fetch a list page, routing `--preview N` through the body cache
@@ -513,6 +539,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .customLong("no-cache"), help: "Bypass the local body cache and force a live IMAP fetch.")
         public var noCache: Bool = false
 
+        @Flag(name: .customLong("no-contacts"), help: "Don't resolve the sender to an Apple Contacts name.")
+        public var noContacts = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -542,7 +571,8 @@ public struct MailCommand: AsyncParsableCommand {
 
             // readMessage spawns a blocking osascript subprocess; hop off the pool.
             let useCache = noCache ? nil : MailBodyCache.shared
-            let message = try await detachBlocking { try MailBridge.readMessage(compoundId: compoundId, cache: useCache) }
+            let fetched = try await detachBlocking { try MailBridge.readMessage(compoundId: compoundId, cache: useCache) }
+            let message = (await MailCommand.enrichContacts([fetched], disabled: noContacts)).first ?? fetched
 
             if summarize {
                 let summaryProvider = try AIProviderFactory.make(

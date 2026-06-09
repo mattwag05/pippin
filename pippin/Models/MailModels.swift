@@ -47,6 +47,7 @@ public struct MailMessage: Codable, Sendable {
     public let htmlBody: String? // only populated by `show`
     public let headers: [String: String]? // only populated by `show`
     public let attachments: [Attachment]? // only populated by `show`
+    public let fromContact: String? // Apple Contacts display name for the sender, when resolved
 
     public init(
         id: String,
@@ -63,7 +64,8 @@ public struct MailMessage: Codable, Sendable {
         bodyPreview: String? = nil,
         htmlBody: String? = nil,
         headers: [String: String]? = nil,
-        attachments: [Attachment]? = nil
+        attachments: [Attachment]? = nil,
+        fromContact: String? = nil
     ) {
         self.id = id
         self.account = account
@@ -80,6 +82,7 @@ public struct MailMessage: Codable, Sendable {
         self.htmlBody = htmlBody
         self.headers = headers
         self.attachments = attachments
+        self.fromContact = fromContact
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -99,6 +102,7 @@ public struct MailMessage: Codable, Sendable {
         try container.encodeIfPresent(htmlBody, forKey: .htmlBody)
         try container.encodeIfPresent(headers, forKey: .headers)
         try container.encodeIfPresent(attachments, forKey: .attachments)
+        try container.encodeIfPresent(fromContact, forKey: .fromContact)
     }
 }
 
@@ -111,7 +115,20 @@ public extension MailMessage {
             id: id, account: account, mailbox: mailbox, subject: subject,
             from: from, to: to, date: date, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: preview,
-            htmlBody: htmlBody, headers: headers, attachments: attachments
+            htmlBody: htmlBody, headers: headers, attachments: attachments,
+            fromContact: fromContact
+        )
+    }
+
+    /// Return a copy with `fromContact` set — used by the command layer to tie the
+    /// sender to an Apple Contacts name after the (JXA) bridge fetch returns.
+    func withFromContact(_ contact: String?) -> MailMessage {
+        MailMessage(
+            id: id, account: account, mailbox: mailbox, subject: subject,
+            from: from, to: to, date: date, read: read, body: body,
+            size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
+            htmlBody: htmlBody, headers: headers, attachments: attachments,
+            fromContact: contact
         )
     }
 }

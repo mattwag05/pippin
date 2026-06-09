@@ -87,7 +87,8 @@ public final class MessagesDatabase: Sendable {
     public func listConversations(
         since: Date? = nil,
         limit: Int = 50,
-        excluded: Set<String> = []
+        excluded: Set<String> = [],
+        contactIndex: ContactIndex = ContactIndex()
     ) throws -> (conversations: [MessageConversation], excludedCount: Int) {
         let limit = Self.clampLimit(limit)
         let cutoffNs = since.map(Self.appleNanos(from:))
@@ -144,17 +145,22 @@ public final class MessagesDatabase: Sendable {
             }
 
             let chatRowIds = kept.compactMap { $0["chat_rowid"] as Int64? }
-            let participantsByRowId = try Self.fetchParticipants(db: db, chatRowIds: chatRowIds)
+            let participantsByRowId = try Self.fetchParticipants(
+                db: db, chatRowIds: chatRowIds, contactIndex: contactIndex
+            )
 
             return (kept.map { row in
                 let rowId: Int64 = row["chat_rowid"] ?? 0
                 let style: Int = row["style"] ?? 0
                 let lastDateNs: Int64? = row["last_date"]
+                let participants = participantsByRowId[rowId] ?? []
                 return MessageConversation(
                     id: row["chat_guid"] ?? "",
                     service: row["service_name"] ?? "",
-                    displayName: row["display_name"] ?? row["room_name"],
-                    participants: participantsByRowId[rowId] ?? [],
+                    displayName: Self.conversationDisplayName(
+                        explicit: row["display_name"] ?? row["room_name"], participants: participants
+                    ),
+                    participants: participants,
                     isGroup: style == Self.groupChatStyle,
                     lastMessageAt: lastDateNs.map(Self.iso8601(fromAppleNanos:)),
                     lastMessagePreview: Self.resolveBody(text: row["last_text"], attributedBody: row["last_attributedbody"]).map { Self.preview($0) },
@@ -175,7 +181,8 @@ public final class MessagesDatabase: Sendable {
         query: String,
         since: Date? = nil,
         limit: Int = 50,
-        excluded: Set<String> = []
+        excluded: Set<String> = [],
+        contactIndex: ContactIndex = ContactIndex()
     ) throws -> (matches: [MessageItem], excludedCount: Int) {
         let limit = Self.clampLimit(limit)
         let cutoffNs = since.map(Self.appleNanos(from:))
@@ -224,7 +231,7 @@ public final class MessagesDatabase: Sendable {
                 guard let body = Self.resolveBody(text: row["text"], attributedBody: row["attributedBody"])
                 else { return }
                 if requireMatch, !body.lowercased().contains(needle) { return }
-                let item = Self.messageItem(from: row, conversationId: row["chat_guid"] ?? "", body: body)
+                let item = Self.messageItem(from: row, conversationId: row["chat_guid"] ?? "", body: body, contactIndex: contactIndex)
                 byGuid[item.id] = item
             }
             for row in q1 {
@@ -251,7 +258,8 @@ public final class MessagesDatabase: Sendable {
 
     public func showConversation(
         conversationId: String,
-        limit: Int = 50
+        limit: Int = 50,
+        contactIndex: ContactIndex = ContactIndex()
     ) throws -> (conversation: MessageConversation, messages: [MessageItem], truncated: Bool) {
         let limit = Self.clampLimit(limit)
         return try readWrapping { db in
@@ -268,7 +276,9 @@ public final class MessagesDatabase: Sendable {
             let chatRowId: Int64 = chatRow["ROWID"] ?? 0
             let chatGuid: String = chatRow["guid"] ?? conversationId
 
-            let participants = try Self.fetchParticipants(db: db, chatRowIds: [chatRowId])[chatRowId] ?? []
+            let participants = try Self.fetchParticipants(
+                db: db, chatRowIds: [chatRowId], contactIndex: contactIndex
+            )[chatRowId] ?? []
 
             // Fetch limit + 1 rows so we know whether older messages exist
             // without a separate COUNT(*) round-trip.
@@ -292,7 +302,8 @@ public final class MessagesDatabase: Sendable {
                 Self.messageItem(
                     from: row,
                     conversationId: chatGuid,
-                    body: Self.resolveBody(text: row["text"], attributedBody: row["attributedBody"])
+                    body: Self.resolveBody(text: row["text"], attributedBody: row["attributedBody"]),
+                    contactIndex: contactIndex
                 )
             }
 
@@ -300,7 +311,9 @@ public final class MessagesDatabase: Sendable {
             let conversation = MessageConversation(
                 id: chatGuid,
                 service: chatRow["service_name"] ?? "",
-                displayName: chatRow["display_name"] ?? chatRow["room_name"],
+                displayName: Self.conversationDisplayName(
+                    explicit: chatRow["display_name"] ?? chatRow["room_name"], participants: participants
+                ),
                 participants: participants,
                 isGroup: style == Self.groupChatStyle,
                 lastMessageAt: messages.last?.date,
@@ -326,9 +339,19 @@ public final class MessagesDatabase: Sendable {
     /// Batch-fetch participants for every supplied chat ROWID in a single
     /// query, grouped back into `[chatRowId: [participant]]`. Replaces a
     /// per-conversation N+1 loop.
+    /// Conversation title: the explicit chat name (group `display_name`/`room_name`)
+    /// when set, else — for a 1:1 thread — the single participant's resolved
+    /// contact name, so a DM shows "Alice" instead of a bare phone number.
+    static func conversationDisplayName(explicit: String?, participants: [MessageParticipant]) -> String? {
+        if let explicit, !explicit.isEmpty { return explicit }
+        if participants.count == 1 { return participants[0].displayName }
+        return nil
+    }
+
     private static func fetchParticipants(
         db: Database,
-        chatRowIds: [Int64]
+        chatRowIds: [Int64],
+        contactIndex: ContactIndex = ContactIndex()
     ) throws -> [Int64: [MessageParticipant]] {
         guard !chatRowIds.isEmpty else { return [:] }
         let placeholders = Array(repeating: "?", count: chatRowIds.count).joined(separator: ",")
@@ -345,10 +368,11 @@ public final class MessagesDatabase: Sendable {
         var byChat: [Int64: [MessageParticipant]] = [:]
         for row in rows {
             let chatId: Int64 = row["chat_id"] ?? 0
+            let handle: String = row["id"] ?? ""
             let participant = MessageParticipant(
-                handle: row["id"] ?? "",
+                handle: handle,
                 service: row["service"] ?? "",
-                displayName: nil
+                displayName: contactIndex.displayName(for: handle)
             )
             byChat[chatId, default: []].append(participant)
         }
@@ -398,15 +422,22 @@ public final class MessagesDatabase: Sendable {
     /// Map a `message`-join row to a `MessageItem`. Shared by `showConversation`
     /// and `searchMessages` so the column→field mapping lives in one place. The
     /// caller supplies `conversationId` (the chat guid, which differs in scope
-    /// between the two queries) and the already-resolved `body`.
-    static func messageItem(from row: Row, conversationId: String, body: String?) -> MessageItem {
-        MessageItem(
+    /// between the two queries), the already-resolved `body`, and a `contactIndex`
+    /// to tie the sender handle to an Apple Contacts name.
+    static func messageItem(
+        from row: Row,
+        conversationId: String,
+        body: String?,
+        contactIndex: ContactIndex = ContactIndex()
+    ) -> MessageItem {
+        let handle: String? = row["handle_id"]
+        return MessageItem(
             id: row["msg_guid"] ?? "",
             conversationId: conversationId,
             date: iso8601(fromAppleNanos: row["date"] ?? 0),
             text: body,
-            fromHandle: row["handle_id"],
-            fromDisplayName: nil,
+            fromHandle: handle,
+            fromDisplayName: handle.flatMap { contactIndex.displayName(for: $0) },
             isFromMe: (row["is_from_me"] ?? 0) == 1,
             isRead: (row["is_read"] ?? 0) == 1,
             service: row["service"] ?? ""
