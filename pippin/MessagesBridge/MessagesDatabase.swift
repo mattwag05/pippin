@@ -1,3 +1,4 @@
+import CTypedStreamDecode
 import Foundation
 import GRDB
 
@@ -104,6 +105,10 @@ public final class MessagesDatabase: Sendable {
                  JOIN chat_message_join cmj2 ON cmj2.message_id = m2.ROWID
                  WHERE cmj2.chat_id = c.ROWID
                  ORDER BY m2.date DESC LIMIT 1) AS last_text,
+                (SELECT m2b.attributedBody FROM message m2b
+                 JOIN chat_message_join cmj2b ON cmj2b.message_id = m2b.ROWID
+                 WHERE cmj2b.chat_id = c.ROWID
+                 ORDER BY m2b.date DESC LIMIT 1) AS last_attributedbody,
                 (SELECT COUNT(*) FROM message m3
                  JOIN chat_message_join cmj3 ON cmj3.message_id = m3.ROWID
                  WHERE cmj3.chat_id = c.ROWID
@@ -152,12 +157,19 @@ public final class MessagesDatabase: Sendable {
                     participants: participantsByRowId[rowId] ?? [],
                     isGroup: style == Self.groupChatStyle,
                     lastMessageAt: lastDateNs.map(Self.iso8601(fromAppleNanos:)),
-                    lastMessagePreview: (row["last_text"] as String?).map { Self.preview($0) },
+                    lastMessagePreview: Self.resolveBody(text: row["last_text"], attributedBody: row["last_attributedbody"]).map { Self.preview($0) },
                     unreadCount: row["unread_count"] ?? 0
                 )
             }, excludedCount)
         }
     }
+
+    /// How many recent attributedBody-only messages a search will decode-scan.
+    /// Their body lives in a typedstream blob SQLite can't LIKE into, so they're
+    /// filtered in Swift; this cap bounds that work. The text-column path is
+    /// unbounded by recency, so older messages that still populate `text` are
+    /// matched regardless. (pippin-cc1)
+    static let searchAttributedScanCap = 1500
 
     public func searchMessages(
         query: String,
@@ -167,53 +179,70 @@ public final class MessagesDatabase: Sendable {
     ) throws -> (matches: [MessageItem], excludedCount: Int) {
         let limit = Self.clampLimit(limit)
         let cutoffNs = since.map(Self.appleNanos(from:))
+        let needle = query.lowercased()
         return try readWrapping { db in
-            var sql = """
-            SELECT
-                m.guid AS msg_guid,
-                m.text,
-                m.date,
-                m.is_from_me,
-                m.is_read,
-                m.service,
-                c.guid AS chat_guid,
-                h.id AS handle_id
+            // Shared column list + joins. Includes attributedBody so bodies that
+            // live only in the blob can be decoded.
+            let base = """
+            m.guid AS msg_guid, m.text, m.attributedBody, m.date, m.is_from_me,
+                   m.is_read, m.service, c.guid AS chat_guid, h.id AS handle_id
             FROM message m
             JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
             JOIN chat c ON c.ROWID = cmj.chat_id
             LEFT JOIN handle h ON h.ROWID = m.handle_id
-            WHERE m.text LIKE ? ESCAPE '\\'
-              AND c.is_archived = 0
             """
-            var args: [any DatabaseValueConvertible] = ["%\(Self.escapeLike(query))%"]
-            if let cutoffNs {
-                sql += " AND m.date >= ?"
-                args.append(cutoffNs)
-            }
-            sql += " ORDER BY m.date DESC LIMIT ?"
-            args.append(limit + excluded.count)
+            let sinceClause = cutoffNs != nil ? " AND m.date >= ?" : ""
 
-            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+            // Q1 — text-column matches across all history (SQLite LIKE; preserves
+            // the prior behavior for messages that still populate `m.text`).
+            var q1args: [any DatabaseValueConvertible] = ["%\(Self.escapeLike(query))%"]
+            if let cutoffNs { q1args.append(cutoffNs) }
+            q1args.append(limit + excluded.count)
+            let q1 = try Row.fetchAll(db, sql: """
+            SELECT \(base)
+            WHERE m.text LIKE ? ESCAPE '\\' AND c.is_archived = 0\(sinceClause)
+            ORDER BY m.date DESC LIMIT ?
+            """, arguments: StatementArguments(q1args))
+
+            // Q2 — recent messages whose body is only in attributedBody. SQL can't
+            // search the blob, so decode + substring-match in Swift, bounded by the
+            // scan cap.
+            var q2args: [any DatabaseValueConvertible] = []
+            if let cutoffNs { q2args.append(cutoffNs) }
+            q2args.append(Self.searchAttributedScanCap)
+            let q2 = try Row.fetchAll(db, sql: """
+            SELECT \(base)
+            WHERE m.attributedBody IS NOT NULL AND (m.text IS NULL OR m.text = '')
+              AND c.is_archived = 0\(sinceClause)
+            ORDER BY m.date DESC LIMIT ?
+            """, arguments: StatementArguments(q2args))
+
+            // Merge, dedup by guid. Q1 rows already matched via LIKE; Q2 rows are
+            // confirmed with a Swift substring check on the decoded body.
+            var byGuid: [String: MessageItem] = [:]
+            func consider(_ row: Row, requireMatch: Bool) {
+                guard let body = Self.resolveBody(text: row["text"], attributedBody: row["attributedBody"])
+                else { return }
+                if requireMatch, !body.lowercased().contains(needle) { return }
+                let item = Self.messageItem(from: row, conversationId: row["chat_guid"] ?? "", body: body)
+                byGuid[item.id] = item
+            }
+            for row in q1 {
+                consider(row, requireMatch: false)
+            }
+            for row in q2 {
+                consider(row, requireMatch: true)
+            }
+
+            // `date` is fixed-width UTC ISO-8601 (…ssZ), so it sorts chronologically.
             var excludedCount = 0
             var results: [MessageItem] = []
-            for row in rows {
-                let chatGuid: String = row["chat_guid"] ?? ""
-                if excluded.contains(chatGuid) {
+            for item in byGuid.values.sorted(by: { $0.date > $1.date }) {
+                if excluded.contains(item.conversationId) {
                     excludedCount += 1
                     continue
                 }
-                let dateNs: Int64 = row["date"] ?? 0
-                results.append(MessageItem(
-                    id: row["msg_guid"] ?? "",
-                    conversationId: chatGuid,
-                    date: Self.iso8601(fromAppleNanos: dateNs),
-                    text: row["text"],
-                    fromHandle: row["handle_id"],
-                    fromDisplayName: nil,
-                    isFromMe: (row["is_from_me"] ?? 0) == 1,
-                    isRead: (row["is_read"] ?? 0) == 1,
-                    service: row["service"] ?? ""
-                ))
+                results.append(item)
                 if results.count >= limit { break }
             }
             return (results, excludedCount)
@@ -246,7 +275,7 @@ public final class MessagesDatabase: Sendable {
             let rows = try Row.fetchAll(
                 db,
                 sql: """
-                SELECT m.guid AS msg_guid, m.text, m.date, m.is_from_me, m.is_read,
+                SELECT m.guid AS msg_guid, m.text, m.attributedBody, m.date, m.is_from_me, m.is_read,
                        m.service, h.id AS handle_id
                 FROM message m
                 JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
@@ -260,17 +289,10 @@ public final class MessagesDatabase: Sendable {
             let trimmed = truncated ? Array(rows.prefix(limit)) : rows
 
             let messages: [MessageItem] = trimmed.reversed().map { row in
-                let dateNs: Int64 = row["date"] ?? 0
-                return MessageItem(
-                    id: row["msg_guid"] ?? "",
+                Self.messageItem(
+                    from: row,
                     conversationId: chatGuid,
-                    date: Self.iso8601(fromAppleNanos: dateNs),
-                    text: row["text"],
-                    fromHandle: row["handle_id"],
-                    fromDisplayName: nil,
-                    isFromMe: (row["is_from_me"] ?? 0) == 1,
-                    isRead: (row["is_read"] ?? 0) == 1,
-                    service: row["service"] ?? ""
+                    body: Self.resolveBody(text: row["text"], attributedBody: row["attributedBody"])
                 )
             }
 
@@ -371,6 +393,50 @@ public final class MessagesDatabase: Sendable {
 
     static func preview(_ text: String, limit: Int = 140) -> String {
         TextFormatter.truncate(text.replacingOccurrences(of: "\n", with: " "), to: limit)
+    }
+
+    /// Map a `message`-join row to a `MessageItem`. Shared by `showConversation`
+    /// and `searchMessages` so the column→field mapping lives in one place. The
+    /// caller supplies `conversationId` (the chat guid, which differs in scope
+    /// between the two queries) and the already-resolved `body`.
+    static func messageItem(from row: Row, conversationId: String, body: String?) -> MessageItem {
+        MessageItem(
+            id: row["msg_guid"] ?? "",
+            conversationId: conversationId,
+            date: iso8601(fromAppleNanos: row["date"] ?? 0),
+            text: body,
+            fromHandle: row["handle_id"],
+            fromDisplayName: nil,
+            isFromMe: (row["is_from_me"] ?? 0) == 1,
+            isRead: (row["is_read"] ?? 0) == 1,
+            service: row["service"] ?? ""
+        )
+    }
+
+    /// Object-replacement character that marks an inline attachment in a decoded
+    /// `attributedBody`. Stripped so attachment-only messages read as "no text".
+    private static let objectReplacement = "\u{FFFC}"
+
+    /// Resolve a message's body text. Modern macOS leaves `message.text` NULL and
+    /// stores the body in `message.attributedBody` (a typedstream blob), so prefer
+    /// a non-empty `text` column and otherwise decode the blob. Returns nil when
+    /// there's no readable text (e.g. an attachment-only message). (pippin-cc1)
+    static func resolveBody(text: String?, attributedBody: Data?) -> String? {
+        if let text, !text.isEmpty { return text }
+        guard let blob = attributedBody, !blob.isEmpty,
+              let decoded = PippinDecodeAttributedBody(blob)
+        else { return nil }
+        return cleanDecodedBody(decoded)
+    }
+
+    /// Normalize a decoded `attributedBody` string: strip inline-attachment
+    /// markers and surrounding whitespace; nil if nothing readable remains. Pure
+    /// (no decode) so it's unit-testable.
+    static func cleanDecodedBody(_ decoded: String) -> String? {
+        let cleaned = decoded
+            .replacingOccurrences(of: objectReplacement, with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
     }
 
     /// Escape SQLite LIKE metacharacters so a user query is treated as a

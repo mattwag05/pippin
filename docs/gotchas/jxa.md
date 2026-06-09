@@ -107,3 +107,20 @@ Defaults: the 22s soft cap (`SoftTimeout.defaultMs`) fires well before the calle
 A soft timeout self-bounds a JXA loop, but if the per-iteration body does **one Apple Event per item** (`notes[j].modificationDate()`, `msgs[j].dateSent()`), a large collection can spend the *entire* budget before the loop emits anything — the caller gets `timedOut=true` with **empty** results, which reads as "zero items" not "partial". `notes list`/`search` returned nothing on big vaults for exactly this reason.
 
 Fix: fetch the property for the whole collection in **one** Apple Event via the bulk getter on the *plural specifier* (not the materialized array): `_notesRef.modificationDate()` returns a parallel array of all dates. Keep the specifier (`_notesRef = app.notes`), materialize elements once (`notes = _notesRef()`), bulk-fetch (`_mods = _notesRef.modificationDate()`), then the bounded loop is **pure JS** (zero Apple Events) and never starves. See `NotesBridge.jsResolveNotesAndBulkMods`. Per-note `.body()`/`.plaintext()` stay per-item but only for the returned page.
+
+## Messages bodies live in `attributedBody` (typedstream), not `text` (pippin-cc1)
+
+`MessagesBridge`/`MessagesDatabase` reads `~/Library/Messages/chat.db` via GRDB (not
+JXA), but it shares the "the obvious column is empty" trap. On modern macOS the
+`message.text` column is **NULL/empty** for almost all messages; the real body is in
+`message.attributedBody` as a **typedstream** (the old `NSArchiver` format, header
+`\x04\x0bstreamtyped…`) — *not* an `NSKeyedArchiver` plist, so `NSKeyedUnarchiver`
+**cannot** read it. The symmetric decoder is the deprecated `NSUnarchiver`, wrapped in
+an ObjC `@try/@catch` shim (`CTypedStreamDecode` / `PippinDecodeAttributedBody`) because
+it raises an uncatchable-from-Swift `NSException` on foreign/truncated blobs.
+`MessagesDatabase.resolveBody(text:attributedBody:)` prefers a non-empty `text`, else
+decodes the blob; strip the U+FFFC object-replacement marker (inline attachments) so
+attachment-only messages read as "no text". SQLite `LIKE` does **not** match into BLOB
+columns, so `search` can't prefilter on the blob — it decode-scans a bounded recent
+window in Swift (`searchAttributedScanCap`). Reading chat.db needs Full Disk Access for
+the *launching* binary's path (see permissions.md / the disclaim model).

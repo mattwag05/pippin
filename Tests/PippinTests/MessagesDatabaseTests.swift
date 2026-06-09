@@ -26,6 +26,7 @@ final class MessagesDatabaseTests: XCTestCase {
                 ROWID INTEGER PRIMARY KEY AUTOINCREMENT,
                 guid TEXT UNIQUE,
                 text TEXT,
+                attributedBody BLOB,
                 date INTEGER,
                 handle_id INTEGER DEFAULT 0,
                 is_from_me INTEGER DEFAULT 0,
@@ -303,5 +304,44 @@ final class MessagesDatabaseTests: XCTestCase {
 
     func testEscapeLikePassesThroughNormalText() {
         XCTAssertEqual(MessagesDatabase.escapeLike("hello world"), "hello world")
+    }
+
+    // MARK: - attributedBody decode through the query paths (pippin-cc1)
+
+    /// A real typedstream archive of a synthetic NSAttributedString
+    /// "Hello, typedstream world! 🌍" — chat.db's attributedBody format, no real data.
+    private static let goldenAttributedBody =
+        "BAtzdHJlYW10eXBlZIHoA4QBQISEhBJOU0F0dHJpYnV0ZWRTdHJpbmcAhIQITlNPYmplY3QAhZKEhIQI" +
+        "TlNTdHJpbmcBlIQBKx5IZWxsbywgdHlwZWRzdHJlYW0gd29ybGQhIPCfjI2GhAJpSQEckoSEhAxOU0Rp" +
+        "Y3Rpb25hcnkAlIQBaQCGhg=="
+
+    func testShowAndSearchDecodeAttributedBodyWhenTextNull() throws {
+        let blob = try XCTUnwrap(Data(base64Encoded: Self.goldenAttributedBody))
+        let queue = try makeEmptySchemaDB()
+        try queue.write { db in
+            try db.execute(sql: """
+            INSERT INTO chat (guid, chat_identifier, service_name, style, is_archived)
+                VALUES ('blob-chat', 'blob-chat', 'iMessage', 45, 0);
+            INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
+            """)
+            let ns = MessagesDatabase.appleNanos(from: Date(timeIntervalSince1970: 1_750_000_000))
+            // text NULL, body only in attributedBody — the modern-macOS shape.
+            try db.execute(
+                sql: """
+                INSERT INTO message (guid, text, attributedBody, date, is_from_me, is_read, service)
+                    VALUES ('blob-msg', NULL, ?, ?, 0, 1, 'iMessage')
+                """,
+                arguments: [blob, ns]
+            )
+        }
+        let mdb = try MessagesDatabase(dbQueue: queue)
+
+        let (_, messages, _) = try mdb.showConversation(conversationId: "blob-chat", limit: 10)
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?.text, "Hello, typedstream world! 🌍")
+
+        // search must find attributedBody-only messages via the decode-scan path.
+        let (matches, _) = try mdb.searchMessages(query: "typedstream", limit: 10)
+        XCTAssertEqual(matches.first?.text, "Hello, typedstream world! 🌍")
     }
 }
