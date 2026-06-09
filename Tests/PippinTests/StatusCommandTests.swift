@@ -33,6 +33,24 @@ final class StatusCommandTests: XCTestCase {
         XCTAssertTrue(decoded.timedOut)
     }
 
+    // pippin-0nk: a section dropped for exceeding the whole-dashboard budget
+    // reads as nil, and the top-level timedOut flag marks the report partial.
+    func testStatusReportTimedOutDefaultsFalseAndRoundTrips() throws {
+        let notTimed = StatusReport(
+            version: "0.29.0", mail: nil, calendar: nil, reminders: nil,
+            memos: nil, notes: nil, contacts: nil, permissions: []
+        )
+        XCTAssertFalse(notTimed.timedOut)
+
+        let partial = StatusReport(
+            version: "0.29.0", mail: nil, calendar: nil, reminders: nil,
+            memos: nil, notes: nil, contacts: nil, permissions: [], timedOut: true
+        )
+        let data = try JSONEncoder().encode(partial)
+        let decoded = try JSONDecoder().decode(StatusReport.self, from: data)
+        XCTAssertTrue(decoded.timedOut)
+    }
+
     func testStatusReportEncodesFullPayload() throws {
         let report = StatusReport(
             version: "0.15.0",
