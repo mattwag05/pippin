@@ -81,10 +81,29 @@ across both install paths. `scripts/sign.sh` does this; `make install` /
   GitHub release *before* the formula is pointed at it (url + sha256). See the
   release skill.
 
-### Apple Events responsible-process caveat
+### The responsible-process caveat applies to EventKit/Contacts too (pippin-0vr)
 
-EventKit/Contacts/Full Disk Access key on pippin's own identity, so signing fixes
-their persistence. **Apple Events** (Mail/Notes/Messages automation) key on the
-*responsible process* — when the [agent-runtime] LaunchAgent spawns pippin, TCC may
-attribute the grant to `agent-runtime`, not pippin. Signing pippin doesn't change the
-agent's Automation identity; that's a property of the launching process.
+**TCC associates consent with the *responsible (launching) process*, not pippin's
+own binary** — for EventKit (Reminders/Calendar), Contacts, Full Disk Access, AND
+Apple Events. So a grant approved while pippin runs under **Terminal** does **not**
+transfer to pippin spawned by a **background agent / MCP gateway** (e.g. [agent-runtime],
+whose responsible process is its `python` LaunchAgent) — that's a different
+launcher, so the call is denied. Observed 2026-06-08: `pippin permissions --status`
+on the Developer-ID-signed binary reports Reminders `not_determined` from a
+non-Terminal launcher while Terminal has a working grant.
+
+What signing *does* buy: a stable code identity so TCC doesn't re-prompt when the
+binary's hash changes on rebuild/upgrade **under the same launcher** (and so the
+two install paths share a grant). It does **not** make one launcher's grant apply
+to another. (Earlier wording here claimed EventKit keys on pippin's own identity —
+that was wrong; pippin's user-facing remediation, which says the grant attaches to
+the launching app, is the accurate description.)
+
+**Implication for agents ([agent-runtime]/[agent]):** the EventKit grant must be established
+for *the launcher that runs pippin*. Granting Terminal doesn't help an
+agent-spawned pippin. Durable fixes: (a) run the gateway as a **signed app** with a
+stable Developer ID identity (e.g. [agent-runtime].app) and grant *that* the EventKit perms
+once; or (b) have the launcher spawn pippin with
+`responsibility_spawnattrs_setdisclaim` (or pippin re-exec itself disclaimed) so
+pippin becomes its own responsible process and its signed identity holds the grant
+regardless of launcher — see pippin-0vr.
