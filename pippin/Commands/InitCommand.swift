@@ -17,7 +17,7 @@ public struct InitCommand: AsyncParsableCommand {
         // deferring to "first use", which silently fails when first use is a
         // background agent that can't show a dialog. Skipped under MCP / agent /
         // json / non-TTY (see PermissionPriming.shouldPrime). (pippin-dkf)
-        let interactive = isatty(STDIN_FILENO) != 0 && isatty(STDOUT_FILENO) != 0
+        let interactive = PermissionPriming.isInteractiveTerminal()
         if PermissionPriming.shouldPrime(
             interactive: interactive,
             isMCP: isMCPContext(),

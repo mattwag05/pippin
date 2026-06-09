@@ -121,31 +121,41 @@ public enum PermissionPrimer {
         entity: EKEntityType,
         listCommand: String
     ) -> PermissionReport {
-        let state = PermissionMapping.state(forEventKit: EKEventStore.authorizationStatus(for: entity))
-        return PermissionReport(
+        frameworkReport(
             integration: integration,
             mechanism: .eventKit,
+            state: PermissionMapping.state(forEventKit: EKEventStore.authorizationStatus(for: entity)),
+            listCommand: listCommand
+        )
+    }
+
+    private static func contactsReport() -> PermissionReport {
+        frameworkReport(
+            integration: "Contacts",
+            mechanism: .contacts,
+            state: PermissionMapping.state(forContacts: CNContactStore.authorizationStatus(for: .contacts)),
+            listCommand: "pippin contacts list"
+        )
+    }
+
+    /// Build a report for a promptable framework permission (EventKit/Contacts)
+    /// whose state came from a pure `authorizationStatus` mapping. A non-granted
+    /// state always carries the matching `.privacyAccess` remediation.
+    private static func frameworkReport(
+        integration: String,
+        mechanism: PermissionMechanism,
+        state: PermissionState,
+        listCommand: String
+    ) -> PermissionReport {
+        PermissionReport(
+            integration: integration,
+            mechanism: mechanism,
             state: state,
             detail: detail(for: state, integration: integration),
             remediation: state == .granted ? nil : .privacyAccess(
                 permission: integration,
                 listCommand: listCommand,
                 doctorCheck: "\(integration) access"
-            )
-        )
-    }
-
-    private static func contactsReport() -> PermissionReport {
-        let state = PermissionMapping.state(forContacts: CNContactStore.authorizationStatus(for: .contacts))
-        return PermissionReport(
-            integration: "Contacts",
-            mechanism: .contacts,
-            state: state,
-            detail: detail(for: state, integration: "Contacts"),
-            remediation: state == .granted ? nil : .privacyAccess(
-                permission: "Contacts",
-                listCommand: "pippin contacts list",
-                doctorCheck: "Contacts access"
             )
         )
     }

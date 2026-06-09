@@ -303,77 +303,45 @@ func checkVoiceMemosDB() -> DiagnosticCheck {
 }
 
 private func checkCalendarAccess() -> DiagnosticCheck {
-    let status = EKEventStore.authorizationStatus(for: .event)
-    switch status {
-    case .fullAccess, .authorized:
-        return DiagnosticCheck(
-            name: "Calendar access",
-            status: .ok,
-            detail: "granted"
-        )
-    case .notDetermined:
-        return DiagnosticCheck(
-            name: "Calendar access",
-            status: .skip,
-            detail: "not yet granted — run `pippin permissions` to grant interactively",
-            remediation: .privacyAccess(
-                permission: "Calendar",
-                listCommand: "pippin calendar list",
-                doctorCheck: "Calendar access"
-            )
-        )
-    case .denied, .restricted:
-        return DiagnosticCheck(
-            name: "Calendar access",
-            status: .fail,
-            detail: "permission denied",
-            remediation: .privacyAccess(
-                permission: "Calendar",
-                listCommand: "pippin calendar list",
-                doctorCheck: "Calendar access"
-            )
-        )
-    default:
-        return DiagnosticCheck(
-            name: "Calendar access",
-            status: .skip,
-            detail: "status: \(status.rawValue) (grant on first use of `pippin calendar`)"
-        )
-    }
+    checkEventKitAccess(integration: "Calendar", entity: .event, listCommand: "pippin calendar list")
 }
 
 private func checkRemindersAccess() -> DiagnosticCheck {
-    let status = EKEventStore.authorizationStatus(for: .reminder)
+    checkEventKitAccess(integration: "Reminders", entity: .reminder, listCommand: "pippin reminders list")
+}
+
+/// Shared EventKit (Calendar/Reminders) authorization check. Parameterized so
+/// the not-determined / denied messaging lives in exactly one place — editing
+/// it for one integration can't silently skip the other. (pippin-xzu /simplify)
+private func checkEventKitAccess(
+    integration: String,
+    entity: EKEntityType,
+    listCommand: String
+) -> DiagnosticCheck {
+    let name = "\(integration) access"
+    let status = EKEventStore.authorizationStatus(for: entity)
     switch status {
     case .fullAccess, .authorized:
-        return DiagnosticCheck(name: "Reminders access", status: .ok, detail: "granted")
+        return DiagnosticCheck(name: name, status: .ok, detail: "granted")
     case .notDetermined:
         return DiagnosticCheck(
-            name: "Reminders access",
+            name: name,
             status: .skip,
             detail: "not yet granted — run `pippin permissions` to grant interactively",
-            remediation: .privacyAccess(
-                permission: "Reminders",
-                listCommand: "pippin reminders list",
-                doctorCheck: "Reminders access"
-            )
+            remediation: .privacyAccess(permission: integration, listCommand: listCommand, doctorCheck: name)
         )
     case .denied, .restricted:
         return DiagnosticCheck(
-            name: "Reminders access",
+            name: name,
             status: .fail,
             detail: "permission denied",
-            remediation: .privacyAccess(
-                permission: "Reminders",
-                listCommand: "pippin reminders list",
-                doctorCheck: "Reminders access"
-            )
+            remediation: .privacyAccess(permission: integration, listCommand: listCommand, doctorCheck: name)
         )
     default:
         return DiagnosticCheck(
-            name: "Reminders access",
+            name: name,
             status: .skip,
-            detail: "status: \(status.rawValue) (grant on first use of `pippin reminders`)"
+            detail: "status: \(status.rawValue) (grant via `\(listCommand)`)"
         )
     }
 }
