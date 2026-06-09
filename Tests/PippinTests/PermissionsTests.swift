@@ -151,4 +151,54 @@ final class PermissionsTests: XCTestCase {
         XCTAssertTrue(r.humanHint.contains("Messages"))
         XCTAssertEqual(r.doctorCheck, "Messages access")
     }
+
+    // MARK: - Code-signing classification (pippin-xzu)
+
+    func testCodeSigningDeveloperIDIsOK() {
+        // Trimmed real `codesign -dvv` output for a Developer ID signature.
+        let output = """
+        Identifier=com.mattwag05.pippin
+        Authority=Developer ID Application: MATTHEW JOHN WAGNER (PFT954M73N)
+        Authority=Developer ID Certification Authority
+        Authority=Apple Root CA
+        """
+        let check = classifyCodeSigning(output)
+        XCTAssertEqual(check.status, .ok)
+        XCTAssertTrue(check.detail.contains("Developer ID"))
+        XCTAssertNil(check.remediation)
+    }
+
+    func testCodeSigningAdhocIsSkipWithRemediation() {
+        let output = """
+        Identifier=pippin
+        CodeDirectory v=20400 size=120063 flags=0x20002(adhoc,linker-signed)
+        Signature=adhoc
+        """
+        let check = classifyCodeSigning(output)
+        XCTAssertEqual(check.status, .skip)
+        XCTAssertTrue(check.detail.contains("ad-hoc"))
+        XCTAssertTrue(check.detail.contains("reset"))
+        XCTAssertNotNil(check.remediation, "ad-hoc must advise reinstalling a signed build")
+    }
+
+    func testCodeSigningUnsignedIsSkip() {
+        let check = classifyCodeSigning("code object is not signed at all")
+        XCTAssertEqual(check.status, .skip)
+        XCTAssertTrue(check.detail.contains("unsigned"))
+    }
+
+    func testCodeSigningNonAdhocAuthorityIsStable() {
+        // A self-signed cert (no Apple chain) is still a stable identity.
+        let output = """
+        Identifier=com.mattwag05.pippin
+        Authority=pippin-local
+        """
+        let check = classifyCodeSigning(output)
+        XCTAssertEqual(check.status, .ok)
+        XCTAssertTrue(check.detail.contains("stable identity"))
+    }
+
+    func testDoctorIncludesCodeSigningCheck() {
+        XCTAssertTrue(runAllChecks().map(\.name).contains("Code signing"))
+    }
 }
