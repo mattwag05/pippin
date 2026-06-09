@@ -71,6 +71,13 @@ across both install paths. `scripts/sign.sh` does this; `make install` /
   `codesign -dvv "$(command -v pippin)"`.
 - After (re)signing with a *new* identity the DR changes once → one re-grant via
   `pippin permissions`, then it persists.
+- **Homebrew caveat (pippin-jt9):** `brew install/upgrade` builds in a sandbox
+  with no access to the login keychain, so `sign.sh` finds no identity and falls
+  back to ad-hoc — brew-built binaries are NOT Developer ID signed and their
+  grants won't persist. In practice `~/.local/bin/pippin` (from `make install`,
+  signed) shadows the brew copy on PATH, so the active/MCP binary is the signed
+  one. If you rely on the brew copy directly, re-sign it:
+  `bash scripts/sign.sh "$(brew --prefix)/bin/pippin"`.
 
 ### Apple Events responsible-process caveat
 
