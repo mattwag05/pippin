@@ -74,7 +74,7 @@ struct Pippin: AsyncParsableCommand {
                 // Typed exit code so a calling shell can branch on the failure
                 // class without parsing the JSON envelope.
                 Darwin.exit(PippinExitCode.from(error))
-            } else if let remediation = RemediationCatalog.forError(error) {
+            } else if let remediation = RemediationCatalog.resolve(for: error) {
                 // Catalogued errors print ourselves so we can append remediation.
                 // Uncatalogued errors (ValidationError, etc.) fall through to
                 // ArgumentParser so its usage-help formatting is preserved.

@@ -93,6 +93,58 @@ final class AgentErrorTests: XCTestCase {
         XCTAssertNil(dict["code"], "Top-level should not have 'code' key")
     }
 
+    // MARK: - Foreign / non-enum error codes (pippin-2tg)
+
+    //
+    // agentErrorCode camelToSnakeCases String(describing: error). For a bridged
+    // NSError/URLError/CocoaError that description is a full sentence, so the
+    // derived code was junk like `error _domain=_n_s_u_r_l_error_domain
+    // _code=-1001 "` — a per-instance garbage string in the `error.code`
+    // contract field. Hardening: foreign descriptions collapse to a clean,
+    // stable `unknown_error`; typed PippinLib enum codes are unchanged.
+
+    private func isCleanCode(_ code: String) -> Bool {
+        guard let first = code.first, first.isLetter || first == "_" else { return false }
+        return code.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
+
+    func testForeignNSErrorProducesCleanCode() {
+        let err = NSError(
+            domain: "NSCocoaErrorDomain",
+            code: 260,
+            userInfo: [NSLocalizedDescriptionKey: "The file doesn’t exist."]
+        )
+        let code = agentErrorCode(for: err)
+        XCTAssertTrue(isCleanCode(code), "Foreign NSError must yield a clean identifier code, got: \(code)")
+    }
+
+    func testForeignURLErrorProducesCleanStableCode() {
+        let a = agentErrorCode(for: URLError(.timedOut))
+        let b = agentErrorCode(for: URLError(.cannotFindHost))
+        XCTAssertTrue(isCleanCode(a), "got: \(a)")
+        XCTAssertEqual(a, b, "Distinct foreign errors should collapse to one stable generic code")
+    }
+
+    func testForeignErrorAgentEnvelopeCodeIsCleanButMessageKept() {
+        let err = NSError(
+            domain: "X",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "boom (paren) =eq \"quote\""]
+        )
+        let agentError = AgentError.from(err)
+        XCTAssertTrue(isCleanCode(agentError.error.code), "envelope code must be clean, got: \(agentError.error.code)")
+        XCTAssertTrue(agentError.error.message.contains("boom"), "human detail must survive in message")
+    }
+
+    /// Typed PippinLib enum codes must be UNCHANGED by the foreign-error
+    /// hardening — these feed exit-code classification and MCP branching.
+    func testTypedEnumCodesUnchangedByHardening() {
+        XCTAssertEqual(agentErrorCode(for: RemindersBridgeError.accessDenied), "access_denied")
+        XCTAssertEqual(agentErrorCode(for: MailBridgeError.scriptFailed("x")), "script_failed")
+        XCTAssertEqual(agentErrorCode(for: AudioBridgeError.timeout), "timeout")
+        XCTAssertEqual(agentErrorCode(for: AudioBridgeError.notAvailable), "not_available")
+    }
+
     // MARK: - camelToSnakeCase (via agentErrorCode)
 
     func testCamelToSnakeCaseViaErrorCode() {
