@@ -43,11 +43,39 @@ pippin is never a versioned library dependency). Verify after a build:
 otool -s __TEXT __info_plist "$(swift build -c release --show-bin-path)/pippin"
 ```
 
-## Durability caveat: re-grant after upgrades
+## Persistence: stable code signing (pippin-xzu)
 
-The binary is **unsigned** (no Developer ID). macOS TCC can reset a grant when
-the binary content changes, so after `make install` / a Homebrew upgrade the user
-may need to re-grant. This is why `pippin permissions` exists as a standalone,
-re-runnable command — re-granting is one interactive command, not a re-onboard.
-A stable code-signing identity would make grants survive rebuilds; we
-deliberately did not take that on (no signing setup required).
+SwiftPM **ad-hoc / linker-signs** by default (`flags=…(adhoc,linker-signed)`),
+so the code identity macOS TCC keys grants on IS the CDHash — a content hash
+that changes on every build. TCC then treats each build as a new app and orphans
+the prior grant (every `make install` / `brew upgrade` re-prompts), and the two
+install paths (`~/.local/bin/pippin`, `/opt/homebrew/bin/pippin`) get separate
+grants because their hashes differ.
+
+Fix: sign with a **stable identity** (a Developer ID Application cert) and a
+fixed `--identifier com.mattwag05.pippin`. That gives a content-independent
+Designated Requirement, so a grant given once survives rebuilds and is shared
+across both install paths. `scripts/sign.sh` does this; `make install` /
+`make release` and the Homebrew formula call it.
+
+- **Guarded**: `sign.sh` resolves the first "Developer ID Application" identity
+  (override with `PIPPIN_SIGN_IDENTITY`). If none is present it warns and exits
+  0, leaving the ad-hoc signature — so CI / the ci-vm / other machines still
+  build. The formula also `File.exist?`-guards the call for tags predating the
+  script.
+- **Notarization is NOT needed for TCC.** It's a Gatekeeper/quarantine concern
+  (binaries *downloaded* to other Macs). Set `PIPPIN_SIGN_HARDENED=1` to add
+  `--options runtime --timestamp` only when you'll notarize for distribution.
+- `pippin doctor` reports a **Code signing** row: `ok` for a stable identity,
+  `skip` (with remediation) when ad-hoc/unsigned. Verify directly with
+  `codesign -dvv "$(command -v pippin)"`.
+- After (re)signing with a *new* identity the DR changes once → one re-grant via
+  `pippin permissions`, then it persists.
+
+### Apple Events responsible-process caveat
+
+EventKit/Contacts/Full Disk Access key on pippin's own identity, so signing fixes
+their persistence. **Apple Events** (Mail/Notes/Messages automation) key on the
+*responsible process* — when the [agent-runtime] LaunchAgent spawns pippin, TCC may
+attribute the grant to `agent-runtime`, not pippin. Signing pippin doesn't change the
+agent's Automation identity; that's a property of the launching process.

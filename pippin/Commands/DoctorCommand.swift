@@ -166,6 +166,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkRemindersAccess())
     checks.append(checkContactsAccess())
     checks.append(checkNotesAccess())
+    checks.append(checkCodeSigning())
     checks.append(checkPython3())
     checks.append(checkMLXAudio())
     checks.append(checkOllama())
@@ -498,6 +499,59 @@ private func checkContactsAccess() -> DiagnosticCheck {
             detail: "status: \(status.rawValue) (grant on first use of `pippin contacts`)"
         )
     }
+}
+
+/// Classify `codesign -dvv` output into a signing-status check. Pure so it can
+/// be unit-tested without a real binary. A stable (non-ad-hoc) signature means
+/// TCC grants survive rebuilds/upgrades; ad-hoc or unsigned means they reset.
+/// (pippin-xzu)
+func classifyCodeSigning(_ output: String) -> DiagnosticCheck {
+    let isAdhoc = output.contains("adhoc") || output.contains("Signature=adhoc")
+    let hasAuthority = output.contains("Authority=")
+    if hasAuthority, !isAdhoc {
+        let developerID = output.contains("Authority=Developer ID Application")
+        return DiagnosticCheck(
+            name: "Code signing",
+            status: .ok,
+            detail: developerID
+                ? "Developer ID — TCC grants persist across upgrades"
+                : "stable identity — TCC grants persist across upgrades"
+        )
+    }
+    let detail = isAdhoc ? "ad-hoc signed" : "unsigned"
+    return DiagnosticCheck(
+        name: "Code signing",
+        status: .skip,
+        detail: "\(detail) — TCC grants reset on rebuild/upgrade",
+        remediation: Remediation(
+            humanHint: """
+            pippin is \(detail), so macOS may drop its permission grants whenever \
+            the binary changes (reinstall/upgrade). Reinstall a stably-signed \
+            build — `make install` signs with your Developer ID when available — \
+            then run `pippin permissions` once. Grants then persist.
+            """,
+            doctorCheck: "Code signing"
+        )
+    )
+}
+
+func checkCodeSigning() -> DiagnosticCheck {
+    guard let path = Bundle.main.executablePath else {
+        return DiagnosticCheck(name: "Code signing", status: .skip, detail: "could not locate the pippin binary")
+    }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    process.arguments = ["-dvv", path]
+    let pipe = Pipe()
+    // codesign writes its description to stderr.
+    process.standardError = pipe
+    process.standardOutput = Pipe()
+    guard (try? process.run()) != nil else {
+        return DiagnosticCheck(name: "Code signing", status: .skip, detail: "codesign unavailable")
+    }
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    return classifyCodeSigning(String(data: data, encoding: .utf8) ?? "")
 }
 
 func checkPython3() -> DiagnosticCheck {

@@ -1,7 +1,7 @@
 INSTALL_DIR := $(HOME)/.local/bin
 VERSION := $(shell grep 'static let version' pippin/Version.swift | sed 's/.*"\(.*\)"/\1/')
 
-.PHONY: build test lint ci ci-vm install completions version release tarball clean link-skills
+.PHONY: build test lint ci ci-vm install sign completions version release tarball clean link-skills
 
 build:
 	xcrun --sdk macosx swift build -c release
@@ -51,16 +51,23 @@ completions: build
 	@echo "Installed: ~/.zfunc/_pippin"
 	@echo "Add 'fpath=(~/.zfunc \$$fpath)' to ~/.zshrc, then 'autoload -Uz compinit && compinit'"
 
-install: build completions
+# Sign the release binary with a stable identity so macOS TCC permission grants
+# persist across rebuilds/upgrades. Guarded — no-ops (ad-hoc fallback) when no
+# Developer ID identity is present, so CI / the ci-vm / other machines still
+# build. See scripts/sign.sh + docs/gotchas/permissions.md (pippin-xzu).
+sign: build
+	@bash scripts/sign.sh "$$(swift build -c release --show-bin-path)/pippin"
+
+install: build completions sign
 	@mkdir -p "$(INSTALL_DIR)"
 	cp "$$(swift build -c release --show-bin-path)/pippin" "$(INSTALL_DIR)/pippin"
 	@echo "Installed: $(INSTALL_DIR)/pippin ($(VERSION))"
-	@echo "Run 'pippin init' to check permissions."
+	@echo "Run 'pippin permissions' once to grant access (grants now persist if signed)."
 
 version:
 	@echo $(VERSION)
 
-release: build
+release: build sign
 	@mkdir -p .build/release-artifacts
 	cp "$$(swift build -c release --show-bin-path)/pippin" ".build/release-artifacts/pippin-$(VERSION)-arm64-macos"
 	@echo "Release binary: .build/release-artifacts/pippin-$(VERSION)-arm64-macos"
