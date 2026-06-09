@@ -29,12 +29,20 @@ let package = Package(
             name: "CDisclaimSpawn",
             path: "CDisclaimSpawn"
         ),
+        // Tiny ObjC shim: decode Messages chat.db `attributedBody` typedstream
+        // blobs via NSUnarchiver inside @try/@catch (pippin-cc1). ObjC because it
+        // needs the deprecated NSUnarchiver + ObjC exception handling.
+        .target(
+            name: "CTypedStreamDecode",
+            path: "CTypedStreamDecode"
+        ),
         // Library target — all application logic (importable by tests)
         .target(
             name: "PippinLib",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "GRDB", package: "GRDB.swift"),
+                "CTypedStreamDecode",
             ],
             path: "pippin",
             swiftSettings: [.swiftLanguageMode(.v6)]
