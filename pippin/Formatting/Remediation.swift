@@ -54,9 +54,29 @@ public extension Remediation {
             attaches the grant to the launching app, not the pippin binary. A \
             background agent (LaunchAgent) cannot show the first-use prompt, so \
             run `\(listCommand)` once from an interactive terminal to trigger it, \
-            then re-run.
+            then re-run. Tip: `pippin permissions` resolves all promptable \
+            permissions in one interactive pass.
             """,
             doctorCheck: doctorCheck
+        )
+    }
+
+    /// Remediation for a Full Disk Access permission (Messages / Voice Memos
+    /// read their SQLite DBs directly). Unlike EventKit/Contacts/Automation,
+    /// FDA has no request API — there is no prompt to trigger, so `pippin
+    /// permissions` can't resolve it; the user must toggle it manually and
+    /// relaunch the launching app.
+    static func fullDiskAccess(integration: String, listCommand: String) -> Remediation {
+        Remediation(
+            humanHint: """
+            \(integration) needs Full Disk Access. Open System Settings > Privacy \
+            & Security > Full Disk Access and enable the app that launches pippin \
+            (your terminal — Terminal, iTerm, Warp, Ghostty — or the agent/MCP \
+            client), then fully quit that app (Cmd-Q) and relaunch it. Full Disk \
+            Access has no prompt, so `pippin permissions` cannot grant it for you. \
+            Verify with `\(listCommand)`.
+            """,
+            doctorCheck: "\(integration) access"
         )
     }
 }

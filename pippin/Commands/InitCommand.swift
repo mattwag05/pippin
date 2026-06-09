@@ -12,6 +12,28 @@ public struct InitCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
+        // In an interactive terminal, proactively trigger each promptable TCC
+        // prompt up front so onboarding resolves them in one pass — rather than
+        // deferring to "first use", which silently fails when first use is a
+        // background agent that can't show a dialog. Skipped under MCP / agent /
+        // json / non-TTY (see PermissionPriming.shouldPrime). (pippin-dkf)
+        let interactive = isatty(STDIN_FILENO) != 0 && isatty(STDOUT_FILENO) != 0
+        if PermissionPriming.shouldPrime(
+            interactive: interactive,
+            isMCP: isMCPContext(),
+            isStructuredOutput: output.isStructured
+        ) {
+            print("Granting app permissions (answer each macOS prompt)…")
+            _ = await PermissionPrimer.primeReminders()
+            _ = await PermissionPrimer.primeCalendar()
+            _ = await PermissionPrimer.primeContacts()
+            await detachBlocking {
+                PermissionPrimer.primeMailAutomation()
+                PermissionPrimer.primeNotesAutomation()
+            }
+            print()
+        }
+
         let checks = await detachBlocking { runAllChecks() }
 
         if output.isAgent {
