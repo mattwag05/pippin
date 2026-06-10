@@ -229,6 +229,50 @@ final class ActionsCommandTests: XCTestCase {
         let results = try ActionExtractor.extract(items: [], provider: provider)
         XCTAssertTrue(results.isEmpty)
     }
+
+    // MARK: - Budget-aware extraction (pippin-hzg)
+
+    func testExtractBudgetTimeoutReturnsPartialWithoutWaiting() throws {
+        // 30 items / batchSize 10 = 3 batches, each sleeping 2s. A 150ms budget
+        // fires first → the call returns at the deadline (not after 2s), flags
+        // timedOut, and does NOT throw — the no-SIGKILL/partial contract.
+        let provider = SlowActionProvider(response: "{\"actions\":[]}", delay: 2.0)
+        let items = (0 ..< 30).map {
+            ActionExtractor.Item(source: .mail, sourceId: "\($0)", sourceTitle: nil, text: "x")
+        }
+        let start = Date()
+        let (actions, timedOut) = try ActionExtractor.extract(
+            items: items, provider: provider, minConfidence: 0.5, budget: BatchBudget(softTimeoutMs: 150)
+        )
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertTrue(timedOut, "budget should fire before the 2s batches finish")
+        XCTAssertLessThan(elapsed, 1.5, "should return at the budget, not wait for slow batches (saw \(elapsed)s)")
+        XCTAssertTrue(actions.isEmpty, "all batches were still running at the deadline")
+    }
+
+    func testExtractUnlimitedBudgetCompletesWithoutTimedOut() throws {
+        let json = """
+        {"actions":[
+          {"sourceIndex":0,"snippet":"I'll send Q3.","proposedTitle":"Send Q3","proposedDueDate":null,"proposedPriority":0,"confidence":0.9}
+        ]}
+        """
+        let provider = FakeActionProvider(response: json)
+        let items = [ActionExtractor.Item(source: .mail, sourceId: "1", sourceTitle: nil, text: "I'll send Q3.")]
+        let (actions, timedOut) = try ActionExtractor.extract(
+            items: items, provider: provider, minConfidence: 0.5, budget: BatchBudget(softTimeoutMs: 0)
+        )
+        XCTAssertFalse(timedOut)
+        XCTAssertEqual(actions.count, 1)
+    }
+}
+
+private struct SlowActionProvider: AIProvider {
+    let response: String
+    let delay: TimeInterval
+    func complete(prompt _: String, system _: String) throws -> String {
+        Thread.sleep(forTimeInterval: delay)
+        return response
+    }
 }
 
 private struct FakeActionProvider: AIProvider {

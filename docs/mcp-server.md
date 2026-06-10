@@ -4,7 +4,7 @@
 
 ## What you get
 
-44 tools spanning the commonly scripted pippin surfaces:
+45 tools spanning the commonly scripted pippin surfaces:
 
 | Area | Tools |
 |---|---|
@@ -15,6 +15,7 @@
 | Notes | `notes_list`, `notes_search`, `notes_show`, `notes_folders` |
 | Messages | `messages_list`, `messages_search`, `messages_show`, `messages_send` (gated — see [README § Messages](../README.md#messages)) |
 | Memos | `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_capture_to_reminders`, `memos_summarize` |
+| Actions | `actions_extract` — scan Sent mail + Notes for commitments → draft (or create) reminders |
 | System | `status`, `doctor`, `digest` |
 | Jobs  | `job_run`, `job_show`, `job_list`, `job_wait` — detach long-running work (see below) |
 | Batch | `batch` — fan out N pippin commands concurrently in one tool call (see below) |
@@ -185,7 +186,7 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 
 ## Known consumers
 
-- **[agent] ([agent-runtime]-Agent on M5)** — registers `pippin mcp-server` as a stdio MCP and drives the 44 tools natively (see the operator's [agent-runtime] setup notes).
+- **[agent] ([agent-runtime]-Agent on M5)** — registers `pippin mcp-server` as a stdio MCP and drives the 45 tools natively (see the operator's [agent-runtime] setup notes).
 - **Claude Code / Claude Desktop** — register via `claude mcp add` or the desktop config JSON; both pick up tools automatically on restart.
 - **Morning-briefing scheduled task** — still shells out to the pippin CLI directly (no migration planned; the task is single-shot enough that MCP doesn't add value).
 

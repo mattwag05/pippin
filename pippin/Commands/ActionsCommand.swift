@@ -104,15 +104,20 @@ public struct ActionsCommand: AsyncParsableCommand {
 
             let minConfidence = self.minConfidence
             let collectedItems = items
-            // ActionExtractor.extract → runConcurrently → provider.complete chain
-            // is sync and blocks on DispatchGroup.wait + DispatchSemaphore.
-            let actions = try await detachBlocking {
+            // ActionExtractor.extract → provider.complete chain is sync and blocks
+            // on DispatchGroup.wait + DispatchSemaphore. Bound the whole AI pass by
+            // the context budget (50s under MCP) so a slow scan returns partial
+            // results + timedOut instead of being SIGKILLed at the 60s child cap.
+            let budget = BatchBudget.forCurrentContext()
+            let (actions, extractTimedOut) = try await detachBlocking {
                 try ActionExtractor.extract(
                     items: collectedItems,
                     provider: aiProvider,
-                    minConfidence: minConfidence
+                    minConfidence: minConfidence,
+                    budget: budget
                 )
             }
+            timedOut = timedOut || extractTimedOut
 
             if create {
                 let results = try await createReminders(from: actions)
