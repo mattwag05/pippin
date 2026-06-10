@@ -101,4 +101,6 @@ In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — strin
 
 **Multi-format date parsing — most-specific pattern first:** when trying a list of `DateFormatter` patterns, order with-seconds before minute-only and datetime before date-only. `DateFormatter` matches a *prefix*, so a `yyyy-MM-dd` pattern will happily parse `2026-06-04` out of `2026-06-04 12:30` and silently drop the time if it's tried first. See `parseCalendarDate` (pippin-3gp).
 
+**Bounding a *synchronous* framework call** (e.g. `EKEventStore.events(matching:)`, which blocks the caller — unlike callback-based `fetchReminders`): run it on `DispatchQueue.global().async`, wait on a `DispatchSemaphore` with `.now() + .seconds(N)`, and return `[]` on timeout (never read the result the abandoned worker is still mutating). Capture the non-Sendable arg (`NSPredicate`) via a `nonisolated(unsafe) let` to satisfy the `@Sendable` closure. See `CalendarBridge.fetchEventsSync` vs `RemindersBridge.fetchRemindersSync` (pippin-mgg).
+
 **GRDB `row["col"]` TRAPS on NULL:** decode system-DB columns optionally (`row["col"] as T?`) with a fallback. Apple's Voice Memos/Messages DBs store NULLs (e.g. ZPATH for a not-yet-downloaded recording); one NULL row otherwise crashes the whole list.
