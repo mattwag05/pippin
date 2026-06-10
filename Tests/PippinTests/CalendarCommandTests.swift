@@ -3,6 +3,24 @@ import XCTest
 
 /// Tests for ArgumentParser `validate()` logic in CalendarCommand subcommands.
 final class CalendarCommandTests: XCTestCase {
+    // MARK: - Soft-timeout surfacing (pippin-mgg)
+
+    func testTimedOutWarningsPresentWhenTimedOut() {
+        let warnings = CalendarCommand.timedOutWarnings(true)
+        XCTAssertEqual(warnings, [CalendarCommand.timedOutHint])
+    }
+
+    func testTimedOutWarningsNilWhenNotTimedOut() {
+        XCTAssertNil(CalendarCommand.timedOutWarnings(false))
+    }
+
+    func testTimedOutHintIsActionable() {
+        // The hint must name the 15s cap and a way to narrow the query, so an
+        // agent/user knows the result is partial and how to get a complete one.
+        XCTAssertTrue(CalendarCommand.timedOutHint.contains("15s"))
+        XCTAssertTrue(CalendarCommand.timedOutHint.contains("partial results"))
+    }
+
     // MARK: - Create: required flags
 
     func testCreateMissingTitleFails() {
