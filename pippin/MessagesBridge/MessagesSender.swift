@@ -6,6 +6,7 @@ public enum MessagesSendError: LocalizedError, Sendable {
     case phiFiltered([String])
     case recipientNotAllowed(String)
     case autonomousNotAuthorized
+    case accessDenied
 
     public var errorDescription: String? {
         switch self {
@@ -19,6 +20,17 @@ public enum MessagesSendError: LocalizedError, Sendable {
             return "Recipient not in autonomous allowlist: \(who)"
         case .autonomousNotAuthorized:
             return "Autonomous send requires PIPPIN_AUTONOMOUS_MESSAGES=1 and --autonomous flag."
+        case .accessDenied:
+            return "Messages automation is not authorized. Grant Automation control of Messages and retry."
+        }
+    }
+}
+
+extension MessagesSendError: RemediableError {
+    public var remediation: Remediation? {
+        switch self {
+        case .accessDenied: return .automationAccess(app: "Messages", trigger: "pippin messages send")
+        default: return nil
         }
     }
 }
@@ -45,7 +57,12 @@ public enum MessagesSender {
         body: String,
         timeoutSeconds: Int = 15,
         runner: @Sendable (String, Int) throws -> String = { script, timeout in
-            try ScriptRunner.run(script, timeoutSeconds: timeout, appName: "Messages")
+            try ScriptRunner.run(
+                script,
+                timeoutSeconds: timeout,
+                appName: "Messages",
+                automationBundleID: "com.apple.MobileSMS"
+            )
         }
     ) throws -> SendResult {
         let script = buildScript(recipient: buddyOrChatId, body: body)
@@ -53,6 +70,8 @@ public enum MessagesSender {
             let out = try runner(script, timeoutSeconds)
             let trimmed = out.trimmingCharacters(in: .whitespacesAndNewlines)
             return SendResult(delivered: true, detail: trimmed.isEmpty ? "sent" : trimmed)
+        } catch ScriptRunnerError.automationDenied {
+            throw MessagesSendError.accessDenied
         } catch ScriptRunnerError.timeout {
             throw MessagesSendError.timeout
         } catch let ScriptRunnerError.nonZeroExit(msg) {

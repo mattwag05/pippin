@@ -69,6 +69,57 @@ final class ScriptRunnerTests: XCTestCase {
         XCTAssertEqual(launchCalls, [], "Launcher must not fire when the script succeeds")
     }
 
+    // MARK: - Automation pre-check fast-fail (pippin-qjf)
+
+    func testAutomationDeniedFastFailsWithoutRunningScript() {
+        // A script that would otherwise block for ~10s. With the injected check
+        // returning .deny, run() must throw .automationDenied immediately and
+        // never launch osascript.
+        let script = "delay(10); 'never'"
+        let denyCheck: ScriptRunner.AutomationCheck = { _, _ in .deny }
+        let start = Date()
+        XCTAssertThrowsError(
+            try ScriptRunner.run(
+                script,
+                timeoutSeconds: 10,
+                automationBundleID: "com.apple.mail",
+                automationCheck: denyCheck
+            )
+        ) { err in
+            guard case let ScriptRunnerError.automationDenied(bundleID) = err else {
+                XCTFail("Expected .automationDenied, got \(err)")
+                return
+            }
+            XCTAssertEqual(bundleID, "com.apple.mail")
+        }
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertLessThan(elapsed, 2.0, "Fast-fail took \(elapsed)s — the blocking script appears to have run")
+    }
+
+    func testAutomationAllowedRunsScript() throws {
+        let allowCheck: ScriptRunner.AutomationCheck = { _, _ in .allow }
+        let out = try ScriptRunner.run(
+            "'ok'",
+            timeoutSeconds: 10,
+            automationBundleID: "com.apple.mail",
+            automationCheck: allowCheck
+        )
+        XCTAssertEqual(out, "ok")
+    }
+
+    func testNoBundleIDSkipsAutomationCheck() throws {
+        // With no automationBundleID the check is never consulted, even one that
+        // would deny — preserves the existing call-site behavior.
+        nonisolated(unsafe) var consulted = false
+        let denyCheck: ScriptRunner.AutomationCheck = { _, _ in
+            consulted = true
+            return .deny
+        }
+        let out = try ScriptRunner.run("'ok'", timeoutSeconds: 10, automationCheck: denyCheck)
+        XCTAssertEqual(out, "ok")
+        XCTAssertFalse(consulted, "Automation check must not run when no bundle id is supplied")
+    }
+
     // MARK: - Non-zero exit maps to nonZeroExit
 
     func testNonZeroExitThrowsNonZeroExit() {

@@ -4,6 +4,7 @@ public enum NotesBridgeError: LocalizedError, Sendable {
     case scriptFailed(String)
     case timeout
     case decodingFailed(String)
+    case accessDenied
 
     public var errorDescription: String? {
         switch self {
@@ -12,6 +13,7 @@ public enum NotesBridgeError: LocalizedError, Sendable {
             return "Notes automation script failed: \(msg.prefix(200))"
         case .timeout: return "Notes automation timed out. Ensure Notes.app is running."
         case .decodingFailed: return "Failed to decode Notes response"
+        case .accessDenied: return "Notes automation is not authorized. Grant Automation control of Notes and retry."
         }
     }
 
@@ -20,6 +22,15 @@ public enum NotesBridgeError: LocalizedError, Sendable {
         switch self {
         case let .scriptFailed(msg): return msg
         case let .decodingFailed(msg): return msg
+        default: return nil
+        }
+    }
+}
+
+extension NotesBridgeError: RemediableError {
+    public var remediation: Remediation? {
+        switch self {
+        case .accessDenied: return .automationAccess(app: "Notes", trigger: "pippin notes folders")
         default: return nil
         }
     }

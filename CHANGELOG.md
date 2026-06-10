@@ -9,7 +9,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.32.0] - 2026-06-09
+### Fixed
+
+- [bug] Mail/Notes/Messages automation commands now fast-fail with `access_denied` (exit 4) instead of blocking to the soft-timeout when pippin isn't authorized to control the app via Automation. After pippin disclaims TCC responsibility it runs Apple Events under its own identity, so an un-granted MCP/background call previously hung ~22s per command (CLIIntegrationTests jumped 5s→94s). pippin now pre-checks `AEDeterminePermissionToAutomateTarget` before launching `osascript`: denied (or undetermined-and-unpromptable) returns immediately with a remediation pointing at the Automation pane, while an interactive terminal still surfaces the OS prompt on first call (self-healing). Closes pippin-qjf.
 
 ### Added
 

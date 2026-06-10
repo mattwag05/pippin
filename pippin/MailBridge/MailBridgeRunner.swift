@@ -5,7 +5,14 @@ extension MailBridge {
 
     static func runScript(_ script: String, timeoutSeconds: Int = 10) throws -> String {
         do {
-            return try ScriptRunner.run(script, timeoutSeconds: timeoutSeconds, appName: "Mail")
+            return try ScriptRunner.run(
+                script,
+                timeoutSeconds: timeoutSeconds,
+                appName: "Mail",
+                automationBundleID: "com.apple.mail"
+            )
+        } catch ScriptRunnerError.automationDenied {
+            throw MailBridgeError.accessDenied
         } catch ScriptRunnerError.timeout {
             throw MailBridgeError.timeout
         } catch let ScriptRunnerError.nonZeroExit(msg) {
