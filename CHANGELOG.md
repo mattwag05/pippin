@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] New MCP tool `actions_extract` surfaces `pippin actions extract` to agents — scan recent Sent mail and recently-modified Notes for commitments you made and emit draft reminders with confidence scores (or, with `create=true`, create them in a list). The AI extraction pass is now budget-aware (`BatchBudget`): under MCP it's bounded to ~50s and returns partial results with a `timedOut` warning instead of being SIGKILLed at the 60s child cap, so a large scan degrades gracefully rather than failing. CLI behavior is unchanged (unbounded, fail-fast on a malformed AI response). Closes pippin-hzg.
+
 ### Fixed
 
 - [bug] Calendar event fetches are now bounded by a 15s wall-clock cap and surface a partial-results advisory, closing the last bridge that could hang indefinitely. `store.events(matching:)` is synchronous and could block forever on a wedged EventKit store; `calendar events/today/remaining/upcoming/agenda/search/conflicts` (and the digest's calendar section + smart-create conflict check) now run it on a bounded worker and, on timeout, return what they have plus a `Warning:` line (text/json) or envelope `warnings` entry (agent), matching the Reminders/Notes/Contacts/Mail soft-timeout pattern. Closes pippin-mgg.

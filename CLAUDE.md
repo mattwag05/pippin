@@ -46,7 +46,7 @@ make version        # print current version from Version.swift
 | `pippin/MailAIBridge/` | Embeddings, semantic search, triage, prompt-injection scanner — Ollama-backed |
 | `pippin/AIProvider/` | Ollama + Claude backends. `isMCPContext()` and `aiRequestTimeoutSeconds()` shorten budgets to 50s when `PIPPIN_MCP=1` |
 | `pippin/Commands/` | ArgumentParser entry points. REPL (`ShellCommand`), system dashboard (`StatusCommand`), MCP server (`McpServerCommand`), plan-and-execute (`DoCommand`), background jobs (`JobCommand`), parallel dispatch (`BatchCommand`). **`audio`/`browser` are gated behind `PIPPIN_EXPERIMENTAL=1`** (hidden by default; see `Pippin.swift`) |
-| `pippin/MCP/ToolRegistry.swift` | Single source of truth for the MCP tool surface — adding a tool is one entry here. Currently **44 tools**; verify with `pippin mcp-server --list-tools \| jq '.tools \| length'` (or count `name:` entries). |
+| `pippin/MCP/ToolRegistry.swift` | Single source of truth for the MCP tool surface — adding a tool is one entry here. Currently **45 tools**; verify with `pippin mcp-server --list-tools \| jq '.tools \| length'` (or count `name:` entries). |
 | `pippin/Models/` | DTO structs for each bridge. `Codable, Sendable`. Names: `{Mail,Calendar,Reminder,Note,Contact,Messages,MailAI,Audio,Browser}Models.swift` |
 | `pippin/Templates/` | Built-in summarization + smart-create + extract-actions prompt templates |
 | `pippin/Formatting/AgentOutput.swift` | `printAgentJSON<T>()` + envelope v1 `{v, status, duration_ms, data\|error}` |

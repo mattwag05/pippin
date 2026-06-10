@@ -70,6 +70,19 @@ enum ArgHelpers {
         args?[key]?.boolValue
     }
 
+    static func double(_ args: JSONValue?, _ key: String) -> Double? {
+        args?[key]?.doubleValue
+    }
+
+    static func optionIfDouble(
+        _ args: JSONValue?,
+        _ key: String,
+        flagName: String
+    ) -> [String] {
+        if let value = double(args, key) { return [option(flagName, String(value))] }
+        return []
+    }
+
     static func flagIfTrue(_ args: JSONValue?, _ key: String, flagName: String) -> [String] {
         bool(args, key) == true ? [flagName] : []
     }
@@ -158,6 +171,17 @@ enum Schema {
         ]
         if let defaultValue {
             dict["default"] = .bool(defaultValue)
+        }
+        return .object(dict)
+    }
+
+    static func number(_ description: String, default defaultValue: Double? = nil) -> JSONValue {
+        var dict: [String: JSONValue] = [
+            "type": .string("number"),
+            "description": .string(description),
+        ]
+        if let defaultValue {
+            dict["default"] = .double(defaultValue)
         }
         return .object(dict)
     }
@@ -832,6 +856,41 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfInt(args, "mailLimit", flagName: "--mail-limit")
                 argv += ArgHelpers.optionIfInt(args, "notesLimit", flagName: "--notes-limit")
                 argv += ArgHelpers.optionIfInt(args, "calendarDays", flagName: "--calendar-days")
+                return argv
+            }
+        ),
+
+        // MARK: Actions
+
+        MCPTool(
+            name: "actions_extract",
+            description: "Scan recent Sent mail and recently-modified Notes for commitments you made (\"I'll send you…\", \"I'll follow up…\") and emit draft reminders with a confidence score. Read-only by default; set create=true to also create the reminders in a list. Slow (per-batch AI calls): under MCP the AI pass is bounded to ~50s and returns partial results with a timedOut warning — lower limit/days or run via job_run for an exhaustive scan.",
+            inputSchema: Schema.object(properties: [
+                "days": Schema.integer("Days back to scan (1-90, default 7).", default: 7),
+                "mail": Schema.boolean("Include Sent mail as a source.", default: true),
+                "notes": Schema.boolean("Include recently-modified Notes as a source.", default: true),
+                "account": Schema.string("Mail account to scan (default: all accounts)."),
+                "limit": Schema.integer("Max items to scan per source (default: 50).", default: 50),
+                "min_confidence": Schema.number("Minimum confidence (0.0-1.0) to include an action (default: 0.5).", default: 0.5),
+                "provider": Schema.string("AI provider: ollama, claude, or openai (default: ollama)."),
+                "model": Schema.string("Model name (provider-specific default)."),
+                "api_key": Schema.string("API key for the Claude provider."),
+                "list": Schema.string("Reminder list name to create into (used when create=true)."),
+                "create": Schema.boolean("Create reminders from the extracted actions (side-effecting).", default: false),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("actions", "extract")
+                argv += ArgHelpers.optionIfInt(args, "days", flagName: "--days")
+                if let mail = ArgHelpers.bool(args, "mail") { argv.append(mail ? "--mail" : "--no-mail") }
+                if let notes = ArgHelpers.bool(args, "notes") { argv.append(notes ? "--notes" : "--no-notes") }
+                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                argv += ArgHelpers.optionIfDouble(args, "min_confidence", flagName: "--min-confidence")
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
+                argv += ArgHelpers.optionIfString(args, "api_key", flagName: "--api-key")
+                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
+                argv += ArgHelpers.flagIfTrue(args, "create", flagName: "--create")
                 return argv
             }
         ),

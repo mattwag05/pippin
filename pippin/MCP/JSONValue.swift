@@ -80,4 +80,12 @@ enum JSONValue: Codable, Equatable, Sendable {
         if case let .bool(value) = self { return value }
         return nil
     }
+
+    var doubleValue: Double? {
+        switch self {
+        case let .double(value): return value
+        case let .int(value): return Double(value) // a whole-number JSON arg (e.g. 1) for a number field
+        default: return nil
+        }
+    }
 }

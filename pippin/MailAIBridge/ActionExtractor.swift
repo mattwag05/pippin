@@ -17,41 +17,86 @@ public enum ActionExtractor {
 
     private static let batchSize = 10
 
+    /// Convenience: extract under an unlimited budget (CLI/tests). Discards the
+    /// `timedOut` flag (always false here) and throws on the first batch error,
+    /// preserving the original fail-fast contract.
     public static func extract(
         items: [Item],
         provider: any AIProvider,
         minConfidence: Float = 0.5
     ) throws -> [ExtractedAction] {
-        guard !items.isEmpty else { return [] }
+        try extract(items: items, provider: provider, minConfidence: minConfidence, budget: BatchBudget(softTimeoutMs: 0)).actions
+    }
+
+    /// Budget-aware extraction: bounds the whole AI pass by `budget` so an MCP
+    /// caller gets partial results + `timedOut: true` instead of a 60s SIGKILL
+    /// halfway through. Under an unlimited budget (CLI) it waits for every batch
+    /// and throws on the first batch error (fail-fast, as before). When the
+    /// deadline fires, abandoned batches are dropped — and their errors swallowed
+    /// — in favor of the successes already gathered. (pippin-hzg)
+    public static func extract(
+        items: [Item],
+        provider: any AIProvider,
+        minConfidence: Float = 0.5,
+        budget: BatchBudget
+    ) throws -> (actions: [ExtractedAction], timedOut: Bool) {
+        guard !items.isEmpty else { return ([], false) }
 
         let systemPrompt = renderSystemPrompt(now: Date())
         let batches = stride(from: 0, to: items.count, by: batchSize).map {
             Array(items[$0 ..< min($0 + batchSize, items.count)])
         }
-        let responses = try runConcurrently(batches, maxConcurrent: 4, failFast: true) { batch in
-            try extractBatch(batch, provider: provider, systemPrompt: systemPrompt)
-        }
 
-        var all: [ExtractedAction] = []
-        for (batch, response) in zip(batches, responses) {
-            for entry in response.actions where entry.confidence >= minConfidence {
-                guard entry.sourceIndex >= 0, entry.sourceIndex < batch.count else { continue }
-                let item = batch[entry.sourceIndex]
-                all.append(
-                    ExtractedAction(
-                        source: item.source,
-                        sourceId: item.sourceId,
-                        sourceTitle: item.sourceTitle,
-                        snippet: entry.snippet,
-                        proposedTitle: entry.proposedTitle,
-                        proposedDueDate: entry.proposedDueDate,
-                        proposedPriority: entry.proposedPriority,
-                        confidence: entry.confidence
-                    )
-                )
+        // One slot per batch; nil after the wait means the batch was abandoned
+        // past the deadline. A semaphore caps in-flight AI calls at 4 (matching
+        // the prior maxConcurrent) so we don't oversubscribe a local model.
+        let slots = batches.map { _ in ConcurrentSlot<Result<BatchResponse, Error>>() }
+        let rateLimiter = DispatchSemaphore(value: 4)
+        let tasks: [@Sendable () -> Void] = zip(batches, slots).map { batch, slot in
+            {
+                rateLimiter.wait()
+                defer { rateLimiter.signal() }
+                do {
+                    try slot.set(.success(extractBatch(batch, provider: provider, systemPrompt: systemPrompt)))
+                } catch {
+                    slot.set(.failure(error))
+                }
             }
         }
-        return all
+        let completed = runConcurrentlyWithBudget(budgetMs: budget.softTimeoutMs, tasks)
+        let timedOut = !completed
+
+        var all: [ExtractedAction] = []
+        var firstError: Error?
+        for (batch, slot) in zip(batches, slots) {
+            switch slot.get() {
+            case let .success(response):
+                for entry in response.actions where entry.confidence >= minConfidence {
+                    guard entry.sourceIndex >= 0, entry.sourceIndex < batch.count else { continue }
+                    let item = batch[entry.sourceIndex]
+                    all.append(
+                        ExtractedAction(
+                            source: item.source,
+                            sourceId: item.sourceId,
+                            sourceTitle: item.sourceTitle,
+                            snippet: entry.snippet,
+                            proposedTitle: entry.proposedTitle,
+                            proposedDueDate: entry.proposedDueDate,
+                            proposedPriority: entry.proposedPriority,
+                            confidence: entry.confidence
+                        )
+                    )
+                }
+            case let .failure(error):
+                if firstError == nil { firstError = error }
+            case .none:
+                break // abandoned past the deadline — counted via `timedOut`
+            }
+        }
+        // Surface a real batch error only when the budget didn't cut us short; on
+        // a timeout we prefer the partial successes we did gather.
+        if !timedOut, let firstError { throw firstError }
+        return (all, timedOut)
     }
 
     // MARK: - Private
