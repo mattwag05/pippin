@@ -35,3 +35,11 @@ ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`Val
 ## ToolRegistry argv must be ArgumentParser-safe
 
 Bind option values as `--flag=value` (`ArgHelpers.option`), and append free-form positionals (search queries, titles) LAST behind a `--` separator (`ArgHelpers.appendPositionalLast`). A value starting with `-` (search body `-19%`, markdown-bullet title `- item`) otherwise trips ArgumentParser and fails the whole tool call. `JSONValue.intValue` clamps out-of-range doubles to nil so a huge `{"limit": 1e19}` can't crash the child.
+
+## Slow / AI-scan tools must be BatchBudget-aware
+
+The MCP layer SIGKILLs any child exceeding ~60s. A tool whose command runs per-item AI calls (e.g. `actions extract`) must bound its work with `BatchBudget.forCurrentContext()` (50s under MCP) and return partial results + a `timedOut` warning, or it dies mid-scan. See `ActionExtractor.extract(budget:)` + `runConcurrentlyWithBudget`. Docs also steer such commands to `job_run`.
+
+## Adding a tool: bump the count refs, but NOT the encoding fixture
+
+A new `MCPTool` entry changes the live count (`MCPToolRegistry.tools.count`), asserted dynamically by `JSONRPCTests`/`CLIIntegrationTests` (no edit needed). Update the human-facing counts: `docs/mcp-server.md` (the "N tools" line + the tool table) and the pippin `CLAUDE.md` ToolRegistry row. Do NOT touch `AgentInfoCommandTests.testEnvelopeEncodesSnakeCaseKeys` — its `toolCount: 44` is a hardcoded snake_case *encoding fixture*, not the real count.

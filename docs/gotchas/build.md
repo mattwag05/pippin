@@ -86,3 +86,17 @@ cached signature → the next launch is **SIGKILLed (exit 137, "Killed: 9")** ev
 bites when the kernel has the old binary's signature cached (i.e. it was recently run).
 Fix: `rm -f` the target before `cp` (a fresh inode has no stale cache) — the `install`
 target does this. If you hand-copy a signed pippin, `rm` first.
+
+## swiftformat `hoistTry` — `try` goes at the start of the expression
+
+`make ci`'s `swiftformat --lint` enforces `hoistTry`: write `try foo(bar(baz()))`, NOT
+`foo(bar(try baz()))`. A `try` buried inside a call expression fails lint even though it
+compiles (e.g. `try slot.set(.success(extractBatch(...)))`, not `...(try extractBatch(...))`).
+
+## rtk truncates `make` logs — re-run the failing gate directly
+
+The rtk Bash hook wraps `make ci` and truncates the captured output even with `> file 2>&1`.
+When `make ci` exits non-zero but the redirected log shows no error, don't trust the log —
+re-run gates individually to find the culprit: `swiftformat --lint pippin/ pippin-entry/ Tests/`,
+`python3 scripts/lint-detach-blocking.py`, then
+`xcrun --sdk macosx swift test 2>&1 | grep -E "failed \(|error:"`.
