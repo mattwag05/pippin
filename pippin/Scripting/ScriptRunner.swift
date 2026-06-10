@@ -7,6 +7,7 @@ public enum ScriptRunnerError: Error, Sendable {
     case nonZeroExit(String) // raw stderr when osascript exits non-zero
     case stderrOnSuccess(String) // filtered stderr lines emitted even when exit=0 (e.g. TCC denial)
     case launchFailed(String) // process.run() threw before osascript started
+    case automationDenied(String) // Automation (Apple Events) not authorized for the target bundle id (pippin-qjf)
 }
 
 /// Shared osascript runner used by NotesBridge and MailBridge. Extracted to
@@ -14,6 +15,11 @@ public enum ScriptRunnerError: Error, Sendable {
 /// to add a single auto-relaunch fallback when the host app is not running.
 public enum ScriptRunner {
     public typealias AppLauncher = @Sendable (String) -> Void
+
+    /// Pre-flight Automation check: `(bundleID, canPrompt) -> Decision`. Injected
+    /// for testability; defaults to the live `AEDeterminePermissionToAutomateTarget`
+    /// probe. `canPrompt` mirrors `PermissionPriming.canRequestAccess()`.
+    public typealias AutomationCheck = @Sendable (String, Bool) -> AutomationPermission.Decision
 
     /// Default launcher: `/usr/bin/open -gja <appName>` with a 3-second wait
     /// cap, followed by a short settle sleep so scripting targets register.
@@ -37,12 +43,26 @@ public enum ScriptRunner {
     /// Run a JXA script via `osascript -l JavaScript`. If the run times out and
     /// `appName` is non-nil, the launcher is invoked (typically `open -gja`) and
     /// the script is retried exactly once. Any further timeout is fatal.
+    ///
+    /// When `automationBundleID` is non-nil, an `AEDeterminePermissionToAutomateTarget`
+    /// pre-check runs first: if Automation is denied (or undetermined and we can't
+    /// prompt), the call fast-fails with `.automationDenied` instead of letting
+    /// `osascript` block to the soft-timeout. The check prompts only when a user
+    /// is at a TTY (`PermissionPriming.canRequestAccess()`), so interactive use
+    /// self-heals on first call. (pippin-qjf)
     public static func run(
         _ script: String,
         timeoutSeconds: Int,
         appName: String? = nil,
-        launcher: AppLauncher = defaultAppLauncher
+        automationBundleID: String? = nil,
+        launcher: AppLauncher = defaultAppLauncher,
+        automationCheck: AutomationCheck = AutomationPermission.liveCheck
     ) throws -> String {
+        if let automationBundleID,
+           automationCheck(automationBundleID, PermissionPriming.canRequestAccess()) == .deny
+        {
+            throw ScriptRunnerError.automationDenied(automationBundleID)
+        }
         do {
             return try runOsascript(script: script, timeoutSeconds: timeoutSeconds)
         } catch ScriptRunnerError.timeout {

@@ -61,6 +61,31 @@ public extension Remediation {
         )
     }
 
+    /// Remediation for an Automation (Apple Events) grant that pippin's own
+    /// (disclaimed) identity is missing for a scripting target (Mail/Notes/
+    /// Messages). Like the privacy permissions this collapses to the shared
+    /// `access_denied` code, so the emitting error conforms to `RemediableError`
+    /// and returns this to point at the Automation pane rather than the Voice
+    /// Memos Full Disk Access hint the code-based catalog would supply. (pippin-qjf)
+    ///
+    /// - Parameters:
+    ///   - app: the scripting target app, e.g. "Mail".
+    ///   - trigger: a pippin command that drives this target, run once from an
+    ///     interactive terminal to surface the Automation prompt.
+    static func automationAccess(app: String, trigger: String) -> Remediation {
+        Remediation(
+            humanHint: """
+            pippin is not authorized to control \(app) via Automation (Apple \
+            Events). Run `\(trigger)` once from an interactive terminal to \
+            trigger the macOS Automation prompt and click OK, or enable it under \
+            System Settings > Privacy & Security > Automation. Background \
+            agents/MCP clients can't show the prompt, so grant it interactively \
+            once, then re-run.
+            """,
+            doctorCheck: "\(app) access"
+        )
+    }
+
     /// Remediation for a Full Disk Access permission (Messages / Voice Memos
     /// read their SQLite DBs directly). Unlike EventKit/Contacts/Automation,
     /// FDA has no request API — there is no prompt to trigger, so `pippin

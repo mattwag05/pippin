@@ -396,7 +396,14 @@ enum NotesBridge {
 
     private static func runScript(_ script: String, timeoutSeconds: Int = 35) throws -> String {
         do {
-            return try ScriptRunner.run(script, timeoutSeconds: timeoutSeconds, appName: "Notes")
+            return try ScriptRunner.run(
+                script,
+                timeoutSeconds: timeoutSeconds,
+                appName: "Notes",
+                automationBundleID: "com.apple.Notes"
+            )
+        } catch ScriptRunnerError.automationDenied {
+            throw NotesBridgeError.accessDenied
         } catch ScriptRunnerError.timeout {
             throw NotesBridgeError.timeout
         } catch let ScriptRunnerError.nonZeroExit(msg) {

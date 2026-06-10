@@ -8,6 +8,7 @@ public enum MailBridgeError: LocalizedError, Sendable {
     case decodingFailed(String)
     case invalidMessageId(String)
     case invalidMailbox(String)
+    case accessDenied
 
     public var errorDescription: String? {
         switch self {
@@ -16,6 +17,7 @@ public enum MailBridgeError: LocalizedError, Sendable {
         case .decodingFailed: return "Failed to decode Mail response"
         case let .invalidMessageId(id): return "Invalid message id: \(id)"
         case let .invalidMailbox(name): return "Invalid mailbox name: \(name)"
+        case .accessDenied: return "Mail automation is not authorized. Grant Automation control of Mail and retry."
         }
     }
 
@@ -24,6 +26,15 @@ public enum MailBridgeError: LocalizedError, Sendable {
         switch self {
         case let .scriptFailed(msg): return msg
         case let .decodingFailed(msg): return msg
+        default: return nil
+        }
+    }
+}
+
+extension MailBridgeError: RemediableError {
+    public var remediation: Remediation? {
+        switch self {
+        case .accessDenied: return .automationAccess(app: "Mail", trigger: "pippin mail list")
         default: return nil
         }
     }
