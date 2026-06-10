@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-06-10
+
 ### Added
 
 - [feat] New MCP tool `actions_extract` surfaces `pippin actions extract` to agents — scan recent Sent mail and recently-modified Notes for commitments you made and emit draft reminders with confidence scores (or, with `create=true`, create them in a list). The AI extraction pass is now budget-aware (`BatchBudget`): under MCP it's bounded to ~50s and returns partial results with a `timedOut` warning instead of being SIGKILLed at the 60s child cap, so a large scan degrades gracefully rather than failing. CLI behavior is unchanged (unbounded, fail-fast on a malformed AI response). Closes pippin-hzg.
@@ -17,6 +19,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - [bug] Calendar event fetches are now bounded by a 15s wall-clock cap and surface a partial-results advisory, closing the last bridge that could hang indefinitely. `store.events(matching:)` is synchronous and could block forever on a wedged EventKit store; `calendar events/today/remaining/upcoming/agenda/search/conflicts` (and the digest's calendar section + smart-create conflict check) now run it on a bounded worker and, on timeout, return what they have plus a `Warning:` line (text/json) or envelope `warnings` entry (agent), matching the Reminders/Notes/Contacts/Mail soft-timeout pattern. Closes pippin-mgg.
 - [bug] Mail/Notes/Messages automation commands now fast-fail with `access_denied` (exit 4) instead of blocking to the soft-timeout when pippin isn't authorized to control the app via Automation. After pippin disclaims TCC responsibility it runs Apple Events under its own identity, so an un-granted MCP/background call previously hung ~22s per command (CLIIntegrationTests jumped 5s→94s). pippin now pre-checks `AEDeterminePermissionToAutomateTarget` before launching `osascript`: denied (or undetermined-and-unpromptable) returns immediately with a remediation pointing at the Automation pane, while an interactive terminal still surfaces the OS prompt on first call (self-healing). Closes pippin-qjf.
+
+## [0.32.0] - 2026-06-09
 
 ### Added
 
@@ -743,7 +747,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.32.1...HEAD
+[0.32.1]: https://github.com/mattwag05/pippin/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/mattwag05/pippin/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/mattwag05/pippin/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/mattwag05/pippin/compare/v0.29.0...v0.30.0
