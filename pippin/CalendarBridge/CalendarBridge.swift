@@ -59,6 +59,39 @@ public final class CalendarBridge: @unchecked Sendable {
         store = EKEventStore()
     }
 
+    // MARK: - Soft timeout
+
+    /// Outcome of an event query whose underlying `store.events(matching:)` walk
+    /// is bounded by `fetchEventsSync`'s 15s wall-clock cap. `timedOut` is
+    /// surfaced as a "partial results" advisory, mirroring
+    /// `RemindersBridge.Outcome` / `ContactsBridge.Outcome`. Events are mapped to
+    /// DTOs directly in Swift, so the shared type's conditional `Decodable`
+    /// conformance is never exercised here. (pippin-mgg)
+    public typealias Outcome<T> = BridgeOutcome<T>
+
+    /// Bound the *synchronous* `store.events(matching:)` walk with a 15s
+    /// wall-clock cap, mirroring `RemindersBridge.fetchRemindersSync`. Unlike
+    /// `fetchReminders` (callback-based), `events(matching:)` blocks the calling
+    /// thread, so the work runs on a background queue and we wait on a semaphore.
+    /// On timeout we return an empty set — never reading the still-mutating
+    /// `result` from the abandoned worker — plus `timedOut: true` so callers can
+    /// surface a partial-results advisory. A healthy fetch is near-instant; the
+    /// cap only bites a wedged EventKit store.
+    private func fetchEventsSync(predicate: NSPredicate) -> (events: [EKEvent], timedOut: Bool) {
+        let semaphore = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: [EKEvent] = []
+        // `self` (an @unchecked Sendable class) and `result` cross the @Sendable
+        // boundary fine; `predicate` (NSPredicate) is non-Sendable, so hand it
+        // over via a nonisolated(unsafe) local — it's only read on the worker.
+        nonisolated(unsafe) let pred = predicate
+        DispatchQueue.global().async {
+            result = self.store.events(matching: pred)
+            semaphore.signal()
+        }
+        let timedOut = semaphore.wait(timeout: .now() + .seconds(15)) == .timedOut
+        return (timedOut ? [] : result, timedOut)
+    }
+
     // MARK: - Access
 
     public func ensureAccess() async throws {
@@ -101,7 +134,7 @@ public final class CalendarBridge: @unchecked Sendable {
 
     // MARK: - Events
 
-    public func listEvents(from start: Date, to end: Date, calendarId: String? = nil) async throws -> [CalendarEvent] {
+    public func listEvents(from start: Date, to end: Date, calendarId: String? = nil) async throws -> Outcome<[CalendarEvent]> {
         try await ensureAccess()
         var filterCalendars: [EKCalendar]?
         if let calendarId {
@@ -111,17 +144,20 @@ public final class CalendarBridge: @unchecked Sendable {
             filterCalendars = [cal]
         }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: filterCalendars)
-        return store.events(matching: predicate)
+        let (events, timedOut) = fetchEventsSync(predicate: predicate)
+        let mapped = events
             .sorted { $0.startDate < $1.startDate }
             .map { mapEvent($0) }
+        return Outcome(results: mapped, timedOut: timedOut)
     }
 
     /// Returns existing events that overlap with [from, to), excluding an optional event ID.
     /// Cancelled events are excluded. Uses the same predicate-based lookup as `listEvents`.
-    public func findConflicts(from: Date, to: Date, excludingEventId: String? = nil) async throws -> [CalendarEvent] {
+    public func findConflicts(from: Date, to: Date, excludingEventId: String? = nil) async throws -> Outcome<[CalendarEvent]> {
         try await ensureAccess()
         let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
-        return store.events(matching: predicate)
+        let (events, timedOut) = fetchEventsSync(predicate: predicate)
+        let mapped = events
             .filter { event in
                 event.status != .canceled
                     && event.startDate < to
@@ -130,6 +166,7 @@ public final class CalendarBridge: @unchecked Sendable {
             }
             .sorted { $0.startDate < $1.startDate }
             .map { mapEvent($0) }
+        return Outcome(results: mapped, timedOut: timedOut)
     }
 
     public func getEvent(id: String) async throws -> CalendarEvent {
@@ -267,7 +304,10 @@ public final class CalendarBridge: @unchecked Sendable {
         let start = cal.date(byAdding: .year, value: -1, to: now)!
         let end = cal.date(byAdding: .year, value: 1, to: now)!
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
-        let matches = store.events(matching: predicate)
+        // Bounded fetch: a 15s cap here just yields a partial set to match
+        // against (→ not-found), so the flag isn't surfaced — same rationale as
+        // RemindersBridge.findReminderByPrefix.
+        let matches = fetchEventsSync(predicate: predicate).events
             .filter { $0.calendarItemIdentifier.hasPrefix(id) }
         // A recurring event surfaces one EKEvent per occurrence, all sharing the
         // same calendarItemIdentifier — so count alone would treat a single

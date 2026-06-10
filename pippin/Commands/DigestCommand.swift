@@ -115,7 +115,10 @@ public struct DigestCommand: AsyncParsableCommand {
                 async let todayEvents = bridge.listEvents(from: startOfDay, to: endOfDay)
                 async let upcomingEvents = bridge.listEvents(from: endOfDay, to: upcomingEnd)
                 let (today, upcoming) = try await (todayEvents, upcomingEvents)
-                calendarSection = DigestPayload.CalendarSection(today: today, upcoming: upcoming)
+                if today.timedOut || upcoming.timedOut {
+                    warnings.append("calendar: fetch did not complete within 15s — section may be incomplete")
+                }
+                calendarSection = DigestPayload.CalendarSection(today: today.results, upcoming: upcoming.results)
             } catch {
                 warnings.append("calendar: \(error.localizedDescription)")
             }

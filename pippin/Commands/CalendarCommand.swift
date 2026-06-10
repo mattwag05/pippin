@@ -15,6 +15,26 @@ public struct CalendarCommand: AsyncParsableCommand {
 
     public init() {}
 
+    /// Advisory surfaced when a Calendar event fetch hits the 15s wall-clock cap
+    /// in `CalendarBridge.fetchEventsSync` and returns partial results. Shared by
+    /// every event-listing subcommand so the wording stays consistent. (pippin-mgg)
+    static let timedOutHint = "calendar fetch did not complete within 15s — returning partial results; narrow the window with --from/--to (or --range) for a complete, faster fetch"
+
+    /// Write the soft-timeout warning to stderr for non-agent output. Agent mode
+    /// carries it in the envelope `warnings` array instead (see `timedOutWarnings`),
+    /// so a stderr line would be double-noise for MCP clients (which capture child
+    /// stderr). No-op unless `timedOut`.
+    static func warnTimedOut(_ output: OutputOptions, timedOut: Bool) {
+        guard timedOut, !output.isAgent else { return }
+        FileHandle.standardError.write(Data("Warning: \(timedOutHint)\n".utf8))
+    }
+
+    /// The `warnings` array to thread into an agent-mode `printAgent` call when a
+    /// fetch returned partial results; `nil` (omitted) otherwise.
+    static func timedOutWarnings(_ timedOut: Bool) -> [String]? {
+        timedOut ? [timedOutHint] : nil
+    }
+
     // MARK: - List (calendars)
 
     public struct ListCalendars: AsyncParsableCommand {
@@ -134,7 +154,9 @@ public struct CalendarCommand: AsyncParsableCommand {
             if let name = calendarName {
                 calendarId = try await resolveCalendarName(name, bridge: bridge)
             }
-            var events = try await bridge.listEvents(from: startDate, to: endDate, calendarId: calendarId)
+            let listOutcome = try await bridge.listEvents(from: startDate, to: endDate, calendarId: calendarId)
+            var events = listOutcome.results
+            CalendarCommand.warnTimedOut(output, timedOut: listOutcome.timedOut)
 
             if let typeFilter = type {
                 let allowedTypes = typeFilter.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
@@ -169,7 +191,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else if output.isAgent {
-                    try output.printAgent(page, fields: FieldProjection.parse(output.fields))
+                    try output.printAgent(page, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
                 } else {
                     printEventsTable(page.items)
                     if let cursor = page.nextCursor {
@@ -188,7 +210,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events, fields: FieldProjection.parse(output.fields))
+                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
             } else {
                 printEventsTable(events)
             }
@@ -529,7 +551,11 @@ public struct CalendarCommand: AsyncParsableCommand {
             // Check for conflicts (skipped when --allow-conflicts is set)
             var existingConflicts: [CalendarEvent] = []
             if !allowConflicts {
-                existingConflicts = try await bridge.findConflicts(from: startDate, to: endDate)
+                let conflictOutcome = try await bridge.findConflicts(from: startDate, to: endDate)
+                existingConflicts = conflictOutcome.results
+                if conflictOutcome.timedOut {
+                    fputs("Warning: conflict check did not complete within 15s — a conflicting event may have been missed.\n", stderr)
+                }
             }
 
             if dryRun {
@@ -606,7 +632,9 @@ public struct CalendarCommand: AsyncParsableCommand {
             let bridge = CalendarBridge()
             let start = Calendar.current.startOfDay(for: Date())
             let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
-            let events = try await bridge.listEvents(from: start, to: end)
+            let agendaOutcome = try await bridge.listEvents(from: start, to: end)
+            let events = agendaOutcome.results
+            CalendarCommand.warnTimedOut(output, timedOut: agendaOutcome.timedOut)
 
             let aiProvider = try AIProviderFactory.make(
                 providerFlag: provider,
@@ -664,7 +692,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
-                try output.printAgent(result)
+                try output.printAgent(result, warnings: CalendarCommand.timedOutWarnings(agendaOutcome.timedOut))
             } else {
                 print(briefing)
             }
@@ -723,7 +751,9 @@ public struct CalendarCommand: AsyncParsableCommand {
             if let name = calendarName {
                 calendarId = try await resolveCalendarName(name, bridge: bridge)
             }
-            var events = try await bridge.listEvents(from: startDate, to: endDate, calendarId: calendarId)
+            let searchOutcome = try await bridge.listEvents(from: startDate, to: endDate, calendarId: calendarId)
+            var events = searchOutcome.results
+            CalendarCommand.warnTimedOut(output, timedOut: searchOutcome.timedOut)
 
             let q = query.lowercased()
             events = events.filter { event in
@@ -740,7 +770,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events, fields: fieldList)
+                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(searchOutcome.timedOut), fields: fieldList)
             } else {
                 printEventsTable(events)
             }
@@ -762,13 +792,15 @@ public struct CalendarCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let (start, end) = parseRange("today")!
             let bridge = CalendarBridge()
-            let events = try await bridge.listEvents(from: start, to: end, calendarId: nil)
+            let outcome = try await bridge.listEvents(from: start, to: end, calendarId: nil)
+            let events = outcome.results
+            CalendarCommand.warnTimedOut(output, timedOut: outcome.timedOut)
             let fieldList = FieldProjection.parse(output.fields)
             if output.isJSON {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events, fields: fieldList)
+                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
             } else {
                 printEventsTable(events)
             }
@@ -791,13 +823,15 @@ public struct CalendarCommand: AsyncParsableCommand {
             let now = Date()
             let endOfToday = parseRange("today")!.end
             let bridge = CalendarBridge()
-            let events = try await bridge.listEvents(from: now, to: endOfToday, calendarId: nil)
+            let outcome = try await bridge.listEvents(from: now, to: endOfToday, calendarId: nil)
+            let events = outcome.results
+            CalendarCommand.warnTimedOut(output, timedOut: outcome.timedOut)
             let fieldList = FieldProjection.parse(output.fields)
             if output.isJSON {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events, fields: fieldList)
+                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
             } else {
                 printEventsTable(events)
             }
@@ -852,7 +886,9 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
 
             let bridge = CalendarBridge()
-            let events = try await bridge.listEvents(from: startDate, to: endDate)
+            let outcome = try await bridge.listEvents(from: startDate, to: endDate)
+            let events = outcome.results
+            CalendarCommand.warnTimedOut(output, timedOut: outcome.timedOut)
 
             // Pre-parse dates once; events with unparseable dates are skipped
             let parsedEvents = events.compactMap { event -> (event: CalendarEvent, start: Date, end: Date)? in
@@ -886,7 +922,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             if output.isJSON {
                 try printJSON(conflicts)
             } else if output.isAgent {
-                try output.printAgent(conflicts)
+                try output.printAgent(conflicts, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut))
             } else {
                 if conflicts.isEmpty {
                     print("No conflicts found.")
@@ -927,7 +963,9 @@ public struct CalendarCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let (start, end) = parseRange("today+6")! // today + 6 more days = 7 days total
             let bridge = CalendarBridge()
-            let events = try await bridge.listEvents(from: start, to: end, calendarId: nil)
+            let outcome = try await bridge.listEvents(from: start, to: end, calendarId: nil)
+            let events = outcome.results
+            CalendarCommand.warnTimedOut(output, timedOut: outcome.timedOut)
             let fieldList = FieldProjection.parse(output.fields)
 
             if pagination.isActive {
@@ -946,7 +984,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else if output.isAgent {
-                    try output.printAgent(page, fields: fieldList)
+                    try output.printAgent(page, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
                 } else {
                     printEventsTable(page.items)
                     if let cursor = page.nextCursor {
@@ -960,7 +998,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let data = try events.jsonData(fields: fieldList)
                 print(String(data: data, encoding: .utf8)!)
             } else if output.isAgent {
-                try output.printAgent(events, fields: fieldList)
+                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
             } else {
                 printEventsTable(events)
             }
