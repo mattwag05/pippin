@@ -14,6 +14,12 @@ public struct MailCommand: AsyncParsableCommand {
     /// honoring contact-resolution precedence: explicit `--no-contacts` /
     /// `--contacts` flags override the `resolveContacts` config default (ON when
     /// unset). See `AIProviderFactory.shouldResolveContacts`.
+    ///
+    /// When resolution is enabled, builds the Contacts reverse index once and
+    /// resolves each `From` header (which `ContactIndex` unwraps from `Name <addr>`
+    /// form). Best-effort: an empty index (Contacts not authorized) leaves messages
+    /// unchanged. Runs after the JXA bridge fetch — CNContactStore is native Swift,
+    /// never in osascript.
     static func enrichContacts(
         _ messages: [MailMessage],
         noContacts: Bool,
@@ -25,14 +31,6 @@ public struct MailCommand: AsyncParsableCommand {
             config: AIProviderFactory.loadConfig()
         )
         guard resolve, !messages.isEmpty else { return messages }
-        return await enrichContactsResolved(messages)
-    }
-
-    /// Builds the Contacts reverse index once and resolves each `From` header
-    /// (which `ContactIndex` unwraps from `Name <addr>` form). Best-effort: an
-    /// empty index (Contacts not authorized) leaves messages unchanged. Runs after
-    /// the JXA bridge fetch — CNContactStore is native Swift, never in osascript.
-    private static func enrichContactsResolved(_ messages: [MailMessage]) async -> [MailMessage] {
         // CNContactStore enumeration is synchronous/blocking — hop off the
         // cooperative pool (per ContactsBridge.contactIndex's contract).
         let index = await detachBlocking { ContactsBridge.contactIndex() }
