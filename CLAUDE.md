@@ -137,6 +137,7 @@ End-to-end procedure lives in the **release skill**: [docs/skills/release/SKILL.
 - **Skip** pure housekeeping (beads status/export, gitignore tweaks, the changelog edit itself).
 - The changelog is **docs-only** → exempt from the `/simplify` pre-push gate; commit it alongside the fix or immediately after.
 - The release skill consumes `### [Unreleased]` to cut version notes, so keeping it current is load-bearing, not just courtesy.
+- **CHANGELOG orphan check:** before releasing, run `grep "^## \[" CHANGELOG.md` to verify every version has a header. Multiple `[Unreleased]` additions across commits can silently drop a previous version's `## [X.Y.Z]` line.
 
 ## CI
 
@@ -186,7 +187,10 @@ Don't change these command shapes or agent JSON output structure without updatin
 
 **Talia (Hermes-Agent on M5, `~/.local/bin/hermes`):**
 Talia runs as Hermes-Agent on the M5 MacBook Pro since 2026-04-22 (replaced the prior OpenClaw/Talia install on the M4 Air). Pippin is registered as a stdio MCP (`pippin mcp-server`) — Talia drives the full tool registry (mail/calendar/reminders/contacts/notes/memos/messages/digest/jobs/batch) directly. `memos summarize` is the primary AI-powered feature; ensure Ollama is running on M5 before invocation. Envelope v1 applies — `--format agent` payloads live under `.data`.
-- **Talia's MCP `command:` is `~/.local/bin/pippin`** (`~/.hermes/config.yaml`, repointed 2026-06-09 from the versioned brew path; also added to the gateway command allowlist). This is the **stable, TCC-granted** path — required so reminders/calendar/mail work from the gateway launcher (see the TCC correction in the CI section / pippin-0vr / pippin-6sf). After editing the binary path or the AI backend in that config, restart the gateway: `launchctl kickstart -k gui/$(id -u)/ai.hermes.gateway`. If Talia hits `access_denied` on Reminders/Calendar/Contacts, the fix is to grant `~/.local/bin/pippin` once via `pippin permissions` in a terminal — NOT to grant the launcher.
+- **Talia's MCP `command:` is `~/.local/bin/pippin`** (`~/.hermes/config.yaml`, repointed 2026-06-09 from the versioned brew path; also added to the gateway command allowlist). This is the **stable, TCC-granted** path — required so reminders/calendar/mail work from the gateway launcher (see the TCC correction in the CI section / pippin-0vr / pippin-6sf). After editing the binary path or the AI backend in that config, restart BOTH Talia services (both spawn `pippin mcp-server` children and both must be on the new binary after `make install`):
+  - `launchctl kickstart -k gui/$(id -u)/ai.hermes.gateway`
+  - `launchctl kickstart -k gui/$(id -u)/ai.hermes.webui`
+  If Talia hits `access_denied` on Reminders/Calendar/Contacts, the fix is to grant `~/.local/bin/pippin` once via `pippin permissions` in a terminal — NOT to grant the launcher.
 
 **MCP clients via `pippin mcp-server`:**
 Claude Code, Claude Desktop, and any other MCP-compatible client may attach to pippin over stdio and call tools like `mail_list`, `calendar_today`, `reminders_create`, `status`. The MCP server **shells out to `pippin <cmd> --format agent`** for every tool call — so any change to an agent-mode JSON shape propagates automatically (including envelope v1), but any change to a CLI flag name or a snake_case tool-level key (like `AgentError.code`) is a breaking change for MCP clients. Tool registry lives in `pippin/MCP/ToolRegistry.swift`; adding a new tool is one entry. See `docs/mcp-server.md` for the full tool list and wiring instructions.

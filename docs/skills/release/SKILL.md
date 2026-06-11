@@ -113,9 +113,12 @@ If `which` returns `~/.local/bin/pippin`, also run:
 
 ```bash
 make install
+# Restart both Talia services so their children pick up the new inode:
+launchctl kickstart -k gui/$(id -u)/ai.hermes.gateway
+launchctl kickstart -k gui/$(id -u)/ai.hermes.webui
 ```
 
-The claude-plugins `pippin` plugin's `.mcp.json` uses bare `pippin`, so the shadowed version is what Claude Code actually spawns as the MCP server — both must be current.
+The claude-plugins `pippin` plugin's `.mcp.json` uses bare `pippin`, so the shadowed version is what Claude Code actually spawns as the MCP server — both must be current. `ai.hermes.webui` is a **second** launchd-managed service that also spawns `pippin mcp-server` children; both services must be restarted or the webui's children stay on the stale binary inode.
 
 ## Failure recovery
 
