@@ -66,6 +66,17 @@ Destructive actions (`mail send`, `reminders delete`, `calendar delete`, `memos 
 
 Heavy AI subsystems (`mail index`, `mail triage`, `audio transcribe`, browser automation) remain out of scope — they need longer-running or streaming UX than the one-shot `tools/call` flow supports. Memos transcription/summarization are exposed because they're single-shot per memo and agents reach for them often enough that the heavyweight cost is worth the ergonomics.
 
+### `messages_search` — scan-cap truncation
+
+Modern macOS stores most message bodies only in a `attributedBody` typedstream blob, not the searchable `text` column. SQLite can't `LIKE` into the blob, so `messages_search` decodes + substring-matches it in Swift — but only for the **most-recent `scanned_attributed_cap` (1500)** blob-only messages, to bound the work. Messages on the `text` column are matched across all history; blob-only messages older than that window are **not** searched.
+
+The `data` payload therefore carries two extra fields so a caller can tell "definitely absent" from "outside the scanned window":
+
+- `scan_truncated` (bool) — `true` when the blob decode-scan hit its cap (more blob-only messages existed than were scanned). **When `true`, an empty or partial match set is NOT authoritative** — older matches may exist beyond the scanned window. Narrow with `--since` (it bounds both query paths) or treat "no match" as inconclusive.
+- `scanned_attributed_cap` (int) — the cap that bounded the scan (the number of most-recent blob-only messages examined).
+
+These are **additive** (non-breaking) — existing fields (`matches`, `excluded_count`, `query`) are unchanged.
+
 ## How it works
 
 Each `tools/call` spawns `pippin <subcommand> --format agent` as a child process and returns the child's compact JSON stdout as the tool result. This guarantees the MCP path stays in perfect parity with the existing CLI path used by the morning-briefing task and manual invocations.

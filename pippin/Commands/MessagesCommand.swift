@@ -133,7 +133,7 @@ public struct MessagesCommand: AsyncParsableCommand {
             let since = Date().addingTimeInterval(-Double(sinceHours) * 3600)
             let excluded = Set(AIProviderFactory.loadConfig()?.messages?.excludedThreads ?? [])
             let db = try MessagesDatabase(dbPath: MessagesDatabase.defaultDBPath())
-            let (matches, excludedCount) = try db.searchMessages(
+            let (matches, excludedCount, scanTruncated) = try db.searchMessages(
                 query: query,
                 since: since,
                 limit: limit,
@@ -143,7 +143,9 @@ public struct MessagesCommand: AsyncParsableCommand {
             let payload = MessagesSearchResult(
                 matches: matches,
                 excludedCount: excludedCount,
-                query: query
+                query: query,
+                scanTruncated: scanTruncated,
+                scannedAttributedCap: MessagesDatabase.searchAttributedScanCap
             )
             MessagesAuditLog.record(
                 operation: "search",
@@ -158,6 +160,7 @@ public struct MessagesCommand: AsyncParsableCommand {
         private func printSearchResults(_ payload: MessagesSearchResult) {
             if payload.matches.isEmpty {
                 print("No messages matching '\(payload.query)'.")
+                printScanTruncationNote(payload)
                 return
             }
             for m in payload.matches {
@@ -165,6 +168,15 @@ public struct MessagesCommand: AsyncParsableCommand {
                 let text = m.text ?? "(no text)"
                 print("• \(m.date)  \(who): \(MessagesDatabase.preview(text))")
             }
+            printScanTruncationNote(payload)
+        }
+
+        private func printScanTruncationNote(_ payload: MessagesSearchResult) {
+            guard payload.scanTruncated else { return }
+            print("""
+            (Scan truncated: only the \(payload.scannedAttributedCap) most-recent rich-text-only \
+            messages were searched — older matches may exist outside this window.)
+            """)
         }
     }
 

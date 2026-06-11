@@ -143,7 +143,7 @@ final class MessagesDatabaseTests: XCTestCase {
 
     func testSearchMessagesWithIntMaxLimitDoesNotTrap() throws {
         let db = try MessagesDatabase(dbQueue: makeFixtureDB())
-        let (matches, _) = try db.searchMessages(query: "call", limit: Int.max, excluded: ["x"])
+        let (matches, _, _) = try db.searchMessages(query: "call", limit: Int.max, excluded: ["x"])
         XCTAssertEqual(matches.count, 1, "huge limit returns matches, no crash")
     }
 
@@ -168,15 +168,16 @@ final class MessagesDatabaseTests: XCTestCase {
 
     func testSearchMatchesSubstring() throws {
         let db = try MessagesDatabase(dbQueue: makeFixtureDB())
-        let (matches, excluded) = try db.searchMessages(query: "lunch", limit: 50)
+        let (matches, excluded, scanTruncated) = try db.searchMessages(query: "lunch", limit: 50)
         XCTAssertEqual(matches.count, 1)
         XCTAssertEqual(excluded, 0)
+        XCTAssertFalse(scanTruncated, "small fixture is well under the scan cap")
         XCTAssertEqual(matches.first?.text, "Team lunch Friday?")
     }
 
     func testSearchFiltersExclude() throws {
         let db = try MessagesDatabase(dbQueue: makeFixtureDB())
-        let (matches, excluded) = try db.searchMessages(
+        let (matches, excluded, _) = try db.searchMessages(
             query: "lunch",
             limit: 50,
             excluded: ["iMessage;-;groupA"]
@@ -203,7 +204,7 @@ final class MessagesDatabaseTests: XCTestCase {
             """, arguments: [ns, ns - 1])
         }
         let db = try MessagesDatabase(dbQueue: fixture)
-        let (matches, _) = try db.searchMessages(query: "100%", limit: 50)
+        let (matches, _, _) = try db.searchMessages(query: "100%", limit: 50)
         XCTAssertEqual(matches.count, 1)
         XCTAssertEqual(matches.first?.text, "100% complete")
     }
@@ -226,7 +227,7 @@ final class MessagesDatabaseTests: XCTestCase {
             """, arguments: [ns, ns - 1])
         }
         let db = try MessagesDatabase(dbQueue: fixture)
-        let (matches, _) = try db.searchMessages(query: "hello world", limit: 50)
+        let (matches, _, _) = try db.searchMessages(query: "hello world", limit: 50)
         XCTAssertEqual(matches.count, 1)
         XCTAssertEqual(matches.first?.id, "m-active")
     }
@@ -348,7 +349,7 @@ final class MessagesDatabaseTests: XCTestCase {
 
     func testSearchResolvesSenderName() throws {
         let db = try MessagesDatabase(dbQueue: makeFixtureDB())
-        let (matches, _) = try db.searchMessages(query: "lunch", contactIndex: contactFixtureIndex())
+        let (matches, _, _) = try db.searchMessages(query: "lunch", contactIndex: contactFixtureIndex())
         XCTAssertEqual(matches.first?.fromDisplayName, "Alice Example")
     }
 
@@ -384,7 +385,53 @@ final class MessagesDatabaseTests: XCTestCase {
         XCTAssertEqual(messages.first?.text, "Hello, typedstream world! 🌍")
 
         // search must find attributedBody-only messages via the decode-scan path.
-        let (matches, _) = try mdb.searchMessages(query: "typedstream", limit: 10)
+        let (matches, _, scanTruncated) = try mdb.searchMessages(query: "typedstream", limit: 10)
         XCTAssertEqual(matches.first?.text, "Hello, typedstream world! 🌍")
+        XCTAssertFalse(scanTruncated, "one blob-only row is well under the scan cap")
+    }
+
+    // MARK: - Scan-cap truncation visibility (pippin-wve)
+
+    /// Seed `count` attributedBody-only messages (text NULL) into a single chat
+    /// so the search decode-scan path (Q2) has more than the scan cap to chew on.
+    private func makeBlobOnlyFixtureDB(count: Int) throws -> DatabaseQueue {
+        let blob = try XCTUnwrap(Data(base64Encoded: Self.goldenAttributedBody))
+        let queue = try makeEmptySchemaDB()
+        try queue.write { db in
+            try db.execute(sql: """
+            INSERT INTO chat (guid, chat_identifier, service_name, style, is_archived)
+                VALUES ('blob-chat', 'blob-chat', 'iMessage', 45, 0);
+            """)
+            let base = MessagesDatabase.appleNanos(from: Date(timeIntervalSince1970: 1_750_000_000))
+            for i in 0 ..< count {
+                // Descending dates so row 0 is the most recent. text NULL → blob-only.
+                try db.execute(
+                    sql: """
+                    INSERT INTO message (guid, text, attributedBody, date, is_from_me, is_read, service)
+                        VALUES (?, NULL, ?, ?, 0, 1, 'iMessage');
+                    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, last_insert_rowid());
+                    """,
+                    arguments: ["blob-\(i)", blob, base - Int64(i) * 1_000_000_000]
+                )
+            }
+        }
+        return queue
+    }
+
+    func testSearchSetsScanTruncatedWhenBlobScanHitsCap() throws {
+        // One more blob-only row than the cap → the most-recent `cap` are scanned,
+        // the oldest goes unscanned, so the result must flag the truncation.
+        let cap = MessagesDatabase.searchAttributedScanCap
+        let db = try MessagesDatabase(dbQueue: makeBlobOnlyFixtureDB(count: cap + 1))
+        let (_, _, scanTruncated) = try db.searchMessages(query: "typedstream", limit: 50)
+        XCTAssertTrue(scanTruncated, "more blob-only rows than the cap → scan truncated")
+    }
+
+    func testSearchDoesNotSetScanTruncatedUnderCap() throws {
+        // Exactly cap-1 blob-only rows: all of them are scanned, nothing left out.
+        let cap = MessagesDatabase.searchAttributedScanCap
+        let db = try MessagesDatabase(dbQueue: makeBlobOnlyFixtureDB(count: cap - 1))
+        let (_, _, scanTruncated) = try db.searchMessages(query: "typedstream", limit: 50)
+        XCTAssertFalse(scanTruncated, "blob-only rows under the cap → no truncation")
     }
 }
