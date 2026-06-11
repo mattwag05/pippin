@@ -20,12 +20,13 @@ public struct MessagesCommand: AsyncParsableCommand {
     /// Resolve the effective contact-resolution decision (flag > config > default)
     /// and build the index accordingly. `--no-contacts` / `--contacts` flags
     /// override the `resolveContacts` config default. See
-    /// `AIProviderFactory.shouldResolveContacts`.
-    static func contactIndex(noContacts: Bool, contacts: Bool) -> ContactIndex {
+    /// `AIProviderFactory.shouldResolveContacts`. Pass `config` to reuse a config
+    /// the caller already loaded (avoids re-reading `config.json` from disk).
+    static func contactIndex(noContacts: Bool, contacts: Bool, config: PippinConfig? = nil) -> ContactIndex {
         let resolve = AIProviderFactory.shouldResolveContacts(
             noContactsFlag: noContacts,
             contactsFlag: contacts,
-            config: AIProviderFactory.loadConfig()
+            config: config ?? AIProviderFactory.loadConfig()
         )
         return contactIndex(disabled: !resolve)
     }
@@ -55,16 +56,17 @@ public struct MessagesCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let config = AIProviderFactory.loadConfig()?.messages
-            let windowHours = sinceHours ?? config?.defaultWindowHours ?? 48
+            let config = AIProviderFactory.loadConfig()
+            let messagesConfig = config?.messages
+            let windowHours = sinceHours ?? messagesConfig?.defaultWindowHours ?? 48
             let since = Date().addingTimeInterval(-Double(windowHours) * 3600)
-            let excluded = Set(config?.excludedThreads ?? [])
+            let excluded = Set(messagesConfig?.excludedThreads ?? [])
             let db = try MessagesDatabase(dbPath: MessagesDatabase.defaultDBPath())
             let (convs, excludedCount) = try db.listConversations(
                 since: since,
                 limit: limit,
                 excluded: excluded,
-                contactIndex: MessagesCommand.contactIndex(noContacts: noContacts, contacts: contacts)
+                contactIndex: MessagesCommand.contactIndex(noContacts: noContacts, contacts: contacts, config: config)
             )
             let payload = MessagesListResult(
                 conversations: convs,
@@ -131,14 +133,15 @@ public struct MessagesCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let since = Date().addingTimeInterval(-Double(sinceHours) * 3600)
-            let excluded = Set(AIProviderFactory.loadConfig()?.messages?.excludedThreads ?? [])
+            let config = AIProviderFactory.loadConfig()
+            let excluded = Set(config?.messages?.excludedThreads ?? [])
             let db = try MessagesDatabase(dbPath: MessagesDatabase.defaultDBPath())
             let (matches, excludedCount, scanTruncated) = try db.searchMessages(
                 query: query,
                 since: since,
                 limit: limit,
                 excluded: excluded,
-                contactIndex: MessagesCommand.contactIndex(noContacts: noContacts, contacts: contacts)
+                contactIndex: MessagesCommand.contactIndex(noContacts: noContacts, contacts: contacts, config: config)
             )
             let payload = MessagesSearchResult(
                 matches: matches,
