@@ -128,17 +128,36 @@ public struct MessagesSearchResult: Codable, Sendable {
     public let matches: [MessageItem]
     public let excludedCount: Int
     public let query: String
+    /// True when the `attributedBody` decode-scan hit its recency cap, so older
+    /// blob-only messages went unscanned. When true, a "no match" (or a partial
+    /// match set) is NOT authoritative — there may be older matches outside the
+    /// scanned window. (pippin-wve)
+    public let scanTruncated: Bool
+    /// The cap that bounded the `attributedBody` decode-scan (number of
+    /// most-recent blob-only messages examined). Surfaced alongside
+    /// `scanTruncated` so callers can report the scanned depth.
+    public let scannedAttributedCap: Int
 
-    public init(matches: [MessageItem], excludedCount: Int, query: String) {
+    public init(
+        matches: [MessageItem],
+        excludedCount: Int,
+        query: String,
+        scanTruncated: Bool,
+        scannedAttributedCap: Int
+    ) {
         self.matches = matches
         self.excludedCount = excludedCount
         self.query = query
+        self.scanTruncated = scanTruncated
+        self.scannedAttributedCap = scannedAttributedCap
     }
 
     private enum CodingKeys: String, CodingKey {
         case matches
         case excludedCount = "excluded_count"
         case query
+        case scanTruncated = "scan_truncated"
+        case scannedAttributedCap = "scanned_attributed_cap"
     }
 }
 

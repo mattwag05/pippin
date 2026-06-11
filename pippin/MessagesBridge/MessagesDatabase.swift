@@ -183,7 +183,7 @@ public final class MessagesDatabase: Sendable {
         limit: Int = 50,
         excluded: Set<String> = [],
         contactIndex: ContactIndex = ContactIndex()
-    ) throws -> (matches: [MessageItem], excludedCount: Int) {
+    ) throws -> (matches: [MessageItem], excludedCount: Int, scanTruncated: Bool) {
         let limit = Self.clampLimit(limit)
         let cutoffNs = since.map(Self.appleNanos(from:))
         let needle = query.lowercased()
@@ -224,6 +224,11 @@ public final class MessagesDatabase: Sendable {
             ORDER BY m.date DESC LIMIT ?
             """, arguments: StatementArguments(q2args))
 
+            // If Q2 returned a full cap's worth of blob-only rows, there may be
+            // older blob-only messages that went unscanned — a "no match" here
+            // is therefore not authoritative. (pippin-wve)
+            let scanTruncated = q2.count >= Self.searchAttributedScanCap
+
             // Merge, dedup by guid. Q1 rows already matched via LIKE; Q2 rows are
             // confirmed with a Swift substring check on the decoded body.
             var byGuid: [String: MessageItem] = [:]
@@ -252,7 +257,7 @@ public final class MessagesDatabase: Sendable {
                 results.append(item)
                 if results.count >= limit { break }
             }
-            return (results, excludedCount)
+            return (results, excludedCount, scanTruncated)
         }
     }
 
