@@ -9,6 +9,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] New `resolveContacts` config key (top-level in `~/.config/pippin/config.json`) sets a global default for Apple Contacts name resolution on `mail`/`messages` output. Set it to `false` to skip the per-command address-book enumeration everywhere — useful for fan-out callers like the morning briefing (which runs `mail list` per account + `messages list`) that would otherwise pay an N+1 `CNContactStore` enumeration per command. A new per-command `--contacts` flag force-enables resolution over a disabling config; precedence is `--no-contacts`/`--contacts` flag > `resolveContacts` config > built-in default (ON, unchanged). Closes pippin-1jm.
+
+### Documentation
+
+- [docs] Documented the phone-number matching heuristic: handles are matched on digits only with a last-10-digit fallback (drops a leading country code), so two numbers sharing the same last 10 digits collide — resolved first-write-wins and shown as a confident contact name with no fuzzy-match signal. README § Contact Name Resolution. Closes pippin-1jm.
+
 ## [0.32.1] - 2026-06-10
 
 ### Added

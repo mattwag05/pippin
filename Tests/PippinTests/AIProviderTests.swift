@@ -155,6 +155,60 @@ final class AIProviderTests: XCTestCase {
         XCTAssertEqual(config?.ai?.openai?.apiKey, "mnfst_x")
     }
 
+    // MARK: - resolveContacts config + precedence (pippin-1jm)
+
+    func testLoadConfigResolveContactsFalse() throws {
+        let tmpFile = NSTemporaryDirectory() + UUID().uuidString + ".json"
+        try #"{"resolveContacts": false}"#.write(toFile: tmpFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: tmpFile) }
+        let config = AIProviderFactory.loadConfig(path: tmpFile)
+        XCTAssertEqual(config?.resolveContacts, false)
+    }
+
+    func testResolveContactsDefaultsOnWhenConfigAbsent() {
+        // No config and no flags → resolution ON (non-breaking default).
+        XCTAssertTrue(AIProviderFactory.shouldResolveContacts(noContactsFlag: false))
+    }
+
+    func testResolveContactsDefaultsOnWhenConfigUnset() {
+        // Config present but resolveContacts unset → ON.
+        let config = PippinConfig(ai: nil, messages: nil, resolveContacts: nil)
+        XCTAssertTrue(AIProviderFactory.shouldResolveContacts(noContactsFlag: false, config: config))
+    }
+
+    func testResolveContactsConfigFalseDisables() {
+        let config = PippinConfig(ai: nil, messages: nil, resolveContacts: false)
+        XCTAssertFalse(AIProviderFactory.shouldResolveContacts(noContactsFlag: false, config: config))
+    }
+
+    func testResolveContactsConfigTrueEnables() {
+        let config = PippinConfig(ai: nil, messages: nil, resolveContacts: true)
+        XCTAssertTrue(AIProviderFactory.shouldResolveContacts(noContactsFlag: false, config: config))
+    }
+
+    func testResolveContactsNoContactsFlagOverridesConfigTrue() {
+        // --no-contacts wins over a config that enables resolution.
+        let config = PippinConfig(ai: nil, messages: nil, resolveContacts: true)
+        XCTAssertFalse(
+            AIProviderFactory.shouldResolveContacts(noContactsFlag: true, contactsFlag: false, config: config)
+        )
+    }
+
+    func testResolveContactsFlagOverridesConfigFalse() {
+        // --contacts wins over a config that disables resolution.
+        let config = PippinConfig(ai: nil, messages: nil, resolveContacts: false)
+        XCTAssertTrue(
+            AIProviderFactory.shouldResolveContacts(noContactsFlag: false, contactsFlag: true, config: config)
+        )
+    }
+
+    func testResolveContactsNoContactsBeatsContactsWhenBothSet() {
+        // If both flags are somehow set, OFF (the cheap/safe choice) wins.
+        XCTAssertFalse(
+            AIProviderFactory.shouldResolveContacts(noContactsFlag: true, contactsFlag: true, config: nil)
+        )
+    }
+
     // MARK: - AIProviderError descriptions
 
     func testErrorDescriptions() {
