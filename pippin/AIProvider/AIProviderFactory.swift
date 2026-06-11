@@ -6,6 +6,17 @@ public struct PippinConfig: Codable, Sendable {
     public var ai: AIConfig?
     public var messages: MessagesConfig?
 
+    /// Global default for Apple Contacts name resolution on Mail/Messages output.
+    /// When `false`, sender/participant handles are NOT resolved to contact names,
+    /// which skips the per-command `CNContactStore` enumeration. Useful for agents
+    /// and the morning briefing that call `mail list` once per account + `messages
+    /// list` — collapsing what would be N+1 address-book enumerations per run down
+    /// to zero, without having to pass `--no-contacts` on every command. `nil` /
+    /// absent keeps resolution ON (non-breaking default). A per-command
+    /// `--no-contacts` / `--contacts` flag overrides this. Precedence is computed
+    /// by `AIProviderFactory.shouldResolveContacts`.
+    public var resolveContacts: Bool?
+
     public struct AIConfig: Codable, Sendable {
         public var provider: String?
         public var ollama: OllamaConfig?
@@ -59,6 +70,29 @@ public enum AIProviderFactory {
             return nil
         }
         return config
+    }
+
+    /// Decide whether Mail/Messages output should resolve handles to Apple
+    /// Contacts names, honoring precedence: explicit CLI flag > config > built-in
+    /// default (ON).
+    ///
+    /// - Parameters:
+    ///   - noContactsFlag: `true` when `--no-contacts` was passed (force OFF).
+    ///   - contactsFlag:   `true` when `--contacts` was passed (force ON).
+    ///   - config: Loaded config, or `nil`. `resolveContacts == false` disables.
+    /// - Returns: `true` to build the contact index, `false` to skip it.
+    ///
+    /// `--no-contacts` wins over `--contacts` if both are somehow set (OFF is the
+    /// safe/cheap choice). When neither flag is set, the config default applies;
+    /// when the config is absent or `resolveContacts` is unset, resolution is ON.
+    public static func shouldResolveContacts(
+        noContactsFlag: Bool,
+        contactsFlag: Bool = false,
+        config: PippinConfig? = nil
+    ) -> Bool {
+        if noContactsFlag { return false }
+        if contactsFlag { return true }
+        return config?.resolveContacts ?? true
     }
 
     /// Persist a config to disk, creating parent directories as needed.

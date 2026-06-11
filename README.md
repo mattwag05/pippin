@@ -356,6 +356,22 @@ pippin memos summarize <id> --provider claude
 
 > **Model note:** Gemma 4 is recommended over Qwen 3.5 for pippin's summarization tasks — Qwen's chain-of-thought reasoning adds ~2x latency without proportional quality gains on structured extraction.
 
+## Contact Name Resolution
+
+`mail list`/`search`/`activity`/`show` and `messages list`/`search`/`show` resolve each sender/participant handle (phone number or email) to its Apple Contacts display name. Each command builds the index from a single `CNContactStore` enumeration; resolution is best-effort, so when Contacts isn't authorized it silently no-ops rather than failing.
+
+**Disabling resolution.** Building the index is one address-book enumeration *per command*. Workflows that fan out — e.g. a morning briefing that runs `mail list` once per account plus `messages list` — pay it on every call. You can turn resolution off globally with a config default instead of passing `--no-contacts` everywhere:
+
+```json
+{
+  "resolveContacts": false
+}
+```
+
+Precedence (highest first): the per-command `--no-contacts` / `--contacts` flag, then the `resolveContacts` config key, then the built-in default (**ON**). So `--contacts` forces resolution on even when the config disables it, and `--no-contacts` forces it off even when the config enables it. Omitting both `resolveContacts` and the flags keeps the historical behavior (resolution on).
+
+**Phone-matching heuristic — last-10-digits collision.** Phone numbers are matched by digits only: the full digit string first, then, when a number has more than 10 digits, its **last 10** (which drops a leading country code, so `+1 555 123 4567` and `555-123-4567` resolve to the same contact). This means two numbers that differ only in their country code but **share the same last 10 digits** collide. On collision the index is **first-write-wins** (the first contact enumerated keeps the key), and the resolved name is shown as a confident display name with **no fuzzy-match indicator** — there's no signal that a near-match occurred. This is rare in practice but worth knowing: a resolved sender name on a foreign-numbered handle could in principle belong to a domestic contact sharing the trailing 10 digits. Pass `--no-contacts` (or set `resolveContacts: false`) if you need the raw handle with no resolution.
+
 ## Sample Workflows
 
 ```bash
