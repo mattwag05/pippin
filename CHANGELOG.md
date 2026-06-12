@@ -11,6 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [feat] AI provider calls (Ollama / Claude / OpenAI-compatible) now retry transient failures — HTTP 429 + 5xx and connection-level network blips — up to twice with short backoff, instead of failing on the first hiccup. Retries share the original request's time budget (so total wall-clock stays under the MCP 60s child cap) and each attempt gets the remaining budget as its timeout; timeouts and non-transient errors (4xx, bad API key, unreachable server, unparseable body) are never retried. Native structured-output (JSON) enforcement is tracked separately in pippin-us2. Closes pippin-cfg.
 - [feat] New `resolveContacts` config key (top-level in `~/.config/pippin/config.json`) sets a global default for Apple Contacts name resolution on `mail`/`messages` output. Set it to `false` to skip the per-command address-book enumeration everywhere — useful for fan-out callers like the morning briefing (which runs `mail list` per account + `messages list`) that would otherwise pay an N+1 `CNContactStore` enumeration per command. A new per-command `--contacts` flag force-enables resolution over a disabling config; precedence is `--no-contacts`/`--contacts` flag > `resolveContacts` config > built-in default (ON, unchanged). Closes pippin-1jm.
 
 ### Fixed
