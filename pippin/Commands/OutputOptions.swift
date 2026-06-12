@@ -42,15 +42,20 @@ public struct OutputOptions: ParsableArguments {
 
     /// Print `payload` as a compact agent-mode envelope, computing
     /// `duration_ms` from `startedAt`. Pass non-empty `warnings` to surface
-    /// non-fatal advisories alongside the payload. When `fields` is non-empty
+    /// non-fatal advisories alongside the payload.
+    ///
+    /// Field projection defaults to the parsed `--fields` (`self.fields`), so
+    /// EVERY call site honors `--fields` without threading it — an explicit
+    /// `fields:` argument still overrides. When the effective list is non-empty
     /// the payload's `data` is projected to just those top-level keys.
     public func printAgent(
         _ payload: some Encodable,
         warnings: [String]? = nil,
         fields: [String]? = nil
     ) throws {
-        if let fields, !fields.isEmpty {
-            try printAgentProjectedJSON(payload, fields: fields, startedAt: startedAt, warnings: warnings)
+        let effectiveFields = fields ?? FieldProjection.parse(self.fields)
+        if let effectiveFields, !effectiveFields.isEmpty {
+            try printAgentProjectedJSON(payload, fields: effectiveFields, startedAt: startedAt, warnings: warnings)
         } else {
             try printAgentJSON(payload, startedAt: startedAt, warnings: warnings)
         }
@@ -65,9 +70,9 @@ public struct OutputOptions: ParsableArguments {
     /// - Text: stderr `Warning:` line + caller's `renderText` closure +
     ///   trailing `(partial results — <hint>)` trailer.
     ///
-    /// Pass `fields` (a parsed `--fields` list) to project the structured
-    /// output to just those top-level keys. Projection applies in both json and
-    /// agent modes; text rendering is unaffected.
+    /// Field projection defaults to the parsed `--fields` (`self.fields`) — an
+    /// explicit `fields:` argument overrides it. Projection applies in both json
+    /// and agent modes; text rendering is unaffected.
     public func emit<T: Encodable>(
         _ payload: T,
         timedOut: Bool = false,
@@ -75,19 +80,20 @@ public struct OutputOptions: ParsableArguments {
         fields: [String]? = nil,
         renderText: () -> Void
     ) throws {
+        let effectiveFields = fields ?? FieldProjection.parse(self.fields)
         if timedOut, !isAgent {
             FileHandle.standardError.write(Data("Warning: \(timedOutHint)\n".utf8))
         }
         if isJSON {
-            if let fields, !fields.isEmpty {
-                let projected = try FieldProjection.projectedObject(payload, fields: fields)
+            if let effectiveFields, !effectiveFields.isEmpty {
+                let projected = try FieldProjection.projectedObject(payload, fields: effectiveFields)
                 let data = try JSONSerialization.data(withJSONObject: projected, options: [.prettyPrinted, .sortedKeys])
                 print(String(data: data, encoding: .utf8)!)
             } else {
                 try printJSON(payload)
             }
         } else if isAgent {
-            try printAgent(payload, warnings: timedOut ? [timedOutHint] : nil, fields: fields)
+            try printAgent(payload, warnings: timedOut ? [timedOutHint] : nil, fields: effectiveFields)
         } else {
             renderText()
             if timedOut {

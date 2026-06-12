@@ -113,6 +113,72 @@ final class OutputOptionsEmitTests: XCTestCase {
         XCTAssertFalse(stderr.contains("Warning:"), "no stderr warning when not timed out")
     }
 
+    // MARK: - Field projection defaults to `--fields` (pippin-sq6)
+
+    private struct Row: Encodable {
+        let id: String
+        let title: String
+    }
+
+    func testPrintAgentAutoHonorsFieldsFlag() throws {
+        // A direct printAgent call (no explicit `fields:` arg) must still honor
+        // `--fields` — this is the case that was previously silently ignored at
+        // sites like `mail accounts` / `reminders lists` / `contacts groups`.
+        let opts = try OutputOptions.parse(["--format", "agent", "--fields", "id"])
+        let stdout = try captureStdout {
+            try opts.printAgent([Row(id: "a", title: "Alpha"), Row(id: "b", title: "Beta")])
+        }
+        let json = try decodeObject(stdout)
+        let data = try XCTUnwrap(json["data"] as? [[String: Any]])
+        XCTAssertEqual(data.count, 2)
+        XCTAssertEqual(data[0]["id"] as? String, "a")
+        XCTAssertNil(data[0]["title"], "--fields id must drop title")
+    }
+
+    func testPrintAgentNoFieldsEmitsFullPayload() throws {
+        let opts = try OutputOptions.parse(["--format", "agent"])
+        let stdout = try captureStdout {
+            try opts.printAgent([Row(id: "a", title: "Alpha")])
+        }
+        let data = try XCTUnwrap(try decodeObject(stdout)["data"] as? [[String: Any]])
+        XCTAssertEqual(data[0]["id"] as? String, "a")
+        XCTAssertEqual(data[0]["title"] as? String, "Alpha", "no --fields → no projection")
+    }
+
+    func testExplicitFieldsArgOverridesFlag() throws {
+        // An explicit `fields:` argument still wins over `--fields`.
+        let opts = try OutputOptions.parse(["--format", "agent", "--fields", "id"])
+        let stdout = try captureStdout {
+            try opts.printAgent([Row(id: "a", title: "Alpha")], fields: ["title"])
+        }
+        let data = try XCTUnwrap(try decodeObject(stdout)["data"] as? [[String: Any]])
+        XCTAssertEqual(data[0]["title"] as? String, "Alpha")
+        XCTAssertNil(data[0]["id"], "explicit fields:[title] overrides --fields id")
+    }
+
+    func testEmitAgentAutoHonorsFieldsFlag() throws {
+        let opts = try OutputOptions.parse(["--format", "agent", "--fields", "id"])
+        let stdout = try captureStdout {
+            try opts.emit([Row(id: "a", title: "Alpha")], timedOutHint: "") {}
+        }
+        let data = try XCTUnwrap(try decodeObject(stdout)["data"] as? [[String: Any]])
+        XCTAssertEqual(data[0]["id"] as? String, "a")
+        XCTAssertNil(data[0]["title"])
+    }
+
+    func testEmitJsonAutoHonorsFieldsFlag() throws {
+        let opts = try OutputOptions.parse(["--format", "json", "--fields", "id"])
+        let stdout = try captureStdout {
+            try opts.emit([Row(id: "a", title: "Alpha")], timedOutHint: "") {}
+        }
+        let trimmed = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let arr = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: XCTUnwrap(trimmed.data(using: .utf8))) as? [[String: Any]]
+        )
+        XCTAssertEqual(arr[0]["id"] as? String, "a")
+        XCTAssertNil(arr[0]["title"], "json mode must project from --fields too")
+    }
+
     // MARK: - Helpers
 
     private func decodeObject(_ text: String) throws -> [String: Any] {
