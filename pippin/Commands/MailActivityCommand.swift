@@ -24,11 +24,7 @@ public extension MailCommand {
         @Option(name: .long, help: "Plain-text body preview length in chars (default: 200; 0 to disable).")
         public var preview: Int = 200
 
-        @Flag(name: .customLong("no-contacts"), help: "Don't resolve senders to Apple Contacts names.")
-        public var noContacts = false
-
-        @Flag(name: .customLong("contacts"), help: "Force resolving senders to Apple Contacts names, overriding the resolveContacts config default.")
-        public var contacts = false
+        @OptionGroup public var contactResolution: ContactResolutionOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -66,7 +62,7 @@ public extension MailCommand {
                     preview: preview > 0 ? preview : nil
                 )
             }
-            let messages = await MailCommand.enrichContacts(outcome.messages, noContacts: noContacts, contacts: contacts)
+            let messages = await MailCommand.enrichContacts(outcome.messages, options: contactResolution)
             try output.emit(messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(messages)
             }

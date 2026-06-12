@@ -17,17 +17,11 @@ public struct MessagesCommand: AsyncParsableCommand {
         disabled ? ContactIndex() : ContactsBridge.contactIndex()
     }
 
-    /// Resolve the effective contact-resolution decision (flag > config > default)
-    /// and build the index accordingly. `--no-contacts` / `--contacts` flags
-    /// override the `resolveContacts` config default. See
-    /// `AIProviderFactory.shouldResolveContacts`. Pass `config` to reuse a config
-    /// the caller already loaded (avoids re-reading `config.json` from disk).
-    static func contactIndex(noContacts: Bool, contacts: Bool, config: PippinConfig? = nil) -> ContactIndex {
-        let resolve = AIProviderFactory.shouldResolveContacts(
-            noContactsFlag: noContacts,
-            contactsFlag: contacts,
-            config: config ?? AIProviderFactory.loadConfig()
-        )
+    /// Build the contact index honoring the command's `--no-contacts` /
+    /// `--contacts` flags and the `resolveContacts` config default. Pass `config`
+    /// to reuse one the caller already loaded (avoids re-reading `config.json`).
+    static func contactIndex(_ options: ContactResolutionOptions, config: PippinConfig? = nil) -> ContactIndex {
+        let resolve = options.shouldResolve(config: config ?? AIProviderFactory.loadConfig())
         return contactIndex(disabled: !resolve)
     }
 
@@ -45,11 +39,7 @@ public struct MessagesCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum conversations to return (default: 50).")
         public var limit: Int = 50
 
-        @Flag(name: .customLong("no-contacts"), help: "Don't resolve participant handles to Apple Contacts names.")
-        public var noContacts = false
-
-        @Flag(name: .customLong("contacts"), help: "Force resolving participant handles to Apple Contacts names, overriding the resolveContacts config default.")
-        public var contacts = false
+        @OptionGroup public var contactResolution: ContactResolutionOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -66,7 +56,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 since: since,
                 limit: limit,
                 excluded: excluded,
-                contactIndex: MessagesCommand.contactIndex(noContacts: noContacts, contacts: contacts, config: config)
+                contactIndex: MessagesCommand.contactIndex(contactResolution, config: config)
             )
             let payload = MessagesListResult(
                 conversations: convs,
@@ -121,11 +111,7 @@ public struct MessagesCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum messages to return (default: 50).")
         public var limit: Int = 50
 
-        @Flag(name: .customLong("no-contacts"), help: "Don't resolve sender handles to Apple Contacts names.")
-        public var noContacts = false
-
-        @Flag(name: .customLong("contacts"), help: "Force resolving sender handles to Apple Contacts names, overriding the resolveContacts config default.")
-        public var contacts = false
+        @OptionGroup public var contactResolution: ContactResolutionOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -141,7 +127,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 since: since,
                 limit: limit,
                 excluded: excluded,
-                contactIndex: MessagesCommand.contactIndex(noContacts: noContacts, contacts: contacts, config: config)
+                contactIndex: MessagesCommand.contactIndex(contactResolution, config: config)
             )
             let payload = MessagesSearchResult(
                 matches: matches,
@@ -197,11 +183,7 @@ public struct MessagesCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum messages (default: 50).")
         public var limit: Int = 50
 
-        @Flag(name: .customLong("no-contacts"), help: "Don't resolve sender handles to Apple Contacts names.")
-        public var noContacts = false
-
-        @Flag(name: .customLong("contacts"), help: "Force resolving sender handles to Apple Contacts names, overriding the resolveContacts config default.")
-        public var contacts = false
+        @OptionGroup public var contactResolution: ContactResolutionOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -212,7 +194,7 @@ public struct MessagesCommand: AsyncParsableCommand {
             let (conv, messages, truncated) = try db.showConversation(
                 conversationId: conversationId,
                 limit: limit,
-                contactIndex: MessagesCommand.contactIndex(noContacts: noContacts, contacts: contacts)
+                contactIndex: MessagesCommand.contactIndex(contactResolution)
             )
             let payload = MessagesShowResult(conversation: conv, messages: messages, truncated: truncated)
             MessagesAuditLog.record(

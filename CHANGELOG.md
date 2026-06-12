@@ -17,6 +17,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - [bug] `messages search` now surfaces a `scan_truncated` flag (plus `scanned_attributed_cap`) in the agent envelope, so a rich-text-only message older than the most-recent 1500 scanned isn't mistaken for "no match" — when `scan_truncated` is true, an empty/partial result is not authoritative. Fields are additive (non-breaking). Closes pippin-wve.
 
+### Changed
+
+- [refactor] The `--no-contacts` / `--contacts` flags are now declared once in a shared `ContactResolutionOptions` group (mirroring `OutputOptions`/`PaginationOptions`) instead of being copy-pasted across all six `mail`/`messages` subcommands, and the resolution-precedence rule now lives with them. No behavior change — the flags parse identically; their `--help` text is now a single consistent line ("…resolve handles to Apple Contacts names"). Closes pippin-wyn.
+
 ### Documentation
 
 - [docs] Documented the phone-number matching heuristic: handles are matched on digits only with a last-10-digit fallback (drops a leading country code), so two numbers sharing the same last 10 digits collide — resolved first-write-wins and shown as a confident contact name with no fuzzy-match signal. README § Contact Name Resolution. Closes pippin-1jm.
