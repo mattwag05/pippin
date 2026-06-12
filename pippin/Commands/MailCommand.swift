@@ -11,9 +11,9 @@ public struct MailCommand: AsyncParsableCommand {
     public init() {}
 
     /// Tie each message's sender to an Apple Contacts name (`fromContact`),
-    /// honoring contact-resolution precedence: explicit `--no-contacts` /
-    /// `--contacts` flags override the `resolveContacts` config default (ON when
-    /// unset). See `AIProviderFactory.shouldResolveContacts`.
+    /// honoring the command's `--no-contacts` / `--contacts` flags and the
+    /// `resolveContacts` config default (ON when unset). See
+    /// `ContactResolutionOptions.shouldResolve`.
     ///
     /// When resolution is enabled, builds the Contacts reverse index once and
     /// resolves each `From` header (which `ContactIndex` unwraps from `Name <addr>`
@@ -22,14 +22,9 @@ public struct MailCommand: AsyncParsableCommand {
     /// never in osascript.
     static func enrichContacts(
         _ messages: [MailMessage],
-        noContacts: Bool,
-        contacts: Bool
+        options: ContactResolutionOptions
     ) async -> [MailMessage] {
-        let resolve = AIProviderFactory.shouldResolveContacts(
-            noContactsFlag: noContacts,
-            contactsFlag: contacts,
-            config: AIProviderFactory.loadConfig()
-        )
+        let resolve = options.shouldResolve(config: AIProviderFactory.loadConfig())
         guard resolve, !messages.isEmpty else { return messages }
         // CNContactStore enumeration is synchronous/blocking — hop off the
         // cooperative pool (per ContactsBridge.contactIndex's contract).
@@ -132,11 +127,7 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Print search diagnostics (accounts/mailboxes scanned, messages examined).")
         public var verbose: Bool = false
 
-        @Flag(name: .customLong("no-contacts"), help: "Don't resolve the sender to an Apple Contacts name.")
-        public var noContacts = false
-
-        @Flag(name: .customLong("contacts"), help: "Force resolving the sender to an Apple Contacts name, overriding the resolveContacts config default.")
-        public var contacts = false
+        @OptionGroup public var contactResolution: ContactResolutionOptions
 
         @Option(name: .long, help: "Maximum number of results to return (default: 10).")
         public var limit: Int = 10
@@ -244,14 +235,14 @@ public struct MailCommand: AsyncParsableCommand {
         static let timedOutHint = "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results"
 
         private func emitMessages(_ messages: [MailMessage], timedOut: Bool) async throws {
-            let messages = await MailCommand.enrichContacts(messages, noContacts: noContacts, contacts: contacts)
+            let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
             try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(messages)
             }
         }
 
         private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) async throws {
-            let page = Page(items: await MailCommand.enrichContacts(page.items, noContacts: noContacts, contacts: contacts), nextCursor: page.nextCursor)
+            let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
             try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(page.items)
                 if let cursor = page.nextCursor {
@@ -374,11 +365,7 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .customLong("no-cache"), help: "Bypass the local body cache when using --preview and force live IMAP fetches.")
         public var noCache: Bool = false
 
-        @Flag(name: .customLong("no-contacts"), help: "Don't resolve senders to Apple Contacts names.")
-        public var noContacts = false
-
-        @Flag(name: .customLong("contacts"), help: "Force resolving senders to Apple Contacts names, overriding the resolveContacts config default.")
-        public var contacts = false
+        @OptionGroup public var contactResolution: ContactResolutionOptions
 
         @OptionGroup public var pagination: PaginationOptions
 
@@ -455,14 +442,14 @@ public struct MailCommand: AsyncParsableCommand {
         static let timedOutHint = "list exceeded soft timeout, returning partial results — narrow with --account, --mailbox, or a smaller --limit for complete results"
 
         private func emitMessages(_ messages: [MailMessage], timedOut: Bool) async throws {
-            let messages = await MailCommand.enrichContacts(messages, noContacts: noContacts, contacts: contacts)
+            let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
             try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(messages)
             }
         }
 
         private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) async throws {
-            let page = Page(items: await MailCommand.enrichContacts(page.items, noContacts: noContacts, contacts: contacts), nextCursor: page.nextCursor)
+            let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
             try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(page.items)
                 if let cursor = page.nextCursor {
@@ -559,11 +546,7 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .customLong("no-cache"), help: "Bypass the local body cache and force a live IMAP fetch.")
         public var noCache: Bool = false
 
-        @Flag(name: .customLong("no-contacts"), help: "Don't resolve the sender to an Apple Contacts name.")
-        public var noContacts = false
-
-        @Flag(name: .customLong("contacts"), help: "Force resolving the sender to an Apple Contacts name, overriding the resolveContacts config default.")
-        public var contacts = false
+        @OptionGroup public var contactResolution: ContactResolutionOptions
 
         @OptionGroup public var output: OutputOptions
 
@@ -595,7 +578,7 @@ public struct MailCommand: AsyncParsableCommand {
             // readMessage spawns a blocking osascript subprocess; hop off the pool.
             let useCache = noCache ? nil : MailBodyCache.shared
             let fetched = try await detachBlocking { try MailBridge.readMessage(compoundId: compoundId, cache: useCache) }
-            let message = (await MailCommand.enrichContacts([fetched], noContacts: noContacts, contacts: contacts)).first ?? fetched
+            let message = (await MailCommand.enrichContacts([fetched], options: contactResolution)).first ?? fetched
 
             if summarize {
                 let summaryProvider = try AIProviderFactory.make(
