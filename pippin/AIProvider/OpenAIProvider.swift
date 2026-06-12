@@ -14,22 +14,36 @@ public struct OpenAIProvider: AIProvider {
     public let baseURL: String
     public let model: String
     private let apiKey: String?
+    /// Config opt-in (`ai.openai.structuredOutputs`) for native JSON mode. OFF by
+    /// default because `response_format` support is server-dependent — not every
+    /// OpenAI-compatible backend ([local-llm], older vLLM/llama.cpp) accepts it, and a
+    /// server that rejects it would 400 a request that otherwise works. Enable it
+    /// only against a backend you've verified accepts `response_format`.
+    private let structuredOutputs: Bool
 
     public init(
         baseURL: String = "http://localhost:11434/v1",
         model: String = "gpt-4o-mini",
-        apiKey: String? = nil
+        apiKey: String? = nil,
+        structuredOutputs: Bool = false
     ) {
         // Drop a trailing slash so `"\(baseURL)/chat/completions"` never doubles up.
         self.baseURL = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
         self.model = model
         // Treat an empty key the same as no key (local endpoints need no auth).
         self.apiKey = (apiKey?.isEmpty == false) ? apiKey : nil
+        self.structuredOutputs = structuredOutputs
     }
 
     public func complete(prompt: String, system: String) throws -> String {
+        try complete(prompt: prompt, system: system, options: AICompletionOptions())
+    }
+
+    public func complete(prompt: String, system: String, options: AICompletionOptions) throws -> String {
         try withAIRetry(totalBudget: aiRequestTimeoutSeconds()) { attemptTimeout in
-            let request = try buildRequest(prompt: prompt, system: system, timeout: attemptTimeout)
+            let request = try buildRequest(
+                prompt: prompt, system: system, jsonMode: options.jsonMode, timeout: attemptTimeout
+            )
             let (data, httpResponse) = try sendSynchronousRequest(
                 request,
                 waitTimeoutSeconds: Int(attemptTimeout) + 5
@@ -45,7 +59,12 @@ public struct OpenAIProvider: AIProvider {
     /// Build the chat-completions POST request. Pure (no network I/O) so the
     /// endpoint, headers, and body shape are unit-testable. `timeout` defaults to
     /// the full AI budget; the retry path passes the remaining budget per attempt.
-    func buildRequest(prompt: String, system: String, timeout: TimeInterval? = nil) throws -> URLRequest {
+    func buildRequest(
+        prompt: String,
+        system: String,
+        jsonMode: Bool = false,
+        timeout: TimeInterval? = nil
+    ) throws -> URLRequest {
         guard let url = URL(string: "\(baseURL)/chat/completions") else {
             throw AIProviderError.networkError("Invalid OpenAI-compatible base URL: \(baseURL)")
         }
@@ -56,11 +75,18 @@ public struct OpenAIProvider: AIProvider {
         }
         messages.append(["role": "user", "content": prompt])
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "messages": messages,
             "stream": false,
         ]
+        // Native JSON mode is sent ONLY when: the caller asked for it, config
+        // opted in (`structuredOutputs`), and the prompt mentions "json" — OpenAI
+        // (and compatible servers) reject `response_format: json_object` with a
+        // 400 unless the word "json" appears in the messages.
+        if jsonMode, structuredOutputs, Self.mentionsJSON(prompt: prompt, system: system) {
+            body["response_format"] = ["type": "json_object"]
+        }
 
         var request = URLRequest(url: url, timeoutInterval: timeout ?? aiRequestTimeoutSeconds())
         request.httpMethod = "POST"
@@ -70,6 +96,13 @@ public struct OpenAIProvider: AIProvider {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
+    }
+
+    /// `true` when "json" appears (case-insensitively) in the prompt or system
+    /// message — OpenAI requires it before honoring `response_format: json_object`.
+    static func mentionsJSON(prompt: String, system: String) -> Bool {
+        prompt.range(of: "json", options: .caseInsensitive) != nil
+            || system.range(of: "json", options: .caseInsensitive) != nil
     }
 
     /// Extract `choices[0].message.content` from an OpenAI-compatible

@@ -159,7 +159,11 @@ public enum ActionExtractor {
         let promptData = try encoder.encode(promptItems)
         let promptJSON = String(data: promptData, encoding: .utf8) ?? "[]"
 
-        let response = try provider.complete(prompt: promptJSON, system: systemPrompt)
+        let response = try provider.complete(
+            prompt: promptJSON,
+            system: systemPrompt,
+            options: AICompletionOptions(jsonMode: true)
+        )
         let stripped = stripAIResponseJSON(response)
         do {
             return try JSONDecoder().decode(BatchResponse.self, from: Data(stripped.utf8))

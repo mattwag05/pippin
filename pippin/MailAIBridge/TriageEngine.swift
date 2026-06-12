@@ -66,7 +66,11 @@ public enum TriageEngine {
         for (i, msg) in batch.enumerated() {
             prompt += "\(i + 1). Subject: \(msg.subject)\n   From: \(msg.from)\n   Date: \(msg.date)\n   ID: \(msg.id)\n\n"
         }
-        let response = try provider.complete(prompt: prompt, system: MailAIPrompts.triageSystemPrompt)
+        let response = try provider.complete(
+            prompt: prompt,
+            system: MailAIPrompts.triageSystemPrompt,
+            options: AICompletionOptions(jsonMode: true)
+        )
         let stripped = stripAIResponseJSON(response)
         do {
             return try JSONDecoder().decode(BatchResponse.self, from: Data(stripped.utf8))

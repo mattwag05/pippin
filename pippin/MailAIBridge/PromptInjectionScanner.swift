@@ -25,7 +25,8 @@ public enum PromptInjectionScanner {
 
         let rawResponse = try provider.complete(
             prompt: text,
-            system: MailAIPrompts.injectionDetectionSystemPrompt
+            system: MailAIPrompts.injectionDetectionSystemPrompt,
+            options: AICompletionOptions(jsonMode: true)
         )
 
         let stripped = stripAIResponseJSON(rawResponse)

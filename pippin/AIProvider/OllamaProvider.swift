@@ -10,6 +10,25 @@ public struct OllamaProvider: AIProvider {
     }
 
     public func complete(prompt: String, system: String) throws -> String {
+        try complete(prompt: prompt, system: system, options: AICompletionOptions())
+    }
+
+    /// `/api/generate` request body. Pure (no network) so the `format: json`
+    /// native-JSON wiring is unit-testable. Native JSON mode is safe for the
+    /// default `gemma4` (no thinking pass); thinking models (e.g. Qwen3.6) are
+    /// served via the OpenAI path, not here.
+    func requestBody(prompt: String, system: String, jsonMode: Bool) -> [String: Any] {
+        var body: [String: Any] = [
+            "model": model,
+            "prompt": prompt,
+            "system": system,
+            "stream": false,
+        ]
+        if jsonMode { body["format"] = "json" }
+        return body
+    }
+
+    public func complete(prompt: String, system: String, options: AICompletionOptions) throws -> String {
         guard let url = URL(string: "\(baseURL)/api/generate") else {
             throw AIProviderError.networkError("Invalid Ollama URL: \(baseURL)")
         }
@@ -21,13 +40,7 @@ public struct OllamaProvider: AIProvider {
         // retry — `.providerUnreachable` is non-transient (the server is down).
         try preflight()
 
-        let body: [String: Any] = [
-            "model": model,
-            "prompt": prompt,
-            "system": system,
-            "stream": false,
-        ]
-        let httpBody = try JSONSerialization.data(withJSONObject: body)
+        let httpBody = try JSONSerialization.data(withJSONObject: requestBody(prompt: prompt, system: system, jsonMode: options.jsonMode))
 
         return try withAIRetry(totalBudget: aiRequestTimeoutSeconds()) { attemptTimeout in
             var request = URLRequest(url: url, timeoutInterval: attemptTimeout)

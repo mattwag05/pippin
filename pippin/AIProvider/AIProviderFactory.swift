@@ -41,6 +41,12 @@ public struct PippinConfig: Codable, Sendable {
             public var baseURL: String?
             public var model: String?
             public var apiKey: String?
+            /// Opt into native JSON mode (`response_format: json_object`) for the
+            /// JSON-extraction commands. OFF by default — `response_format` isn't
+            /// universally supported across OpenAI-compatible servers, and a
+            /// backend that rejects it would 400 a request that otherwise works.
+            /// Enable only against a server you've verified accepts it. (pippin-us2)
+            public var structuredOutputs: Bool?
         }
     }
 
@@ -115,7 +121,10 @@ public enum AIProviderFactory {
             let model = modelFlag ?? config?.ai?.openai?.model ?? "gpt-4o-mini"
             // Optional: local endpoints ([local-llm], llama.cpp, Ollama /v1) need no key.
             let key = resolveOpenAIAPIKey(flagValue: apiKeyFlag, configKey: config?.ai?.openai?.apiKey)
-            return OpenAIProvider(baseURL: base, model: model, apiKey: key)
+            return OpenAIProvider(
+                baseURL: base, model: model, apiKey: key,
+                structuredOutputs: config?.ai?.openai?.structuredOutputs ?? false
+            )
 
         default:
             throw AIProviderError.networkError(
