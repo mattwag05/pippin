@@ -46,10 +46,13 @@ A single green `make ci` run does NOT prove a flake is fixed — a ~0.5% flake (
 
 Redirecting `make ci` (or `swift test`) to a file (`> log 2>&1`) can yield a **truncated log missing the grand-total `Executed N tests` line** — the file looked like ~60 lines even though all ~1700 tests ran. **Trust the process exit code** (`make ci` exits 0 only if build + test + swiftformat + detach-lint all pass). To get the authoritative pass/fail count, run `xcrun --sdk macosx swift test` directly (unredirected) and grep `Executed [0-9]+ tests`. Beware: a trailing `grep` with no match returns exit 1, which can mask a successful `make ci` in a compound command.
 
+**`tail` shows the wrong summary.** The XCTest grand-total (`Executed N tests, with 0 failures`) is followed by a separate **swift-testing** block that ends `Test run with 0 tests in 0 suites passed` — so `swift test 2>&1 | tail` shows the empty swift-testing summary, NOT the XCTest count. Don't chase the total; for a binary green check just confirm there are zero failure lines: `swift test 2>&1 | grep -cE 'Executed.*[1-9][0-9]* failure'` → `0` means all passed (the `grep -c` itself exits 1 when it prints `0`, so don't `&&`-chain it).
+
 ## Git worktree lifecycle
 
 - **Cleanup order:** `git worktree remove <path>` first, then `git branch -d <branch>`. Reverse order fails — branch can't be deleted while worktree is using it.
 - **Worktree blocks checkout:** If `git checkout <branch>` fails "already used by worktree at ...", run `git worktree remove --force .claude/worktrees/<name>` first.
+- **Parallel fan-out → CHANGELOG conflicts *twice*.** When two worktree agents each add to `### [Unreleased]`, expect a conflict merging the second branch — and then again on `git pull --rebase` (it flattens the merge commits and re-applies the underlying branch commits over the same region). Resolution is the same both times: keep every entry, ordered Added → Fixed → Changed → Documentation. Code files usually auto-merge; the `[Unreleased]` block is the predictable collision.
 
 ## Beads in worktrees
 
