@@ -19,7 +19,7 @@ graphify explain "DetachBlocking"                            # plain-language no
 graphify update .                                            # refresh AST nodes after code changes (no LLM)
 ```
 
-~4.8k nodes across ~320 communities; AST (free, local) for Swift + agent-extracted semantic edges for docs/rationale. `graphify update .` re-clusters from the AST and **preserves the committed community labels** in `graphify-out/.graphify_labels.json` (tracked — don't gitignore it). `/graphify` is registered for **Claude Code, Codex, OpenCode, Pi, Hermes, and OpenClaw** — on a fresh machine, run `graphify install --platform <claude|codex|opencode|pi|hermes|claw>` to wire it up, then rebuild with `/graphify .` (or `graphify update .` for code-only refreshes).
+~5.4k nodes across ~370 communities; AST (free, local) for Swift + agent-extracted semantic edges for docs/rationale. `graphify update .` re-clusters from the AST and **preserves the committed community labels** in `graphify-out/.graphify_labels.json` (tracked — don't gitignore it). **The graph now exceeds graphify's 5000-node HTML-viz limit**, so a plain `graphify update .` *skips and deletes* `graph.html` — regenerate it (it's a tracked artifact) with `GRAPHIFY_VIZ_NODE_LIMIT=6000 graphify update .`, or you'll commit a deleted `graph.html`. `/graphify` is registered for **Claude Code, Codex, OpenCode, Pi, Hermes, and OpenClaw** — on a fresh machine, run `graphify install --platform <claude|codex|opencode|pi|hermes|claw>` to wire it up, then rebuild with `/graphify .` (or `graphify update .` for code-only refreshes).
 
 ## Commands
 
