@@ -34,6 +34,8 @@ Calling `try await command.run()` directly on a `ParsableCommand` existential in
 
 **`--format` collision with `OutputOptions`:** Commands using `@OptionGroup var output: OutputOptions` must NOT also declare `@Option var format` — ArgumentParser throws "Multiple arguments named --format" at parse time. Rename the command-specific option (e.g. `--transcription-format`).
 
+**Cross-cutting flags → a shared `ParsableArguments` group, not copy-paste.** When the same flag(s) recur across multiple subcommands, declare them once in a `ParsableArguments` struct and pull it in with `@OptionGroup` — the established groups are `OutputOptions` (`--format`/`--fields`), `PaginationOptions` (`--cursor`/`--page-size`), and `ContactResolutionOptions` (`--no-contacts`/`--contacts`, which also owns the resolution-precedence rule via `shouldResolve(config:)`). The flags still parse identically at the CLI (ArgumentParser flattens them). Put any decision logic the flags drive on the group itself, not on an unrelated type. pippin-wyn removed 12 duplicated `--contacts` declarations this way.
+
 **Nested subcommand struct placement:** When inserting a new `ParsableCommand` subcommand into an existing parent, the Edit `old_string` must start *before* the parent's closing `}` — replacing text that begins after the `}` puts the struct at file scope (compiles but is not a subcommand of the parent).
 
 ## Agent output format
