@@ -38,7 +38,7 @@ enum IntentPlanner {
         let system = buildSystemPrompt(tools: tools, maxSteps: maxSteps)
         let user = "Intent: \(intent)\n\nRespond with only the JSON object."
         do {
-            let raw = try provider.complete(prompt: user, system: system)
+            let raw = try provider.complete(prompt: user, system: system, options: AICompletionOptions(jsonMode: true))
             return try parsePlan(raw)
         } catch let first as IntentPlannerError {
             // One self-repair round-trip — feed the error back to the model.
@@ -50,7 +50,7 @@ enum IntentPlanner {
 
             Respond with ONLY the JSON object, no markdown fences or prose.
             """
-            let raw = try provider.complete(prompt: repairUser, system: system)
+            let raw = try provider.complete(prompt: repairUser, system: system, options: AICompletionOptions(jsonMode: true))
             return try parsePlan(raw)
         }
     }

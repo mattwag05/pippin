@@ -1,7 +1,31 @@
 import Foundation
 
+/// Per-request completion options.
+public struct AICompletionOptions: Sendable {
+    /// Request native structured (JSON) output where the active provider — and,
+    /// for the OpenAI path, the config — supports it. Best-effort: providers
+    /// without a native mode (Claude) or that haven't opted in fall back to
+    /// prompt-based JSON, which the callers already parse defensively
+    /// (`stripAIResponseJSON`). See pippin-us2.
+    public var jsonMode: Bool
+
+    public init(jsonMode: Bool = false) {
+        self.jsonMode = jsonMode
+    }
+}
+
 public protocol AIProvider: Sendable {
     func complete(prompt: String, system: String) throws -> String
+    /// Completion with options (e.g. `jsonMode`). Defaulted to forward to the
+    /// plain `complete` below, so test fakes and providers without a native
+    /// structured-output mode need not implement it.
+    func complete(prompt: String, system: String, options: AICompletionOptions) throws -> String
+}
+
+public extension AIProvider {
+    func complete(prompt: String, system: String, options _: AICompletionOptions) throws -> String {
+        try complete(prompt: prompt, system: system)
+    }
 }
 
 public enum AIProviderError: LocalizedError, Sendable {

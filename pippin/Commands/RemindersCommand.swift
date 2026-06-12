@@ -525,7 +525,10 @@ public struct RemindersCommand: AsyncParsableCommand {
             // aiProvider.complete blocks via DispatchSemaphore — hop off the
             // cooperative pool so concurrent MCP smart-creates don't stall.
             let jsonStr = try await detachBlocking {
-                try aiProvider.complete(prompt: descriptionLocal, system: systemPrompt)
+                try aiProvider.complete(
+                    prompt: descriptionLocal, system: systemPrompt,
+                    options: AICompletionOptions(jsonMode: true)
+                )
             }
 
             guard

@@ -7,7 +7,11 @@ public enum DataExtractor {
         provider: any AIProvider
     ) throws -> ExtractionResult {
         let userPrompt = "Subject: \(subject)\n\n\(messageBody)"
-        let response = try provider.complete(prompt: userPrompt, system: MailAIPrompts.extractionSystemPrompt)
+        let response = try provider.complete(
+            prompt: userPrompt,
+            system: MailAIPrompts.extractionSystemPrompt,
+            options: AICompletionOptions(jsonMode: true)
+        )
 
         let stripped = stripAIResponseJSON(response)
 
