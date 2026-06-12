@@ -22,36 +22,38 @@ public struct ClaudeProvider: AIProvider {
                 ["role": "user", "content": prompt],
             ],
         ]
+        let httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let timeout = aiRequestTimeoutSeconds()
-        var request = URLRequest(url: url, timeoutInterval: timeout)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try withAIRetry(totalBudget: aiRequestTimeoutSeconds()) { attemptTimeout in
+            var request = URLRequest(url: url, timeoutInterval: attemptTimeout)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+            request.httpBody = httpBody
 
-        let (data, httpResponse) = try sendSynchronousRequest(
-            request,
-            waitTimeoutSeconds: Int(timeout) + 5
-        )
+            let (data, httpResponse) = try sendSynchronousRequest(
+                request,
+                waitTimeoutSeconds: Int(attemptTimeout) + 5
+            )
 
-        guard httpResponse.statusCode == 200 else {
-            let detail = String(data: data, encoding: .utf8) ?? ""
-            throw AIProviderError.apiError(httpResponse.statusCode, detail)
+            guard httpResponse.statusCode == 200 else {
+                let detail = String(data: data, encoding: .utf8) ?? ""
+                throw AIProviderError.apiError(httpResponse.statusCode, detail)
+            }
+
+            // Response: {"content": [{"type": "text", "text": "..."}], ...}
+            guard
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let contentArray = json["content"] as? [[String: Any]],
+                let firstBlock = contentArray.first,
+                firstBlock["type"] as? String == "text",
+                let text = firstBlock["text"] as? String
+            else {
+                throw AIProviderError.decodingFailed("Unexpected Anthropic response format")
+            }
+
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-
-        // Response: {"content": [{"type": "text", "text": "..."}], ...}
-        guard
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let contentArray = json["content"] as? [[String: Any]],
-            let firstBlock = contentArray.first,
-            firstBlock["type"] as? String == "text",
-            let text = firstBlock["text"] as? String
-        else {
-            throw AIProviderError.decodingFailed("Unexpected Anthropic response format")
-        }
-
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

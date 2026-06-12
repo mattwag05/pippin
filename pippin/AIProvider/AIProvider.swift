@@ -42,6 +42,62 @@ public func aiRequestTimeoutSeconds() -> TimeInterval {
     isMCPContext() ? 50 : 120
 }
 
+// MARK: - Transient-failure retry
+
+/// Whether an AI error is a transient failure worth retrying. Retryable:
+/// HTTP 429 (rate limit) + 5xx (server/overloaded), and connection-level
+/// `networkError` blips (reset/refused/lost) — all fail fast, so a retry is
+/// cheap. NOT retryable: `.timeout` (already consumed the whole budget — a
+/// retry would risk the MCP 60s child cap), `.providerUnreachable` (server is
+/// down; preflight already failed fast), `.decodingFailed` (the same request
+/// yields the same unparseable body), and `.missingAPIKey`.
+func isTransientAIError(_ error: AIProviderError) -> Bool {
+    switch error {
+    case let .apiError(code, _): return code == 429 || (500 ... 599).contains(code)
+    case .networkError: return true
+    case .timeout, .providerUnreachable, .decodingFailed, .missingAPIKey: return false
+    }
+}
+
+/// Run `attempt` with bounded retry on transient failures, sharing a single
+/// `totalBudget` so the total wall-clock stays within the original request
+/// envelope (critical under MCP, where the child cap is 60s — retries make
+/// better use of the budget rather than multiplying it). Each attempt is given
+/// the *remaining* budget as its timeout; retries stop once too little is left
+/// for a meaningful attempt (`minAttemptSeconds`). Only transient errors (see
+/// `isTransientAIError`) are retried; everything else throws immediately.
+///
+/// `now`/`sleep` are injectable so the retry policy is unit-testable without a
+/// real clock, real network, or real wall-clock delay.
+func withAIRetry<T>(
+    totalBudget: TimeInterval,
+    maxRetries: Int = 2,
+    minAttemptSeconds: TimeInterval = 5,
+    now: () -> Date = Date.init,
+    sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) },
+    _ attempt: (_ attemptTimeout: TimeInterval) throws -> T
+) throws -> T {
+    let deadline = now().addingTimeInterval(totalBudget)
+    var lastError: Error = AIProviderError.networkError("no attempt made")
+    for tryIndex in 0 ... maxRetries {
+        let remaining = deadline.timeIntervalSince(now())
+        // After the first try, bail if the budget can't fit a meaningful attempt.
+        if tryIndex > 0, remaining < minAttemptSeconds { break }
+        let attemptTimeout = max(minAttemptSeconds, remaining)
+        do {
+            return try attempt(attemptTimeout)
+        } catch let error as AIProviderError {
+            lastError = error
+            guard isTransientAIError(error), tryIndex < maxRetries else { throw error }
+            // Short backoff, but never sleep past what the budget can spare.
+            let spare = deadline.timeIntervalSince(now()) - minAttemptSeconds
+            let backoff = min(0.5 * Double(tryIndex + 1), spare)
+            if backoff > 0 { sleep(backoff) }
+        }
+    }
+    throw lastError
+}
+
 // MARK: - Shared synchronous HTTP helper
 
 /// Send a URLRequest synchronously using DispatchSemaphore.

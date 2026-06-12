@@ -28,24 +28,24 @@ public struct OpenAIProvider: AIProvider {
     }
 
     public func complete(prompt: String, system: String) throws -> String {
-        let request = try buildRequest(prompt: prompt, system: system)
-        let timeout = aiRequestTimeoutSeconds()
-        let (data, httpResponse) = try sendSynchronousRequest(
-            request,
-            waitTimeoutSeconds: Int(timeout) + 5
-        )
-
-        guard httpResponse.statusCode == 200 else {
-            let detail = String(data: data, encoding: .utf8) ?? ""
-            throw AIProviderError.apiError(httpResponse.statusCode, detail)
+        try withAIRetry(totalBudget: aiRequestTimeoutSeconds()) { attemptTimeout in
+            let request = try buildRequest(prompt: prompt, system: system, timeout: attemptTimeout)
+            let (data, httpResponse) = try sendSynchronousRequest(
+                request,
+                waitTimeoutSeconds: Int(attemptTimeout) + 5
+            )
+            guard httpResponse.statusCode == 200 else {
+                let detail = String(data: data, encoding: .utf8) ?? ""
+                throw AIProviderError.apiError(httpResponse.statusCode, detail)
+            }
+            return try Self.parseCompletion(data)
         }
-
-        return try Self.parseCompletion(data)
     }
 
     /// Build the chat-completions POST request. Pure (no network I/O) so the
-    /// endpoint, headers, and body shape are unit-testable.
-    func buildRequest(prompt: String, system: String) throws -> URLRequest {
+    /// endpoint, headers, and body shape are unit-testable. `timeout` defaults to
+    /// the full AI budget; the retry path passes the remaining budget per attempt.
+    func buildRequest(prompt: String, system: String, timeout: TimeInterval? = nil) throws -> URLRequest {
         guard let url = URL(string: "\(baseURL)/chat/completions") else {
             throw AIProviderError.networkError("Invalid OpenAI-compatible base URL: \(baseURL)")
         }
@@ -62,7 +62,7 @@ public struct OpenAIProvider: AIProvider {
             "stream": false,
         ]
 
-        var request = URLRequest(url: url, timeoutInterval: aiRequestTimeoutSeconds())
+        var request = URLRequest(url: url, timeoutInterval: timeout ?? aiRequestTimeoutSeconds())
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let apiKey {

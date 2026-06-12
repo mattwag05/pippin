@@ -17,39 +17,42 @@ public struct OllamaProvider: AIProvider {
         // Fast preflight: if `ollama serve` isn't running, fail in <3s with
         // an actionable message rather than letting the agent or MCP client
         // wait the full request budget. Mirrors the philosophy of the MCP
-        // runChild cap: typed errors beat silent SIGKILLs.
+        // runChild cap: typed errors beat silent SIGKILLs. Stays outside the
+        // retry — `.providerUnreachable` is non-transient (the server is down).
         try preflight()
 
-        let timeout = aiRequestTimeoutSeconds()
         let body: [String: Any] = [
             "model": model,
             "prompt": prompt,
             "system": system,
             "stream": false,
         ]
+        let httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        var request = URLRequest(url: url, timeoutInterval: timeout)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try withAIRetry(totalBudget: aiRequestTimeoutSeconds()) { attemptTimeout in
+            var request = URLRequest(url: url, timeoutInterval: attemptTimeout)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = httpBody
 
-        let (data, httpResponse) = try sendSynchronousRequest(
-            request,
-            waitTimeoutSeconds: Int(timeout) + 5
-        )
+            let (data, httpResponse) = try sendSynchronousRequest(
+                request,
+                waitTimeoutSeconds: Int(attemptTimeout) + 5
+            )
 
-        guard httpResponse.statusCode == 200 else {
-            let detail = String(data: data, encoding: .utf8) ?? ""
-            throw AIProviderError.apiError(httpResponse.statusCode, detail)
+            guard httpResponse.statusCode == 200 else {
+                let detail = String(data: data, encoding: .utf8) ?? ""
+                throw AIProviderError.apiError(httpResponse.statusCode, detail)
+            }
+
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let text = json["response"] as? String
+            else {
+                throw AIProviderError.decodingFailed("Missing 'response' field in Ollama response")
+            }
+
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let text = json["response"] as? String
-        else {
-            throw AIProviderError.decodingFailed("Missing 'response' field in Ollama response")
-        }
-
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// 2-second `GET /api/version` probe. Throws `.providerUnreachable`
