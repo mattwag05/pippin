@@ -16,6 +16,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - [bug] `messages search` now surfaces a `scan_truncated` flag (plus `scanned_attributed_cap`) in the agent envelope, so a rich-text-only message older than the most-recent 1500 scanned isn't mistaken for "no match" — when `scan_truncated` is true, an empty/partial result is not authoritative. Fields are additive (non-breaking). Closes pippin-wve.
+- [bug] `--fields` now projects on **every** command that emits structured output, not just the list/search commands that wired it explicitly. It was accepted everywhere (it lives in the shared `OutputOptions`) but silently ignored at direct-`printAgent` sites like `mail accounts`, `mail mailboxes`, `reminders lists`, `contacts groups`, `calendar list`, `job list`, and `agent-info`. `OutputOptions.printAgent`/`emit` now default the projection list to the parsed `--fields`, so `pippin agent-info --format agent --fields version` returns just `{version}` instead of the full payload. Closes pippin-sq6.
 
 ### Changed
 
