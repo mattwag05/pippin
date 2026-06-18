@@ -88,6 +88,21 @@ Each `tools/call` spawns `pippin <subcommand> --format agent` as a child process
 
 Diagnostics (startup banner, warnings) go to stderr and do not pollute the JSON-RPC transport.
 
+## MCP-preferred, CLI-fallback (for agents)
+
+Because every tool call just shells out to `pippin <subcommand> --format agent`, the MCP server and the CLI are two surfaces over the **same binary** with **identical** [envelope v1](#envelope-v1-breaking-change-2026-04-20) output. So:
+
+- **Prefer the MCP tools where they're attached** — the [agent-runtime]/[agent] gateway and Claude Cowork (via the `pippin@mw-plugins` plugin) both register `pippin mcp-server`, so `mail_list`, `calendar_today`, etc. are first-class tools there.
+- **Fall back to the CLI when no MCP server is attached** — a bare Claude Code session, a scheduled task, or any shell context. The invocation maps one-to-one (tool `mail_list` → `pippin mail list`); just add `--format agent`:
+
+```bash
+~/.local/bin/pippin <area> <verb> … --format agent
+# e.g. the mail_list tool ≡
+~/.local/bin/pippin mail list --unread --limit 5 --format agent
+```
+
+Use the stable **`~/.local/bin/pippin`** path (the `make install` copy), **not** the brew symlink (`/opt/homebrew/bin/pippin`): macOS keys the bare-CLI TCC grant on the binary's resolved path, and brew's is the *versioned* `Cellar/<ver>/bin/pippin`, so a grant there is lost on every upgrade. The fallback is lossless — same envelope, same typed exit codes, same Automation/EventKit permissions — so an agent that drops to the shell behaves identically to one calling the MCP tool.
+
 ## Envelope v1 (breaking change, 2026-04-20)
 
 Every `--format agent` stdout is now wrapped in a versioned envelope. The MCP tool-result text field carries the envelope verbatim — clients that parse pippin JSON must reach one level deeper.
