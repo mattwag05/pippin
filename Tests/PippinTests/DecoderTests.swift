@@ -29,7 +29,7 @@ final class DecoderTests: XCTestCase {
         let json = """
         {"success":true,"action":"mark","details":{"messageId":"42"}}
         """
-        let result = try MailBridge.decode(MailActionResult.self, from: json)
+        let result = try MailBridge.decode(BridgeActionResult.self, from: json)
         XCTAssertTrue(result.success)
         XCTAssertEqual(result.action, "mark")
         XCTAssertEqual(result.details["messageId"], "42")

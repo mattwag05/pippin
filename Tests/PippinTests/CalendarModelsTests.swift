@@ -127,30 +127,30 @@ final class CalendarModelsTests: XCTestCase {
         }
     }
 
-    // MARK: - CalendarActionResult
+    // MARK: - BridgeActionResult
 
-    func testCalendarActionResultRoundTrip() throws {
-        let result = CalendarActionResult(
+    func testBridgeActionResultRoundTrip() throws {
+        let result = BridgeActionResult(
             success: true,
             action: "create",
             details: ["id": "abc123", "title": "Team meeting"]
         )
         let data = try JSONEncoder().encode(result)
-        let decoded = try JSONDecoder().decode(CalendarActionResult.self, from: data)
+        let decoded = try JSONDecoder().decode(BridgeActionResult.self, from: data)
         XCTAssertTrue(decoded.success)
         XCTAssertEqual(decoded.action, "create")
         XCTAssertEqual(decoded.details["id"], "abc123")
         XCTAssertEqual(decoded.details["title"], "Team meeting")
     }
 
-    func testCalendarActionResultFailure() throws {
-        let result = CalendarActionResult(
+    func testBridgeActionResultFailure() throws {
+        let result = BridgeActionResult(
             success: false,
             action: "delete",
             details: ["error": "not found"]
         )
         let data = try JSONEncoder().encode(result)
-        let decoded = try JSONDecoder().decode(CalendarActionResult.self, from: data)
+        let decoded = try JSONDecoder().decode(BridgeActionResult.self, from: data)
         XCTAssertFalse(decoded.success)
         XCTAssertEqual(decoded.action, "delete")
     }

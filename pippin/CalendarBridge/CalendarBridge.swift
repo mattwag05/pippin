@@ -189,7 +189,7 @@ public final class CalendarBridge: @unchecked Sendable {
         url: String? = nil,
         isAllDay: Bool = false,
         alertOffset: TimeInterval? = nil
-    ) async throws -> CalendarActionResult {
+    ) async throws -> BridgeActionResult {
         try await ensureAccess()
         let event = EKEvent(eventStore: store)
         event.title = title
@@ -217,7 +217,7 @@ public final class CalendarBridge: @unchecked Sendable {
         } catch {
             throw CalendarBridgeError.saveFailed(error.localizedDescription)
         }
-        return CalendarActionResult(
+        return BridgeActionResult(
             success: true,
             action: "create",
             details: ["id": event.calendarItemIdentifier, "title": title]
@@ -236,7 +236,7 @@ public final class CalendarBridge: @unchecked Sendable {
         isAllDay: Bool? = nil,
         alertOffset: TimeInterval? = nil,
         span: EKSpan = .thisEvent
-    ) async throws -> CalendarActionResult {
+    ) async throws -> BridgeActionResult {
         try await ensureAccess()
         guard let event = findEventByPrefix(id: id) else {
             throw CalendarBridgeError.eventNotFound(id)
@@ -265,14 +265,14 @@ public final class CalendarBridge: @unchecked Sendable {
         } catch {
             throw CalendarBridgeError.saveFailed(error.localizedDescription)
         }
-        return CalendarActionResult(
+        return BridgeActionResult(
             success: true,
             action: "update",
             details: ["id": event.calendarItemIdentifier, "title": event.title ?? ""]
         )
     }
 
-    public func deleteEvent(id: String, span: EKSpan = .thisEvent) async throws -> CalendarActionResult {
+    public func deleteEvent(id: String, span: EKSpan = .thisEvent) async throws -> BridgeActionResult {
         try await ensureAccess()
         guard let event = findEventByPrefix(id: id) else {
             throw CalendarBridgeError.eventNotFound(id)
@@ -284,7 +284,7 @@ public final class CalendarBridge: @unchecked Sendable {
         } catch {
             throw CalendarBridgeError.saveFailed(error.localizedDescription)
         }
-        return CalendarActionResult(
+        return BridgeActionResult(
             success: true,
             action: "delete",
             details: ["id": savedId, "title": savedTitle]

@@ -3,22 +3,6 @@ import Foundation
 extension MailBridge {
     // MARK: - JS Escape Helpers
 
-    static func jsEscape(_ s: String) -> String {
-        s.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\0", with: "\\0")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "`", with: "\\`")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
-            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
-    }
-
-    static func jsEscapeOptional(_ s: String?) -> String {
-        s.map { "'\(jsEscape($0))'" } ?? "null"
-    }
-
     static func jsStringArray(_ items: [String]) -> String {
         let escaped = items.map { "'\(jsEscape($0))'" }.joined(separator: ", ")
         return "[\(escaped)]"

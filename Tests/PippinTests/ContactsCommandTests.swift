@@ -284,16 +284,16 @@ final class ContactsCommandTests: XCTestCase {
         XCTAssertTrue(cmd.force)
     }
 
-    // MARK: - ContactActionResult Tests
+    // MARK: - BridgeActionResult Tests
 
-    func testContactActionResultRoundTrip() throws {
-        let result = ContactActionResult(
+    func testBridgeActionResultRoundTrip() throws {
+        let result = BridgeActionResult(
             success: true,
             action: "create",
             details: ["id": "abc-123", "fullName": "Alice Smith"]
         )
         let data = try JSONEncoder().encode(result)
-        let decoded = try JSONDecoder().decode(ContactActionResult.self, from: data)
+        let decoded = try JSONDecoder().decode(BridgeActionResult.self, from: data)
 
         XCTAssertTrue(decoded.success)
         XCTAssertEqual(decoded.action, "create")
@@ -301,8 +301,8 @@ final class ContactsCommandTests: XCTestCase {
         XCTAssertEqual(decoded.details["fullName"], "Alice Smith")
     }
 
-    func testContactActionResultDeleteAction() {
-        let result = ContactActionResult(
+    func testBridgeActionResultDeleteAction() {
+        let result = BridgeActionResult(
             success: true,
             action: "delete",
             details: ["id": "xyz-789", "fullName": "Bob Jones"]

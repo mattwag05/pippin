@@ -24,6 +24,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- [refactor] De-duplicated two sets of byte-identical code (from `/ponytail-audit`, no behavior change): the six per-bridge `*ActionResult` structs (Mail/Notes/Reminders/Calendar/Contacts/Memos — all `{success, action, details}`) collapse into one `BridgeActionResult`, and the three copies of the JXA-escaping `jsEscape`/`jsEscapeOptional` helpers become shared free functions in `Scripting/JSEscape.swift`. Agent JSON output is unchanged (same fields). Net −71 lines. Closes pippin-c7f.
 - [refactor] The `--no-contacts` / `--contacts` flags are now declared once in a shared `ContactResolutionOptions` group (mirroring `OutputOptions`/`PaginationOptions`) instead of being copy-pasted across all six `mail`/`messages` subcommands, and the resolution-precedence rule now lives with them. No behavior change — the flags parse identically; their `--help` text is now a single consistent line ("…resolve handles to Apple Contacts names"). Closes pippin-wyn.
 
 ### Documentation

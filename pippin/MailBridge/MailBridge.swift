@@ -169,19 +169,19 @@ enum MailBridge {
         compoundId: String,
         read: Bool,
         dryRun: Bool = false
-    ) throws -> MailActionResult {
+    ) throws -> BridgeActionResult {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         let script = buildMarkScript(account: account, mailbox: mailboxName, messageId: msgId, read: read, dryRun: dryRun)
         // Write operation: use 20s timeout to accommodate cold Mail launch + IMAP round-trip
         let json = try runScript(script, timeoutSeconds: 20)
-        return try decode(MailActionResult.self, from: json)
+        return try decode(BridgeActionResult.self, from: json)
     }
 
     static func moveMessage(
         compoundId: String,
         toMailbox: String,
         dryRun: Bool = false
-    ) throws -> MailActionResult {
+    ) throws -> BridgeActionResult {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         guard toMailbox.count <= 256, toMailbox.unicodeScalars.allSatisfy({ $0.value >= 0x20 }) else {
             throw MailBridgeError.invalidMailbox(toMailbox)
@@ -189,7 +189,7 @@ enum MailBridge {
         let script = buildMoveScript(account: account, mailbox: mailboxName, messageId: msgId, toMailbox: toMailbox, dryRun: dryRun)
         // Move triggers IMAP MOVE server-side — use 45s timeout for slow servers
         let json = try runScript(script, timeoutSeconds: 45)
-        return try decode(MailActionResult.self, from: json)
+        return try decode(BridgeActionResult.self, from: json)
     }
 
     static func sendMessage(
@@ -201,7 +201,7 @@ enum MailBridge {
         from accountName: String? = nil,
         attachmentPaths: [String] = [],
         dryRun: Bool = false
-    ) throws -> MailActionResult {
+    ) throws -> BridgeActionResult {
         let script = buildSendScript(
             to: to,
             subject: subject,
@@ -214,7 +214,7 @@ enum MailBridge {
         )
         // Send triggers SMTP handshake — use 45s timeout
         let json = try runScript(script, timeoutSeconds: 45)
-        return try decode(MailActionResult.self, from: json)
+        return try decode(BridgeActionResult.self, from: json)
     }
 
     static func listAttachments(compoundId: String, saveDir: String? = nil) throws -> [Attachment] {
@@ -235,7 +235,7 @@ enum MailBridge {
         from accountName: String? = nil,
         attachmentPaths: [String] = [],
         dryRun: Bool = false
-    ) throws -> MailActionResult {
+    ) throws -> BridgeActionResult {
         let original = try readMessage(compoundId: compoundId)
         let replyTo = overrideTo ?? [original.from]
         let replySubject = buildReplySubject(original.subject)
@@ -252,7 +252,7 @@ enum MailBridge {
             dryRun: dryRun
         )
         let json = try runScript(script, timeoutSeconds: 45)
-        return try decode(MailActionResult.self, from: json)
+        return try decode(BridgeActionResult.self, from: json)
     }
 
     static func forwardMessage(
@@ -264,7 +264,7 @@ enum MailBridge {
         from accountName: String? = nil,
         attachmentPaths: [String] = [],
         dryRun: Bool = false
-    ) throws -> MailActionResult {
+    ) throws -> BridgeActionResult {
         let original = try readMessage(compoundId: compoundId)
         let fwdSubject = buildForwardSubject(original.subject)
         let prefix = buildForwardPrefix(from: original.from, date: original.date, subject: original.subject, to: original.to, body: original.body ?? "")
@@ -280,7 +280,7 @@ enum MailBridge {
             dryRun: dryRun
         )
         let json = try runScript(script, timeoutSeconds: 45)
-        return try decode(MailActionResult.self, from: json)
+        return try decode(BridgeActionResult.self, from: json)
     }
 
     static func listAccounts() throws -> [MailAccount] {

@@ -181,7 +181,7 @@ public struct ActionsCommand: AsyncParsableCommand {
 
         // MARK: - Reminder creation
 
-        private func createReminders(from actions: [ExtractedAction]) async throws -> [ReminderActionResult] {
+        private func createReminders(from actions: [ExtractedAction]) async throws -> [BridgeActionResult] {
             let bridge = RemindersBridge()
             var resolvedListId: String?
             if let name = list {
@@ -192,7 +192,7 @@ public struct ActionsCommand: AsyncParsableCommand {
                     fputs("Warning: list '\(name)' not found — using default list.\n", stderr)
                 }
             }
-            var results: [ReminderActionResult] = []
+            var results: [BridgeActionResult] = []
             for action in actions {
                 let dueDate = action.proposedDueDate.flatMap { parseCalendarDate($0) }
                 let notes = "Extracted from \(action.source.rawValue) \"\(action.sourceTitle ?? action.sourceId)\":\n\n\(action.snippet)"
@@ -234,7 +234,7 @@ public struct ActionsCommand: AsyncParsableCommand {
             }
         }
 
-        private func emitResults(_ results: [ReminderActionResult], timedOut: Bool) throws {
+        private func emitResults(_ results: [BridgeActionResult], timedOut: Bool) throws {
             let hint = "activity scan timed out — some commitments may not have been created"
             try output.emit(results, timedOut: timedOut, timedOutHint: hint) {
                 if results.isEmpty {

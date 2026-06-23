@@ -149,12 +149,6 @@ public struct MailAccount: Codable, Sendable {
     public let email: String
 }
 
-public struct MailActionResult: Codable, Sendable {
-    public let success: Bool
-    public let action: String
-    public let details: [String: String]
-}
-
 public struct Attachment: Codable, Sendable {
     public let name: String
     public let mimeType: String

@@ -99,18 +99,6 @@ public struct ContactGroup: Codable, Sendable {
     }
 }
 
-public struct ContactActionResult: Codable, Sendable {
-    public let success: Bool
-    public let action: String
-    public let details: [String: String]
-
-    public init(success: Bool, action: String, details: [String: String]) {
-        self.success = success
-        self.action = action
-        self.details = details
-    }
-}
-
 public enum ContactsBridgeError: LocalizedError, Sendable {
     case accessDenied
     case contactNotFound(String)
