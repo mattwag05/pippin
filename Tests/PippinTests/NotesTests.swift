@@ -141,26 +141,26 @@ final class NotesTests: XCTestCase {
         XCTAssertEqual(decoded.noteCount, 5)
     }
 
-    // MARK: - NoteActionResult Codable roundtrip
+    // MARK: - BridgeActionResult Codable roundtrip
 
-    func testNoteActionResultCodableRoundtrip() throws {
-        let original = NoteActionResult(
+    func testBridgeActionResultCodableRoundtrip() throws {
+        let original = BridgeActionResult(
             success: true,
             action: "create",
             details: ["id": "x-coredata://abc/ICNote/p99", "title": "New Note"]
         )
         let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(NoteActionResult.self, from: data)
+        let decoded = try JSONDecoder().decode(BridgeActionResult.self, from: data)
         XCTAssertEqual(decoded.success, original.success)
         XCTAssertEqual(decoded.action, original.action)
         XCTAssertEqual(decoded.details["id"], "x-coredata://abc/ICNote/p99")
         XCTAssertEqual(decoded.details["title"], "New Note")
     }
 
-    func testNoteActionResultFailure() throws {
-        let original = NoteActionResult(success: false, action: "delete", details: ["error": "not found"])
+    func testBridgeActionResultFailure() throws {
+        let original = BridgeActionResult(success: false, action: "delete", details: ["error": "not found"])
         let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(NoteActionResult.self, from: data)
+        let decoded = try JSONDecoder().decode(BridgeActionResult.self, from: data)
         XCTAssertFalse(decoded.success)
         XCTAssertEqual(decoded.action, "delete")
     }

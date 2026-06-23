@@ -142,7 +142,7 @@ public enum ContactsBridge {
 
     // MARK: - Create
 
-    /// Create a new contact. Returns a ContactActionResult with the new contact's identifier.
+    /// Create a new contact. Returns a BridgeActionResult with the new contact's identifier.
     public static func createContact(
         givenName: String,
         familyName: String,
@@ -150,7 +150,7 @@ public enum ContactsBridge {
         phone: String? = nil,
         organization: String? = nil,
         jobTitle: String? = nil
-    ) throws -> ContactActionResult {
+    ) throws -> BridgeActionResult {
         let store = CNContactStore()
         try checkAuthorization(store: store)
 
@@ -182,7 +182,7 @@ public enum ContactsBridge {
             throw ContactsBridgeError.saveFailed(error.localizedDescription)
         }
         let fullName = CNContactFormatter.string(from: contact, style: .fullName) ?? "\(givenName) \(familyName)"
-        return ContactActionResult(
+        return BridgeActionResult(
             success: true,
             action: "create",
             details: ["id": contact.identifier, "fullName": fullName]
@@ -200,7 +200,7 @@ public enum ContactsBridge {
         phone: String? = nil,
         organization: String? = nil,
         jobTitle: String? = nil
-    ) throws -> ContactActionResult {
+    ) throws -> BridgeActionResult {
         let store = CNContactStore()
         try checkAuthorization(store: store)
 
@@ -247,7 +247,7 @@ public enum ContactsBridge {
             throw ContactsBridgeError.saveFailed(error.localizedDescription)
         }
         let fullName = CNContactFormatter.string(from: contact, style: .fullName) ?? ""
-        return ContactActionResult(
+        return BridgeActionResult(
             success: true,
             action: "update",
             details: ["id": identifier, "fullName": fullName]
@@ -257,7 +257,7 @@ public enum ContactsBridge {
     // MARK: - Delete
 
     /// Delete a contact by identifier.
-    public static func deleteContact(identifier: String) throws -> ContactActionResult {
+    public static func deleteContact(identifier: String) throws -> BridgeActionResult {
         let store = CNContactStore()
         try checkAuthorization(store: store)
 
@@ -284,7 +284,7 @@ public enum ContactsBridge {
         } catch {
             throw ContactsBridgeError.deleteFailed(error.localizedDescription)
         }
-        return ContactActionResult(
+        return BridgeActionResult(
             success: true,
             action: "delete",
             details: ["id": identifier, "fullName": fullName]

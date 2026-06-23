@@ -79,10 +79,10 @@ final class MailModelsTests: XCTestCase {
         XCTAssertEqual(parts[1], "Archive/2024")
     }
 
-    // MARK: - MailActionResult encoding
+    // MARK: - BridgeActionResult encoding
 
-    func testMailActionResultEncoding() throws {
-        let result = MailActionResult(
+    func testBridgeActionResultEncoding() throws {
+        let result = BridgeActionResult(
             success: true,
             action: "mark_read",
             details: ["account": "Work", "mailbox": "INBOX", "messageId": "42"]
@@ -96,8 +96,8 @@ final class MailModelsTests: XCTestCase {
         XCTAssertEqual(details?["account"], "Work")
     }
 
-    func testMailActionResultFailure() throws {
-        let result = MailActionResult(
+    func testBridgeActionResultFailure() throws {
+        let result = BridgeActionResult(
             success: false,
             action: "send",
             details: ["error": "SMTP authentication failed"]

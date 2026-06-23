@@ -118,26 +118,26 @@ final class RemindersTests: XCTestCase {
         XCTAssertFalse(decoded.isDefault)
     }
 
-    // MARK: - ReminderActionResult Codable roundtrip
+    // MARK: - BridgeActionResult Codable roundtrip
 
-    func testReminderActionResultCodableRoundtrip() throws {
-        let original = ReminderActionResult(
+    func testBridgeActionResultCodableRoundtrip() throws {
+        let original = BridgeActionResult(
             success: true,
             action: "create",
             details: ["id": "reminder-id", "title": "Call dentist"]
         )
         let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(ReminderActionResult.self, from: data)
+        let decoded = try JSONDecoder().decode(BridgeActionResult.self, from: data)
         XCTAssertEqual(decoded.success, original.success)
         XCTAssertEqual(decoded.action, original.action)
         XCTAssertEqual(decoded.details["id"], "reminder-id")
         XCTAssertEqual(decoded.details["title"], "Call dentist")
     }
 
-    func testReminderActionResultFailure() throws {
-        let original = ReminderActionResult(success: false, action: "delete", details: ["error": "not found"])
+    func testBridgeActionResultFailure() throws {
+        let original = BridgeActionResult(success: false, action: "delete", details: ["error": "not found"])
         let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(ReminderActionResult.self, from: data)
+        let decoded = try JSONDecoder().decode(BridgeActionResult.self, from: data)
         XCTAssertFalse(decoded.success)
         XCTAssertEqual(decoded.action, "delete")
     }

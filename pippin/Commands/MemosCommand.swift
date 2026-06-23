@@ -509,7 +509,7 @@ public struct MemosCommand: AsyncParsableCommand {
                 try? cache.delete(memoId: memo.id)
             }
 
-            let result = MemosActionResult(
+            let result = BridgeActionResult(
                 success: true, action: "deleted",
                 details: ["title": memo.title, "audioPath": audioPath]
             )

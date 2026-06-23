@@ -59,41 +59,25 @@ enum NotesBridge {
 
     private struct NoteCount: Decodable { let count: Int }
 
-    static func createNote(title: String, body: String? = nil, folder: String? = nil) throws -> NoteActionResult {
+    static func createNote(title: String, body: String? = nil, folder: String? = nil) throws -> BridgeActionResult {
         let script = buildCreateScript(title: title, body: body, folder: folder)
         let json = try runScript(script, timeoutSeconds: 20)
-        return try decode(NoteActionResult.self, from: json)
+        return try decode(BridgeActionResult.self, from: json)
     }
 
-    static func editNote(id: String, title: String? = nil, body: String? = nil, append: Bool = false) throws -> NoteActionResult {
+    static func editNote(id: String, title: String? = nil, body: String? = nil, append: Bool = false) throws -> BridgeActionResult {
         let script = buildEditScript(id: id, title: title, body: body, append: append)
         let json = try runScript(script, timeoutSeconds: 20)
-        return try decode(NoteActionResult.self, from: json)
+        return try decode(BridgeActionResult.self, from: json)
     }
 
-    static func deleteNote(id: String) throws -> NoteActionResult {
+    static func deleteNote(id: String) throws -> BridgeActionResult {
         let script = buildDeleteScript(id: id)
         let json = try runScript(script, timeoutSeconds: 20)
-        return try decode(NoteActionResult.self, from: json)
+        return try decode(BridgeActionResult.self, from: json)
     }
 
     // MARK: - JXA Helpers
-
-    static func jsEscape(_ s: String) -> String {
-        s.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\0", with: "\\0")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "`", with: "\\`")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
-            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
-    }
-
-    static func jsEscapeOptional(_ s: String?) -> String {
-        s.map { "'\(jsEscape($0))'" } ?? "null"
-    }
 
     /// JXA fragment shared by `buildListScript` / `buildSearchScript` that
     /// resolves the collection specifier `_notesRef`, materializes the element

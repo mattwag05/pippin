@@ -149,7 +149,7 @@ public final class RemindersBridge: @unchecked Sendable {
         priority: Int = 0,
         notes: String? = nil,
         url: String? = nil
-    ) async throws -> ReminderActionResult {
+    ) async throws -> BridgeActionResult {
         try await ensureAccess()
         let reminder = EKReminder(eventStore: store)
         reminder.title = title
@@ -180,7 +180,7 @@ public final class RemindersBridge: @unchecked Sendable {
         } catch {
             throw RemindersBridgeError.saveFailed(error.localizedDescription)
         }
-        return ReminderActionResult(
+        return BridgeActionResult(
             success: true,
             action: "create",
             details: ["id": reminder.calendarItemIdentifier, "title": title]
@@ -197,7 +197,7 @@ public final class RemindersBridge: @unchecked Sendable {
         notes: String? = nil,
         listId: String? = nil,
         url: String? = nil
-    ) async throws -> ReminderActionResult {
+    ) async throws -> BridgeActionResult {
         try await ensureAccess()
         guard let reminder = try findReminderByPrefix(id: id) else {
             throw RemindersBridgeError.reminderNotFound(id)
@@ -225,7 +225,7 @@ public final class RemindersBridge: @unchecked Sendable {
         } catch {
             throw RemindersBridgeError.saveFailed(error.localizedDescription)
         }
-        return ReminderActionResult(
+        return BridgeActionResult(
             success: true,
             action: "update",
             details: ["id": reminder.calendarItemIdentifier, "title": reminder.title ?? ""]
@@ -234,7 +234,7 @@ public final class RemindersBridge: @unchecked Sendable {
 
     // MARK: - Complete
 
-    public func completeReminder(id: String) async throws -> ReminderActionResult {
+    public func completeReminder(id: String) async throws -> BridgeActionResult {
         try await ensureAccess()
         guard let reminder = try findReminderByPrefix(id: id) else {
             throw RemindersBridgeError.reminderNotFound(id)
@@ -246,7 +246,7 @@ public final class RemindersBridge: @unchecked Sendable {
         } catch {
             throw RemindersBridgeError.saveFailed(error.localizedDescription)
         }
-        return ReminderActionResult(
+        return BridgeActionResult(
             success: true,
             action: "complete",
             details: ["id": reminder.calendarItemIdentifier, "title": reminder.title ?? ""]
@@ -255,7 +255,7 @@ public final class RemindersBridge: @unchecked Sendable {
 
     // MARK: - Delete
 
-    public func deleteReminder(id: String) async throws -> ReminderActionResult {
+    public func deleteReminder(id: String) async throws -> BridgeActionResult {
         try await ensureAccess()
         guard let reminder = try findReminderByPrefix(id: id) else {
             throw RemindersBridgeError.reminderNotFound(id)
@@ -267,7 +267,7 @@ public final class RemindersBridge: @unchecked Sendable {
         } catch {
             throw RemindersBridgeError.saveFailed(error.localizedDescription)
         }
-        return ReminderActionResult(
+        return BridgeActionResult(
             success: true,
             action: "delete",
             details: ["id": savedId, "title": savedTitle]

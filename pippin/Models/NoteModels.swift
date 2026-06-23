@@ -83,15 +83,3 @@ public struct NoteFolder: Codable, Sendable {
         self.noteCount = noteCount
     }
 }
-
-public struct NoteActionResult: Codable, Sendable {
-    public let success: Bool
-    public let action: String
-    public let details: [String: String]
-
-    public init(success: Bool, action: String, details: [String: String]) {
-        self.success = success
-        self.action = action
-        self.details = details
-    }
-}
