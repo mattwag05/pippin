@@ -268,14 +268,45 @@ public final class MessagesDatabase: Sendable {
     ) throws -> (conversation: MessageConversation, messages: [MessageItem], truncated: Bool) {
         let limit = Self.clampLimit(limit)
         return try readWrapping { db in
-            guard let chatRow = try Row.fetchOne(
+            // TCC privacy masking: on newer macOS, phone numbers in the `guid`
+            // column are returned with middle digits replaced by `*` (e.g.
+            // `any;-;+151****2328` instead of `any;-;+151****2328`).  An exact
+            // `guid = ?` match then fails because the stored value has real digits.
+            // If the caller's ID contains `*`, try a LIKE match (mapping `*` → `_`).
+            // Also fall back to `chat_identifier` (which holds the bare handle,
+            // e.g. `+151****2328`) by stripping any `service;-;` prefix.
+            func makeQuery() throws -> Row? {
+                if conversationId.contains("*") {
+                    let likePattern = conversationId.replacingOccurrences(of: "*", with: "_")
+                    return try Row.fetchOne(
+                        db,
+                        sql: """
+                        SELECT ROWID, guid, chat_identifier, service_name, display_name, room_name, style
+                        FROM chat WHERE guid LIKE ? ESCAPE '\\'
+                        """,
+                        arguments: [likePattern]
+                    )
+                } else {
+                    return try Row.fetchOne(
+                        db,
+                        sql: """
+                        SELECT ROWID, guid, chat_identifier, service_name, display_name, room_name, style
+                        FROM chat WHERE guid = ?
+                        """,
+                        arguments: [conversationId]
+                    )
+                }
+            }
+            // Fallback: if still not found, try chat_identifier by stripping the
+            // `service;-;` prefix (e.g. `any;-;+151****2328` → `+151****2328`).
+            guard let chatRow: Row = (try makeQuery()) ?? (try Row.fetchOne(
                 db,
                 sql: """
                 SELECT ROWID, guid, chat_identifier, service_name, display_name, room_name, style
-                FROM chat WHERE guid = ?
+                FROM chat WHERE chat_identifier = ?
                 """,
-                arguments: [conversationId]
-            ) else {
+                arguments: [conversationId.components(separatedBy: ";").last ?? conversationId]
+            )) else {
                 throw MessagesError.conversationNotFound(conversationId)
             }
             let chatRowId: Int64 = chatRow["ROWID"] ?? 0
