@@ -299,7 +299,7 @@ public final class MessagesDatabase: Sendable {
             }
             // Fallback: if still not found, try chat_identifier by stripping the
             // `service;-;` prefix (e.g. `any;-;+151****2328` → `+151****2328`).
-            guard let chatRow: Row = (try makeQuery()) ?? (try Row.fetchOne(
+            guard let chatRow: Row = try (makeQuery() ?? Row.fetchOne(
                 db,
                 sql: """
                 SELECT ROWID, guid, chat_identifier, service_name, display_name, room_name, style

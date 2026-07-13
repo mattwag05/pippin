@@ -288,7 +288,7 @@ final class NotesTests: XCTestCase {
     // MARK: - jsEscape
 
     func testJsEscapeSingleQuote() {
-        let escaped = NotesBridge.jsEscape("it's")
+        let escaped = jsEscape("it's")
         XCTAssertTrue(
             escaped.contains("\\'"),
             "Expected single quote to be escaped, got: \(escaped)"
@@ -296,7 +296,7 @@ final class NotesTests: XCTestCase {
     }
 
     func testJsEscapeNewline() {
-        let escaped = NotesBridge.jsEscape("line1\nline2")
+        let escaped = jsEscape("line1\nline2")
         XCTAssertTrue(
             escaped.contains("\\n"),
             "Expected newline to be escaped, got: \(escaped)"
@@ -304,7 +304,7 @@ final class NotesTests: XCTestCase {
     }
 
     func testJsEscapeBackslash() {
-        let escaped = NotesBridge.jsEscape("path\\file")
+        let escaped = jsEscape("path\\file")
         XCTAssertTrue(
             escaped.contains("\\\\"),
             "Expected backslash to be escaped, got: \(escaped)"
@@ -312,7 +312,7 @@ final class NotesTests: XCTestCase {
     }
 
     func testJsEscapeDoubleQuote() {
-        let escaped = NotesBridge.jsEscape("say \"hello\"")
+        let escaped = jsEscape("say \"hello\"")
         XCTAssertTrue(
             escaped.contains("\\\""),
             "Expected double quote to be escaped, got: \(escaped)"
@@ -321,7 +321,7 @@ final class NotesTests: XCTestCase {
 
     func testJsEscapeNoChangePlainString() {
         let plain = "Hello world 123"
-        let escaped = NotesBridge.jsEscape(plain)
+        let escaped = jsEscape(plain)
         XCTAssertEqual(escaped, plain)
     }
 }
