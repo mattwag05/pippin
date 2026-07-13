@@ -95,7 +95,9 @@ background). Run it again any time TCC resets (e.g. after a macOS upgrade).
 
 ```bash
 pippin mail list --unread --limit 5
+pippin mail list --unread --after 2026-06-01 --before 2026-07-01  # date-bounded listing
 pippin mail search "quarterly report" --after 2026-01-01
+pippin mail search "invoice" --from billing@vendor.com           # filter by sender
 pippin mail show "acct||INBOX||12345"
 pippin mail reply "acct||INBOX||12345" --body "Thanks!"
 pippin mail forward "acct||INBOX||12345" --to other@example.com
@@ -146,7 +148,9 @@ pippin reminders search "report"
 pippin notes list --folder "Work"
 pippin notes search "project kickoff"
 pippin notes create "My note" --body "Content here" --folder "Work"
+pippin notes create "Notes" --body $'## Heading\n\nPara one.\nLine two.'  # newlines/paragraphs preserved
 pippin notes edit <id> --body "Extra line" --append
+pippin notes create "Raw" --body "<div>already <b>HTML</b></div>" --html  # pass HTML through unconverted
 ```
 
 ### Contacts
@@ -358,9 +362,9 @@ pippin memos summarize <id> --provider claude
 
 ## Contact Name Resolution
 
-`mail list`/`search`/`activity`/`show` and `messages list`/`search`/`show` resolve each sender/participant handle (phone number or email) to its Apple Contacts display name. Each command builds the index from a single `CNContactStore` enumeration; resolution is best-effort, so when Contacts isn't authorized it silently no-ops rather than failing.
+`mail list`/`search`/`activity`/`show` and `messages list`/`search`/`show` resolve each sender/participant handle (phone number or email) to its Apple Contacts display name. The index is built from a `CNContactStore` enumeration and **cached** (`~/.config/pippin/contact-index.db`, keyed on the store's change token) — it only re-enumerates when your contacts actually change, not once per command. Resolution is best-effort, so when Contacts isn't authorized it silently no-ops rather than failing.
 
-**Disabling resolution.** Building the index is one address-book enumeration *per command*. Workflows that fan out — e.g. a morning briefing that runs `mail list` once per account plus `messages list` — pay it on every call. You can turn resolution off globally with a config default instead of passing `--no-contacts` everywhere:
+**Disabling resolution.** The index is cached across commands (see above), so fan-out workflows no longer pay a full enumeration per call. You can still turn resolution off entirely with a config default instead of passing `--no-contacts` everywhere:
 
 ```json
 {
@@ -430,7 +434,7 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 
 ```bash
 make build      # Release build
-make test       # Run tests (1,700+ tests, 0 failures)
+make test       # Run tests (~1,990 tests, 0 failures)
 make lint       # swiftformat lint
 make ci         # Full local gate: build + test + swiftformat + detach-lint
 make install    # Build + install to ~/.local/bin
