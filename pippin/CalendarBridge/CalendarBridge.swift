@@ -92,6 +92,47 @@ public final class CalendarBridge: @unchecked Sendable {
         return (timedOut ? [] : result, timedOut)
     }
 
+    /// `EKEventStore.predicateForEvents(withStart:end:calendars:)` silently
+    /// returns incomplete results for windows wider than a few years — non-
+    /// recurring and weekly/daily-recurring events drop out first, well before
+    /// any timeout fires (pippin-5nj). Apple documents no hard cap, but
+    /// `findEventByPrefix`'s existing ±1yr window has always been reliable, so
+    /// split any requested range into ≤366-day chunks, fetch each, and merge —
+    /// deduping recurring occurrences (same identifier can appear in adjacent
+    /// chunks at a boundary) by (identifier, startDate).
+    private func fetchEventsChunked(from start: Date, to end: Date, calendars: [EKCalendar]?) -> (events: [EKEvent], timedOut: Bool) {
+        var events: [EKEvent] = []
+        var seen = Set<String>()
+        var timedOut = false
+        for (chunkStart, chunkEnd) in Self.chunkRanges(from: start, to: end) {
+            let predicate = store.predicateForEvents(withStart: chunkStart, end: chunkEnd, calendars: calendars)
+            let (chunkEvents, chunkTimedOut) = fetchEventsSync(predicate: predicate)
+            timedOut = timedOut || chunkTimedOut
+            for event in chunkEvents {
+                let key = "\(event.calendarItemIdentifier)|\(event.startDate.timeIntervalSince1970)"
+                if seen.insert(key).inserted {
+                    events.append(event)
+                }
+            }
+        }
+        return (events, timedOut)
+    }
+
+    /// Split `[start, end)` into contiguous ≤`maxDays`-wide sub-ranges. Pure
+    /// and EventKit-free so it's unit-testable without a live `EKEventStore`.
+    static func chunkRanges(from start: Date, to end: Date, maxDays: Int = 366) -> [(start: Date, end: Date)] {
+        guard start < end else { return [] }
+        let calendar = Calendar(identifier: .gregorian)
+        var ranges: [(Date, Date)] = []
+        var chunkStart = start
+        while chunkStart < end {
+            let chunkEnd = min(calendar.date(byAdding: .day, value: maxDays, to: chunkStart) ?? end, end)
+            ranges.append((chunkStart, chunkEnd))
+            chunkStart = chunkEnd
+        }
+        return ranges
+    }
+
     // MARK: - Access
 
     public func ensureAccess() async throws {
@@ -143,8 +184,7 @@ public final class CalendarBridge: @unchecked Sendable {
             }
             filterCalendars = [cal]
         }
-        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: filterCalendars)
-        let (events, timedOut) = fetchEventsSync(predicate: predicate)
+        let (events, timedOut) = fetchEventsChunked(from: start, to: end, calendars: filterCalendars)
         let mapped = events
             .sorted { $0.startDate < $1.startDate }
             .map { mapEvent($0) }
@@ -155,8 +195,7 @@ public final class CalendarBridge: @unchecked Sendable {
     /// Cancelled events are excluded. Uses the same predicate-based lookup as `listEvents`.
     public func findConflicts(from: Date, to: Date, excludingEventId: String? = nil) async throws -> Outcome<[CalendarEvent]> {
         try await ensureAccess()
-        let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
-        let (events, timedOut) = fetchEventsSync(predicate: predicate)
+        let (events, timedOut) = fetchEventsChunked(from: from, to: to, calendars: nil)
         let mapped = events
             .filter { event in
                 event.status != .canceled

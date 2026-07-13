@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [bug] `calendar events` and `calendar conflicts` no longer silently drop events on wide date ranges. `EKEventStore.predicateForEvents` returns incomplete results for windows spanning more than a few years — non-recurring and weekly/daily-recurring events vanished first, with no error or `timedOut` warning, leaving only some yearly-recurring events at the widest ranges. Both commands now split the requested range into ≤366-day chunks internally and merge the results, deduping recurring occurrences at chunk boundaries. Closes pippin-5nj.
+
 ## [0.33.0] - 2026-06-12
 
 ### Added

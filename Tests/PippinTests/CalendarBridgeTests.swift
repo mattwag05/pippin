@@ -24,6 +24,53 @@ final class CalendarBridgeTests: XCTestCase {
         XCTAssertFalse(CalendarBridge.isUnambiguousPrefixMatch([]))
     }
 
+    // MARK: - Date-range chunking (pippin-5nj)
+    //
+    // EKEventStore.predicateForEvents(withStart:end:calendars:) silently drops
+    // events for windows wider than a few years. `chunkRanges` is the pure
+    // splitting logic behind the fix — no live EKEventStore needed to test it.
+
+    func testChunkRangesEmptyForEqualStartEnd() {
+        let d = Date()
+        XCTAssertTrue(CalendarBridge.chunkRanges(from: d, to: d).isEmpty)
+    }
+
+    func testChunkRangesEmptyForInvertedRange() {
+        let start = Date()
+        let end = start.addingTimeInterval(-3600)
+        XCTAssertTrue(CalendarBridge.chunkRanges(from: start, to: end).isEmpty)
+    }
+
+    func testChunkRangesSingleChunkWhenUnderMax() {
+        let start = Date()
+        let end = start.addingTimeInterval(60 * 60 * 24 * 30) // 30 days
+        let ranges = CalendarBridge.chunkRanges(from: start, to: end, maxDays: 366)
+        XCTAssertEqual(ranges.count, 1)
+        XCTAssertEqual(ranges[0].start, start)
+        XCTAssertEqual(ranges[0].end, end)
+    }
+
+    func testChunkRangesSplitsWideRangeContiguously() {
+        let calendar = Calendar(identifier: .gregorian)
+        let start = calendar.date(from: DateComponents(year: 1990, month: 1, day: 1))!
+        let end = calendar.date(from: DateComponents(year: 2026, month: 12, day: 31))!
+        let ranges = CalendarBridge.chunkRanges(from: start, to: end, maxDays: 366)
+
+        XCTAssertGreaterThan(ranges.count, 1, "37-year range must split into multiple chunks")
+        XCTAssertEqual(ranges.first?.start, start, "first chunk must start at the requested start")
+        XCTAssertEqual(ranges.last?.end, end, "last chunk must end exactly at the requested end")
+
+        // Contiguous, no gaps or overlaps: each chunk's end is the next chunk's start.
+        for i in 1 ..< ranges.count {
+            XCTAssertEqual(ranges[i - 1].end, ranges[i].start, "chunk \(i - 1)/\(i) boundary must be contiguous")
+        }
+        // No chunk exceeds the max width.
+        for (chunkStart, chunkEnd) in ranges {
+            let days = calendar.dateComponents([.day], from: chunkStart, to: chunkEnd).day ?? 0
+            XCTAssertLessThanOrEqual(days, 366)
+        }
+    }
+
     // MARK: - Error descriptions
 
     func testAccessDeniedDescription() {
