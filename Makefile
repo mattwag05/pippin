@@ -1,7 +1,7 @@
 INSTALL_DIR := $(HOME)/.local/bin
 VERSION := $(shell grep 'static let version' pippin/Version.swift | sed 's/.*"\(.*\)"/\1/')
 
-.PHONY: build test lint ci ci-vm install sign completions version release tarball clean link-skills
+.PHONY: build test lint e2e ci ci-vm install sign completions version release tarball clean link-skills
 
 build:
 	xcrun --sdk macosx swift build -c release
@@ -28,6 +28,12 @@ test:
 
 lint:
 	swiftformat --lint pippin/ pippin-entry/ Tests/ 2>/dev/null || echo "swiftformat not installed — skipping lint"
+
+# Autonomous E2E smoke against LIVE Apple apps via the TCC-granted binary
+# (~/.local/bin/pippin). Read-only by default; E2E_RW=1 adds write round-trips.
+# Exit 2 = permissions missing (run `pippin permissions` interactively once).
+e2e:
+	./scripts/e2e-smoke.sh $(if $(E2E_RW),--rw,)
 
 # Full CI gate run NATIVELY on this host (fast, no VM). Mirrors ci.yml.
 ci:
