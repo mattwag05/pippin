@@ -124,6 +124,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Filter by recipient email address.")
         public var to: String?
 
+        @Option(name: .long, help: "Filter by sender (substring match on the From header).")
+        public var from: String?
+
         @Flag(name: .long, help: "Print search diagnostics (accounts/mailboxes scanned, messages examined).")
         public var verbose: Bool = false
 
@@ -211,6 +214,7 @@ public struct MailCommand: AsyncParsableCommand {
             let after = self.after
             let before = self.before
             let to = self.to
+            let from = self.from
             let verbose = self.verbose
             // searchMessages spawns a blocking osascript subprocess (up to 95s
             // cross-account); hop off the cooperative pool so concurrent callers
@@ -226,6 +230,7 @@ public struct MailCommand: AsyncParsableCommand {
                     after: after,
                     before: before,
                     to: to,
+                    from: from,
                     verbose: verbose
                 )
             }
@@ -260,6 +265,7 @@ public struct MailCommand: AsyncParsableCommand {
                 "after": after,
                 "before": before,
                 "to": to,
+                "from": from,
                 "semantic": semantic ? "1" : "0",
             ])
             let (offset, pageSize) = try Pagination.resolve(
@@ -295,6 +301,7 @@ public struct MailCommand: AsyncParsableCommand {
                 let after = self.after
                 let before = self.before
                 let to = self.to
+                let from = self.from
                 let verbose = self.verbose
                 // searchMessages spawns a blocking osascript subprocess; hop off
                 // the cooperative pool so concurrent callers don't stall.
@@ -309,6 +316,7 @@ public struct MailCommand: AsyncParsableCommand {
                         after: after,
                         before: before,
                         to: to,
+                        from: from,
                         verbose: verbose
                     )
                 }
@@ -337,6 +345,12 @@ public struct MailCommand: AsyncParsableCommand {
 
         @Flag(name: .long, help: "Only show unread messages.")
         public var unread: Bool = false
+
+        @Option(name: .long, help: "Only include messages on or after this date (YYYY-MM-DD).")
+        public var after: String?
+
+        @Option(name: .long, help: "Only include messages on or before this date (YYYY-MM-DD).")
+        public var before: String?
 
         @Option(name: .long, help: "Maximum number of messages to return.")
         public var limit: Int = 20
@@ -379,6 +393,16 @@ public struct MailCommand: AsyncParsableCommand {
             }
             if let preview, preview <= 0 {
                 throw ValidationError("--preview must be a positive integer (chars).")
+            }
+            if let after = after {
+                guard isValidDate(after) else {
+                    throw ValidationError("--after must be in YYYY-MM-DD format, got: \(after)")
+                }
+            }
+            if let before = before {
+                guard isValidDate(before) else {
+                    throw ValidationError("--before must be in YYYY-MM-DD format, got: \(before)")
+                }
             }
             if pagination.isActive, summarize {
                 throw ValidationError("--summarize cannot be combined with --cursor / --page-size.")
@@ -464,6 +488,8 @@ public struct MailCommand: AsyncParsableCommand {
                 "mailbox": mailbox,
                 "unread": unread ? "1" : "0",
                 "preview": preview.map(String.init),
+                "after": after,
+                "before": before,
             ])
             let (offset, pageSize) = try Pagination.resolve(
                 pagination, defaultPageSize: limit, filterHash: hash
@@ -486,17 +512,21 @@ public struct MailCommand: AsyncParsableCommand {
             let unread = self.unread
             let preview = self.preview
             let noCache = self.noCache
+            let after = self.after
+            let before = self.before
             return try await detachBlocking {
                 if let preview, preview > 0 {
                     return try MailBridge.listMessagesCached(
                         account: account, mailbox: mailbox, unread: unread,
                         limit: limit, offset: offset, preview: preview,
+                        after: after, before: before,
                         cache: noCache ? nil : MailBodyCache.shared
                     )
                 }
                 return try MailBridge.listMessages(
                     account: account, mailbox: mailbox, unread: unread,
-                    limit: limit, offset: offset, preview: preview
+                    limit: limit, offset: offset, preview: preview,
+                    after: after, before: before
                 )
             }
         }

@@ -228,6 +228,102 @@ final class AIProviderTests: XCTestCase {
         XCTAssertLessThan(Int(batch) + 5, 60, "MCP embedding budget must stay under the 60s child cap")
     }
 
+    // MARK: - Model-not-found detection (issue #22)
+
+    //
+    // `pippin do` (and every Ollama consumer) previously surfaced a missing
+    // model as a generic `apiError(404, …)` with no remediation. The 404 body
+    // detection and tags parsing are pure so they're unit-testable without a
+    // live Ollama, matching the buildRequest/parseCompletion pattern above.
+
+    func testIsModelNotFoundBodyMatchesOllamaShape() {
+        let body = #"{"error":"model \"gemma4:latest\" not found, try pulling it first"}"#
+        XCTAssertTrue(OllamaProvider.isModelNotFoundBody(Data(body.utf8)))
+    }
+
+    func testIsModelNotFoundBodyRejectsOtherErrors() {
+        XCTAssertFalse(OllamaProvider.isModelNotFoundBody(Data(#"{"error":"unexpected EOF"}"#.utf8)))
+        XCTAssertFalse(OllamaProvider.isModelNotFoundBody(Data(#"{"message":"model not found"}"#.utf8)))
+        XCTAssertFalse(OllamaProvider.isModelNotFoundBody(Data("not json at all".utf8)))
+        XCTAssertFalse(OllamaProvider.isModelNotFoundBody(Data()))
+    }
+
+    func testParseTagsResponse() {
+        let body = #"{"models":[{"name":"gemma4:latest","size":1},{"name":"qwen3:8b"}]}"#
+        XCTAssertEqual(OllamaProvider.parseTagsResponse(Data(body.utf8)), ["gemma4:latest", "qwen3:8b"])
+    }
+
+    func testParseTagsResponseMalformedReturnsNil() {
+        XCTAssertNil(OllamaProvider.parseTagsResponse(Data("{}".utf8)))
+        XCTAssertNil(OllamaProvider.parseTagsResponse(Data("nope".utf8)))
+    }
+
+    func testModelNotFoundErrorDescriptionMentionsPullAndConfigKey() throws {
+        let description = try XCTUnwrap(
+            AIProviderError.modelNotFound(model: "gemma4:latest", available: []).errorDescription
+        )
+        XCTAssertTrue(description.contains("ollama pull gemma4:latest"))
+        XCTAssertTrue(description.contains("ai.ollama.model"))
+    }
+
+    func testModelNotFoundIsNotTransient() {
+        // Retrying can't make a missing model appear — must throw immediately.
+        XCTAssertFalse(isTransientAIError(.modelNotFound(model: "x", available: [])))
+    }
+
+    func testModelNotFoundExitCodeIsNotFoundClass() {
+        // `model_not_found` lands in the not-found bucket (3) via the standard
+        // `_not_found` suffix classification — a stable, non-retryable class.
+        XCTAssertEqual(PippinExitCode.from(AIProviderError.modelNotFound(model: "x", available: [])), 3)
+    }
+
+    // MARK: - Shared model-name matching (moved from DoctorCommand, issue #22)
+
+    func testOllamaModelMatchExact() {
+        XCTAssertTrue(OllamaProvider.modelIsAvailable(
+            configured: "llama3.2",
+            available: ["llama3.2", "gemma4:latest"]
+        ))
+    }
+
+    func testOllamaModelMatchTagSuffix() {
+        // `gemma4:latest` available, configured says `gemma4` (no tag).
+        XCTAssertTrue(OllamaProvider.modelIsAvailable(
+            configured: "gemma4",
+            available: ["gemma4:latest"]
+        ))
+    }
+
+    func testOllamaModelMatchTagOnConfigured() {
+        // `gemma4` available (rare but plausible), configured says `gemma4:latest`.
+        XCTAssertTrue(OllamaProvider.modelIsAvailable(
+            configured: "gemma4:latest",
+            available: ["gemma4"]
+        ))
+    }
+
+    func testOllamaModelMissing() {
+        XCTAssertFalse(OllamaProvider.modelIsAvailable(
+            configured: "llama3.2",
+            available: ["gemma4:latest", "qwen3:8b"]
+        ))
+    }
+
+    func testOllamaModelMissingWithEmptyAvailable() {
+        XCTAssertFalse(OllamaProvider.modelIsAvailable(
+            configured: "llama3.2",
+            available: []
+        ))
+    }
+
+    func testOllamaModelDoesNotConfuseDifferentBaseNames() {
+        // gemma4 != gemma3; base-name match must be exact, not prefix.
+        XCTAssertFalse(OllamaProvider.modelIsAvailable(
+            configured: "gemma4",
+            available: ["gemma3:latest"]
+        ))
+    }
+
     func testOllamaPreflightFailsFastWhenServerDown() throws {
         // Point at a port nothing is listening on; preflight must fail quickly
         // with a typed providerUnreachable error rather than waiting the full

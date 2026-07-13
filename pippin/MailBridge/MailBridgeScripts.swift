@@ -1,6 +1,29 @@
 import Foundation
 
 extension MailBridge {
+    // MARK: - Scan Direction Probe
+
+    /// JXA snippet declaring `var newestFirst` for a message collection.
+    ///
+    /// Whether `mailbox.messages()` is index-ordered oldest→newest or
+    /// newest→oldest varies by account/provider (GitHub #23/#24 — Gmail All
+    /// Mail returned 2018-era mail from a "newest N" window built on the wrong
+    /// assumption). Instead of assuming, probe the direction with two cheap
+    /// Apple Events (`dateSent()` on the first and last message) and let the
+    /// caller derive its scan window/iteration order from the result.
+    /// Falls back to `fallbackNewestFirst` (the script's historical
+    /// assumption) on error or when the collection has fewer than 2 messages.
+    static func jsProbeNewestFirst(collection: String, fallbackNewestFirst: Bool) -> String {
+        """
+        var newestFirst = \(fallbackNewestFirst ? "true" : "false");
+        try {
+            if (\(collection).length >= 2) {
+                newestFirst = \(collection)[0].dateSent() >= \(collection)[\(collection).length - 1].dateSent();
+            }
+        } catch(e) {}
+        """
+    }
+
     // MARK: - List Script
 
     static func buildListScript(
@@ -10,10 +33,14 @@ extension MailBridge {
         limit: Int,
         offset: Int = 0,
         preview: Int? = nil,
+        after: String? = nil,
+        before: String? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
         let mbName = jsEscape(mailbox)
+        let afterFilter = jsEscapeOptional(after)
+        let beforeFilter = jsEscapeOptional(before)
         // 0 means "preview disabled"; positive value is clamped chars for the preview.
         let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
         let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
@@ -29,6 +56,10 @@ extension MailBridge {
         var limit = \(limit);
         var offset = \(offset);
         var previewChars = \(previewChars);
+        var afterFilter = \(afterFilter);
+        var beforeFilter = \(beforeFilter);
+        var afterDate = afterFilter !== null ? new Date(afterFilter) : null;
+        var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var softTimeoutMs = \(safeSoftTimeoutMs);
         var results = [];
         var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
@@ -51,20 +82,27 @@ extension MailBridge {
 
             // whose({}) is invalid JXA — use messages() directly for all-messages case
             var msgs = unreadOnly ? mb.messages.whose({readStatus: false})() : mb.messages();
-            var startIdx = Math.min(offset, msgs.length);
-            var endIdx = Math.min(startIdx + limit, msgs.length);
-            var slice = msgs.slice(startIdx, endIdx);
-            var count = slice.length;
+            if (!msgs) continue;
+            var totalMsgs = msgs.length;
+            \(jsProbeNewestFirst(collection: "msgs", fallbackNewestFirst: true))
+            // offset/limit are positions in newest→oldest order, mapped onto the
+            // collection by the probed direction (GitHub #24).
+            var windowSize = Math.max(0, Math.min(limit, totalMsgs - offset));
 
             // Single-pass assembly: time-check fires per message so the
             // expensive msg.content() body fetch (when preview is on) can be
             // bounded. Preserves the metadata-then-body order so we never
             // discard partial work — if the soft cap fires mid-row, we keep
             // every row already pushed to results.
-            for (var i = 0; i < count && results.length < limit; i++) {
+            for (var k = 0; k < windowSize && results.length < limit; k++) {
                 if (Date.now() - _listStart > softTimeoutMs) { _meta.timedOut = true; break; }
-                var msg = slice[i];
+                var msg = msgs[newestFirst ? offset + k : totalMsgs - 1 - offset - k];
                 _meta.messagesExamined++;
+
+                // Date range filter (cheap — no IMAP fetch)
+                var msgDate = msg.dateSent();
+                if (afterDate !== null && msgDate < afterDate) continue;
+                if (beforeDate !== null && msgDate > beforeDate) continue;
 
                 var msgSize = null;
                 try { msgSize = msg.messageSize(); } catch(e) {}
@@ -78,7 +116,7 @@ extension MailBridge {
                     subject: msg.subject(),
                     from: msg.sender(),
                     to: [],
-                    date: msg.dateSent().toISOString(),
+                    date: msgDate.toISOString(),
                     read: msg.readStatus(),
                     body: null,
                     size: msgSize,
@@ -170,6 +208,7 @@ extension MailBridge {
         after: String? = nil,
         before: String? = nil,
         to: String? = nil,
+        from: String? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let safeQuery = jsEscape(query)
@@ -178,6 +217,7 @@ extension MailBridge {
         let afterFilter = jsEscapeOptional(after)
         let beforeFilter = jsEscapeOptional(before)
         let toFilter = jsEscapeOptional(to)
+        let fromFilter = jsEscapeOptional(from)
         // Clamp limit to prevent runaway scans; per-mailbox cap bounds scan time
         let safeLimitVal = max(1, min(limit, 500))
         let perMailboxLimit = 500
@@ -200,11 +240,12 @@ extension MailBridge {
         var afterFilter = \(afterFilter);
         var beforeFilter = \(beforeFilter);
         var toFilter = \(toFilter);
+        var fromFilter = \(fromFilter);
         var afterDate = afterFilter !== null ? new Date(afterFilter) : null;
         var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var results = [];
         var skipped = 0;
-        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false, windowsShifted: 0};
         var seenMsgKeys = {};
         // Soft timeout: bail out of nested scan loops with whatever we've got so the
         // CLI returns partial results before the ScriptRunner hard timeout kicks in.
@@ -228,25 +269,52 @@ extension MailBridge {
                 if (Date.now() - _searchStart > softTimeoutMs) { _meta.timedOut = true; break; }
                 var mb = mbList[m];
                 _meta.mailboxesScanned++;
-                // Cap messages scanned per mailbox; scan newest first (IMAP order is ascending)
+                // Cap messages scanned per mailbox. Probe the collection's index
+                // order with two cheap dateSent() Apple Events so the window
+                // always covers the NEWEST perMailboxLimit messages and walks
+                // newest→oldest, regardless of underlying order (GitHub #23/#24).
                 var allMsgs = mb.messages();
                 if (!allMsgs) continue;
-                var scanCount = Math.min(allMsgs.length, perMailboxLimit);
-                var startIdx = Math.max(0, allMsgs.length - scanCount);
-                var msgs = allMsgs.slice(startIdx, allMsgs.length);
+                var totalMsgs = allMsgs.length;
+                \(jsProbeNewestFirst(collection: "allMsgs", fallbackNewestFirst: false))
+                var scanCount = Math.min(totalMsgs, perMailboxLimit);
+                var scanFrom = 0;
+                if (beforeDate !== null && totalMsgs > 0) {
+                    // --before set and the newest message is after it: binary-search
+                    // dateSent() probes (one cheap Apple Event each, no content())
+                    // to start the window near the date range instead of burning it
+                    // on messages the date guard would skip anyway (#23).
+                    try {
+                        if (allMsgs[newestFirst ? 0 : totalMsgs - 1].dateSent() > beforeDate) {
+                            var lo = 0, hi = totalMsgs - 1;
+                            while (lo < hi) {
+                                var mid = (lo + hi) >> 1;
+                                var probeDate = allMsgs[newestFirst ? mid : totalMsgs - 1 - mid].dateSent();
+                                if (probeDate > beforeDate) { lo = mid + 1; } else { hi = mid; }
+                            }
+                            scanFrom = lo;
+                            _meta.windowsShifted++;
+                        }
+                    } catch(e) {}
+                }
 
-                for (var i = msgs.length - 1; i >= 0 && results.length < limit; i--) {
+                // k is a newest→oldest position; map it onto the real index.
+                for (var k = scanFrom; k < scanFrom + scanCount && k < totalMsgs && results.length < limit; k++) {
                     if (Date.now() - _searchStart > softTimeoutMs) { _meta.timedOut = true; break; }
-                    var msg = msgs[i];
+                    var msg = allMsgs[newestFirst ? k : totalMsgs - 1 - k];
                     _meta.messagesExamined++;
 
-                    // Date range filter (cheap — no IMAP fetch)
+                    // Date range filter (cheap — no IMAP fetch). The walk is
+                    // newest→oldest, so the first message older than --after ends
+                    // this mailbox's scan; messages newer than --before are skipped
+                    // cheaply before any content() call.
                     var msgDate = msg.dateSent();
-                    if (afterDate !== null && msgDate < afterDate) continue;
+                    if (afterDate !== null && msgDate < afterDate) break;
                     if (beforeDate !== null && msgDate > beforeDate) continue;
 
                     var subject = msg.subject() || '';
                     var sender = msg.sender() || '';
+                    if (fromFilter !== null && sender.toLowerCase().indexOf(fromFilter.toLowerCase()) === -1) continue;
 
                     // Check subject and sender first (fast, no body fetch needed)
                     var matched = subject.toLowerCase().indexOf(query) !== -1
@@ -368,13 +436,19 @@ extension MailBridge {
                 _meta.mailboxesScanned++;
                 var resolvedMbName = mb.name();
 
+                // Probe the collection's index order with two cheap dateSent()
+                // Apple Events so the window always covers the NEWEST
+                // perMailboxLimit messages, regardless of underlying order
+                // (GitHub #24 — the old last-N window grabbed the OLDEST 500
+                // on accounts whose messages() is newest-first).
                 var allMsgs = mb.messages();
                 if (!allMsgs) continue;
-                var scanCount = Math.min(allMsgs.length, perMailboxLimit);
-                var startIdx = Math.max(0, allMsgs.length - scanCount);
-                for (var i = allMsgs.length - 1; i >= startIdx && !_meta.timedOut; i--) {
+                var totalMsgs = allMsgs.length;
+                \(jsProbeNewestFirst(collection: "allMsgs", fallbackNewestFirst: false))
+                var scanCount = Math.min(totalMsgs, perMailboxLimit);
+                for (var k = 0; k < scanCount && !_meta.timedOut; k++) {
                     if (Date.now() - _activityStart > softTimeoutMs) { _meta.timedOut = true; break; }
-                    var msg = allMsgs[i];
+                    var msg = allMsgs[newestFirst ? k : totalMsgs - 1 - k];
                     _meta.messagesExamined++;
                     var msgDate = msg.dateSent();
                     if (sinceDate !== null && msgDate < sinceDate) continue;

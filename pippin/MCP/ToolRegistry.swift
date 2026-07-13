@@ -7,7 +7,27 @@ struct MCPTool {
     let inputSchema: JSONValue
     /// Given the MCP `arguments` object (or nil), return the argv passed to the child
     /// `pippin` process. Always ends with `--format agent` so stdout is compact JSON.
+    /// Runs for every call — including in-process tools — so argument errors surface
+    /// identically on both dispatch paths.
     let buildArgs: @Sendable (JSONValue?) throws -> [String]
+    /// Optional in-process handler (see `MCPInProcessTools`). When non-nil the
+    /// dispatcher calls this instead of spawning a child; the returned string
+    /// must be the same envelope-v1 JSON the child would print.
+    let inProcess: (@Sendable (JSONValue?) async throws -> String)?
+
+    init(
+        name: String,
+        description: String,
+        inputSchema: JSONValue,
+        buildArgs: @escaping @Sendable (JSONValue?) throws -> [String],
+        inProcess: (@Sendable (JSONValue?) async throws -> String)? = nil
+    ) {
+        self.name = name
+        self.description = description
+        self.inputSchema = inputSchema
+        self.buildArgs = buildArgs
+        self.inProcess = inProcess
+    }
 
     var descriptor: MCPToolDescriptor {
         MCPToolDescriptor(name: name, description: description, inputSchema: inputSchema)
@@ -224,6 +244,8 @@ enum MCPToolRegistry {
                 "limit": Schema.integer("Maximum messages to return (default: 20).", default: 20),
                 "page": Schema.integer("Page number (1-based).", default: 1),
                 "preview": Schema.integer("Include a plain-text body preview of up to N chars per message (forces per-message IMAP fetch; use ~200 for scan workflows)."),
+                "after": Schema.string("Only messages on/after YYYY-MM-DD."),
+                "before": Schema.string("Only messages on/before YYYY-MM-DD."),
                 "fields": Schema.string("Comma-separated JSON field names to include (e.g. id,subject,from). Trims the payload to fewer tokens."),
             ]),
             buildArgs: { args in
@@ -234,6 +256,8 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 argv += ArgHelpers.optionIfInt(args, "page", flagName: "--page")
                 argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
+                argv += ArgHelpers.optionIfString(args, "after", flagName: "--after")
+                argv += ArgHelpers.optionIfString(args, "before", flagName: "--before")
                 argv += ArgHelpers.optionIfString(args, "fields", flagName: "--fields")
                 return argv
             }
@@ -313,6 +337,7 @@ enum MCPToolRegistry {
                     "after": Schema.string("Only messages on/after YYYY-MM-DD."),
                     "before": Schema.string("Only messages on/before YYYY-MM-DD."),
                     "to": Schema.string("Filter by recipient email."),
+                    "from": Schema.string("Filter by sender email/name substring."),
                     "limit": Schema.integer("Maximum results (default: 10).", default: 10),
                     "semantic": Schema.boolean(
                         "Use embedding-based semantic search (requires prior `mail index`).",
@@ -330,6 +355,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "after", flagName: "--after")
                 argv += ArgHelpers.optionIfString(args, "before", flagName: "--before")
                 argv += ArgHelpers.optionIfString(args, "to", flagName: "--to")
+                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 argv += ArgHelpers.flagIfTrue(args, "semantic", flagName: "--semantic")
                 ArgHelpers.appendPositionalLast(query, into: &argv)
@@ -349,7 +375,8 @@ enum MCPToolRegistry {
                 var argv = pippinArgv("calendar", "list")
                 argv += ArgHelpers.optionIfString(args, "type", flagName: "--type")
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.calendarList
         ),
         MCPTool(
             name: "calendar_events",
@@ -371,25 +398,29 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "range", flagName: "--range")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.calendarEvents
         ),
         MCPTool(
             name: "calendar_today",
             description: "List events scheduled for today.",
             inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("calendar", "today") }
+            buildArgs: { _ in pippinArgv("calendar", "today") },
+            inProcess: MCPInProcessTools.calendarToday
         ),
         MCPTool(
             name: "calendar_remaining",
             description: "List events from now until end of today.",
             inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("calendar", "remaining") }
+            buildArgs: { _ in pippinArgv("calendar", "remaining") },
+            inProcess: MCPInProcessTools.calendarRemaining
         ),
         MCPTool(
             name: "calendar_upcoming",
             description: "List events for the next 7 days.",
             inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("calendar", "upcoming") }
+            buildArgs: { _ in pippinArgv("calendar", "upcoming") },
+            inProcess: MCPInProcessTools.calendarUpcoming
         ),
         MCPTool(
             name: "calendar_search",
@@ -412,7 +443,8 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "calendarName", flagName: "--calendar-name")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.calendarSearch
         ),
         MCPTool(
             name: "calendar_create",
@@ -452,7 +484,8 @@ enum MCPToolRegistry {
             name: "reminders_lists",
             description: "List all Apple Reminders lists.",
             inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("reminders", "lists") }
+            buildArgs: { _ in pippinArgv("reminders", "lists") },
+            inProcess: MCPInProcessTools.remindersLists
         ),
         MCPTool(
             name: "reminders_list",
@@ -478,7 +511,8 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.remindersList
         ),
         MCPTool(
             name: "reminders_show",
@@ -491,7 +525,8 @@ enum MCPToolRegistry {
                 var argv = pippinArgv("reminders", "show")
                 try argv.append(ArgHelpers.requiredString(args, "id"))
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.remindersShow
         ),
         MCPTool(
             name: "reminders_search",
@@ -513,7 +548,8 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.remindersSearch
         ),
         MCPTool(
             name: "reminders_create",
@@ -575,7 +611,8 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "fields", flagName: "--fields")
                 ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.contactsSearch
         ),
         MCPTool(
             name: "contacts_show",
@@ -588,7 +625,8 @@ enum MCPToolRegistry {
                 var argv = pippinArgv("contacts", "show")
                 try argv.append(ArgHelpers.requiredString(args, "identifier"))
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.contactsShow
         ),
 
         // MARK: Notes

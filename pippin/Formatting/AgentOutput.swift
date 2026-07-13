@@ -183,8 +183,7 @@ public struct AgentError: Encodable {
     /// validation text (which `localizedDescription` swallows) when available.
     private static func resolveMessage(for error: Error) -> String {
         if String(reflecting: type(of: error)).hasPrefix("ArgumentParser."),
-           let extractor = argumentParserMessage
-        {
+           let extractor = argumentParserMessage {
             let recovered = extractor(error).trimmingCharacters(in: .whitespacesAndNewlines)
             if !recovered.isEmpty { return recovered }
         }
@@ -207,8 +206,7 @@ public func printAgentError(_ error: Error, startedAt: Date = Date()) {
         error: agentError.error
     )
     if let data = try? JSONEncoder().encode(envelope),
-       let str = String(data: data, encoding: .utf8)
-    {
+       let str = String(data: data, encoding: .utf8) {
         print(str)
     }
 }

@@ -44,17 +44,17 @@ final class ContactResolutionOptionsTests: XCTestCase {
 
     // MARK: - Instance method delegates to its parsed flags
 
-    func testInstanceShouldResolveUsesItsFlags() {
-        var off = ContactResolutionOptions()
-        off.noContacts = true
+    func testInstanceShouldResolveUsesItsFlags() throws {
+        // Construct via the parser — a bare ContactResolutionOptions() init
+        // fatalErrors on @Flag access, killing the whole test binary (pippin-eai).
+        let off = try ContactResolutionOptions.parse(["--no-contacts"])
         XCTAssertFalse(off.shouldResolve(config: PippinConfig(ai: nil, messages: nil, resolveContacts: true)))
 
-        var on = ContactResolutionOptions()
-        on.contacts = true
+        let on = try ContactResolutionOptions.parse(["--contacts"])
         XCTAssertTrue(on.shouldResolve(config: PippinConfig(ai: nil, messages: nil, resolveContacts: false)))
 
         // No flags set → config default applies.
-        let bare = ContactResolutionOptions()
+        let bare = try ContactResolutionOptions.parse([])
         XCTAssertFalse(bare.shouldResolve(config: PippinConfig(ai: nil, messages: nil, resolveContacts: false)))
         XCTAssertTrue(bare.shouldResolve(config: nil))
     }

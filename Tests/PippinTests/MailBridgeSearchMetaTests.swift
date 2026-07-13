@@ -28,6 +28,19 @@ final class MailBridgeSearchMetaTests: XCTestCase {
         XCTAssertFalse(meta.timedOut, "missing timedOut must default to false")
     }
 
+    func testDecodesWindowsShiftedWhenPresent() throws {
+        let json = #"{"accountsScanned":1,"mailboxesScanned":3,"messagesExamined":50,"timedOut":false,"windowsShifted":2}"#
+        let meta = try JSONDecoder().decode(MailBridge.SearchMeta.self, from: Data(json.utf8))
+        XCTAssertEqual(meta.windowsShifted, 2)
+    }
+
+    func testWindowsShiftedDefaultsToZeroWhenAbsent() throws {
+        // list/activity scripts (and older search scripts) omit the field.
+        let json = #"{"accountsScanned":1,"mailboxesScanned":3,"messagesExamined":50}"#
+        let meta = try JSONDecoder().decode(MailBridge.SearchMeta.self, from: Data(json.utf8))
+        XCTAssertEqual(meta.windowsShifted, 0)
+    }
+
     func testDecodesFullSearchResponseWrapper() throws {
         let json = """
         {

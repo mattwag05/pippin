@@ -59,14 +59,14 @@ enum NotesBridge {
 
     private struct NoteCount: Decodable { let count: Int }
 
-    static func createNote(title: String, body: String? = nil, folder: String? = nil) throws -> BridgeActionResult {
-        let script = buildCreateScript(title: title, body: body, folder: folder)
+    static func createNote(title: String, body: String? = nil, folder: String? = nil, html: Bool = false) throws -> BridgeActionResult {
+        let script = buildCreateScript(title: title, body: body, folder: folder, html: html)
         let json = try runScript(script, timeoutSeconds: 20)
         return try decode(BridgeActionResult.self, from: json)
     }
 
-    static func editNote(id: String, title: String? = nil, body: String? = nil, append: Bool = false) throws -> BridgeActionResult {
-        let script = buildEditScript(id: id, title: title, body: body, append: append)
+    static func editNote(id: String, title: String? = nil, body: String? = nil, append: Bool = false, html: Bool = false) throws -> BridgeActionResult {
+        let script = buildEditScript(id: id, title: title, body: body, append: append, html: html)
         let json = try runScript(script, timeoutSeconds: 20)
         return try decode(BridgeActionResult.self, from: json)
     }
@@ -294,9 +294,33 @@ enum NotesBridge {
         """
     }
 
-    static func buildCreateScript(title: String, body: String?, folder: String?) -> String {
+    /// Convert plain text to the HTML shape Notes.app itself produces: each
+    /// line becomes `<div>line</div>`, a blank line becomes `<div><br></div>`
+    /// (paragraph separation falls out of that). `&`, `<`, `>` are entity-
+    /// escaped first so literal text survives. A single trailing newline is
+    /// dropped so it doesn't produce a stray empty div. Needed because
+    /// `note.body` is an HTML property — assigning plain text collapses all
+    /// newlines (issue #26).
+    static func textToNotesHTML(_ text: String) -> String {
+        var normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        if normalized.hasSuffix("\n") { normalized.removeLast() }
+        guard !normalized.isEmpty else { return "" }
+        return normalized
+            .components(separatedBy: "\n")
+            .map { line in
+                guard !line.isEmpty else { return "<div><br></div>" }
+                let escaped = line
+                    .replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: ">", with: "&gt;")
+                return "<div>\(escaped)</div>"
+            }
+            .joined()
+    }
+
+    static func buildCreateScript(title: String, body: String?, folder: String?, html: Bool = false) -> String {
         let safeTitle = jsEscape(title)
-        let safeBody = jsEscape(body ?? "")
+        let safeBody = jsEscape(html ? (body ?? "") : textToNotesHTML(body ?? ""))
         let folderFilter = jsEscapeOptional(folder)
         return """
         var app = Application('Notes');
@@ -325,10 +349,12 @@ enum NotesBridge {
         """
     }
 
-    static func buildEditScript(id: String, title: String?, body: String?, append: Bool) -> String {
+    static func buildEditScript(id: String, title: String?, body: String?, append: Bool, html: Bool = false) -> String {
         let safeId = jsEscape(id)
         let safeTitle = jsEscapeOptional(title)
-        let safeBody = jsEscapeOptional(body)
+        // Append concatenates two HTML fragments, which is fine — the appended
+        // fragment gets the same plain-text→HTML conversion as a replacement.
+        let safeBody = jsEscapeOptional(html ? body : body.map(textToNotesHTML))
         return """
         var app = Application('Notes');
         app.includeStandardAdditions = true;

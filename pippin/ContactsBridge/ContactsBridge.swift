@@ -323,9 +323,14 @@ public enum ContactsBridge {
         case .authorized:
             break
         case .notDetermined:
-            // Attempt synchronous-style access; CNContactStore will throw if denied
-            // (enumerateContacts / unifiedContacts will throw CNAuthorizationDenied).
-            break
+            // Only fall through to the framework's own first-use prompt when a
+            // user can actually answer it. In non-interactive contexts (MCP
+            // server, headless test runner) the contactsd XPC connection can
+            // block indefinitely instead of failing — fail fast like
+            // Calendar/Reminders ensureAccess (pippin-0vr pattern).
+            guard PermissionPriming.canRequestAccess() else {
+                throw ContactsBridgeError.accessDenied
+            }
         case .denied, .restricted:
             throw ContactsBridgeError.accessDenied
         @unknown default:

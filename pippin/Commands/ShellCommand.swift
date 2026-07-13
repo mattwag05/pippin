@@ -105,8 +105,7 @@ public struct ShellCommand: AsyncParsableCommand {
 
             // Inject default --format if set and not already present
             if let fmt = format, !args.contains("--format"),
-               !args.contains(where: { $0.hasPrefix("--format=") })
-            {
+               !args.contains(where: { $0.hasPrefix("--format=") }) {
                 args.append("--format")
                 args.append(fmt.rawValue)
             }
@@ -116,8 +115,7 @@ public struct ShellCommand: AsyncParsableCommand {
                !args.isEmpty,
                args[0] == "mail",
                !args.contains("--account"),
-               !args.contains(where: { $0.hasPrefix("--account=") })
-            {
+               !args.contains(where: { $0.hasPrefix("--account=") }) {
                 args.append("--account")
                 args.append(acct)
             }

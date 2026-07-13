@@ -386,8 +386,7 @@ public struct MailExtract: AsyncParsableCommand {
                 result.urls.forEach { print("  \($0)") }
             }
             if result.dates.isEmpty, result.amounts.isEmpty, result.trackingNumbers.isEmpty,
-               result.actionItems.isEmpty, result.contacts.isEmpty, result.urls.isEmpty
-            {
+               result.actionItems.isEmpty, result.contacts.isEmpty, result.urls.isEmpty {
                 print("No structured data found.")
             }
         }

@@ -31,8 +31,7 @@ private func makeMessage(id: String, subject: String, from: String = "sender@exa
 
 private func triageJSON(for messages: [(id: String, subject: String, from: String, category: String, urgency: Int)],
                         summary: String = "Batch summary.",
-                        actionItems: [String] = []) -> String
-{
+                        actionItems: [String] = []) -> String {
     let msgs = messages.map { m in
         """
         {

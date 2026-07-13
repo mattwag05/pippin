@@ -199,8 +199,7 @@ public enum AudioBridge {
 
         // Attempt to parse JSON from stdout first; fall back to treating as plain text.
         if let data = stdout.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        {
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             let resolvedPath = json["output_path"] as? String ?? outputPath
             let resolvedModel = json["model"] as? String ?? model
             let resolvedVoice = json["voice"] as? String ?? voice
@@ -254,8 +253,7 @@ public enum AudioBridge {
         // Attempt JSON decode first; fall through to plain text if it isn't JSON.
         if outputFormat == "json",
            let data = stdout.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        {
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             return transcriptionResult(fromJSON: json, fallbackText: stdout, modelUsed: model)
         }
 
@@ -337,8 +335,7 @@ public enum AudioBridge {
 
         // Attempt JSON array decode first.
         if let data = stdout.data(using: .utf8),
-           let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-        {
+           let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
             return jsonArray.compactMap { dict in
                 guard let id = dict["id"] as? String else { return nil }
                 let name = dict["name"] as? String ?? id
@@ -370,8 +367,7 @@ public enum AudioBridge {
 
         // Attempt JSON array decode first.
         if let data = stdout.data(using: .utf8),
-           let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [String]
-        {
+           let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [String] {
             return jsonArray
         }
 

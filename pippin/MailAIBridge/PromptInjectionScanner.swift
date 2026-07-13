@@ -317,8 +317,7 @@ public enum PromptInjectionScanner {
                 padded += String(repeating: "=", count: 4 - remainder)
             }
             if let decoded = Data(base64Encoded: padded),
-               let decodedStr = String(data: decoded, encoding: .utf8)
-            {
+               let decodedStr = String(data: decoded, encoding: .utf8) {
                 let lower = decodedStr.lowercased()
                 if injectionKeywords.contains(where: { lower.contains($0) }) {
                     threats.append(Threat(

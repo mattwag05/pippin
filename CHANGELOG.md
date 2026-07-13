@@ -9,9 +9,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] `mail search --from <sender>` filters results by sender address/name substring, mirroring the existing `--to` recipient filter — no more imprecise positional-query matching for sender searches. Exposed as `from` on the `mail_search` MCP tool. Closes GitHub #21.
+- [feat] `mail list --after/--before` date filters, matching `mail search`'s existing flags, so a date-bounded listing no longer requires going through search. Applied on the cached `--preview` path too. Exposed on the `mail_list` MCP tool. Closes GitHub #25.
+- [feat] `notes create`/`notes edit` gained an `--html` flag to pass raw HTML through to the note body unconverted (for callers that already produce Notes-style HTML). Closes GitHub #26.
+
 ### Fixed
 
 - [bug] `calendar events` and `calendar conflicts` no longer silently drop events on wide date ranges. `EKEventStore.predicateForEvents` returns incomplete results for windows spanning more than a few years — non-recurring and weekly/daily-recurring events vanished first, with no error or `timedOut` warning, leaving only some yearly-recurring events at the widest ranges. Both commands now split the requested range into ≤366-day chunks internally and merge the results, deduping recurring occurrences at chunk boundaries. Closes pippin-5nj.
+- [bug] `notes create`/`notes edit --body` no longer collapse all formatting: plain-text bodies are now converted to Notes-style HTML (`&<>` escaped, lines wrapped in `<div>`, blank lines as `<div><br></div>`) before assignment to `note.body`, which Notes.app renders as HTML — previously every newline flattened to a space. Closes GitHub #26.
+- [bug] Mail scan windows (`mail list`, `mail search`, `mail activity`) no longer assume `mailbox.messages()` is index-ordered oldest-first. Each script now probes the collection's actual direction (two cheap `dateSent()` reads) and walks the true newest-N window newest→oldest — on accounts where the assumption was inverted, `mail activity` returned the oldest mail first (GitHub #24) and date-filtered searches over large mailboxes returned empty (part of GitHub #23).
+- [bug] `mail search --body` date filters now bound the scan instead of merely filtering results: `--after` early-breaks once the walk passes the cutoff (everything further is older), and `--before` binary-searches `dateSent()` probes (no body fetches) to shift the scan window into the requested range instead of pinning it to the newest 500. A `windowsShifted` count surfaces in `--verbose`. Closes GitHub #23, #24.
+- [bug] Ollama model-not-found (HTTP 404) now surfaces as a typed error with remediation — `ollama pull <model>`, the `ai.ollama.model` config key, and the models actually available on the server (fetched best-effort from `/api/tags`) — instead of a bare "API error 404". Applies to every Ollama consumer (`do`, `memos summarize`, `actions extract`, mail triage). Closes GitHub #22.
+- [bug] Contacts commands no longer hang indefinitely in non-interactive contexts (MCP server, background agents) when Contacts permission is undetermined — the contactsd XPC connection can block forever instead of failing there. `ContactsBridge` now fails fast with `access_denied` when no user can answer the prompt, matching Calendar/Reminders' existing pippin-0vr behavior; interactive first-use prompting is unchanged.
+- [bug] The full `swift test` suite runs again: `CLIIntegrationTests`/`JobE2ETests` located the built binary by invoking a nested `swift build` that deadlocked on (or crashed against) the SwiftPM workspace lock held by the outer `swift test`, and a bare `ContactResolutionOptions()` init in a test fatalError'd the whole test binary on ArgumentParser property access, hiding every later suite. Binaries are now located lock-free via the xctest bundle's products dir (override: `PIPPIN_TEST_BINARY`), and the test constructs options via the parser. Closes pippin-eai.
+
+### Changed
+
+- [perf] Contact name resolution now caches the address-book index (GRDB, `~/.config/pippin/contact-index.db`) keyed on `CNContactStore.currentHistoryToken` — the full `CNContactStore` enumeration only re-runs when contacts actually changed, instead of once per `mail`/`messages` command. Fan-out workflows (morning briefing) drop their N+1 enumerations; partial (timed-out) enumerations are never cached. Closes pippin-wi9.
+- [perf] `pippin mcp-server` now dispatches the 12 read-only EventKit/Contacts tools (calendar_*, reminders_ reads, contacts_search/show) in-process instead of spawning a `pippin` child per call — same envelope-v1 output byte-for-byte, minus a process spawn and cold-store init per call. JXA-backed and write tools stay on the child path for subprocess isolation. `PIPPIN_MCP=1` budget clamps now apply in-process too. Closes pippin-dd3.
+- [build] Pinned swiftformat lint behavior with a committed `.swiftformat` (disables rules newer releases enable by default) and reformatted the drift that accumulated while the lint gate was silently skipped (swiftformat missing post-wipe, `make lint` falls back to a no-op). Whitespace/brace-level only.
 
 ## [0.33.0] - 2026-06-12
 

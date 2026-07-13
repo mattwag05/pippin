@@ -471,6 +471,52 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertNil(cmd.to)
     }
 
+    // MARK: - Search --from filter (GitHub #21)
+
+    func testSearchFromFilterPasses() throws {
+        let cmd = try MailCommand.Search.parse(["query", "--from", "boss@example.com"])
+        XCTAssertEqual(cmd.from, "boss@example.com")
+    }
+
+    func testSearchFromFilterNilByDefault() throws {
+        let cmd = try MailCommand.Search.parse(["query"])
+        XCTAssertNil(cmd.from)
+    }
+
+    // MARK: - List --after / --before date validation (GitHub #25)
+
+    func testListAfterDateValidPasses() throws {
+        let cmd = try MailCommand.List.parse(["--after", "2026-06-01"])
+        XCTAssertEqual(cmd.after, "2026-06-01")
+    }
+
+    func testListAfterDateInvalidFails() {
+        XCTAssertThrowsError(try MailCommand.List.parse(["--after", "06/01/2026"]))
+    }
+
+    func testListAfterDateBadCalendarFails() {
+        XCTAssertThrowsError(try MailCommand.List.parse(["--after", "2026-13-01"]))
+    }
+
+    func testListBeforeDateValidPasses() throws {
+        let cmd = try MailCommand.List.parse(["--before", "2026-06-10"])
+        XCTAssertEqual(cmd.before, "2026-06-10")
+    }
+
+    func testListBeforeDateInvalidFails() {
+        XCTAssertThrowsError(try MailCommand.List.parse(["--before", "not-a-date"]))
+    }
+
+    func testListAfterAndBeforeBothValidPass() {
+        XCTAssertNoThrow(try MailCommand.List.parse(["--after", "2026-06-01", "--before", "2026-06-10"]))
+    }
+
+    func testListDateFiltersNilByDefault() throws {
+        let cmd = try MailCommand.List.parse([])
+        XCTAssertNil(cmd.after)
+        XCTAssertNil(cmd.before)
+    }
+
     // MARK: - Search --verbose flag
 
     func testSearchVerboseFlagPasses() throws {

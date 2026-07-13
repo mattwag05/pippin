@@ -5,17 +5,26 @@ import Foundation
 /// address) to a contact's display name, so Messages/Mail output can tie a
 /// sender to an Apple Contacts entry.
 ///
-/// Built once per command from a single `CNContactStore` enumeration (handles in
-/// one message/mail page typically number in the tens), then queried O(1) per
+/// Built once per command — from `ContactIndexCache` when the address book is
+/// unchanged, else from a single `CNContactStore` enumeration (handles in
+/// one message/mail page typically number in the tens) — then queried O(1) per
 /// handle. Phone numbers are normalized to digits because chat.db handles are
 /// E.164-ish (`+15551234567`) while `CNPhoneNumber.stringValue` is free-form
 /// (`(555) 123-4567`); matching on full-digits plus the last 10 bridges the
 /// country-code difference without the false positives of shorter suffixes.
 public struct ContactIndex: Sendable {
-    private var byPhone: [String: String] = [:]
-    private var byEmail: [String: String] = [:]
+    private(set) var byPhone: [String: String] = [:]
+    private(set) var byEmail: [String: String] = [:]
 
     public init() {}
+
+    /// Rebuild from cached final maps (already post-first-write-wins, with
+    /// normalized keys) — direct population, no re-normalization. Used by
+    /// `ContactIndexCache` on a history-token hit.
+    init(byPhone: [String: String], byEmail: [String: String]) {
+        self.byPhone = byPhone
+        self.byEmail = byEmail
+    }
 
     /// `true` when nothing was indexed — callers can skip resolution entirely.
     public var isEmpty: Bool {
@@ -84,9 +93,23 @@ public extension ContactsBridge {
     /// rather than blocking or failing a Messages/Mail command. Enumeration is
     /// synchronous/blocking — call inside `detachBlocking`. Bounded by the soft
     /// timeout so a huge address book can't blow the command's budget.
-    static func contactIndex(softTimeoutMs: Int = SoftTimeout.defaultMs) -> ContactIndex {
+    ///
+    /// Persisted via `ContactIndexCache`: when the store's history token matches
+    /// the cached one, the index is rebuilt from disk with no enumeration. Any
+    /// cache failure is a silent miss; only complete (non-timed-out, non-erroring)
+    /// enumerations are written back.
+    static func contactIndex(
+        softTimeoutMs: Int = SoftTimeout.defaultMs,
+        cache: ContactIndexCache? = ContactIndexCache.shared
+    ) -> ContactIndex {
         guard authorizationStatus() == .authorized else { return ContactIndex() }
+        let store = CNContactStore()
+        let token = store.currentHistoryToken
+        if let token, let cached = cache?.load(matching: token) {
+            return cached
+        }
         var index = ContactIndex()
+        var timedOut = false
         let keys: [CNKeyDescriptor] = [
             CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
             CNContactEmailAddressesKey as CNKeyDescriptor,
@@ -95,16 +118,35 @@ public extension ContactsBridge {
         ]
         let request = CNContactFetchRequest(keysToFetch: keys)
         let deadline = Date().addingTimeInterval(Double(SoftTimeout.clamp(softTimeoutMs)) / 1000.0)
-        try? CNContactStore().enumerateContacts(with: request) { contact, stop in
-            if Date() >= deadline { stop.pointee = true; return }
-            let name = CNContactFormatter.string(from: contact, style: .fullName)
-                ?? contact.organizationName
-            index.add(
-                name: name,
-                phones: contact.phoneNumbers.map { $0.value.stringValue },
-                emails: contact.emailAddresses.map { $0.value as String }
-            )
+        do {
+            try store.enumerateContacts(with: request) { contact, stop in
+                if Date() >= deadline {
+                    timedOut = true
+                    stop.pointee = true
+                    return
+                }
+                let name = CNContactFormatter.string(from: contact, style: .fullName)
+                    ?? contact.organizationName
+                index.add(
+                    name: name,
+                    phones: contact.phoneNumbers.map { $0.value.stringValue },
+                    emails: contact.emailAddresses.map { $0.value as String }
+                )
+            }
+        } catch {
+            return index // possibly partial — return live results, never cache
         }
+        persistIfComplete(index, timedOut: timedOut, token: token, to: cache)
         return index
+    }
+
+    /// Write a freshly-enumerated index back to the cache — unless it's partial
+    /// (soft timeout hit) or there's no token to key it on, since caching a
+    /// partial index would freeze incomplete data behind a current token.
+    static func persistIfComplete(
+        _ index: ContactIndex, timedOut: Bool, token: Data?, to cache: ContactIndexCache?
+    ) {
+        guard !timedOut, let token else { return }
+        cache?.store(index, token: token)
     }
 }

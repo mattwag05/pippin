@@ -242,6 +242,90 @@ final class NotesTests: XCTestCase {
         )
     }
 
+    // MARK: - textToNotesHTML (issue #26 — note.body is HTML, plain newlines collapse)
+
+    func testTextToNotesHTMLEscapesHTMLEntities() {
+        XCTAssertEqual(
+            NotesBridge.textToNotesHTML("a & b < c > d"),
+            "<div>a &amp; b &lt; c &gt; d</div>"
+        )
+    }
+
+    func testTextToNotesHTMLWrapsEachLineInDiv() {
+        XCTAssertEqual(
+            NotesBridge.textToNotesHTML("line1\nline2"),
+            "<div>line1</div><div>line2</div>"
+        )
+    }
+
+    func testTextToNotesHTMLBlankLineBecomesDivBr() {
+        XCTAssertEqual(
+            NotesBridge.textToNotesHTML("para1\n\npara2"),
+            "<div>para1</div><div><br></div><div>para2</div>"
+        )
+    }
+
+    func testTextToNotesHTMLSingleTrailingNewlineNoStrayDiv() {
+        XCTAssertEqual(
+            NotesBridge.textToNotesHTML("line1\nline2\n"),
+            "<div>line1</div><div>line2</div>"
+        )
+    }
+
+    func testTextToNotesHTMLEmptyStringStaysEmpty() {
+        XCTAssertEqual(NotesBridge.textToNotesHTML(""), "")
+    }
+
+    // MARK: - Script builders: body HTML conversion (issue #26)
+
+    func testBuildCreateScriptConvertsMultilineBodyToHTML() {
+        let script = NotesBridge.buildCreateScript(title: "T", body: "line1\nline2", folder: nil)
+        XCTAssertTrue(
+            script.contains("<div>line1</div><div>line2</div>"),
+            "Expected multi-line body converted to Notes HTML, got: \(script)"
+        )
+    }
+
+    func testBuildCreateScriptHTMLFlagPassesRawBody() {
+        let script = NotesBridge.buildCreateScript(title: "T", body: "<b>bold</b>", folder: nil, html: true)
+        XCTAssertTrue(
+            script.contains("<b>bold</b>"),
+            "Expected raw HTML body untouched, got: \(script)"
+        )
+        XCTAssertFalse(
+            script.contains("&lt;"),
+            "Raw HTML must not be entity-escaped, got: \(script)"
+        )
+    }
+
+    func testBuildEditScriptConvertsMultilineBodyToHTML() {
+        let script = NotesBridge.buildEditScript(id: "x-coredata://abc/ICNote/p1", title: nil, body: "line1\n\nline2", append: false)
+        XCTAssertTrue(
+            script.contains("<div>line1</div><div><br></div><div>line2</div>"),
+            "Expected multi-line body converted to Notes HTML, got: \(script)"
+        )
+    }
+
+    func testBuildEditScriptAppendConvertsFragment() {
+        let script = NotesBridge.buildEditScript(id: "x-coredata://abc/ICNote/p1", title: nil, body: "add1\nadd2", append: true)
+        XCTAssertTrue(
+            script.contains("<div>add1</div><div>add2</div>"),
+            "Expected appended fragment converted to Notes HTML, got: \(script)"
+        )
+    }
+
+    func testBuildEditScriptHTMLFlagPassesRawBody() {
+        let script = NotesBridge.buildEditScript(id: "x-coredata://abc/ICNote/p1", title: nil, body: "<h1>raw</h1>", append: false, html: true)
+        XCTAssertTrue(
+            script.contains("<h1>raw</h1>"),
+            "Expected raw HTML body untouched, got: \(script)"
+        )
+        XCTAssertFalse(
+            script.contains("&lt;"),
+            "Raw HTML must not be entity-escaped, got: \(script)"
+        )
+    }
+
     func testBuildShowScriptContainsId() {
         let noteId = "x-coredata://abc/ICNote/p1"
         let script = NotesBridge.buildShowScript(id: noteId)

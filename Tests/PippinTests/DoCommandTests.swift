@@ -51,8 +51,7 @@ final class DoCommandTests: XCTestCase {
     func testDecodeChildStdoutHandlesGarbage() {
         let result = DoCommand.decodeChildStdout(Data("not json".utf8))
         if case let .object(dict) = result,
-           case let .object(errDict) = dict["error"]
-        {
+           case let .object(errDict) = dict["error"] {
             XCTAssertEqual(errDict["code"]?.stringValue, "invalid_json")
         } else {
             XCTFail("expected invalid_json error, got \(result)")

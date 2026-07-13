@@ -75,7 +75,16 @@ enum MCPServerRuntime {
         // The child must not read anything from us — stdin would contend with our JSON-RPC loop.
         process.standardInput = FileHandle.nullDevice
 
-        // Drain pipes concurrently so a large stdout doesn't deadlock on a full buffer.
+        do {
+            try process.run()
+        } catch {
+            throw MCPServerRuntimeError.processLaunchFailed(pippinPath, underlying: error)
+        }
+
+        // Drain pipes concurrently so a large stdout doesn't deadlock on a full
+        // buffer. Started only AFTER a successful launch: readers spawned before
+        // a throwing run() block forever on pipes whose write ends never close
+        // (their captured Pipe refs keep the write FDs alive), leaking threads.
         nonisolated(unsafe) var outBytes = Data()
         nonisolated(unsafe) var errBytes = Data()
         let drainGroup = DispatchGroup()
@@ -89,12 +98,6 @@ enum MCPServerRuntime {
         DispatchQueue.global(qos: .userInitiated).async {
             errBytes = stderrPipe.fileHandleForReading.readDataToEndOfFile()
             drainGroup.leave()
-        }
-
-        do {
-            try process.run()
-        } catch {
-            throw MCPServerRuntimeError.processLaunchFailed(pippinPath, underlying: error)
         }
 
         // Hard timeout: SIGTERM, then SIGKILL after a 2s grace, mirroring
@@ -171,14 +174,15 @@ enum MCPStdioWriter {
 
 // MARK: - Dispatcher
 
-/// Pure-function dispatch: takes a parsed request, returns the response to send (or nil
-/// for notifications). Kept free of any I/O so it's trivially testable.
+/// Request dispatch: takes a parsed request, returns the response to send (or nil
+/// for notifications). Does no stdio itself so it's trivially testable; tool
+/// calls run either in-process (`MCPTool.inProcess`) or via a child `pippin`.
 enum MCPDispatcher {
     static func handle(
         _ request: JSONRPCRequest,
         pippinPath: String,
         tools: [MCPTool] = MCPToolRegistry.tools
-    ) -> JSONRPCResponse? {
+    ) async -> JSONRPCResponse? {
         // Notifications (no id) never get a response, even on error.
         if request.isNotification {
             return nil
@@ -192,7 +196,7 @@ enum MCPDispatcher {
         case "tools/list":
             return makeToolsListResponse(id: id, tools: tools)
         case "tools/call":
-            return makeToolCallResponse(
+            return await makeToolCallResponse(
                 id: id,
                 params: request.params,
                 pippinPath: pippinPath,
@@ -242,7 +246,7 @@ enum MCPDispatcher {
         params: JSONValue?,
         pippinPath: String,
         tools: [MCPTool]
-    ) -> JSONRPCResponse {
+    ) async -> JSONRPCResponse {
         guard let toolName = params?["name"]?.stringValue else {
             return JSONRPCResponse(
                 id: id,
@@ -274,9 +278,32 @@ enum MCPDispatcher {
             )
         }
 
+        // In-process fast path: no child spawn. The handler returns the same
+        // envelope-v1 JSON the child would print; thrown errors become the same
+        // error envelope `printAgentError` would emit, with isError: true.
+        if let handler = tool.inProcess {
+            let startedAt = Date()
+            do {
+                let text = try await handler(toolArguments)
+                return wrapToolResult(id: id, payload: MCPToolCallResult(text: text, isError: false))
+            } catch {
+                return wrapToolResult(
+                    id: id,
+                    payload: MCPToolCallResult(
+                        text: MCPInProcessTools.errorEnvelope(error, startedAt: startedAt),
+                        isError: true
+                    )
+                )
+            }
+        }
+
         let childResult: MCPServerRuntime.ChildResult
         do {
-            childResult = try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath)
+            // runChild blocks on waitUntilExit — hop off the cooperative pool
+            // (mirrors DoCommand's call site).
+            childResult = try await detachBlocking {
+                try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath)
+            }
         } catch let error as MCPServerRuntimeError {
             // Timeout is a tool-level failure (the user can act on it); other
             // runtime errors are protocol-level (the user can't).

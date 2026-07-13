@@ -59,8 +59,7 @@ public enum ScriptRunner {
         automationCheck: AutomationCheck = AutomationPermission.liveCheck
     ) throws -> String {
         if let automationBundleID,
-           automationCheck(automationBundleID, PermissionPriming.canRequestAccess()) == .deny
-        {
+           automationCheck(automationBundleID, PermissionPriming.canRequestAccess()) == .deny {
             throw ScriptRunnerError.automationDenied(automationBundleID)
         }
         do {

@@ -11,12 +11,19 @@ final class JobE2ETests: XCTestCase {
 
     override class func setUp() {
         super.setUp()
-        let result = runProcess("/usr/bin/swift", args: ["build", "--show-bin-path"])
-        let trimmed = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard result.exitCode == 0, !trimmed.isEmpty else { return }
-        let url = URL(fileURLWithPath: trimmed).appendingPathComponent("pippin")
-        if FileManager.default.fileExists(atPath: url.path) {
-            binaryURL = url
+        // Locate the binary WITHOUT invoking a nested `swift build` — the outer
+        // `swift test` holds the SwiftPM workspace lock, so a child build either
+        // deadlocks on the lock or fails outright (pippin-eai). The xctest bundle
+        // sits in the same products dir the executable was built into.
+        if let override = ProcessInfo.processInfo.environment["PIPPIN_TEST_BINARY"],
+           FileManager.default.fileExists(atPath: override) {
+            binaryURL = URL(fileURLWithPath: override)
+            return
+        }
+        let productsDir = Bundle(for: JobE2ETests.self).bundleURL.deletingLastPathComponent()
+        let candidate = productsDir.appendingPathComponent("pippin")
+        if FileManager.default.fileExists(atPath: candidate.path) {
+            binaryURL = candidate
         }
     }
 

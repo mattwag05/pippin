@@ -87,8 +87,7 @@ public struct DoctorCommand: AsyncParsableCommand {
 /// Classify a Mail automation error by its description string.
 func classifyMailError(_ detail: String) -> DiagnosticCheck {
     if detail.contains("not authorized") || detail.contains("AppleEvent") ||
-        detail.contains("1002") || detail.contains("TCC")
-    {
+        detail.contains("1002") || detail.contains("TCC") {
         return DiagnosticCheck(
             name: "Mail automation",
             status: .fail,
@@ -392,8 +391,7 @@ func checkNotesAccess() -> DiagnosticCheck {
         default:
             let detail = error.localizedDescription
             if detail.contains("not authorized") || detail.contains("AppleEvent") ||
-                detail.contains("1002") || detail.contains("TCC")
-            {
+                detail.contains("1002") || detail.contains("TCC") {
                 return DiagnosticCheck(
                     name: "Notes automation",
                     status: .fail,
@@ -709,31 +707,12 @@ private func checkOllama() -> DiagnosticCheck {
     return DiagnosticCheck(name: "Ollama", status: .ok, detail: "reachable at \(baseURL); model \(configuredModel) pulled")
 }
 
-/// Pure: given the names returned by `/api/tags` and the configured model,
-/// return `true` when the configured model is present. Allows base-name
-/// fuzzy matching so `gemma4:latest` configured matches `gemma4` available
-/// (and vice-versa).
-func ollamaModelIsAvailable(configured: String, available: Set<String>) -> Bool {
-    if available.contains(configured) { return true }
-    let configuredBase = configured.split(separator: ":").first.map(String.init) ?? configured
-    return available.contains { name in
-        let base = name.split(separator: ":").first.map(String.init) ?? name
-        return base == configuredBase
-    }
-}
-
 /// Returns a non-nil DiagnosticCheck when the configured model is not
 /// available; nil means the model is present (caller emits the green check).
+/// Tags probe + model-name matching are shared with `OllamaProvider`'s
+/// model-not-found path (issue #22) — see `OllamaProvider.modelIsAvailable`.
 private func checkOllamaModel(baseURL: String, configuredModel: String) -> DiagnosticCheck? {
-    guard let tagsURL = URL(string: "\(baseURL)/api/tags") else { return nil }
-    var request = URLRequest(url: tagsURL, timeoutInterval: 3)
-    request.httpMethod = "GET"
-    guard
-        let (data, response) = try? sendSynchronousRequest(request, waitTimeoutSeconds: 5),
-        response.statusCode == 200,
-        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-        let models = json["models"] as? [[String: Any]]
-    else {
+    guard let availableNames = OllamaProvider.fetchAvailableModels(baseURL: baseURL) else {
         // Couldn't probe tags — Ollama is up so don't flag a hard failure.
         return DiagnosticCheck(
             name: "Ollama",
@@ -742,8 +721,7 @@ private func checkOllamaModel(baseURL: String, configuredModel: String) -> Diagn
         )
     }
 
-    let availableNames = Set(models.compactMap { $0["name"] as? String })
-    if ollamaModelIsAvailable(configured: configuredModel, available: availableNames) {
+    if OllamaProvider.modelIsAvailable(configured: configuredModel, available: availableNames) {
         return nil
     }
 

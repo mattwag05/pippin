@@ -58,6 +58,8 @@ enum MailBridge {
         limit: Int = 50,
         offset: Int = 0,
         preview: Int? = nil,
+        after: String? = nil,
+        before: String? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> ListOutcome {
         let crossAccount = (account == nil)
@@ -66,6 +68,7 @@ enum MailBridge {
         let script = buildListScript(
             account: account, mailbox: mailbox, unread: unread,
             limit: clampedLimit, offset: clampedOffset, preview: preview,
+            after: after, before: before,
             softTimeoutMs: softTimeoutMs
         )
         // The JXA loop self-bounds via softTimeoutMs (default 22s) when preview
@@ -127,6 +130,7 @@ enum MailBridge {
         after: String? = nil,
         before: String? = nil,
         to: String? = nil,
+        from: String? = nil,
         verbose: Bool = false,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> SearchOutcome {
@@ -135,7 +139,7 @@ enum MailBridge {
         let script = buildSearchScript(
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
             limit: limit, offset: clampedOffset, after: after, before: before, to: to,
-            softTimeoutMs: softTimeoutMs
+            from: from, softTimeoutMs: softTimeoutMs
         )
         // Cross-account (no --account, no --mailbox) iterates 5 accounts ×
         // ~21 mailboxes = 100+ mailbox scans.  When --body is on, each match
@@ -155,6 +159,7 @@ enum MailBridge {
                 "[search] accounts scanned: \(meta.accountsScanned)",
                 "[search] mailboxes scanned: \(meta.mailboxesScanned)",
                 "[search] messages examined: \(meta.messagesExamined)",
+                "[search] scan windows shifted toward --before: \(meta.windowsShifted)",
                 "[search] body search: \(searchBody ? "on" : "off (use --body to search message content)")",
                 "[search] timed out: \(meta.timedOut ? "yes (returning partial results)" : "no")",
             ]
@@ -342,6 +347,8 @@ enum MailBridge {
         limit: Int = 50,
         offset: Int = 0,
         preview: Int,
+        after: String? = nil,
+        before: String? = nil,
         cache: MailBodyCache? = MailBodyCache.shared,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) throws -> ListOutcome {
@@ -350,7 +357,8 @@ enum MailBridge {
         let crossAccount = (account == nil)
         let pass1 = try listMessages(
             account: account, mailbox: mailbox, unread: unread,
-            limit: limit, offset: offset, preview: nil, softTimeoutMs: softTimeoutMs
+            limit: limit, offset: offset, preview: nil,
+            after: after, before: before, softTimeoutMs: softTimeoutMs
         )
         let assembled = try assemblePreviews(
             metadata: pass1.messages,
@@ -452,6 +460,9 @@ enum MailBridge {
         let mailboxesScanned: Int
         let messagesExamined: Int
         let timedOut: Bool
+        /// Count of mailboxes whose scan window was binary-search-shifted toward
+        /// a `--before` date (search script only; list/activity omit it).
+        let windowsShifted: Int
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -460,10 +471,11 @@ enum MailBridge {
             messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
             // Backward-compatible: scripts that don't emit timedOut default to false.
             timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
+            windowsShifted = try container.decodeIfPresent(Int.self, forKey: .windowsShifted) ?? 0
         }
 
         private enum CodingKeys: String, CodingKey {
-            case accountsScanned, mailboxesScanned, messagesExamined, timedOut
+            case accountsScanned, mailboxesScanned, messagesExamined, timedOut, windowsShifted
         }
     }
 

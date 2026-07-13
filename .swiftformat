@@ -1,0 +1,4 @@
+# Pin lint behavior to the rule set this codebase was formatted under.
+# Newer swiftformat releases enable new rules by default; disable those
+# rather than churning the whole repo (pippin-eai session, 2026-07-13).
+--disable wrapIfStatementBodies,docComments,noForceUnwrapInTests,wrapPropertyBodies,wrapMultilineStatementBraces,blankLinesAroundMark

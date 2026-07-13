@@ -192,6 +192,57 @@ final class RemediationTests: XCTestCase {
         XCTAssertNil(RemediationCatalog.resolve(for: RemindersBridgeError.reminderNotFound("x")))
     }
 
+    // MARK: - AIProviderError.modelNotFound (issue #22)
+
+    //
+    // A missing Ollama model previously surfaced as a bare `apiError(404, …)`
+    // with no remediation. The typed case must carry the `ollama pull` fix and
+    // the `ai.ollama.model` config pointer into the agent envelope, mirroring
+    // `pippin doctor`'s Ollama model check.
+
+    func testModelNotFoundRemediationHasPullCommandAndConfigKey() throws {
+        let error = AIProviderError.modelNotFound(model: "gemma4:latest", available: ["qwen3:8b"])
+        let remediation = try XCTUnwrap(RemediationCatalog.resolve(for: error))
+        XCTAssertEqual(remediation.shellCommand, "ollama pull gemma4:latest")
+        XCTAssertTrue(remediation.humanHint.contains("ai.ollama.model"))
+        XCTAssertTrue(remediation.humanHint.contains("qwen3:8b"))
+        XCTAssertEqual(remediation.doctorCheck, "Ollama")
+    }
+
+    func testModelNotFoundRemediationOmitsAvailableWhenUnknown() throws {
+        let error = AIProviderError.modelNotFound(model: "gemma4:latest", available: [])
+        let remediation = try XCTUnwrap(RemediationCatalog.resolve(for: error))
+        XCTAssertFalse(
+            remediation.humanHint.contains("Available"),
+            "Empty availability probe must not claim an empty model list, got: \(remediation.humanHint)"
+        )
+    }
+
+    func testModelNotFoundRemediationTruncatesAvailableAtTen() throws {
+        let models = (1 ... 12).map { String(format: "model%02d:latest", $0) }
+        let error = AIProviderError.modelNotFound(model: "gemma4", available: models)
+        let remediation = try XCTUnwrap(RemediationCatalog.resolve(for: error))
+        XCTAssertTrue(remediation.humanHint.contains("model10:latest"))
+        XCTAssertFalse(
+            remediation.humanHint.contains("model11:latest"),
+            "Available list must truncate at 10, got: \(remediation.humanHint)"
+        )
+    }
+
+    func testModelNotFoundAgentEnvelopeCarriesRemediation() throws {
+        let agentError = AgentError.from(AIProviderError.modelNotFound(model: "gemma4", available: []))
+        XCTAssertEqual(agentError.error.code, "model_not_found")
+        let remediation = try XCTUnwrap(agentError.error.remediation)
+        XCTAssertEqual(remediation.shellCommand, "ollama pull gemma4")
+    }
+
+    /// Other AIProviderError cases must fall through to the catalog (nil here —
+    /// none of them are catalogued).
+    func testAIProviderErrorNonModelCasesFallThrough() {
+        XCTAssertNil(RemediationCatalog.resolve(for: AIProviderError.apiError(500, "boom")))
+        XCTAssertNil(RemediationCatalog.resolve(for: AIProviderError.timeout))
+    }
+
     /// `resolve(for:)` and `AgentError.from(_:).error.remediation` must agree —
     /// the agent and human paths can't diverge again.
     func testResolveMatchesAgentErrorRemediation() {

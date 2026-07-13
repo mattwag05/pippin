@@ -35,6 +35,10 @@ public enum AIProviderError: LocalizedError, Sendable {
     case providerUnreachable(String)
     case decodingFailed(String)
     case missingAPIKey
+    /// The configured Ollama model isn't pulled (HTTP 404 with Ollama's
+    /// model-not-found body). `available` is the best-effort `/api/tags`
+    /// probe result — empty when the probe failed, never an error itself.
+    case modelNotFound(model: String, available: [String])
 
     public var errorDescription: String? {
         switch self {
@@ -45,7 +49,34 @@ public enum AIProviderError: LocalizedError, Sendable {
         case let .decodingFailed(msg): return "Failed to decode AI response: \(msg)"
         case .missingAPIKey:
             return "Claude API key not set. Use --api-key, set ANTHROPIC_API_KEY, or run: get-secret \"Anthropic API\""
+        case let .modelNotFound(model, _):
+            return "Ollama model \"\(model)\" is not pulled — run `ollama pull \(model)`, or set ai.ollama.model in ~/.config/pippin/config.json to a pulled model"
         }
+    }
+}
+
+/// `.modelNotFound` supplies its own remediation (`ollama pull …` plus the
+/// `ai.ollama.model` config pointer), mirroring `pippin doctor`'s Ollama model
+/// check, so the hint reaches both the agent envelope and the human CLI path
+/// via `RemediationCatalog.resolve`. Other cases fall through to the catalog.
+extension AIProviderError: RemediableError {
+    public var remediation: Remediation? {
+        guard case let .modelNotFound(model, available) = self else { return nil }
+        var hint = """
+        The configured Ollama model "\(model)" is not pulled. Pull it with \
+        the command below, or set a different model under ai.ollama.model in \
+        ~/.config/pippin/config.json.
+        """
+        if !available.isEmpty {
+            let shown = available.sorted().prefix(10)
+            let more = available.count > shown.count ? ", …" : ""
+            hint += " Available: \(shown.joined(separator: ", "))\(more)"
+        }
+        return Remediation(
+            humanHint: hint,
+            doctorCheck: "Ollama",
+            shellCommand: "ollama pull \(model)"
+        )
     }
 }
 
@@ -74,12 +105,13 @@ public func aiRequestTimeoutSeconds() -> TimeInterval {
 /// cheap. NOT retryable: `.timeout` (already consumed the whole budget — a
 /// retry would risk the MCP 60s child cap), `.providerUnreachable` (server is
 /// down; preflight already failed fast), `.decodingFailed` (the same request
-/// yields the same unparseable body), and `.missingAPIKey`.
+/// yields the same unparseable body), `.missingAPIKey`, and `.modelNotFound`
+/// (retrying can't make a missing model appear).
 func isTransientAIError(_ error: AIProviderError) -> Bool {
     switch error {
     case let .apiError(code, _): return code == 429 || (500 ... 599).contains(code)
     case .networkError: return true
-    case .timeout, .providerUnreachable, .decodingFailed, .missingAPIKey: return false
+    case .timeout, .providerUnreachable, .decodingFailed, .missingAPIKey, .modelNotFound: return false
     }
 }
 

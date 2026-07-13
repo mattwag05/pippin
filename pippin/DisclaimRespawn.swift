@@ -25,8 +25,7 @@ public enum DisclaimRespawn {
     public static func shouldRespawn(environment: [String: String]) -> Bool {
         if environment[guardKey] != nil { return false }
         if let optOut = environment[optOutKey],
-           optOut == "1" || optOut.lowercased() == "true"
-        {
+           optOut == "1" || optOut.lowercased() == "true" {
             return false
         }
         return true

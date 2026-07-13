@@ -4,9 +4,10 @@ import Foundation
 /// `pippin mcp-server` — run pippin as an MCP (Model Context Protocol) server over stdio.
 ///
 /// Reads newline-delimited JSON-RPC 2.0 messages from stdin and writes responses to stdout.
-/// Each `tools/call` spawns `pippin <subcommand> --format agent` as a child process and
-/// returns the child's stdout JSON to the client.
-public struct McpServerCommand: ParsableCommand {
+/// Safe read-only tools (EventKit/Contacts — see `MCPInProcessTools`) run in-process;
+/// every other `tools/call` spawns `pippin <subcommand> --format agent` as a child process.
+/// Both paths return the same envelope-v1 JSON to the client.
+public struct McpServerCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mcp-server",
         abstract: "Run pippin as an MCP server over stdio.",
@@ -25,17 +26,24 @@ public struct McpServerCommand: ParsableCommand {
 
     public init() {}
 
-    public func run() throws {
+    public func run() async throws {
         if listTools {
             try printToolListing()
             return
         }
 
+        // In-process tool handlers run in THIS process, so the MCP budget clamps
+        // keyed off `isMCPContext()` (PIPPIN_MCP=1) must be visible here — not
+        // just in spawned children, whose env `runChild` still populates. Set it
+        // before the first request so every environment read sees it.
+        setenv("PIPPIN_MCP", "1", 1)
+
         let pippinPath = MCPServerRuntime.resolvePippinPath()
         MCPStdioWriter.log("pippin mcp-server ready (\(MCPToolRegistry.tools.count) tools, binary: \(pippinPath))")
 
         // readLine blocks on stdin between messages — exactly the semantics an MCP stdio
-        // server wants. Loop exits when the client closes stdin.
+        // server wants (requests are handled serially, as before this command went
+        // async). Loop exits when the client closes stdin.
         while let line = readLine(strippingNewline: true) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { continue }
@@ -53,7 +61,7 @@ public struct McpServerCommand: ParsableCommand {
                 continue
             }
 
-            if let response = MCPDispatcher.handle(request, pippinPath: pippinPath) {
+            if let response = await MCPDispatcher.handle(request, pippinPath: pippinPath) {
                 do {
                     try MCPStdioWriter.send(response)
                 } catch {

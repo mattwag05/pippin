@@ -43,8 +43,7 @@ public enum PippinExitCode {
         if code == "access_denied"
             || code.contains("not_authorized")
             || code == "missing_api_key"
-            || code == "not_available"
-        {
+            || code == "not_available" {
             return 4
         }
         if code == "not_found" || code.hasSuffix("_not_found") {

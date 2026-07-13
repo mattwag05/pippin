@@ -247,14 +247,13 @@ final class MessagesDatabaseTests: XCTestCase {
 
     func testShowThrowsForUnknownConversation() {
         XCTAssertThrowsError(try MessagesDatabase(dbQueue: makeFixtureDB())
-            .showConversation(conversationId: "nonexistent", limit: 10))
-        { error in
-            if case let MessagesError.conversationNotFound(id) = error {
-                XCTAssertEqual(id, "nonexistent")
-            } else {
-                XCTFail("expected conversationNotFound, got \(error)")
+            .showConversation(conversationId: "nonexistent", limit: 10)) { error in
+                if case let MessagesError.conversationNotFound(id) = error {
+                    XCTAssertEqual(id, "nonexistent")
+                } else {
+                    XCTFail("expected conversationNotFound, got \(error)")
+                }
             }
-        }
     }
 
     // MARK: - Epoch conversion

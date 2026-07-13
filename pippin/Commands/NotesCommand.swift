@@ -220,15 +220,18 @@ public struct NotesCommand: ParsableCommand {
         @Option(name: .long, help: "Folder name to create the note in.")
         public var folder: String?
 
-        @Option(name: .long, help: "Note body content (HTML or plain text).")
+        @Option(name: .long, help: "Note body content. Plain text; newlines are converted to formatted HTML unless --html is passed.")
         public var body: String?
+
+        @Flag(name: .long, help: "Treat --body as raw HTML (skip plain-text-to-HTML conversion).")
+        public var html: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
         public mutating func run() throws {
-            let result = try NotesBridge.createNote(title: title, body: body, folder: folder)
+            let result = try NotesBridge.createNote(title: title, body: body, folder: folder, html: html)
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {
@@ -253,11 +256,14 @@ public struct NotesCommand: ParsableCommand {
         @Option(name: .long, help: "New title for the note.")
         public var title: String?
 
-        @Option(name: .long, help: "New body content (replaces existing, or appends if --append).")
+        @Option(name: .long, help: "New body content (replaces existing, or appends if --append). Plain text; newlines are converted to formatted HTML unless --html is passed.")
         public var body: String?
 
         @Flag(name: .long, help: "Append body content instead of replacing.")
         public var append: Bool = false
+
+        @Flag(name: .long, help: "Treat --body as raw HTML (skip plain-text-to-HTML conversion).")
+        public var html: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
@@ -270,7 +276,7 @@ public struct NotesCommand: ParsableCommand {
         }
 
         public mutating func run() throws {
-            let result = try NotesBridge.editNote(id: id, title: title, body: body, append: append)
+            let result = try NotesBridge.editNote(id: id, title: title, body: body, append: append, html: html)
             if output.isJSON {
                 try printJSON(result)
             } else if output.isAgent {

@@ -65,13 +65,11 @@ public final class MessagesDatabase: Sendable {
     private static func isAccessDeniedOpenError(_ error: Error) -> Bool {
         let ns = error as NSError
         if ns.domain == NSPOSIXErrorDomain,
-           ns.code == Int(EACCES) || ns.code == Int(EPERM)
-        {
+           ns.code == Int(EACCES) || ns.code == Int(EPERM) {
             return true
         }
         if let dbError = error as? DatabaseError,
-           [.SQLITE_AUTH, .SQLITE_PERM].contains(dbError.resultCode)
-        {
+           [.SQLITE_AUTH, .SQLITE_PERM].contains(dbError.resultCode) {
             return true
         }
         return false

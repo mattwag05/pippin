@@ -50,10 +50,10 @@ final class JSONRPCTests: XCTestCase {
 
     // MARK: - Dispatcher
 
-    func testDispatchInitializeReturnsCapabilities() throws {
+    func testDispatchInitializeReturnsCapabilities() async throws {
         let json = #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#
         let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(json.utf8))
-        let response = MCPDispatcher.handle(request, pippinPath: "/bin/echo")
+        let response = await MCPDispatcher.handle(request, pippinPath: "/bin/echo")
         XCTAssertNotNil(response)
         let data = try JSONEncoder().encode(XCTUnwrap(response))
         let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -63,10 +63,10 @@ final class JSONRPCTests: XCTestCase {
         XCTAssertEqual(serverInfo?["name"] as? String, "pippin")
     }
 
-    func testDispatchToolsListReturnsAllRegisteredTools() throws {
+    func testDispatchToolsListReturnsAllRegisteredTools() async throws {
         let json = #"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#
         let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(json.utf8))
-        let response = MCPDispatcher.handle(request, pippinPath: "/bin/echo")
+        let response = await MCPDispatcher.handle(request, pippinPath: "/bin/echo")
         let data = try JSONEncoder().encode(XCTUnwrap(response))
         let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let result = decoded?["result"] as? [String: Any]
@@ -74,38 +74,38 @@ final class JSONRPCTests: XCTestCase {
         XCTAssertEqual(tools?.count, MCPToolRegistry.tools.count)
     }
 
-    func testDispatchToolsCallUnknownToolReturnsMethodNotFound() throws {
+    func testDispatchToolsCallUnknownToolReturnsMethodNotFound() async throws {
         let json = #"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"does_not_exist","arguments":{}}}"#
         let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(json.utf8))
-        let response = MCPDispatcher.handle(request, pippinPath: "/bin/echo")
+        let response = await MCPDispatcher.handle(request, pippinPath: "/bin/echo")
         let data = try JSONEncoder().encode(XCTUnwrap(response))
         let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let errDict = decoded?["error"] as? [String: Any]
         XCTAssertEqual(errDict?["code"] as? Int, JSONRPCError.methodNotFound)
     }
 
-    func testDispatchUnknownMethodReturnsMethodNotFound() throws {
+    func testDispatchUnknownMethodReturnsMethodNotFound() async throws {
         let json = #"{"jsonrpc":"2.0","id":99,"method":"bogus/method"}"#
         let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(json.utf8))
-        let response = MCPDispatcher.handle(request, pippinPath: "/bin/echo")
+        let response = await MCPDispatcher.handle(request, pippinPath: "/bin/echo")
         let data = try JSONEncoder().encode(XCTUnwrap(response))
         let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let errDict = decoded?["error"] as? [String: Any]
         XCTAssertEqual(errDict?["code"] as? Int, JSONRPCError.methodNotFound)
     }
 
-    func testDispatchNotificationReturnsNil() throws {
+    func testDispatchNotificationReturnsNil() async throws {
         let json = #"{"jsonrpc":"2.0","method":"notifications/initialized"}"#
         let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(json.utf8))
-        let response = MCPDispatcher.handle(request, pippinPath: "/bin/echo")
+        let response = await MCPDispatcher.handle(request, pippinPath: "/bin/echo")
         XCTAssertNil(response, "Notifications must not produce a response")
     }
 
-    func testDispatchToolsCallArgumentErrorReturnsToolResultWithIsErrorTrue() throws {
+    func testDispatchToolsCallArgumentErrorReturnsToolResultWithIsErrorTrue() async throws {
         // reminders_create requires title — send empty args, expect tool-level error.
         let json = #"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"reminders_create","arguments":{}}}"#
         let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(json.utf8))
-        let response = MCPDispatcher.handle(request, pippinPath: "/bin/echo")
+        let response = await MCPDispatcher.handle(request, pippinPath: "/bin/echo")
         let data = try JSONEncoder().encode(XCTUnwrap(response))
         let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         // Should be a tool-result, not a JSON-RPC-level error.

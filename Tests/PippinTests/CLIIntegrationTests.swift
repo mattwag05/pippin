@@ -13,14 +13,20 @@ final class CLIIntegrationTests: XCTestCase {
 
     override class func setUp() {
         super.setUp()
-        // Locate binary from `swift build --show-bin-path`
-        let result = runProcess("/usr/bin/swift", args: ["build", "--show-bin-path"])
-        guard result.exitCode == 0,
-              let path = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        else { return }
-        let url = URL(fileURLWithPath: path).appendingPathComponent("pippin")
-        if FileManager.default.fileExists(atPath: url.path) {
-            binaryURL = url
+        // Locate the binary WITHOUT invoking a nested `swift build` — the outer
+        // `swift test` holds the SwiftPM workspace lock for its whole run, so a
+        // child build blocks on the same lock forever (pippin-eai).
+        if let override = ProcessInfo.processInfo.environment["PIPPIN_TEST_BINARY"],
+           FileManager.default.fileExists(atPath: override) {
+            binaryURL = URL(fileURLWithPath: override)
+            return
+        }
+        // `swift test` builds executable targets too, into the same products dir
+        // the xctest bundle lives in — the binary is our bundle's sibling.
+        let productsDir = Bundle(for: CLIIntegrationTests.self).bundleURL.deletingLastPathComponent()
+        let candidate = productsDir.appendingPathComponent("pippin")
+        if FileManager.default.fileExists(atPath: candidate.path) {
+            binaryURL = candidate
         }
     }
 
@@ -203,8 +209,7 @@ final class CLIIntegrationTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 3, "not-found should exit 3, got \(result.exitCode); stderr=\(result.stderr)")
         // Envelope still well-formed.
         if let data = result.stdout.data(using: .utf8),
-           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        {
+           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             XCTAssertEqual(dict["status"] as? String, "error")
         }
     }
@@ -263,8 +268,7 @@ final class CLIIntegrationTests: XCTestCase {
         let combined = result.stdout + result.stderr
         if let data = result.stdout.data(using: .utf8),
            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let errorDict = dict["error"] as? [String: Any]
-        {
+           let errorDict = dict["error"] as? [String: Any] {
             XCTAssertEqual(dict["v"] as? Int, 1, "Envelope must have v:1")
             XCTAssertEqual(dict["status"] as? String, "error", "Envelope status must be 'error'")
             XCTAssertNotNil(dict["duration_ms"], "Envelope must include duration_ms")

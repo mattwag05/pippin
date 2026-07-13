@@ -255,8 +255,7 @@ public struct JobCommand: AsyncParsableCommand {
             let path = stderr ? store.stderrPath(resolved) : store.stdoutPath(resolved)
             if !stream {
                 if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-                   let text = String(data: data, encoding: .utf8)
-                {
+                   let text = String(data: data, encoding: .utf8) {
                     print(text, terminator: "")
                 }
                 return
