@@ -84,10 +84,17 @@ background). Run it again any time TCC resets (e.g. after a macOS upgrade).
 | Automation > Notes | Notes | ✅ `pippin permissions` |
 | Full Disk Access | Voice Memos, Messages | ❌ grant manually (no prompt exists) |
 
-> **Persistence:** grants stick across upgrades only if the binary is signed
-> with a stable identity. `make install` / the Homebrew formula sign with your
-> Developer ID when available; `pippin doctor`'s **Code signing** row reports
-> whether grants will persist. Full Disk Access is always a manual toggle.
+> **Persistence:** grants stick across rebuilds/upgrades only if the binary is
+> signed with a stable identity. `make install` / the Homebrew formula sign with
+> your **Developer ID Application** cert when available (its team-based
+> requirement survives even cert renewal), falling back to an **Apple
+> Development** cert (persists across rebuilds too, but its leaf-pinned
+> requirement resets grants when that cert is renewed/expires ~yearly). Either
+> beats the ad-hoc default, which re-prompts on every build. `pippin doctor`'s
+> **Code signing** row reports whether grants will persist. Note: changing the
+> signing identity (e.g. ad-hoc → signed, or Apple Development → Developer ID) is
+> a one-time re-grant — rerun `pippin permissions` once after the switch. Full
+> Disk Access is always a manual toggle.
 
 ## Commands
 

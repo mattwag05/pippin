@@ -39,6 +39,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Documentation
 
 - [docs] README now advises pairing `mail search --from`/`--body` with `--account` (or a date filter) on large multi-account mailboxes — an unscoped cross-account scan can hit the soft timeout and return partial/empty results. Documents the existing honest-timeout behavior. Closes pippin-kgt.
+- [docs] README's code-signing persistence note now spells out the identity tiers: a **Developer ID Application** cert (team-based requirement, survives cert renewal) is preferred over an **Apple Development** cert (leaf-pinned, resets grants on renewal), both over ad-hoc — plus the one-time `pippin permissions` re-grant needed after any identity switch. Refreshed the `graphify-out/` knowledge graph (5854 nodes) for the session's code changes.
 
 ## [0.33.0] - 2026-06-12
 
