@@ -28,6 +28,16 @@ sudo xcode-select -s /Applications/Xcode.app
 
 `make test` and `make lint` inherit the same defect.
 
+## Testing error/exit-code paths without TCC
+
+`.build/debug/pippin` isn't TCC-granted (grants key on `~/.local/bin/pippin`), but arg-parse / validation / error-code paths fail *before* touching an app, so they're verifiable there without a `make install`:
+
+```bash
+PIPPIN_NO_DISCLAIM=1 .build/debug/pippin mail list --limit 0 --format agent; echo $?   # → command_error, exit 2
+```
+
+A `validate()`-thrown `ValidationError` surfaces as agent code `command_error` (not `validation_error`), exit 2. Only live-app reads (mail/notes/calendar/etc. against the real app) need the granted `~/.local/bin/pippin` after `make install` — those return `access_denied`/exit 4 on the debug binary.
+
 ## Verifying a flaky-test fix
 
 To confirm a probabilistic test is no longer flaky, build the bundle once and loop with `--skip-build` (avoids recompiling all ~1,700 tests each run):
