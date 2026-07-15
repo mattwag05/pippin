@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [perf] `mail list`/`search`/`activity` now read Mail's on-disk Envelope Index SQLite directly for metadata (~1000x: cross-account list 360 ms vs a 60 s JXA budget, search 74 ms vs 45–95 s, warm activity 90 ms) — and search scans the FULL index, finding old matches the JXA newest-N window physically cannot reach. Message ids are unchanged (`account||mailbox||id` — Mail's AppleScript id IS the index ROWID), so `show`/`mark`/`move` and the body cache work identically across paths. Requires Full Disk Access; without it (or on an unknown macOS schema version) every command falls back to the JXA path silently — zero regression for Automation-only setups. `pippin doctor` reports fast-path availability; disable via `mail.fastPath: false` in config or `PIPPIN_MAIL_FASTPATH=0`. Bodies, previews-on-cache-miss, and all writes stay on JXA. Closes pippin-60x.
+
 - [feat] `mail search --from <sender>` filters results by sender address/name substring, mirroring the existing `--to` recipient filter — no more imprecise positional-query matching for sender searches. Exposed as `from` on the `mail_search` MCP tool. Closes GitHub #21.
 - [feat] `mail list --after/--before` date filters, matching `mail search`'s existing flags, so a date-bounded listing no longer requires going through search. Applied on the cached `--preview` path too. Exposed on the `mail_list` MCP tool. Closes GitHub #25.
 - [feat] `notes create`/`notes edit` gained an `--html` flag to pass raw HTML through to the note body unconverted (for callers that already produce Notes-style HTML). Closes GitHub #26.

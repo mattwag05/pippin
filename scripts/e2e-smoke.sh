@@ -74,9 +74,58 @@ run "mail search date-bounded body scan returns (#23)" "isinstance(d['data'], (l
 # pippin-xz6: an empty --before result whose newest-N window never reached the
 # cutoff must carry the shortfall advisory (JXA must emit oldestExaminedMs /
 # reachedMailboxEnd). Pass if matches exist (impossible pre-2000) OR the hint fired.
-run "mail list --before shortfall hint (pippin-xz6)" "
+# PIPPIN_MAIL_FASTPATH=0: the hint is a JXA-window artifact — the Envelope Index
+# fast path scans the full index, so its empty result is complete and hint-free.
+PIPPIN_MAIL_FASTPATH=0 run "mail list --before shortfall hint (pippin-xz6, JXA path)" "
 len(d['data']) > 0 or any('scan window did not reach' in w for w in (d.get('warnings') or []))" \
   -- mail list --before 2000-01-01 --limit 3
+
+# --- pippin-60x: Envelope Index fast path — id parity vs the JXA path.
+# The fast path reads Mail's on-disk SQLite; JXA enumerates the live app. For
+# the same bounded single-account query, the JXA ids must be a subset of the
+# fast-path ids (identical in practice; JXA's newest-N window can only lose
+# rows, never gain them, because ROWID == the JXA message id).
+FASTPATH_OK="$("$BIN" doctor --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('no'); sys.exit()
+checks = d.get('data') or []
+print('yes' if any(c.get('name') == 'Mail fast path (Envelope Index)' and c.get('status') == 'ok' for c in checks) else 'no')")"
+if [[ "$FASTPATH_OK" == "yes" ]]; then
+  ACCT="$("$BIN" mail accounts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(''); sys.exit()
+rows = d.get('data') or [{}]
+print(rows[0].get('name', ''))")"
+  AFTER="$(date -v-3d +%Y-%m-%d)"
+  FAST="$("$BIN" mail list --account "$ACCT" --after "$AFTER" --limit 20 --no-contacts --format agent 2>/dev/null)"
+  SLOW="$(PIPPIN_MAIL_FASTPATH=0 "$BIN" mail list --account "$ACCT" --after "$AFTER" --limit 20 --no-contacts --format agent 2>/dev/null)"
+  VERDICT="$(FAST="$FAST" SLOW="$SLOW" python3 -c "
+import json, os
+try:
+    fast = json.loads(os.environ['FAST']); slow = json.loads(os.environ['SLOW'])
+except Exception:
+    print('BAD-JSON'); raise SystemExit
+if fast.get('status') != 'ok' or slow.get('status') != 'ok':
+    print('ERROR'); raise SystemExit
+fids = [m['id'] for m in fast['data']]; sids = [m['id'] for m in slow['data']]
+if set(sids) <= set(fids) and (fids or not sids):
+    print('PASS')
+else:
+    print('ASSERT-FAILED fast=%s slow=%s' % (fids[:3], sids[:3]))")"
+  if [[ "$VERDICT" == "PASS" ]]; then
+    PASS=$((PASS+1)); echo "  ok    mail fast-path/JXA id parity (pippin-60x)"
+  else
+    FAIL=$((FAIL+1)); fails+=("mail fast-path/JXA id parity: $VERDICT"); echo "  FAIL  mail fast-path/JXA id parity ($VERDICT)"
+  fi
+else
+  SKIP=$((SKIP+1)); echo "  SKIP  mail fast-path/JXA id parity (fast path unavailable — no FDA or unknown schema)"
+fi
 
 # --- Notes (JXA)
 run "notes list"       "isinstance(d['data'], list)"                    -- notes list --limit 3

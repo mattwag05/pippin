@@ -162,9 +162,12 @@ extension MailBridge {
             var emails = [];
             try { emails = acct.emailAddresses(); } catch(e) {}
             var emailStr = (Array.isArray(emails) && emails.length > 0) ? emails[0] : '';
+            var acctId = '';
+            try { acctId = String(acct.id()); } catch(e) {}
             results.push({
                 name: acct.name(),
-                email: emailStr
+                email: emailStr,
+                id: acctId
             });
         }
         JSON.stringify(results);

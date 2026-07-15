@@ -5,6 +5,7 @@ import Foundation
 public struct PippinConfig: Codable, Sendable {
     public var ai: AIConfig?
     public var messages: MessagesConfig?
+    public var mail: MailConfig?
 
     /// Global default for Apple Contacts name resolution on Mail/Messages output.
     /// When `false`, sender/participant handles are NOT resolved to contact names,
@@ -54,6 +55,15 @@ public struct PippinConfig: Codable, Sendable {
         public var excludedThreads: [String]?
         public var defaultWindowHours: Int?
         public var autonomousAllowlist: [String]?
+    }
+
+    public struct MailConfig: Codable, Sendable {
+        /// Envelope Index fast path for `mail list`/`search`/`activity` metadata
+        /// (pippin-60x). `nil`/absent = ON (it falls back to JXA silently whenever
+        /// the index is unreadable, so the default costs nothing when unavailable).
+        /// Set `false` to force the JXA path permanently; the
+        /// `PIPPIN_MAIL_FASTPATH=0` env var overrides per-invocation.
+        public var fastPath: Bool?
     }
 }
 

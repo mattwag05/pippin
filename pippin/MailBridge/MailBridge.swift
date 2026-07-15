@@ -42,6 +42,64 @@ enum MailBridge {
         underMCP ? min(seconds, 55) : seconds
     }
 
+    // MARK: - Envelope Index fast path (pippin-60x)
+
+    /// Whether the Envelope Index fast path may run. Env kill switch
+    /// (`PIPPIN_MAIL_FASTPATH=0` — used by e2e parity checks and as an
+    /// emergency off) beats the `mail.fastPath` config key; absent both, ON.
+    /// The fast path still falls back to JXA silently on any failure, so ON
+    /// costs nothing when the index is unreadable (no Full Disk Access).
+    static func fastPathEnabled(
+        env: [String: String] = ProcessInfo.processInfo.environment,
+        config: PippinConfig? = AIProviderFactory.loadConfig()
+    ) -> Bool {
+        if env["PIPPIN_MAIL_FASTPATH"] == "0" { return false }
+        return config?.mail?.fastPath ?? true
+    }
+
+    /// JXA accounts-script row (`buildAccountsScript`): `id` is the account
+    /// UUID that prefixes every Envelope Index `mailboxes.url` (verified ==
+    /// `acct.id()` live, 2026-07-15).
+    private struct AccountScriptRow: Decodable {
+        let name: String
+        let email: String
+        let id: String?
+    }
+
+    /// One JXA round-trip for the account name→UUID map. Only called by
+    /// `MailAccountsCache.ensure` on a cache miss — accounts change rarely.
+    static func fetchAccountRecords() throws -> [MailAccountRecord] {
+        let json = try runScript(buildAccountsScript(), timeoutSeconds: mcpHardTimeout(30))
+        return try decode([AccountScriptRow].self, from: json).compactMap { row in
+            guard let id = row.id, !id.isEmpty else { return nil }
+            return MailAccountRecord(name: row.name, email: row.email, uuid: id)
+        }
+    }
+
+    /// Build an Envelope Index reader for a query, or throw (→ JXA fallback).
+    /// Self-heals the account cache when the index references a UUID the cache
+    /// can't map (new account added since the cache was written) — at most one
+    /// extra JXA refresh per `MailAccountsCache.isStale` TTL, so a permanently
+    /// unmappable UUID can't re-trigger an Apple Event on every command.
+    static func makeFastPathIndex(accountName: String?) throws -> MailEnvelopeIndex {
+        guard let dbPath = MailEnvelopeIndex.defaultDBPath() else {
+            throw MailEnvelopeIndexError.databaseNotFound("~/Library/Mail/V*/MailData/Envelope Index")
+        }
+        let accounts = try MailAccountsCache.ensure(accountName: accountName) {
+            try fetchAccountRecords()
+        }
+        let index = try MailEnvelopeIndex(dbPath: dbPath, accounts: accounts)
+        if try !index.unknownAccountUUIDs().isEmpty {
+            let (_, fetchedAt) = MailAccountsCache.load()
+            if MailAccountsCache.isStale(fetchedAt: fetchedAt),
+               let fresh = try? fetchAccountRecords(), !fresh.isEmpty {
+                MailAccountsCache.save(fresh, fetchedAt: Date())
+                return try MailEnvelopeIndex(dbPath: dbPath, accounts: fresh)
+            }
+        }
+        return index
+    }
+
     /// Minimal probe that exercises only the Mail.app ready-poll
     /// (`jsMailReadyPoll`) and returns. Used by `pippin doctor --latency` to
     /// isolate Mail.app launch/ready time from per-query (mailbox scan / body
@@ -65,11 +123,29 @@ enum MailBridge {
         preview: Int? = nil,
         after: String? = nil,
         before: String? = nil,
-        softTimeoutMs: Int = SoftTimeout.defaultMs
+        softTimeoutMs: Int = SoftTimeout.defaultMs,
+        fastPath: Bool = true
     ) throws -> ListOutcome {
         let crossAccount = (account == nil)
         let clampedLimit = max(1, min(limit, 500))
         let clampedOffset = max(0, offset)
+        // Envelope Index fast path (pippin-60x): metadata-only scans answer from
+        // Mail's on-disk SQLite in ~ms instead of a 10–100s JXA enumeration.
+        // Preview lists fall through — bodies are not in the index (but
+        // `listMessagesCached` pass 1 calls with `preview: nil`, so
+        // `mail list --preview` still gets a fast metadata pass). Any failure
+        // falls back to JXA silently: no FDA, unknown schema, unresolvable
+        // account/mailbox — the fast path is an accelerator, never a gate.
+        // A full-index scan can't under-reach a `--before` cutoff, so no
+        // windowHint. `doctor --latency` passes `fastPath: false` to measure
+        // the real JXA/Mail.app path.
+        if fastPath, (preview ?? 0) == 0, fastPathEnabled(),
+           let messages = try? makeFastPathIndex(accountName: account).listMessages(
+               account: account, mailbox: mailbox, unread: unread,
+               limit: clampedLimit, offset: clampedOffset, after: after, before: before
+           ) {
+            return ListOutcome(messages: messages, timedOut: false)
+        }
         let script = buildListScript(
             account: account, mailbox: mailbox, unread: unread,
             limit: clampedLimit, offset: clampedOffset, preview: preview,
@@ -152,9 +228,37 @@ enum MailBridge {
         since: Date? = nil,
         limit: Int = 50,
         preview: Int? = 200,
-        softTimeoutMs: Int = SoftTimeout.defaultMs
+        softTimeoutMs: Int = SoftTimeout.defaultMs,
+        fastPath: Bool = true
     ) throws -> ActivityOutcome {
         let crossAccount = (account == nil)
+        // Envelope Index fast path (pippin-60x): metadata from SQLite, previews
+        // (activity defaults to 200 chars) via the same MailBodyCache + batch
+        // JXA machinery as `mail list --preview` — cache hits skip osascript
+        // entirely, misses cost one bounded batch fetch. JXA fallback on any
+        // index failure.
+        if fastPath, fastPathEnabled(),
+           let metadata = try? makeFastPathIndex(accountName: account).listActivity(
+               account: account, mailboxes: mailboxes, since: since, limit: limit
+           ) {
+            let previewChars = (preview ?? 0) > 0 ? max(1, min(preview ?? 0, 4000)) : 0
+            guard previewChars > 0 else {
+                return ActivityOutcome(messages: metadata, timedOut: false)
+            }
+            let assembled = try assemblePreviews(
+                metadata: metadata,
+                previewChars: previewChars,
+                cache: MailBodyCache.shared,
+                fetchMisses: { ids in
+                    guard !ids.isEmpty else { return (messages: [], timedOut: false) }
+                    let script = buildBatchBodiesScript(compoundIds: ids, softTimeoutMs: softTimeoutMs)
+                    let json = try runScript(script, timeoutSeconds: mcpHardTimeout(listScanTimeout(crossAccount: crossAccount, fetchesBodies: true)))
+                    let wrapper = try decode(ScanResponse.self, from: json)
+                    return (messages: wrapper.results, timedOut: wrapper.meta.timedOut)
+                }
+            )
+            return ActivityOutcome(messages: assembled.messages, timedOut: assembled.fetchTimedOut)
+        }
         let script = buildActivityScript(
             account: account, mailboxes: mailboxes, since: since,
             limit: limit, preview: preview, softTimeoutMs: softTimeoutMs
@@ -182,10 +286,27 @@ enum MailBridge {
         to: String? = nil,
         from: String? = nil,
         verbose: Bool = false,
-        softTimeoutMs: Int = SoftTimeout.defaultMs
+        softTimeoutMs: Int = SoftTimeout.defaultMs,
+        fastPath: Bool = true
     ) throws -> SearchOutcome {
         let crossAccount = (account == nil) && (mailbox == nil)
         let clampedOffset = max(0, offset)
+        // Envelope Index fast path (pippin-60x): subject/sender LIKE across the
+        // whole index in ~ms (measured 31ms over 28k messages) vs a 45–95s JXA
+        // window scan — and it can't miss old matches the way the newest-N JXA
+        // window can. `--body` falls through (bodies are not in the index).
+        if fastPath, !searchBody, fastPathEnabled(),
+           let messages = try? makeFastPathIndex(accountName: account).searchMessages(
+               query: query, account: account, mailbox: mailbox,
+               limit: limit, offset: clampedOffset, after: after, before: before,
+               to: to, from: from
+           ) {
+            if verbose {
+                let line = "[search] fast path: envelope index (full-index scan, JXA bypassed)\n"
+                FileHandle.standardError.write(Data(line.utf8))
+            }
+            return SearchOutcome(messages: messages, timedOut: false)
+        }
         let script = buildSearchScript(
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
             limit: limit, offset: clampedOffset, after: after, before: before, to: to,

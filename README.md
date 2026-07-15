@@ -82,7 +82,7 @@ background). Run it again any time TCC resets (e.g. after a macOS upgrade).
 | Contacts | Contacts | ✅ `pippin permissions` |
 | Automation > Mail | Mail | ✅ `pippin permissions` |
 | Automation > Notes | Notes | ✅ `pippin permissions` |
-| Full Disk Access | Voice Memos, Messages | ❌ grant manually (no prompt exists) |
+| Full Disk Access | Voice Memos, Messages; Mail fast path (optional, ~1000x list/search) | ❌ grant manually (no prompt exists) |
 
 > **Persistence:** grants stick across rebuilds/upgrades only if the binary is
 > signed with a stable identity. `make install` / the Homebrew formula sign with
@@ -105,9 +105,12 @@ pippin mail list --unread --limit 5
 pippin mail list --unread --after 2026-06-01 --before 2026-07-01  # date-bounded listing
 pippin mail search "quarterly report" --after 2026-01-01
 pippin mail search "invoice" --from billing@vendor.com           # filter by sender
-# On large multi-account mailboxes, pair --from/--body with --account (or --after/--before):
-# an unscoped cross-account scan can hit the soft timeout and return partial (or empty) results
-# with a "narrow with --account…" warning. Scoping keeps the scan within its budget.
+# With Full Disk Access granted, list/search/activity metadata reads Mail's on-disk
+# Envelope Index directly (~ms, full-history search — `pippin doctor` shows availability).
+# Without it, the JXA path applies; on large multi-account mailboxes pair --from/--body
+# with --account (or --after/--before): an unscoped cross-account JXA scan can hit the
+# soft timeout and return partial (or empty) results with a "narrow with --account…"
+# warning. Scoping keeps the scan within its budget.
 pippin mail show "acct||INBOX||12345"
 pippin mail reply "acct||INBOX||12345" --body "Thanks!"
 pippin mail forward "acct||INBOX||12345" --to other@example.com

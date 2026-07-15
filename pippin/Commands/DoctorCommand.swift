@@ -159,6 +159,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
 
     checks.append(checkMacOSVersion())
     checks.append(checkMailAutomation())
+    checks.append(checkMailEnvelopeIndex())
     checks.append(checkVoiceMemosDB())
     checks.append(checkMessagesAccess())
     checks.append(checkCalendarAccess())
@@ -211,6 +212,51 @@ func checkMailAutomation() -> DiagnosticCheck {
         )
     } catch {
         return classifyMailError(error.localizedDescription)
+    }
+}
+
+/// Envelope Index fast path availability (pippin-60x). Informational: mail
+/// commands work either way (JXA fallback is silent and automatic), so an
+/// unreadable index is a `.skip` with a hint — never a `.fail` that would
+/// flag existing Automation-only setups as broken.
+func checkMailEnvelopeIndex() -> DiagnosticCheck {
+    let name = "Mail fast path (Envelope Index)"
+    guard let dbPath = MailEnvelopeIndex.defaultDBPath() else {
+        return DiagnosticCheck(
+            name: name,
+            status: .skip,
+            detail: "no Envelope Index under ~/Library/Mail (Mail.app never used on this Mac)"
+        )
+    }
+    do {
+        // Accounts aren't needed to probe readability + schema version.
+        _ = try MailEnvelopeIndex(dbPath: dbPath, accounts: [])
+        return DiagnosticCheck(
+            name: name,
+            status: .ok,
+            detail: "index readable, schema supported — mail list/search/activity use the SQLite fast path"
+        )
+    } catch let error as MailEnvelopeIndexError {
+        switch error {
+        case let .unsupportedVersion(v):
+            return DiagnosticCheck(
+                name: name,
+                status: .skip,
+                detail: "Envelope Index schema version \(v) is unknown to this pippin build — mail commands use the (slower) JXA path until pippin is updated"
+            )
+        default:
+            return DiagnosticCheck(
+                name: name,
+                status: .skip,
+                detail: "Envelope Index unreadable — mail commands use the (slower) JXA path. Grant Full Disk Access to enable ~1000x faster list/search (System Settings > Privacy & Security > Full Disk Access)"
+            )
+        }
+    } catch {
+        return DiagnosticCheck(
+            name: name,
+            status: .skip,
+            detail: "Envelope Index unreadable (\(error.localizedDescription)) — mail commands use the (slower) JXA path"
+        )
     }
 }
 
@@ -803,20 +849,21 @@ public func runMailLatencyProbes() -> [DiagnosticCheck] {
         },
         runMailLatencyProbe(name: "Mail list latency") {
             _ = try MailBridge.listMessages(
-                mailbox: "INBOX", unread: false, limit: 1, softTimeoutMs: 20000
+                mailbox: "INBOX", unread: false, limit: 1, softTimeoutMs: 20000,
+                fastPath: false // probes measure the JXA/Mail.app path, not SQLite
             )
         },
         runMailLatencyProbe(name: "Mail activity latency") {
             let oneHourAgo = Calendar.current.date(byAdding: .hour, value: -1, to: Date())
             _ = try MailBridge.listActivity(
                 mailboxes: ["INBOX"], since: oneHourAgo, limit: 1, preview: 0,
-                softTimeoutMs: 20000
+                softTimeoutMs: 20000, fastPath: false
             )
         },
         runMailLatencyProbe(name: "Mail search latency") {
             _ = try MailBridge.searchMessages(
                 query: "pippin-doctor-probe-no-match-expected", limit: 1,
-                softTimeoutMs: 20000
+                softTimeoutMs: 20000, fastPath: false
             )
         },
     ]
