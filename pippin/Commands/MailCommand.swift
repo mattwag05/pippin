@@ -132,7 +132,7 @@ public struct MailCommand: AsyncParsableCommand {
 
         @OptionGroup public var contactResolution: ContactResolutionOptions
 
-        @Option(name: .long, help: "Maximum number of results to return (default: 10).")
+        @Option(name: .long, help: "Maximum number of results to return (default: 10; values above 500 are capped).")
         public var limit: Int = 10
 
         @Option(name: .long, help: "Page number (1-based, with --limit as page size). Ignored when --cursor or --page-size is set.")
@@ -157,6 +157,9 @@ public struct MailCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func validate() throws {
+            guard limit >= 1 else {
+                throw ValidationError("--limit must be 1 or greater.")
+            }
             guard page >= 1 else {
                 throw ValidationError("--page must be 1 or greater.")
             }
@@ -352,7 +355,7 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Only include messages on or before this date (YYYY-MM-DD).")
         public var before: String?
 
-        @Option(name: .long, help: "Maximum number of messages to return.")
+        @Option(name: .long, help: "Maximum number of messages to return (default: 20; values above 500 are capped).")
         public var limit: Int = 20
 
         @Option(name: .long, help: "Page number (1-based, with --limit as page size). Ignored when --cursor or --page-size is set.")
@@ -388,6 +391,9 @@ public struct MailCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func validate() throws {
+            guard limit >= 1 else {
+                throw ValidationError("--limit must be 1 or greater.")
+            }
             guard page >= 1 else {
                 throw ValidationError("--page must be 1 or greater.")
             }

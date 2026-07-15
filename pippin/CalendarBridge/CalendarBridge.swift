@@ -179,10 +179,7 @@ public final class CalendarBridge: @unchecked Sendable {
         try await ensureAccess()
         var filterCalendars: [EKCalendar]?
         if let calendarId {
-            guard let cal = store.calendar(withIdentifier: calendarId) else {
-                throw CalendarBridgeError.calendarNotFound(calendarId)
-            }
-            filterCalendars = [cal]
+            filterCalendars = try [resolveEventCalendar(calendarId)]
         }
         let (events, timedOut) = fetchEventsChunked(from: start, to: end, calendars: filterCalendars)
         let mapped = events
@@ -241,10 +238,7 @@ public final class CalendarBridge: @unchecked Sendable {
             event.url = parsed
         }
         if let calendarId {
-            guard let cal = store.calendar(withIdentifier: calendarId) else {
-                throw CalendarBridgeError.calendarNotFound(calendarId)
-            }
-            event.calendar = cal
+            event.calendar = try resolveEventCalendar(calendarId)
         } else {
             event.calendar = store.defaultCalendarForNewEvents
         }
@@ -290,10 +284,7 @@ public final class CalendarBridge: @unchecked Sendable {
             event.url = parsed
         }
         if let calendarId {
-            guard let cal = store.calendar(withIdentifier: calendarId) else {
-                throw CalendarBridgeError.calendarNotFound(calendarId)
-            }
-            event.calendar = cal
+            event.calendar = try resolveEventCalendar(calendarId)
         }
         if let alertOffset {
             event.alarms?.forEach { event.removeAlarm($0) }
@@ -331,6 +322,31 @@ public final class CalendarBridge: @unchecked Sendable {
     }
 
     // MARK: - Private
+
+    /// Resolve a `--calendar` argument (an EventKit calendar ID) to an
+    /// `EKCalendar`. When the ID lookup misses but a calendar with that NAME
+    /// exists, the not-found error says so and carries the real ID, since the
+    /// most common miss is passing a name where an ID is expected.
+    private func resolveEventCalendar(_ calendarId: String) throws -> EKCalendar {
+        if let cal = store.calendar(withIdentifier: calendarId) { return cal }
+        let named = store.calendars(for: .event)
+            .filter { $0.title.caseInsensitiveCompare(calendarId) == .orderedSame }
+        throw CalendarBridgeError.calendarNotFound(
+            Self.calendarIdMissDetail(calendarId, matchingIds: named.map(\.calendarIdentifier))
+        )
+    }
+
+    /// Detail string for a `--calendar` ID miss: plain argument when nothing
+    /// matches, or a "did you mean" hint carrying the ID(s) of same-named
+    /// calendars. Pure so it's unit-testable without an EKEventStore.
+    static func calendarIdMissDetail(_ argument: String, matchingIds: [String]) -> String {
+        guard !matchingIds.isEmpty else { return argument }
+        let existence = matchingIds.count == 1
+            ? "a calendar NAMED '\(argument)' exists"
+            : "\(matchingIds.count) calendars NAMED '\(argument)' exist"
+        return "\(argument) — \(existence) (id: \(matchingIds.joined(separator: ", "))). "
+            + "--calendar takes IDs from 'pippin calendar list'; pass that ID (or use --calendar-name where available)."
+    }
 
     private func findEventByPrefix(id: String) -> EKEvent? {
         // Direct lookup first (exact identifier)
@@ -400,8 +416,11 @@ public final class CalendarBridge: @unchecked Sendable {
             calendarId: event.calendar?.calendarIdentifier ?? "",
             calendarTitle: event.calendar?.title ?? "",
             title: event.title ?? "(no title)",
-            startDate: formatEventDate(event.startDate),
-            endDate: formatEventDate(event.endDate),
+            // All-day events are calendar DAYS, not instants — serialize them
+            // date-only (local day) so positive-UTC-offset consumers don't see
+            // the wrong day (e.g. "2026-07-23T04:00:00Z" reading as Jul 24).
+            startDate: event.isAllDay ? formatEventDay(event.startDate) : formatEventDate(event.startDate),
+            endDate: event.isAllDay ? formatEventDay(event.endDate) : formatEventDate(event.endDate),
             isAllDay: event.isAllDay,
             location: event.location,
             notes: event.notes,

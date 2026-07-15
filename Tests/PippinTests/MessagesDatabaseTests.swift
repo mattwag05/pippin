@@ -31,10 +31,18 @@ final class MessagesDatabaseTests: XCTestCase {
                 handle_id INTEGER DEFAULT 0,
                 is_from_me INTEGER DEFAULT 0,
                 is_read INTEGER DEFAULT 0,
-                service TEXT
+                service TEXT,
+                associated_message_type INTEGER DEFAULT 0
             );
             CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
             CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
+            CREATE TABLE attachment (
+                ROWID INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT,
+                transfer_name TEXT,
+                mime_type TEXT
+            );
+            CREATE TABLE message_attachment_join (message_id INTEGER, attachment_id INTEGER);
             """)
         }
         return db
@@ -71,6 +79,18 @@ final class MessagesDatabaseTests: XCTestCase {
                 INSERT INTO chat_message_join (chat_id, message_id) VALUES (2, 3);
                 """,
                 arguments: [recentNs, recentNs - 1_000_000_000, olderNs]
+            )
+            // Tapback (reaction) on msg-3, newest row overall and unread. If
+            // tapback filtering regresses, this row flips list ordering (group
+            // chat jumps first), inflates the group's unread count, leaks into
+            // its preview, and matches searches for "lunch"/"Loved".
+            try db.execute(
+                sql: """
+                INSERT INTO message (guid, text, date, handle_id, is_from_me, is_read, service, associated_message_type)
+                    VALUES ('msg-tapback', 'Loved "Team lunch Friday?"', ?, 2, 0, 0, 'iMessage', 2000);
+                INSERT INTO chat_message_join (chat_id, message_id) VALUES (2, 4);
+                """,
+                arguments: [recentNs + 2_000_000_000]
             )
         }
         return db
@@ -116,6 +136,49 @@ final class MessagesDatabaseTests: XCTestCase {
         let (conversations, _) = try db.listConversations(limit: 50)
         let dm = conversations.first { $0.id == "iMessage;-;+15551234567" }
         XCTAssertEqual(dm?.unreadCount, 1)
+    }
+
+    // MARK: - Tapback filtering
+
+    func testListSkipsTapbackInPreviewUnreadAndOrdering() throws {
+        // The fixture's tapback row is the newest message overall, unread, in
+        // the group chat. It must not surface anywhere.
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (conversations, _) = try db.listConversations(limit: 50)
+        XCTAssertEqual(conversations.first?.id, "iMessage;-;+15551234567", "tapback must not bump the group chat's last-message date")
+        let group = conversations.first { $0.id == "iMessage;-;groupA" }
+        XCTAssertEqual(group?.lastMessagePreview, "Team lunch Friday?", "preview shows the real message, not the tapback")
+        XCTAssertEqual(group?.unreadCount, 0, "unread tapback doesn't count as an unread message")
+    }
+
+    func testShowExcludesTapbackRows() throws {
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (_, messages, _) = try db.showConversation(conversationId: "iMessage;-;groupA", limit: 50)
+        XCTAssertEqual(messages.map(\.id), ["msg-3"], "tapback row filtered from the thread")
+    }
+
+    func testSearchExcludesTapbacks() throws {
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (matches, _, _) = try db.searchMessages(query: "Loved", limit: 50)
+        XCTAssertTrue(matches.isEmpty, "tapback text must not match searches")
+    }
+
+    func testRemoveTapbackRowsAlsoExcluded() throws {
+        // 3000-range = tapback removal rows.
+        let fixture = try makeFixtureDB()
+        try fixture.write { db in
+            let ns = MessagesDatabase.appleNanos(from: Date(timeIntervalSince1970: 1_750_000_100))
+            try db.execute(sql: """
+            INSERT INTO message (guid, text, date, is_from_me, is_read, service, associated_message_type)
+                VALUES ('msg-untapback', 'Removed a heart from "Team lunch Friday?"', ?, 0, 0, 'iMessage', 3000);
+            INSERT INTO chat_message_join (chat_id, message_id) VALUES (2, last_insert_rowid());
+            """, arguments: [ns])
+        }
+        let db = try MessagesDatabase(dbQueue: fixture)
+        let (_, messages, _) = try db.showConversation(conversationId: "iMessage;-;groupA", limit: 50)
+        XCTAssertEqual(messages.map(\.id), ["msg-3"])
+        let (matches, _, _) = try db.searchMessages(query: "Removed a heart", limit: 50)
+        XCTAssertTrue(matches.isEmpty)
     }
 
     // MARK: - Limit clamping (overflow / unbounded-fetch guard)
@@ -243,6 +306,84 @@ final class MessagesDatabaseTests: XCTestCase {
         XCTAssertEqual(conversation.id, "iMessage;-;+15551234567")
         XCTAssertEqual(messages.count, 2)
         XCTAssertFalse(truncated)
+    }
+
+    func testShowReportsRealUnreadCount() throws {
+        // Regression: show hardcoded unreadCount: 0 while list computed it.
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let (conversation, _, _) = try db.showConversation(
+            conversationId: "iMessage;-;+15551234567", limit: 50
+        )
+        XCTAssertEqual(conversation.unreadCount, 1, "msg-1 is inbound and unread")
+        // Group chat's only unread row is the tapback → 0.
+        let (group, _, _) = try db.showConversation(conversationId: "iMessage;-;groupA", limit: 50)
+        XCTAssertEqual(group.unreadCount, 0)
+    }
+
+    // MARK: - Attachments
+
+    /// Chat with one attachment-only message (two attachments: transfer_name
+    /// set on one; the other only has a full filename path) and one plain-text
+    /// message with no attachments.
+    private func makeAttachmentFixtureDB() throws -> DatabaseQueue {
+        let queue = try makeEmptySchemaDB()
+        try queue.write { db in
+            let ns = MessagesDatabase.appleNanos(from: Date(timeIntervalSince1970: 1_750_000_000))
+            try db.execute(sql: """
+            INSERT INTO chat (guid, chat_identifier, service_name, style, is_archived)
+                VALUES ('att-chat', 'att-chat', 'iMessage', 45, 0);
+            INSERT INTO message (guid, text, date, is_from_me, is_read, service)
+                VALUES ('msg-att', NULL, \(ns), 0, 1, 'iMessage');
+            INSERT INTO message (guid, text, date, is_from_me, is_read, service)
+                VALUES ('msg-plain', 'see the attached photo', \(ns - 1_000_000_000), 0, 1, 'iMessage');
+            INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
+            INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 2);
+            INSERT INTO attachment (filename, transfer_name, mime_type)
+                VALUES ('~/Library/Messages/Attachments/ab/cd/IMG_1234.HEIC', 'IMG_1234.HEIC', 'image/heic');
+            INSERT INTO attachment (filename, transfer_name, mime_type)
+                VALUES ('~/Library/Messages/Attachments/ef/gh/video-clip.mov', NULL, 'video/quicktime');
+            INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (1, 1);
+            INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (1, 2);
+            """)
+        }
+        return queue
+    }
+
+    func testShowSurfacesAttachmentMetadata() throws {
+        let db = try MessagesDatabase(dbQueue: makeAttachmentFixtureDB())
+        let (_, messages, _) = try db.showConversation(conversationId: "att-chat", limit: 50)
+        XCTAssertEqual(messages.count, 2)
+        let attachmentMsg = try XCTUnwrap(messages.first { $0.id == "msg-att" })
+        XCTAssertNil(attachmentMsg.text, "attachment-only message has no text")
+        XCTAssertEqual(attachmentMsg.attachments, [
+            MessageAttachment(filename: "IMG_1234.HEIC", mimeType: "image/heic"),
+            MessageAttachment(filename: "video-clip.mov", mimeType: "video/quicktime"),
+        ], "transfer_name preferred; filename path falls back to its last component")
+        let plainMsg = try XCTUnwrap(messages.first { $0.id == "msg-plain" })
+        XCTAssertNil(plainMsg.attachments, "no attachments → nil (omitted in JSON)")
+    }
+
+    func testSearchSurfacesAttachmentMetadata() throws {
+        let fixture = try makeAttachmentFixtureDB()
+        try fixture.write { db in
+            // Give the searchable text message an attachment too.
+            try db.execute(sql: "INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (2, 1)")
+        }
+        let db = try MessagesDatabase(dbQueue: fixture)
+        let (matches, _, _) = try db.searchMessages(query: "attached photo", limit: 50)
+        XCTAssertEqual(matches.count, 1)
+        XCTAssertEqual(matches.first?.attachments, [MessageAttachment(filename: "IMG_1234.HEIC", mimeType: "image/heic")])
+    }
+
+    func testMessageItemJSONOmitsNilAttachments() throws {
+        let db = try MessagesDatabase(dbQueue: makeAttachmentFixtureDB())
+        let (_, messages, _) = try db.showConversation(conversationId: "att-chat", limit: 50)
+        let plain = try XCTUnwrap(messages.first { $0.id == "msg-plain" })
+        let json = try String(decoding: JSONEncoder().encode(plain), as: UTF8.self)
+        XCTAssertFalse(json.contains("\"attachments\""), "nil attachments must omit the key, not emit null")
+        let withAtt = try XCTUnwrap(messages.first { $0.id == "msg-att" })
+        let jsonWith = try String(decoding: JSONEncoder().encode(withAtt), as: UTF8.self)
+        XCTAssertTrue(jsonWith.contains("\"mime_type\":\"image\\/heic\"") || jsonWith.contains("\"mime_type\":\"image/heic\""))
     }
 
     func testShowThrowsForUnknownConversation() {

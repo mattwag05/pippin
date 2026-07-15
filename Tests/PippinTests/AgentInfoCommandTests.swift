@@ -14,8 +14,9 @@ final class AgentInfoCommandTests: XCTestCase {
 
     func testExitCodeCatalogMatchesClassifier() {
         // Every advertised exit code must be one the classifier can actually
-        // produce (plus 0 = success), and retryable must agree.
-        for entry in AgentInfoCommand.exitCodeCatalog where entry.code != 0 {
+        // produce (plus 0 = success and 64 = ArgumentParser's own EX_USAGE,
+        // which bypasses the classifier), and retryable must agree.
+        for entry in AgentInfoCommand.exitCodeCatalog where entry.code != 0 && entry.code != 64 {
             XCTAssertTrue(
                 [2, 3, 4, 5, 7].contains(entry.code),
                 "Advertised code \(entry.code) is not in the classifier's range"

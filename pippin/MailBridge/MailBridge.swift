@@ -76,6 +76,28 @@ enum MailBridge {
         }
     }
 
+    /// Typed `--account` validation for list/search/activity, applied ABOVE
+    /// the fast-path/JXA fork so both paths behave identically: an unknown
+    /// account name is a typed `accountNotFound` (agent code
+    /// `account_not_found`, exit 3) listing the real names, instead of an
+    /// empty-ok result indistinguishable from an empty mailbox.
+    /// `MailAccountsCache.ensure` refreshes on a name miss, so a just-added
+    /// account passes after one JXA round-trip. If accounts can't be
+    /// enumerated at all (no cache + Mail not authorized), validation is
+    /// skipped and the query proceeds to surface its own error.
+    static func validateAccount(_ name: String?) throws {
+        guard let name else { return }
+        let records = (try? MailAccountsCache.ensure(accountName: name) { try fetchAccountRecords() }) ?? []
+        try ensureKnownAccount(name, in: records)
+    }
+
+    /// Pure core of `validateAccount` (unit-testable without Mail.app).
+    /// Empty `records` = "couldn't enumerate accounts" → no-throw.
+    static func ensureKnownAccount(_ name: String, in records: [MailAccountRecord]) throws {
+        guard !records.isEmpty, !records.contains(where: { $0.name == name }) else { return }
+        throw MailBridgeError.accountNotFound(name, available: records.map(\.name))
+    }
+
     /// Build an Envelope Index reader for a query, or throw (→ JXA fallback).
     /// Self-heals the account cache when the index references a UUID the cache
     /// can't map (new account added since the cache was written) — at most one
@@ -98,6 +120,24 @@ enum MailBridge {
             }
         }
         return index
+    }
+
+    /// Per-account mailbox counts for `pippin status`. Tries the Envelope Index
+    /// fast path (one SQLite scan, ~ms) and falls back to per-account JXA
+    /// (`listMailboxes` × N accounts, ~seconds) on any failure — same fallback
+    /// contract as list/search/activity. `accounts` is passed in so status
+    /// doesn't re-enumerate. Returns name→count; a name absent from the result
+    /// means the count couldn't be determined (caller defaults to 0).
+    static func mailboxCounts(for accounts: [MailAccount]) -> [String: Int] {
+        if fastPathEnabled(), let index = try? makeFastPathIndex(accountName: nil),
+           let counts = try? index.mailboxCountsByAccount() {
+            return counts
+        }
+        var counts: [String: Int] = [:]
+        for account in accounts {
+            counts[account.name] = (try? listMailboxes(account: account.name))?.count ?? 0
+        }
+        return counts
     }
 
     /// Minimal probe that exercises only the Mail.app ready-poll
@@ -126,6 +166,7 @@ enum MailBridge {
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         fastPath: Bool = true
     ) throws -> ListOutcome {
+        try validateAccount(account)
         let crossAccount = (account == nil)
         let clampedLimit = max(1, min(limit, 500))
         let clampedOffset = max(0, offset)
@@ -231,6 +272,7 @@ enum MailBridge {
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         fastPath: Bool = true
     ) throws -> ActivityOutcome {
+        try validateAccount(account)
         let crossAccount = (account == nil)
         // Envelope Index fast path (pippin-60x): metadata from SQLite, previews
         // (activity defaults to 200 chars) via the same MailBodyCache + batch
@@ -289,6 +331,7 @@ enum MailBridge {
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         fastPath: Bool = true
     ) throws -> SearchOutcome {
+        try validateAccount(account)
         let crossAccount = (account == nil) && (mailbox == nil)
         let clampedOffset = max(0, offset)
         // Envelope Index fast path (pippin-60x): subject/sender LIKE across the

@@ -267,4 +267,32 @@ final class RemindersTests: XCTestCase {
         XCTAssertFalse(RemindersBridge.passesDueFilters(dueDate: after, dueBefore: after, dueAfter: before),
                        "the upper bound is exclusive")
     }
+
+    // MARK: - formatDueDate (date-only vs timed due dates)
+
+    func testFormatDueDateDateOnlyEmitsLocalDay() {
+        // EKReminder dueDateComponents without an hour = a date-only (all-day)
+        // due date — serialize as YYYY-MM-DD, not a UTC instant.
+        let components = DateComponents(year: 2026, month: 7, day: 23)
+        XCTAssertEqual(RemindersBridge.formatDueDate(components), "2026-07-23")
+    }
+
+    func testFormatDueDateTimedEmitsInstant() {
+        let components = DateComponents(year: 2026, month: 7, day: 23, hour: 9, minute: 30)
+        let expected = formatEventDate(Calendar.current.date(from: components)!)
+        XCTAssertEqual(RemindersBridge.formatDueDate(components), expected)
+    }
+
+    // MARK: - listIdMissDetail (--list ID-vs-name hint)
+
+    func testListIdMissDetailPlainWhenNoNameMatches() {
+        XCTAssertEqual(RemindersBridge.listIdMissDetail("ZZZ", matchingIds: []), "ZZZ")
+    }
+
+    func testListIdMissDetailHintsIdsWhenAmbiguous() {
+        let detail = RemindersBridge.listIdMissDetail("Errands", matchingIds: ["ID-1", "ID-2"])
+        XCTAssertTrue(detail.contains("ID-1"))
+        XCTAssertTrue(detail.contains("ID-2"))
+        XCTAssertTrue(detail.contains("pippin reminders lists"))
+    }
 }

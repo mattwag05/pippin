@@ -49,6 +49,38 @@ print('PASS' if ($expr) else 'ASSERT-FAILED')
   esac
 }
 
+# run_err <name> <want_code> <want_exit> -- <pippin args...>
+# Asserts a command FAILS with error.code==want_code, exit==want_exit, and a
+# real duration_ms (> 0). Skips on access_denied so ungranted CI still passes.
+run_err() {
+  local name="$1" want_code="$2" want_exit="$3"; shift 3
+  [[ "$1" == "--" ]] && shift
+  local out rc
+  out="$("$BIN" "$@" --format agent 2>/dev/null)"; rc=$?
+  local verdict
+  verdict="$(RC="$rc" WANT_CODE="$want_code" WANT_EXIT="$want_exit" python3 -c "
+import json, os, sys
+rc = int(os.environ['RC']); want_code = os.environ['WANT_CODE']; want_exit = int(os.environ['WANT_EXIT'])
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('BAD-JSON'); sys.exit()
+code = (d.get('error') or {}).get('code', '?')
+if code == 'access_denied':
+    print('DENIED'); sys.exit()
+if d.get('status') != 'error': print('NOT-ERROR:status=%s' % d.get('status')); sys.exit()
+if code != want_code: print('CODE:%s!=%s' % (code, want_code)); sys.exit()
+if rc != want_exit: print('EXIT:%s!=%s' % (rc, want_exit)); sys.exit()
+if not isinstance(d.get('duration_ms'), int) or d.get('duration_ms') < 0: print('DUR:%s' % d.get('duration_ms')); sys.exit()
+print('PASS')
+" <<<"$out")"
+  case "$verdict" in
+    PASS) PASS=$((PASS+1)); echo "  ok    $name" ;;
+    DENIED) SKIP=$((SKIP+1)); echo "  SKIP  $name (access_denied)" ;;
+    *) FAIL=$((FAIL+1)); fails+=("$name: $verdict"); echo "  FAIL  $name ($verdict)" ;;
+  esac
+}
+
 echo "e2e smoke: $BIN ($("$BIN" --version 2>/dev/null))"
 
 # --- Calendar / Reminders / Contacts (EventKit + CNContactStore, in-process MCP set)
@@ -129,18 +161,82 @@ fi
 
 # --- Notes (JXA)
 run "notes list"       "isinstance(d['data'], list)"                    -- notes list --limit 3
+# pippin-jum: agent list is body-less (HTML body only via `notes show`) and
+# carries the v2 date-field names.
+run "notes list is body-less + v2 fields (pippin-jum)" "
+len(d['data']) == 0 or (
+  'body' not in d['data'][0]
+  and 'plainText' in d['data'][0]
+  and 'modifiedAt' in d['data'][0]
+  and 'modificationDate' not in d['data'][0])" \
+  -- notes list --limit 3
 
-# --- Messages (FDA)
-run "messages list"    "isinstance(d['data'], (list, dict))"            -- messages list --since-hours 168
+# --- Messages (FDA) — v2 bare array + no tapback rows (pippin-4ke)
+run "messages list is bare array (v2)" "isinstance(d['data'], list)"   -- messages list --since-hours 168
+run "messages list drops tapbacks (pippin-4ke)" "
+__import__('re').compile(r'^(Loved|Liked|Laughed at|Emphasized|Disliked|Questioned) [“\"]') is not None and
+all(not __import__('re').match(r'^(Loved|Liked|Laughed at|Emphasized|Disliked|Questioned) [“\"]', (c.get('last_message_preview') or c.get('lastMessagePreview') or '')) for c in d['data'])" \
+  -- messages list --since-hours 168
+
+# --- Audit regression: typed not-found → exit 3, usage → exit 2, real duration_ms
+run_err "notes show not-found → note_not_found/3"  note_not_found  3 -- notes show "x-coredata://bogus/ICNote/p999999"
+run_err "mail show not-found → message_not_found/3" message_not_found 3 -- mail show "iCloud||INBOX||99999999"
+run_err "calendar name miss → calendar_not_found/3" calendar_not_found 3 -- calendar events --calendar-name "ZZZNoSuchCal-e2e"
+run_err "mail --account miss → account_not_found/3" account_not_found 3 -- mail list --account "ZZZNoSuchAccount-e2e" --limit 1
+run_err "mail --limit 0 → usage/2"                 command_error   2 -- mail list --limit 0
+
+# --- MCP stdio smoke (pippin-c6r): initialize → tools/list → read call → unknown-tool error
+MCP_VERDICT="$(BIN="$BIN" python3 - <<'PY' 2>/dev/null
+import json, os, subprocess, sys
+bin = os.environ['BIN']
+p = subprocess.Popen([bin, "mcp-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                     stderr=subprocess.DEVNULL, text=True, bufsize=1)
+def send(obj):
+    p.stdin.write(json.dumps(obj) + "\n"); p.stdin.flush()
+def recv():
+    line = p.stdout.readline()
+    return json.loads(line) if line else None
+try:
+    send({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"e2e","version":"0"}}})
+    init = recv()
+    send({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}})
+    tl = recv()
+    ntools = len(((tl or {}).get("result") or {}).get("tools") or [])
+    send({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"calendar_today","arguments":{}}})
+    call = recv()
+    ok = not ((call or {}).get("result") or {}).get("isError", True)
+    send({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"no_such_tool","arguments":{}}})
+    unk = recv()
+    err_code = ((unk or {}).get("error") or {}).get("code")
+    if init and ntools >= 40 and ok and err_code == -32601:
+        print("PASS")
+    else:
+        print("FAIL: init=%s ntools=%s call_ok=%s unk=%s" % (bool(init), ntools, ok, err_code))
+finally:
+    try: p.stdin.close()
+    except Exception: pass
+    p.terminate()
+    try: p.wait(timeout=5)
+    except Exception: p.kill()
+PY
+)"
+if [[ "$MCP_VERDICT" == "PASS" ]]; then
+  PASS=$((PASS+1)); echo "  ok    mcp-server stdio (initialize/tools.list/call/-32601)"
+elif [[ -z "$MCP_VERDICT" ]]; then
+  SKIP=$((SKIP+1)); echo "  SKIP  mcp-server stdio (driver produced no output)"
+else
+  FAIL=$((FAIL+1)); fails+=("mcp-server stdio: $MCP_VERDICT"); echo "  FAIL  mcp-server stdio ($MCP_VERDICT)"
+fi
 
 # --- Writes (opt-in): notes create → show → delete round-trip incl. #26 formatting
 if [[ $RW -eq 1 ]]; then
   TITLE="pippin-e2e-$(date +%s)"
   CREATED="$("$BIN" notes create "$TITLE" --body $'line1\n\nline2' --format agent 2>/dev/null)"
-  NOTE_ID="$(printf '%s' "$CREATED" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('data',{}).get('id',''))")"
+  # notes create result shape: {data:{action,success,details:{title,id}}}
+  NOTE_ID="$(printf '%s' "$CREATED" | python3 -c "import json,sys; d=json.load(sys.stdin); print(((d.get('data') or {}).get('details') or {}).get('id',''))")"
   if [[ -n "$NOTE_ID" ]]; then
     run "notes #26 newlines survive round-trip" "'line2' in d['data'].get('plainText','') and '\n' in d['data'].get('plainText','')" -- notes show "$NOTE_ID"
-    "$BIN" notes delete "$NOTE_ID" --format agent >/dev/null 2>&1
+    "$BIN" notes delete "$NOTE_ID" --force --format agent >/dev/null 2>&1
   else
     FAIL=$((FAIL+1)); fails+=("notes create round-trip: no id returned")
     echo "  FAIL  notes create round-trip (no id)"

@@ -84,16 +84,16 @@ public struct CalendarCommand: AsyncParsableCommand {
             abstract: "List calendar events. Defaults to today."
         )
 
-        @Option(name: .long, help: "Start date/time: YYYY-MM-DD, 'YYYY-MM-DD HH:MM', or ISO 8601 (default: start of today).")
+        @Option(name: [.customLong("from"), .customLong("after")], help: "Start date/time: YYYY-MM-DD, 'YYYY-MM-DD HH:MM', or ISO 8601 (default: start of today). --after is the canonical cross-module name.")
         public var from: String?
 
-        @Option(name: .long, help: "End date/time: YYYY-MM-DD, 'YYYY-MM-DD HH:MM', or ISO 8601 (default: end of today).")
+        @Option(name: [.customLong("to"), .customLong("before")], help: "End date/time: YYYY-MM-DD, 'YYYY-MM-DD HH:MM', or ISO 8601 (default: end of today). --before is the canonical cross-module name.")
         public var to: String?
 
-        @Option(name: .long, help: "Calendar ID to filter events.")
+        @Option(name: .long, help: "Calendar ID to filter events (from `pippin calendar list`).")
         public var calendar: String?
 
-        @Option(name: .long, help: "Calendar name to filter events (case-insensitive).")
+        @Option(name: .long, help: "Calendar name to filter events (case-insensitive; an exact match wins, otherwise substring fallback).")
         public var calendarName: String?
 
         @Option(name: .long, help: "Maximum events to return (default: 50). Ignored when --cursor or --page-size is set.")
@@ -710,16 +710,19 @@ public struct CalendarCommand: AsyncParsableCommand {
             abstract: "Search events by text across a date range."
         )
 
-        @Option(name: .long, help: "Search query (required).")
-        public var query: String
+        @Argument(help: ArgumentHelp("Search query (matches title, notes, location).", valueName: "query"))
+        public var positionalQuery: String?
 
-        @Option(name: .long, help: "Start date/time (default: 6 months ago).")
+        @Option(name: .long, help: "Search query (alternative to the positional argument).")
+        public var query: String?
+
+        @Option(name: [.customLong("from"), .customLong("after")], help: "Start date/time (default: 6 months ago). --after is the canonical cross-module name.")
         public var from: String?
 
-        @Option(name: .long, help: "End date/time (default: 6 months from now).")
+        @Option(name: [.customLong("to"), .customLong("before")], help: "End date/time (default: 6 months from now). --before is the canonical cross-module name.")
         public var to: String?
 
-        @Option(name: .long, help: "Calendar name to filter (case-insensitive).")
+        @Option(name: .long, help: "Calendar name to filter (case-insensitive; an exact match wins, otherwise substring fallback).")
         public var calendarName: String?
 
         @Option(name: .long, help: "Maximum results to return (default: 50).")
@@ -730,6 +733,14 @@ public struct CalendarCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func validate() throws {
+            switch (positionalQuery, query) {
+            case (.none, .none):
+                throw ValidationError("A search query is required — pass it positionally or via --query.")
+            case (.some, .some):
+                throw ValidationError("Pass the search query either positionally or via --query, not both.")
+            default:
+                break
+            }
             if let from, parseCalendarDate(from) == nil {
                 throw ValidationError("--from must be in YYYY-MM-DD or ISO 8601 format.")
             }
@@ -758,7 +769,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             var events = searchOutcome.results
             CalendarCommand.warnTimedOut(output, timedOut: searchOutcome.timedOut)
 
-            let q = query.lowercased()
+            let q = (positionalQuery ?? query ?? "").lowercased()
             events = events.filter { event in
                 event.title.lowercased().contains(q)
                     || (event.notes?.lowercased().contains(q) == true)
@@ -849,10 +860,10 @@ public struct CalendarCommand: AsyncParsableCommand {
             abstract: "Find overlapping calendar events in a time window."
         )
 
-        @Option(name: .long, help: "Start date/time (default: start of today).")
+        @Option(name: [.customLong("from"), .customLong("after")], help: "Start date/time (default: start of today). --after is the canonical cross-module name.")
         public var from: String?
 
-        @Option(name: .long, help: "End date/time (default: end of today).")
+        @Option(name: [.customLong("to"), .customLong("before")], help: "End date/time (default: end of today). --before is the canonical cross-module name.")
         public var to: String?
 
         @Option(name: .long, help: "Date range shorthand: today, today+N, week, month. Overrides --from/--to.")
@@ -1011,19 +1022,43 @@ public struct CalendarCommand: AsyncParsableCommand {
 
 // MARK: - Shared helpers
 
-private struct CalendarNameError: LocalizedError {
-    let errorDescription: String?
+/// Ambiguous `--calendar-name` is a usage-class error: the derived agent code
+/// `invalid_calendar_name` routes to exit 2 via `PippinExitCode.classify`'s
+/// `invalid_` prefix rule (a no-match miss throws
+/// `CalendarBridgeError.calendarNotFound` → `calendar_not_found` → exit 3
+/// instead — the old shared `calendar_name_error` fell to the generic exit 5).
+enum CalendarNameResolutionError: LocalizedError {
+    case invalidCalendarName(String)
+
+    var errorDescription: String? {
+        if case let .invalidCalendarName(msg) = self { return msg }
+        return nil
+    }
 }
 
+/// Match calendars by name. A unique exact (case-insensitive) match wins, so a
+/// calendar literally named "Family" stays reachable when "Family Calendar"
+/// also exists; only when nothing matches exactly does it fall back to
+/// substring matching. Pure so it's unit-testable without an EKEventStore.
+func matchCalendars(named name: String, in calendars: [CalendarInfo]) -> [CalendarInfo] {
+    let exact = calendars.filter { $0.title.caseInsensitiveCompare(name) == .orderedSame }
+    if !exact.isEmpty { return exact }
+    return calendars.filter { $0.title.localizedCaseInsensitiveContains(name) }
+}
+
+/// `pippin/MCP/InProcessTools.swift` has its own `resolveCalendarName` with the
+/// same body, but both now share the module-internal `matchCalendars(named:in:)`
+/// + `CalendarNameResolutionError`, so the two paths emit identical envelopes.
 private func resolveCalendarName(_ name: String, bridge: CalendarBridge) async throws -> String {
-    let calendars = try await bridge.listCalendars()
-    let matches = calendars.filter { $0.title.localizedCaseInsensitiveContains(name) }
+    let matches = try await matchCalendars(named: name, in: bridge.listCalendars())
     guard !matches.isEmpty else {
-        throw CalendarNameError(errorDescription: "No calendar found matching '\(name)'.")
+        throw CalendarBridgeError.calendarNotFound(name)
     }
     guard matches.count == 1 else {
         let names = matches.map { $0.title }.joined(separator: ", ")
-        throw CalendarNameError(errorDescription: "'\(name)' matches multiple calendars: \(names). Use a more specific name.")
+        throw CalendarNameResolutionError.invalidCalendarName(
+            "'\(name)' matches multiple calendars: \(names). Use a more specific name."
+        )
     }
     return matches[0].id
 }

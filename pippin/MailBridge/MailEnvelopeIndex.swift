@@ -346,6 +346,33 @@ final class MailEnvelopeIndex: Sendable {
         return unknown
     }
 
+    /// Per-account mailbox counts, keyed by the account's display name — the
+    /// fast-path equivalent of `MailBridge.listMailboxes(account:).count` for
+    /// each account, in one `mailboxes`-table scan instead of N JXA round-trips
+    /// (`pippin status`). `local://` ("On My Mac") is excluded to match JXA's
+    /// `accounts()`, which never lists it. Accounts with zero index rows are
+    /// still returned (count 0), so the set of keys mirrors `accounts`.
+    func mailboxCountsByAccount() throws -> [String: Int] {
+        var uuidToName: [String: String] = [:]
+        var counts: [String: Int] = [:]
+        for record in accounts {
+            uuidToName[record.uuid.lowercased()] = record.name
+            counts[record.name] = 0
+        }
+        let rows = try dbQueue.read { db in
+            try Row.fetchAll(db, sql: "SELECT url FROM mailboxes")
+        }
+        for row in rows {
+            guard let url = row["url"] as String?,
+                  !url.hasPrefix("local://"),
+                  let (uuid, _) = Self.parseMailboxURL(url),
+                  let name = uuidToName[uuid.lowercased()]
+            else { continue }
+            counts[name, default: 0] += 1
+        }
+        return counts
+    }
+
     // MARK: Date handling
 
     /// `YYYY-MM-DD` → UTC midnight, matching JXA's `new Date('YYYY-MM-DD')`

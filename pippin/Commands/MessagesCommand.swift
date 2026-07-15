@@ -58,27 +58,32 @@ public struct MessagesCommand: AsyncParsableCommand {
                 excluded: excluded,
                 contactIndex: MessagesCommand.contactIndex(contactResolution, config: config)
             )
-            let payload = MessagesListResult(
-                conversations: convs,
-                excludedCount: excludedCount,
-                windowHours: windowHours
-            )
             MessagesAuditLog.record(
                 operation: "list",
                 params: ["since_hours": "\(windowHours)", "limit": "\(limit)"],
                 resultCount: convs.count
             )
-            try output.emit(payload, timedOutHint: "") {
-                printConversationList(payload)
+            // Envelope v2: `data` is the bare conversations array (matching every
+            // other module); the exclude-list signal moves to `warnings`.
+            if output.isAgent {
+                let warnings = excludedCount > 0
+                    ? ["\(excludedCount) conversation(s) filtered by exclude list"] : nil
+                try output.printAgent(convs, warnings: warnings)
+            } else {
+                try output.emit(convs, timedOutHint: "") {
+                    printConversationList(convs, excludedCount: excludedCount, windowHours: windowHours)
+                }
             }
         }
 
-        private func printConversationList(_ payload: MessagesListResult) {
-            if payload.conversations.isEmpty {
-                print("No conversations in the last \(payload.windowHours ?? 48) hours.")
+        private func printConversationList(
+            _ conversations: [MessageConversation], excludedCount: Int, windowHours: Int
+        ) {
+            if conversations.isEmpty {
+                print("No conversations in the last \(windowHours) hours.")
                 return
             }
-            for conv in payload.conversations {
+            for conv in conversations {
                 let label = conv.displayName ?? conv.participants.map(\.handle).joined(separator: ", ")
                 let when = conv.lastMessageAt ?? "-"
                 let unread = conv.unreadCount > 0 ? "  (\(conv.unreadCount) unread)" : ""
@@ -87,9 +92,9 @@ public struct MessagesCommand: AsyncParsableCommand {
                     print("    \(preview)")
                 }
             }
-            if payload.excludedCount > 0 {
+            if excludedCount > 0 {
                 print("")
-                print("(\(payload.excludedCount) conversation(s) filtered by exclude list.)")
+                print("(\(excludedCount) conversation(s) filtered by exclude list.)")
             }
         }
     }

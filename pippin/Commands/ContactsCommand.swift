@@ -73,14 +73,17 @@ public struct ContactsCommand: AsyncParsableCommand {
     public struct SearchContacts: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
-            abstract: "Search contacts by name or email."
+            abstract: "Search contacts by name, email, or phone."
         )
 
-        @Argument(help: "Search query.")
-        public var query: String
+        @Argument(help: "Search query (name, or email with --email). Omit when using --phone.")
+        public var query: String?
 
         @Flag(name: .long, help: "Search by email instead of name.")
         public var email: Bool = false
+
+        @Option(name: .long, help: "Search by phone number (digits-only match; last 10 digits bridge a country-code difference).")
+        public var phone: String?
 
         @Option(name: .long, help: "Maximum results to return; also the default page size when paginating (default: 50).")
         public var limit: Int = 50
@@ -95,14 +98,26 @@ public struct ContactsCommand: AsyncParsableCommand {
             guard limit > 0 else {
                 throw ValidationError("--limit must be positive.")
             }
+            if phone != nil {
+                guard query == nil, !email else {
+                    throw ValidationError("--phone takes the number itself — don't combine it with a query or --email.")
+                }
+            } else if query == nil {
+                throw ValidationError("Provide a search query, or --phone <number>.")
+            }
         }
 
         public mutating func run() async throws {
             let fieldList = FieldProjection.parse(output.fields)
-            let query = self.query
+            let query = self.query ?? ""
             let contacts: [ContactInfo]
             let timedOut: Bool
-            if email {
+            if let phone {
+                // searchByPhone enumerates the contact store (sync); hop off the pool.
+                let outcome = try await detachBlocking { try ContactsBridge.searchByPhone(phone, fields: fieldList) }
+                contacts = outcome.results
+                timedOut = outcome.timedOut
+            } else if email {
                 // searchByEmail enumerates the contact store (sync); hop off the pool.
                 let outcome = try await detachBlocking { try ContactsBridge.searchByEmail(query, fields: fieldList) }
                 contacts = outcome.results
@@ -119,6 +134,7 @@ public struct ContactsCommand: AsyncParsableCommand {
                 let hash = Pagination.filterHash([
                     "query": query,
                     "email": email ? "1" : "0",
+                    "phone": phone ?? "",
                 ])
                 let (offset, pageSize) = try Pagination.resolve(
                     pagination, defaultPageSize: limit, filterHash: hash

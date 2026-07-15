@@ -120,6 +120,55 @@ public enum ContactsBridge {
         return Outcome(results: results, timedOut: timedOut)
     }
 
+    /// Search contacts by phone number.
+    ///
+    /// `CNContact.predicateForContacts(matching: CNPhoneNumber)` requires a
+    /// near-exact string match, so this enumerates the store and compares
+    /// digits-only with a last-10-digit fallback (drops a leading country
+    /// code) — the same normalization `ContactIndex` uses for mail/messages
+    /// sender resolution. Honors `softTimeoutMs` like `searchByEmail`.
+    public static func searchByPhone(
+        _ query: String,
+        fields: [String]? = nil,
+        softTimeoutMs: Int = SoftTimeout.defaultMs
+    ) throws -> Outcome<[ContactInfo]> {
+        let store = CNContactStore()
+        try checkAuthorization(store: store)
+
+        guard !query.filter(\.isNumber).isEmpty else {
+            return Outcome(results: [], timedOut: false)
+        }
+        let keysToFetch = keysForFields(fields, forcePhones: true)
+        var results: [ContactInfo] = []
+        var timedOut = false
+        let deadline = Date().addingTimeInterval(
+            TimeInterval(SoftTimeout.clamp(softTimeoutMs)) / 1000.0
+        )
+        let request = CNContactFetchRequest(keysToFetch: keysToFetch)
+        try store.enumerateContacts(with: request) { contact, stop in
+            if Date() >= deadline {
+                timedOut = true
+                stop.pointee = true
+                return
+            }
+            let matches = contact.phoneNumbers.contains { labeled in
+                phoneMatches(query: query, candidate: labeled.value.stringValue)
+            }
+            if matches {
+                results.append(convert(contact, fields: fields, forcePhones: true))
+            }
+        }
+        return Outcome(results: results, timedOut: timedOut)
+    }
+
+    /// Digits-only phone comparison with last-10 fallback on both sides,
+    /// via `ContactIndex.phoneKeys`. Pure — unit-testable without a store.
+    static func phoneMatches(query: String, candidate: String) -> Bool {
+        let queryKeys = Set(ContactIndex.phoneKeys(query))
+        guard !queryKeys.isEmpty else { return false }
+        return !queryKeys.isDisjoint(with: ContactIndex.phoneKeys(candidate))
+    }
+
     // MARK: - Get by identifier
 
     /// Fetch full contact details by CNContact identifier. Always returns all fields.
@@ -370,12 +419,14 @@ public enum ContactsBridge {
 
     /// Map caller-supplied field names to the appropriate CNKeyDescriptors.
     /// Falls back to minimal keys when `fields` is nil.
-    private static func keysForFields(_ fields: [String]?, forceEmails: Bool = false) -> [CNKeyDescriptor] {
+    private static func keysForFields(
+        _ fields: [String]?,
+        forceEmails: Bool = false,
+        forcePhones: Bool = false
+    ) -> [CNKeyDescriptor] {
         guard let fields else {
-            if forceEmails {
-                // Minimal + emails guaranteed for email search
-                return minimalKeys()
-            }
+            // Minimal already includes emails + phones, covering the
+            // force flags used by the email/phone search paths.
             return minimalKeys()
         }
 
@@ -389,7 +440,7 @@ public enum ContactsBridge {
         if lowered.contains("emails") || lowered.contains("email") || forceEmails {
             keys.append(CNContactEmailAddressesKey as CNKeyDescriptor)
         }
-        if lowered.contains("phones") || lowered.contains("phone") {
+        if lowered.contains("phones") || lowered.contains("phone") || forcePhones {
             keys.append(CNContactPhoneNumbersKey as CNKeyDescriptor)
         }
         if lowered.contains("organization") {
@@ -417,7 +468,8 @@ public enum ContactsBridge {
         _ contact: CNContact,
         fields: [String]?,
         fullDetail: Bool = false,
-        forceEmails: Bool = false
+        forceEmails: Bool = false,
+        forcePhones: Bool = false
     ) -> ContactInfo {
         let fullName = CNContactFormatter.string(from: contact, style: .fullName) ?? ""
 
@@ -451,7 +503,9 @@ public enum ContactsBridge {
         }
 
         let phones: [LabeledValue]
-        if fullDetail || include("phones") || include("phone") {
+        // `forcePhones`: on the phone-search path the matched number must
+        // always be shown, even when explicit --fields omit "phones".
+        if fullDetail || forcePhones || include("phones") || include("phone") {
             phones = contact.phoneNumbers.map { labeled in
                 LabeledValue(
                     label: cleanLabel(labeled.label),

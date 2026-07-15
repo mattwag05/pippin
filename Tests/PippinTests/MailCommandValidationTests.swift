@@ -82,6 +82,32 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertEqual(cmd.limit, 5)
     }
 
+    // MARK: - --limit >= 1 (E2E audit: --limit 0 silently returned 1 message)
+
+    func testListZeroLimitFails() {
+        XCTAssertThrowsError(try MailCommand.List.parse(["--limit", "0"]))
+    }
+
+    func testListNegativeLimitFails() {
+        XCTAssertThrowsError(try MailCommand.List.parse(["--limit", "-3"]))
+    }
+
+    func testListLimitOnePasses() {
+        XCTAssertNoThrow(try MailCommand.List.parse(["--limit", "1"]))
+    }
+
+    func testSearchZeroLimitFails() {
+        XCTAssertThrowsError(try MailCommand.Search.parse(["query", "--limit", "0"]))
+    }
+
+    func testSearchNegativeLimitFails() {
+        XCTAssertThrowsError(try MailCommand.Search.parse(["query", "--limit", "-1"]))
+    }
+
+    func testSearchLimitOnePasses() {
+        XCTAssertNoThrow(try MailCommand.Search.parse(["query", "--limit", "1"]))
+    }
+
     // MARK: - Send email address validation
 
     func testSendValidToPasses() {

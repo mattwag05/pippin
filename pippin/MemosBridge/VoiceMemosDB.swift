@@ -149,7 +149,7 @@ public final class VoiceMemosDB: Sendable {
     public func listMemos(since: Date? = nil, limit: Int = 20) throws -> [VoiceMemo] {
         try dbQueue.read { db in
             var sql = """
-            SELECT ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH
+            SELECT ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH, ZEVICTIONDATE
             FROM ZCLOUDRECORDING
             """
             var arguments: StatementArguments = []
@@ -165,7 +165,7 @@ public final class VoiceMemosDB: Sendable {
             arguments += [limit]
 
             return try VoiceMemo.fetchAll(db, sql: sql, arguments: arguments)
-        }
+        }.map(withAbsolutePath)
     }
 
     /// Get a single memo by its UUID.
@@ -174,13 +174,23 @@ public final class VoiceMemosDB: Sendable {
             try VoiceMemo.fetchOne(
                 db,
                 sql: """
-                SELECT ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH
+                SELECT ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH, ZEVICTIONDATE
                 FROM ZCLOUDRECORDING
                 WHERE ZUNIQUEID = ?
                 """,
                 arguments: [id]
             )
-        }
+        }.map(withAbsolutePath)
+    }
+
+    /// Resolve the bare `ZPATH` filename to an absolute path under the
+    /// recordings directory. An empty path (NULL ZPATH — not downloaded)
+    /// stays empty rather than pointing at the directory itself.
+    private func withAbsolutePath(_ memo: VoiceMemo) -> VoiceMemo {
+        guard !memo.filePath.isEmpty, !memo.filePath.hasPrefix("/") else { return memo }
+        var resolved = memo
+        resolved.filePath = (recordingsDir as NSString).appendingPathComponent(memo.filePath)
+        return resolved
     }
 
     /// Get a single memo by ID prefix (case-insensitive). Returns nil if no match.
@@ -193,7 +203,7 @@ public final class VoiceMemosDB: Sendable {
             try VoiceMemo.fetchAll(
                 db,
                 sql: """
-                SELECT ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH
+                SELECT ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH, ZEVICTIONDATE
                 FROM ZCLOUDRECORDING WHERE ZUNIQUEID LIKE ? || '%'
                 """,
                 arguments: [id]
@@ -201,7 +211,7 @@ public final class VoiceMemosDB: Sendable {
         }
         switch matches.count {
         case 0: return nil
-        case 1: return matches[0]
+        case 1: return withAbsolutePath(matches[0])
         default: throw VoiceMemosError.ambiguousId(id, matches.map(\.id))
         }
     }
@@ -243,8 +253,8 @@ public final class VoiceMemosDB: Sendable {
             throw VoiceMemosError.memoEvicted(id)
         }
 
-        // Resolve full source path
-        let sourcePath = (recordingsDir as NSString).appendingPathComponent(memo.filePath)
+        // getMemo already resolved filePath to an absolute path
+        let sourcePath = memo.filePath
         guard FileManager.default.fileExists(atPath: sourcePath) else {
             throw VoiceMemosError.fileNotFound(sourcePath)
         }
@@ -383,7 +393,8 @@ public final class VoiceMemosDB: Sendable {
             throw VoiceMemosError.memoEvicted(id)
         }
 
-        let sourcePath = (recordingsDir as NSString).appendingPathComponent(memo.filePath)
+        // getMemo already resolved filePath to an absolute path
+        let sourcePath = memo.filePath
         guard FileManager.default.fileExists(atPath: sourcePath) else {
             throw VoiceMemosError.fileNotFound(sourcePath)
         }

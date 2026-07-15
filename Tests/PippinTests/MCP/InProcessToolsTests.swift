@@ -8,7 +8,7 @@ import XCTest
 ///
 /// Live-store tests are headless-safe: on an unauthorized machine the bridge
 /// throws `accessDenied`, which the dispatcher must wrap into the same
-/// `{"v":1,"status":"error",...}` envelope the child would print — an equally
+/// `{"v":N,"status":"error",...}` envelope the child would print — an equally
 /// valid envelope-v1 parity check.
 final class InProcessToolsTests: XCTestCase {
     /// The read-only tools migrated off the child path this round.
@@ -46,7 +46,7 @@ final class InProcessToolsTests: XCTestCase {
     func testOkEnvelopeMatchesEnvelopeV1Frame() throws {
         let text = try MCPInProcessTools.okEnvelope(["k": "v"], startedAt: Date())
         let envelope = try decodeObject(text)
-        XCTAssertEqual(envelope["v"] as? Int, 1)
+        XCTAssertEqual(envelope["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(envelope["status"] as? String, "ok")
         XCTAssertGreaterThanOrEqual(try XCTUnwrap(envelope["duration_ms"] as? Int), 0)
         let data = try XCTUnwrap(envelope["data"] as? [String: Any])
@@ -63,7 +63,7 @@ final class InProcessToolsTests: XCTestCase {
     func testErrorEnvelopeUsesAgentErrorCodeDerivation() throws {
         let text = MCPInProcessTools.errorEnvelope(CalendarBridgeError.accessDenied, startedAt: Date())
         let envelope = try decodeObject(text)
-        XCTAssertEqual(envelope["v"] as? Int, 1)
+        XCTAssertEqual(envelope["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(envelope["status"] as? String, "error")
         let error = try XCTUnwrap(envelope["error"] as? [String: Any])
         XCTAssertEqual(error["code"] as? String, "access_denied")
@@ -100,7 +100,7 @@ final class InProcessToolsTests: XCTestCase {
         let (text, isError) = try await callTool("fake_tool", tools: [fake])
         XCTAssertTrue(isError)
         let envelope = try decodeObject(text)
-        XCTAssertEqual(envelope["v"] as? Int, 1)
+        XCTAssertEqual(envelope["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(envelope["status"] as? String, "error")
         let error = try XCTUnwrap(envelope["error"] as? [String: Any])
         XCTAssertEqual(error["code"] as? String, "boom_error")
@@ -221,7 +221,7 @@ final class InProcessToolsTests: XCTestCase {
         line: UInt = #line
     ) throws -> Any? {
         let envelope = try decodeObject(text)
-        XCTAssertEqual(envelope["v"] as? Int, 1, file: file, line: line)
+        XCTAssertEqual(envelope["v"] as? Int, AGENT_SCHEMA_VERSION, file: file, line: line)
         let duration = try XCTUnwrap(envelope["duration_ms"] as? Int, file: file, line: line)
         XCTAssertGreaterThanOrEqual(duration, 0, file: file, line: line)
         switch envelope["status"] as? String {

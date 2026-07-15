@@ -550,4 +550,101 @@ final class CalendarCommandTests: XCTestCase {
         XCTAssertTrue(names.contains("conflicts"))
         XCTAssertTrue(names.contains("smart-create"))
     }
+
+    // MARK: - Calendar name matching (exact-first, substring fallback)
+
+    private func cal(_ id: String, _ title: String) -> CalendarInfo {
+        CalendarInfo(id: id, title: title, type: "calDAV", color: "#FFFFFF", account: "iCloud")
+    }
+
+    func testMatchCalendarsPrefersUniqueExactMatch() {
+        // A calendar literally named "Family" must stay reachable when
+        // "Family Calendar" also exists (substring matched both before).
+        let matches = matchCalendars(named: "Family", in: [cal("1", "Family"), cal("2", "Family Calendar")])
+        XCTAssertEqual(matches.map(\.id), ["1"])
+    }
+
+    func testMatchCalendarsExactMatchIsCaseInsensitive() {
+        let matches = matchCalendars(named: "family", in: [cal("1", "Family"), cal("2", "Family Calendar")])
+        XCTAssertEqual(matches.map(\.id), ["1"])
+    }
+
+    func testMatchCalendarsFallsBackToSubstring() {
+        let matches = matchCalendars(named: "Fam", in: [cal("1", "Family"), cal("2", "Work")])
+        XCTAssertEqual(matches.map(\.id), ["1"])
+    }
+
+    func testMatchCalendarsNoMatchReturnsEmpty() {
+        XCTAssertTrue(matchCalendars(named: "ZZZNoSuch", in: [cal("1", "Family")]).isEmpty)
+    }
+
+    func testMatchCalendarsAmbiguousSubstringReturnsAll() {
+        let matches = matchCalendars(named: "Cal", in: [cal("1", "Work Calendar"), cal("2", "Home Calendar")])
+        XCTAssertEqual(matches.count, 2)
+    }
+
+    func testMatchCalendarsDuplicateExactNamesReturnsBoth() {
+        // Two identically-named calendars (different accounts) are genuinely
+        // ambiguous even with exact matching.
+        let matches = matchCalendars(named: "Family", in: [cal("1", "Family"), cal("2", "Family")])
+        XCTAssertEqual(matches.count, 2)
+    }
+
+    // MARK: - --calendar-name error exit classes (was calendar_name_error → 5)
+
+    func testCalendarNameNoMatchClassifiesAsNotFound() {
+        let error = CalendarBridgeError.calendarNotFound("ZZZNoSuch")
+        XCTAssertEqual(agentErrorCode(for: error), "calendar_not_found")
+        XCTAssertEqual(PippinExitCode.from(error), 3)
+    }
+
+    func testCalendarNameAmbiguousClassifiesAsUsage() {
+        let error = CalendarNameResolutionError.invalidCalendarName("'Cal' matches multiple calendars")
+        XCTAssertEqual(agentErrorCode(for: error), "invalid_calendar_name")
+        XCTAssertEqual(PippinExitCode.from(error), 2)
+    }
+
+    // MARK: - --after/--before aliases for --from/--to (cross-module names)
+
+    func testEventsAfterBeforeAliases() throws {
+        let cmd = try CalendarCommand.Events.parse(["--after", "2026-01-01", "--before", "2026-02-01"])
+        XCTAssertEqual(cmd.from, "2026-01-01")
+        XCTAssertEqual(cmd.to, "2026-02-01")
+    }
+
+    func testEventsFromToStillAccepted() throws {
+        let cmd = try CalendarCommand.Events.parse(["--from", "2026-01-01", "--to", "2026-02-01"])
+        XCTAssertEqual(cmd.from, "2026-01-01")
+        XCTAssertEqual(cmd.to, "2026-02-01")
+    }
+
+    func testSearchAfterBeforeAliases() throws {
+        let cmd = try CalendarCommand.Search.parse(["x", "--after", "2026-01-01", "--before", "2026-02-01"])
+        XCTAssertEqual(cmd.from, "2026-01-01")
+        XCTAssertEqual(cmd.to, "2026-02-01")
+    }
+
+    func testConflictsAfterBeforeAliases() throws {
+        let cmd = try CalendarCommand.Conflicts.parse(["--after", "2026-01-01", "--before", "2026-02-01"])
+        XCTAssertEqual(cmd.from, "2026-01-01")
+        XCTAssertEqual(cmd.to, "2026-02-01")
+    }
+
+    // MARK: - Search positional query
+
+    func testSearchPositionalQueryPasses() throws {
+        let cmd = try CalendarCommand.Search.parse(["deadline"])
+        XCTAssertEqual(cmd.positionalQuery, "deadline")
+        XCTAssertNil(cmd.query)
+    }
+
+    func testSearchQueryOptionStillAccepted() throws {
+        let cmd = try CalendarCommand.Search.parse(["--query", "deadline"])
+        XCTAssertEqual(cmd.query, "deadline")
+        XCTAssertNil(cmd.positionalQuery)
+    }
+
+    func testSearchBothPositionalAndQueryFails() {
+        XCTAssertThrowsError(try CalendarCommand.Search.parse(["deadline", "--query", "deadline"]))
+    }
 }

@@ -50,17 +50,14 @@ public struct NotesCommand: ParsableCommand {
             }
             let outcome = try NotesBridge.listNotes(folder: folder, limit: limit)
             let notes = outcome.results
-            if output.isJSON {
-                try printFilteredNotes(notes, fields: output.fields)
-            } else if output.isAgent {
-                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(output.fields)) {}
-            } else {
-                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
-                    if notes.isEmpty {
-                        print("No notes found.")
-                    } else {
-                        print(printNotesTable(notes))
-                    }
+            // One emit for all three formats: json/agent get --fields projection
+            // and the structured timedOut advisory (stderr warning / envelope
+            // warnings) from the shared helper instead of a hand-rolled branch.
+            try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
+                if notes.isEmpty {
+                    print("No notes found.")
+                } else {
+                    print(printNotesTable(notes))
                 }
             }
         }
@@ -82,20 +79,14 @@ public struct NotesCommand: ParsableCommand {
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
             )
-            if output.isJSON {
-                try printFilteredNotesPage(page, fields: output.fields)
-            } else if output.isAgent {
-                try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(output.fields)) {}
-            } else {
-                try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
-                    if page.items.isEmpty {
-                        print("No notes found.")
-                    } else {
-                        print(printNotesTable(page.items))
-                    }
-                    if let cursor = page.nextCursor {
-                        print("(more — re-run with --cursor \(cursor))")
-                    }
+            try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
+                if page.items.isEmpty {
+                    print("No notes found.")
+                } else {
+                    print(printNotesTable(page.items))
+                }
+                if let cursor = page.nextCursor {
+                    print("(more — re-run with --cursor \(cursor))")
                 }
             }
         }
@@ -159,17 +150,11 @@ public struct NotesCommand: ParsableCommand {
         public mutating func run() throws {
             let outcome = try NotesBridge.searchNotes(query: query, folder: folder, limit: limit)
             let notes = outcome.results
-            if output.isJSON {
-                try printFilteredNotes(notes, fields: output.fields)
-            } else if output.isAgent {
-                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint, fields: FieldProjection.parse(output.fields)) {}
-            } else {
-                try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
-                    if notes.isEmpty {
-                        print("No notes matching \"\(query)\".")
-                    } else {
-                        print(printNotesTable(notes))
-                    }
+            try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
+                if notes.isEmpty {
+                    print("No notes matching \"\(query)\".")
+                } else {
+                    print(printNotesTable(notes))
                 }
             }
         }
@@ -190,17 +175,11 @@ public struct NotesCommand: ParsableCommand {
         public mutating func run() throws {
             let outcome = try NotesBridge.listFolders()
             let folders = outcome.results
-            if output.isJSON {
-                try printJSON(folders)
-            } else if output.isAgent {
-                try output.emit(folders, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {}
-            } else {
-                try output.emit(folders, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
-                    if folders.isEmpty {
-                        print("No folders found.")
-                    } else {
-                        print(printFoldersTable(folders))
-                    }
+            try output.emit(folders, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
+                if folders.isEmpty {
+                    print("No folders found.")
+                } else {
+                    print(printFoldersTable(folders))
                 }
             }
         }
@@ -326,20 +305,21 @@ public struct NotesCommand: ParsableCommand {
 
 // MARK: - Agent view helpers
 
-/// Compact note view for agent mode — excludes large HTML body.
-private struct NoteAgentView: Encodable {
+/// Compact note view for `notes show` agent mode — excludes large HTML body.
+/// Internal (not private) so tests can assert the serialized shape.
+struct NoteAgentView: Encodable {
     let id: String
     let title: String
     let plainText: String
     let folder: String
-    let modificationDate: String
+    let modifiedAt: String
 
     init(note: NoteInfo) {
         id = note.id
         title = note.title
         plainText = note.plainText
         folder = note.folder
-        modificationDate = note.modificationDate
+        modifiedAt = note.modificationDate
     }
 }
 
@@ -364,8 +344,8 @@ private func printNoteCard(_ note: NoteInfo) -> String {
         ("title", note.title),
         ("folder", note.folder),
         ("folderId", note.folderId),
-        ("creationDate", note.creationDate),
-        ("modificationDate", note.modificationDate),
+        ("createdAt", note.creationDate),
+        ("modifiedAt", note.modificationDate),
     ]
     if let account = note.account {
         fields.append(("account", account))
@@ -383,37 +363,4 @@ private func printFoldersTable(_ folders: [NoteFolder]) -> String {
         rows: rows,
         columnWidths: [30, 30, 8]
     )
-}
-
-private func printFilteredNotes(_ notes: [NoteInfo], fields: String?) throws {
-    guard let fieldList = FieldProjection.parse(fields) else {
-        try printJSON(notes)
-        return
-    }
-    let allDicts = try filteredNoteDicts(notes, fieldList: fieldList)
-    let data = try JSONSerialization.data(withJSONObject: allDicts, options: [.prettyPrinted, .sortedKeys])
-    print(String(data: data, encoding: .utf8)!)
-}
-
-private func printFilteredNotesPage(_ page: Page<NoteInfo>, fields: String?) throws {
-    var dict: [String: Any] = [:]
-    if let fieldList = FieldProjection.parse(fields) {
-        dict["items"] = try filteredNoteDicts(page.items, fieldList: fieldList)
-    } else {
-        let itemsData = try JSONEncoder().encode(page.items)
-        dict["items"] = try JSONSerialization.jsonObject(with: itemsData)
-    }
-    if let cursor = page.nextCursor { dict["next_cursor"] = cursor }
-    let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
-    print(String(data: data, encoding: .utf8)!)
-}
-
-private func filteredNoteDicts(_ notes: [NoteInfo], fieldList: [String]) throws -> [Any] {
-    // Delegates to the shared projector so json- and agent-mode --fields stay
-    // in lockstep. `notes` is an array, so the result is an array of projected
-    // element objects.
-    guard let projected = try FieldProjection.projectedObject(notes, fields: fieldList) as? [Any] else {
-        return []
-    }
-    return projected
 }

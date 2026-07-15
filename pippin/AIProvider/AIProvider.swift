@@ -39,6 +39,14 @@ public enum AIProviderError: LocalizedError, Sendable {
     /// model-not-found body). `available` is the best-effort `/api/tags`
     /// probe result — empty when the probe failed, never an error itself.
     case modelNotFound(model: String, available: [String])
+    /// The configured model isn't served by the OpenAI-compatible endpoint
+    /// (HTTP 404 whose body names the model). Distinct from `modelNotFound`
+    /// so the remediation points at `ai.openai.model` rather than `ollama pull`.
+    case remoteModelNotFound(model: String, baseURL: String)
+    /// `--provider` / `ai.provider` names a backend that doesn't exist.
+    /// `invalid_` prefix classifies as usage (exit 2) — a typo, not a bridge
+    /// failure.
+    case invalidProvider(String)
 
     public var errorDescription: String? {
         switch self {
@@ -51,6 +59,10 @@ public enum AIProviderError: LocalizedError, Sendable {
             return "Claude API key not set. Use --api-key, set ANTHROPIC_API_KEY, or run: get-secret \"Anthropic API\""
         case let .modelNotFound(model, _):
             return "Ollama model \"\(model)\" is not pulled — run `ollama pull \(model)`, or set ai.ollama.model in ~/.config/pippin/config.json to a pulled model"
+        case let .remoteModelNotFound(model, baseURL):
+            return "Model \"\(model)\" is not served by the OpenAI-compatible endpoint at \(baseURL) — set ai.openai.model in ~/.config/pippin/config.json (or pass --model) to a model the server actually serves"
+        case let .invalidProvider(name):
+            return "Unknown provider '\(name)'. Use 'ollama', 'claude', or 'openai'."
         }
     }
 }
@@ -61,22 +73,36 @@ public enum AIProviderError: LocalizedError, Sendable {
 /// via `RemediationCatalog.resolve`. Other cases fall through to the catalog.
 extension AIProviderError: RemediableError {
     public var remediation: Remediation? {
-        guard case let .modelNotFound(model, available) = self else { return nil }
-        var hint = """
-        The configured Ollama model "\(model)" is not pulled. Pull it with \
-        the command below, or set a different model under ai.ollama.model in \
-        ~/.config/pippin/config.json.
-        """
-        if !available.isEmpty {
-            let shown = available.sorted().prefix(10)
-            let more = available.count > shown.count ? ", …" : ""
-            hint += " Available: \(shown.joined(separator: ", "))\(more)"
+        switch self {
+        case let .modelNotFound(model, available):
+            var hint = """
+            The configured Ollama model "\(model)" is not pulled. Pull it with \
+            the command below, or set a different model under ai.ollama.model in \
+            ~/.config/pippin/config.json.
+            """
+            if !available.isEmpty {
+                let shown = available.sorted().prefix(10)
+                let more = available.count > shown.count ? ", …" : ""
+                hint += " Available: \(shown.joined(separator: ", "))\(more)"
+            }
+            return Remediation(
+                humanHint: hint,
+                doctorCheck: "Ollama",
+                shellCommand: "ollama pull \(model)"
+            )
+        case let .remoteModelNotFound(model, baseURL):
+            return Remediation(
+                humanHint: """
+                The endpoint at \(baseURL) does not serve "\(model)". List the \
+                models it serves with the command below, then set ai.openai.model \
+                in ~/.config/pippin/config.json (or pass --model).
+                """,
+                doctorCheck: "AI provider",
+                shellCommand: "curl -s \(baseURL)/models"
+            )
+        default:
+            return nil
         }
-        return Remediation(
-            humanHint: hint,
-            doctorCheck: "Ollama",
-            shellCommand: "ollama pull \(model)"
-        )
     }
 }
 
@@ -111,7 +137,8 @@ func isTransientAIError(_ error: AIProviderError) -> Bool {
     switch error {
     case let .apiError(code, _): return code == 429 || (500 ... 599).contains(code)
     case .networkError: return true
-    case .timeout, .providerUnreachable, .decodingFailed, .missingAPIKey, .modelNotFound: return false
+    case .timeout, .providerUnreachable, .decodingFailed, .missingAPIKey, .modelNotFound,
+         .remoteModelNotFound, .invalidProvider: return false
     }
 }
 

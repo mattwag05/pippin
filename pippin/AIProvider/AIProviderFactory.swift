@@ -137,9 +137,7 @@ public enum AIProviderFactory {
             )
 
         default:
-            throw AIProviderError.networkError(
-                "Unknown provider '\(providerName)'. Use 'ollama', 'claude', or 'openai'."
-            )
+            throw AIProviderError.invalidProvider(providerName)
         }
     }
 

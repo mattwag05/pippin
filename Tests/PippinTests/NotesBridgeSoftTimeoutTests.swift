@@ -119,7 +119,7 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
             "Sort must operate on the materialized numeric `mod` field"
         )
         // The results loop must reuse the cached ISO string rather than re-fetching.
-        XCTAssertTrue(script.contains("modificationDate: pairs[i].iso"))
+        XCTAssertTrue(script.contains("modifiedAt: pairs[i].iso"))
     }
 
     /// Regression for pippin-mo7: the modificationDate materialization must use a

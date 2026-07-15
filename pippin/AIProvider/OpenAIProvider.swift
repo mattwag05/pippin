@@ -50,6 +50,13 @@ public struct OpenAIProvider: AIProvider {
             )
             guard httpResponse.statusCode == 200 else {
                 let detail = String(data: data, encoding: .utf8) ?? ""
+                // A 404 whose body names the model is "model not served here",
+                // not a generic API failure — surface it typed (exit 3) with a
+                // config-pointing remediation, matching the Ollama path.
+                if httpResponse.statusCode == 404,
+                   detail.range(of: "model", options: .caseInsensitive) != nil {
+                    throw AIProviderError.remoteModelNotFound(model: model, baseURL: baseURL)
+                }
                 throw AIProviderError.apiError(httpResponse.statusCode, detail)
             }
             return try Self.parseCompletion(data)

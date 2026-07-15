@@ -71,7 +71,7 @@ To verify parse/validation logic without the grant, branch on the exit code: **e
 
 ## JXA typed error trap
 
-JXA script errors always arrive as `scriptFailed(String)` — never as a typed Swift case like `noteNotFound`. Don't add typed not-found cases to JXA bridge error enums; they'll be dead code.
+JXA script errors arrive from `ScriptRunner` as a generic non-zero-exit failure, so a typed case like `noteNotFound` only exists if you *map* it in. The pattern (see `NotesBridge.mapScriptFailure`, `MailBridgeRunner.mapScriptFailure`): have the JXA script emit a sentinel (`NOTESBRIDGE_ERR_NOT_FOUND: <id>`, or rely on Mail's native `Message not found (-2700)`), then at the single seam where `runScript` turns a ScriptRunner failure into a `*BridgeError`, detect the sentinel/signature and throw the typed `.xNotFound(id)` case (agent code `x_not_found` → exit 3 automatically via `PippinExitCode`). Do this in ONE seam per bridge, not per call site. Without the mapping seam, every failure collapses to `script_failed`/exit 5 — which is what shipped the not-found-classification bug the E2E audit caught (2026-07-15).
 
 ## Notes IDs prefix trap
 

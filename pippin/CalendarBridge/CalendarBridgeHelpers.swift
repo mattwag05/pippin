@@ -84,6 +84,19 @@ func formatEventDate(_ date: Date) -> String {
     return formatter.string(from: date)
 }
 
+/// Format a Date as its LOCAL calendar day, "YYYY-MM-DD". All-day events (and
+/// date-only reminder due dates) are days, not instants — serializing them as
+/// UTC instants (e.g. "2026-07-23T04:00:00Z") gave consumers in positive-UTC-
+/// offset timezones the wrong calendar day. `parseCalendarDate` round-trips
+/// this form (midnight local).
+func formatEventDay(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter.string(from: date)
+}
+
 // MARK: - Span parsing
 
 /// Parse a span string into an EKSpan. Returns nil for unrecognized values.

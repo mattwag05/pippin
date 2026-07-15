@@ -145,6 +145,41 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertNoThrow(try makeIndex())
     }
 
+    // MARK: - Mailbox counts (status fast path)
+
+    func testMailboxCountsByAccount() throws {
+        let counts = try makeIndex().mailboxCountsByAccount()
+        // Personal (uuidA): INBOX, Sent Messages, [Gmail]/All Mail = 3.
+        // Work (uuidB): Inbox, Sent Items, Deleted Items = 3.
+        // Ghost account's mailbox (uuidGhost) isn't in `accounts`, so it's
+        // excluded — keys mirror the known account set exactly.
+        XCTAssertEqual(counts, ["Personal": 3, "Work": 3])
+    }
+
+    func testMailboxCountsAccountWithNoMailboxesIsZeroNotAbsent() throws {
+        let q = try makeSchemaDB()
+        try q.write { db in
+            // Only Personal has a mailbox row; Work has none.
+            try db.execute(sql: "INSERT INTO mailboxes (ROWID, url) VALUES (1, 'imap://\(Self.uuidA)/INBOX');")
+        }
+        let counts = try makeIndex(q).mailboxCountsByAccount()
+        XCTAssertEqual(counts["Personal"], 1)
+        XCTAssertEqual(counts["Work"], 0, "an account with no index rows must report 0, not be missing")
+    }
+
+    func testMailboxCountsExcludesLocalOnMyMac() throws {
+        let q = try makeSchemaDB()
+        try q.write { db in
+            try db.execute(sql: """
+            INSERT INTO mailboxes (ROWID, url) VALUES
+              (1, 'imap://\(Self.uuidA)/INBOX'),
+              (2, 'local://Notes');
+            """)
+        }
+        let counts = try makeIndex(q).mailboxCountsByAccount()
+        XCTAssertEqual(counts["Personal"], 1, "local:// mailboxes are invisible to JXA accounts(), so excluded for parity")
+    }
+
     func testVersionGuardRejectsUnknownVersion() throws {
         let q = try makeSchemaDB(version: "5")
         XCTAssertThrowsError(try MailEnvelopeIndex(dbQueue: q, accounts: Self.accounts)) { error in

@@ -6,7 +6,11 @@ public extension MailCommand {
         public static let configuration = CommandConfiguration(
             commandName: "activity",
             abstract: "Combined recent mail activity across multiple mailboxes (e.g. INBOX + Sent). Use this for scan workflows instead of N calls to mail list.",
-            discussion: "Default scans INBOX and Sent with a 200-char body preview. Use --since to bound the scan window; --mailboxes to customize the set."
+            discussion: """
+            Default scans INBOX and Sent with a 200-char body preview. Use --since to bound the scan window; --mailboxes to customize the set.
+
+            Performance: the default --preview 200 forces a per-message body fetch (measured 28-40s on multi-account setups), while --preview 0 is metadata-only and returns in well under a second. Pass --preview 0 whenever you don't need body snippets.
+            """
         )
 
         @Option(name: .long, help: "Filter by account name.")
@@ -18,10 +22,10 @@ public extension MailCommand {
         @Option(name: .long, help: "Only include messages on or after this date: YYYY-MM-DD or ISO 8601.")
         public var since: String?
 
-        @Option(name: .long, help: "Maximum number of messages to return (default: 50).")
+        @Option(name: .long, help: "Maximum number of messages to return (default: 50; values above 500 are capped).")
         public var limit: Int = 50
 
-        @Option(name: .long, help: "Plain-text body preview length in chars (default: 200; 0 to disable).")
+        @Option(name: .long, help: "Plain-text body preview length in chars (default: 200; 0 to disable). Previews force per-message body fetches (~30-40s); 0 is metadata-only (sub-second).")
         public var preview: Int = 200
 
         @OptionGroup public var contactResolution: ContactResolutionOptions

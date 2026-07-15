@@ -1,10 +1,11 @@
 @testable import PippinLib
 import XCTest
 
-/// Tests for Envelope v1 — the breaking-change wrapper introduced in pippin-xy0.
-/// Every `--format agent` response must wrap the original payload as
-/// {"v":1,"status":"ok|error","duration_ms":N,"data":...} or
-/// {"v":1,"status":"error","duration_ms":N,"error":{code,message,…}}.
+/// Tests for the agent-mode envelope (v1 introduced in pippin-xy0; v2 in the
+/// 2026-07-15 audit batch). Every `--format agent` response must wrap the
+/// original payload as {"v":N,"status":"ok|error","duration_ms":M,"data":...}
+/// or {"v":N,"status":"error","duration_ms":M,"error":{code,message,…}}, where
+/// N is `AGENT_SCHEMA_VERSION`.
 final class AgentEnvelopeTests: XCTestCase {
     private struct Sample: Encodable, Equatable {
         let name: String
@@ -13,8 +14,10 @@ final class AgentEnvelopeTests: XCTestCase {
 
     // MARK: - Schema version
 
-    func testSchemaVersionConstantIsOne() {
-        XCTAssertEqual(AGENT_SCHEMA_VERSION, 1)
+    func testSchemaVersionConstant() {
+        // v2 (2026-07-15): payload-shape changes — messages bare array, notes
+        // createdAt/modifiedAt, all-day date-only, memos millis.
+        XCTAssertEqual(AGENT_SCHEMA_VERSION, 2)
     }
 
     // MARK: - Ok envelope shape
@@ -25,7 +28,7 @@ final class AgentEnvelopeTests: XCTestCase {
             try printAgentJSON(payload)
         }
         let json = try decodeObject(capture)
-        XCTAssertEqual(json["v"] as? Int, 1)
+        XCTAssertEqual(json["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(json["status"] as? String, "ok")
         XCTAssertNotNil(json["duration_ms"] as? Int)
         let data = try XCTUnwrap(json["data"] as? [String: Any])
@@ -67,7 +70,7 @@ final class AgentEnvelopeTests: XCTestCase {
             printAgentError(Boom())
         }
         let json = try decodeObject(capture)
-        XCTAssertEqual(json["v"] as? Int, 1)
+        XCTAssertEqual(json["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(json["status"] as? String, "error")
         XCTAssertNotNil(json["duration_ms"] as? Int)
         let errorDict = try XCTUnwrap(json["error"] as? [String: Any])
@@ -128,7 +131,7 @@ final class AgentEnvelopeTests: XCTestCase {
             try parsed.printAgent(Sample(name: "bar", count: 7))
         }
         let json = try decodeObject(capture)
-        XCTAssertEqual(json["v"] as? Int, 1)
+        XCTAssertEqual(json["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(json["status"] as? String, "ok")
         let durationMs = try XCTUnwrap(json["duration_ms"] as? Int)
         XCTAssertGreaterThanOrEqual(durationMs, 40, "OutputOptions.startedAt must be threaded through")
@@ -146,7 +149,7 @@ final class AgentEnvelopeTests: XCTestCase {
         // Same top-level frame keys (everything except the payload itself).
         let frameKeys: (([String: Any]) -> Set<String>) = { Set($0.keys).subtracting(["data"]) }
         XCTAssertEqual(frameKeys(typed), frameKeys(projected), "projected envelope frame must match the typed envelope")
-        XCTAssertEqual(projected["v"] as? Int, 1)
+        XCTAssertEqual(projected["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(projected["status"] as? String, "ok")
         XCTAssertNotNil(projected["duration_ms"] as? Int)
         // Projection actually trimmed the data.

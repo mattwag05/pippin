@@ -32,6 +32,15 @@ public final class MessagesDatabase: Sendable {
     /// chat.style == 43 marks a multi-party (group) thread in chat.db.
     private static let groupChatStyle: Int = 43
 
+    /// SQL predicate excluding tapback (reaction) rows for the given message
+    /// alias. Apple's `associated_message_type`: 0/NULL = normal, 2000–2005 =
+    /// add tapback, 3000–3005 = remove, with 2006/3006+ custom-emoji variants
+    /// on newer macOS. ponytail: blanket 2000–3999 exclusion covers future
+    /// tapback subtypes; stickers (1000s) and edits stay visible.
+    static func excludeTapbacks(_ alias: String) -> String {
+        "COALESCE(\(alias).associated_message_type, 0) NOT BETWEEN 2000 AND 3999"
+    }
+
     private let dbQueue: DatabaseQueue
 
     public static func defaultDBPath() -> String {
@@ -102,21 +111,22 @@ public final class MessagesDatabase: Sendable {
                 MAX(m.date) AS last_date,
                 (SELECT m2.text FROM message m2
                  JOIN chat_message_join cmj2 ON cmj2.message_id = m2.ROWID
-                 WHERE cmj2.chat_id = c.ROWID
+                 WHERE cmj2.chat_id = c.ROWID AND \(Self.excludeTapbacks("m2"))
                  ORDER BY m2.date DESC LIMIT 1) AS last_text,
                 (SELECT m2b.attributedBody FROM message m2b
                  JOIN chat_message_join cmj2b ON cmj2b.message_id = m2b.ROWID
-                 WHERE cmj2b.chat_id = c.ROWID
+                 WHERE cmj2b.chat_id = c.ROWID AND \(Self.excludeTapbacks("m2b"))
                  ORDER BY m2b.date DESC LIMIT 1) AS last_attributedbody,
                 (SELECT COUNT(*) FROM message m3
                  JOIN chat_message_join cmj3 ON cmj3.message_id = m3.ROWID
                  WHERE cmj3.chat_id = c.ROWID
                    AND m3.is_from_me = 0
-                   AND m3.is_read = 0) AS unread_count
+                   AND m3.is_read = 0
+                   AND \(Self.excludeTapbacks("m3"))) AS unread_count
             FROM chat c
             JOIN chat_message_join cmj ON cmj.chat_id = c.ROWID
             JOIN message m ON m.ROWID = cmj.message_id
-            WHERE c.is_archived = 0
+            WHERE c.is_archived = 0 AND \(Self.excludeTapbacks("m"))
             """
             var args: [any DatabaseValueConvertible] = []
             if let cutoffNs {
@@ -189,7 +199,7 @@ public final class MessagesDatabase: Sendable {
             // Shared column list + joins. Includes attributedBody so bodies that
             // live only in the blob can be decoded.
             let base = """
-            m.guid AS msg_guid, m.text, m.attributedBody, m.date, m.is_from_me,
+            m.ROWID AS msg_rowid, m.guid AS msg_guid, m.text, m.attributedBody, m.date, m.is_from_me,
                    m.is_read, m.service, c.guid AS chat_guid, h.id AS handle_id
             FROM message m
             JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
@@ -197,6 +207,7 @@ public final class MessagesDatabase: Sendable {
             LEFT JOIN handle h ON h.ROWID = m.handle_id
             """
             let sinceClause = cutoffNs != nil ? " AND m.date >= ?" : ""
+            let notTapback: String = Self.excludeTapbacks("m")
 
             // Q1 — text-column matches across all history (SQLite LIKE; preserves
             // the prior behavior for messages that still populate `m.text`).
@@ -205,7 +216,7 @@ public final class MessagesDatabase: Sendable {
             q1args.append(limit + excluded.count)
             let q1 = try Row.fetchAll(db, sql: """
             SELECT \(base)
-            WHERE m.text LIKE ? ESCAPE '\\' AND c.is_archived = 0\(sinceClause)
+            WHERE m.text LIKE ? ESCAPE '\\' AND c.is_archived = 0 AND \(notTapback)\(sinceClause)
             ORDER BY m.date DESC LIMIT ?
             """, arguments: StatementArguments(q1args))
 
@@ -218,7 +229,7 @@ public final class MessagesDatabase: Sendable {
             let q2 = try Row.fetchAll(db, sql: """
             SELECT \(base)
             WHERE m.attributedBody IS NOT NULL AND (m.text IS NULL OR m.text = '')
-              AND c.is_archived = 0\(sinceClause)
+              AND c.is_archived = 0 AND \(notTapback)\(sinceClause)
             ORDER BY m.date DESC LIMIT ?
             """, arguments: StatementArguments(q2args))
 
@@ -229,13 +240,13 @@ public final class MessagesDatabase: Sendable {
 
             // Merge, dedup by guid. Q1 rows already matched via LIKE; Q2 rows are
             // confirmed with a Swift substring check on the decoded body.
-            var byGuid: [String: MessageItem] = [:]
+            var byGuid: [String: (row: Row, body: String)] = [:]
             func consider(_ row: Row, requireMatch: Bool) {
                 guard let body = Self.resolveBody(text: row["text"], attributedBody: row["attributedBody"])
                 else { return }
                 if requireMatch, !body.lowercased().contains(needle) { return }
-                let item = Self.messageItem(from: row, conversationId: row["chat_guid"] ?? "", body: body, contactIndex: contactIndex)
-                byGuid[item.id] = item
+                let guid: String = row["msg_guid"] ?? ""
+                byGuid[guid] = (row, body)
             }
             for row in q1 {
                 consider(row, requireMatch: false)
@@ -244,16 +255,30 @@ public final class MessagesDatabase: Sendable {
                 consider(row, requireMatch: true)
             }
 
-            // `date` is fixed-width UTC ISO-8601 (…ssZ), so it sorts chronologically.
             var excludedCount = 0
-            var results: [MessageItem] = []
-            for item in byGuid.values.sorted(by: { $0.date > $1.date }) {
-                if excluded.contains(item.conversationId) {
+            var kept: [(row: Row, body: String)] = []
+            for candidate in byGuid.values.sorted(by: { ($0.row["date"] as Int64? ?? 0) > ($1.row["date"] as Int64? ?? 0) }) {
+                let conversationId: String = candidate.row["chat_guid"] ?? ""
+                if excluded.contains(conversationId) {
                     excludedCount += 1
                     continue
                 }
-                results.append(item)
-                if results.count >= limit { break }
+                kept.append(candidate)
+                if kept.count >= limit { break }
+            }
+
+            let attachmentsByRowId = try Self.fetchAttachments(
+                db: db, messageRowIds: kept.compactMap { $0.row["msg_rowid"] as Int64? }
+            )
+            let results = kept.map { candidate -> MessageItem in
+                let rowId: Int64 = candidate.row["msg_rowid"] ?? 0
+                return Self.messageItem(
+                    from: candidate.row,
+                    conversationId: candidate.row["chat_guid"] ?? "",
+                    body: candidate.body,
+                    contactIndex: contactIndex,
+                    attachments: attachmentsByRowId[rowId]
+                )
             }
             return (results, excludedCount, scanTruncated)
         }
@@ -319,12 +344,12 @@ public final class MessagesDatabase: Sendable {
             let rows = try Row.fetchAll(
                 db,
                 sql: """
-                SELECT m.guid AS msg_guid, m.text, m.attributedBody, m.date, m.is_from_me, m.is_read,
-                       m.service, h.id AS handle_id
+                SELECT m.ROWID AS msg_rowid, m.guid AS msg_guid, m.text, m.attributedBody, m.date,
+                       m.is_from_me, m.is_read, m.service, h.id AS handle_id
                 FROM message m
                 JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
                 LEFT JOIN handle h ON h.ROWID = m.handle_id
-                WHERE cmj.chat_id = ?
+                WHERE cmj.chat_id = ? AND \(Self.excludeTapbacks("m"))
                 ORDER BY m.date DESC LIMIT ?
                 """,
                 arguments: [chatRowId, limit + 1]
@@ -332,14 +357,29 @@ public final class MessagesDatabase: Sendable {
             let truncated = rows.count > limit
             let trimmed = truncated ? Array(rows.prefix(limit)) : rows
 
+            let attachmentsByRowId = try Self.fetchAttachments(
+                db: db, messageRowIds: trimmed.compactMap { $0["msg_rowid"] as Int64? }
+            )
             let messages: [MessageItem] = trimmed.reversed().map { row in
-                Self.messageItem(
+                let rowId: Int64 = row["msg_rowid"] ?? 0
+                return Self.messageItem(
                     from: row,
                     conversationId: chatGuid,
                     body: Self.resolveBody(text: row["text"], attributedBody: row["attributedBody"]),
-                    contactIndex: contactIndex
+                    contactIndex: contactIndex,
+                    attachments: attachmentsByRowId[rowId]
                 )
             }
+
+            // Same unread definition as listConversations' subquery: inbound,
+            // unread, non-tapback.
+            let unreadSQL = """
+            SELECT COUNT(*) FROM message m
+            JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
+            WHERE cmj.chat_id = ? AND m.is_from_me = 0 AND m.is_read = 0
+              AND \(Self.excludeTapbacks("m"))
+            """
+            let unreadCount = try Int.fetchOne(db, sql: unreadSQL, arguments: [chatRowId]) ?? 0
 
             let style: Int = chatRow["style"] ?? 0
             let conversation = MessageConversation(
@@ -352,7 +392,7 @@ public final class MessagesDatabase: Sendable {
                 isGroup: style == Self.groupChatStyle,
                 lastMessageAt: messages.last?.date,
                 lastMessagePreview: messages.last?.text.map { Self.preview($0) },
-                unreadCount: 0
+                unreadCount: unreadCount
             )
             return (conversation, messages, truncated)
         }
@@ -413,6 +453,40 @@ public final class MessagesDatabase: Sendable {
         return byChat
     }
 
+    /// Batch-fetch attachment metadata for the supplied message ROWIDs, grouped
+    /// into `[messageRowId: [attachment]]`. Absent key = no attachments (so
+    /// callers pass `map[rowId]` straight through as an optional). The display
+    /// name prefers `transfer_name`; `filename` is often a full on-disk path,
+    /// so fall back to its last path component.
+    private static func fetchAttachments(
+        db: Database,
+        messageRowIds: [Int64]
+    ) throws -> [Int64: [MessageAttachment]] {
+        guard !messageRowIds.isEmpty else { return [:] }
+        let placeholders = Array(repeating: "?", count: messageRowIds.count).joined(separator: ",")
+        let sql = """
+        SELECT maj.message_id, a.transfer_name, a.filename, a.mime_type
+        FROM message_attachment_join maj
+        JOIN attachment a ON a.ROWID = maj.attachment_id
+        WHERE maj.message_id IN (\(placeholders))
+        ORDER BY a.ROWID
+        """
+        let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(messageRowIds))
+        var byMessage: [Int64: [MessageAttachment]] = [:]
+        for row in rows {
+            let messageId: Int64 = row["message_id"] ?? 0
+            let transferName: String? = row["transfer_name"]
+            let path: String? = row["filename"]
+            let name = [transferName, path.map { ($0 as NSString).lastPathComponent }]
+                .compactMap { $0 }
+                .first { !$0.isEmpty }
+            byMessage[messageId, default: []].append(
+                MessageAttachment(filename: name, mimeType: row["mime_type"])
+            )
+        }
+        return byMessage
+    }
+
     static func date(fromAppleNanos nanos: Int64) -> Date {
         // Foundation's reference date IS 2001-01-01 UTC, same as Apple's
         // Messages epoch. Distinguish nanos from legacy seconds by magnitude.
@@ -462,7 +536,8 @@ public final class MessagesDatabase: Sendable {
         from row: Row,
         conversationId: String,
         body: String?,
-        contactIndex: ContactIndex = ContactIndex()
+        contactIndex: ContactIndex = ContactIndex(),
+        attachments: [MessageAttachment]? = nil
     ) -> MessageItem {
         let handle: String? = row["handle_id"]
         return MessageItem(
@@ -474,7 +549,8 @@ public final class MessagesDatabase: Sendable {
             fromDisplayName: handle.flatMap { contactIndex.displayName(for: $0) },
             isFromMe: (row["is_from_me"] ?? 0) == 1,
             isRead: (row["is_read"] ?? 0) == 1,
-            service: row["service"] ?? ""
+            service: row["service"] ?? "",
+            attachments: attachments
         )
     }
 

@@ -101,6 +101,7 @@ public struct AgentInfoCommand: AsyncParsableCommand {
         .init(code: 4, meaning: "auth / permission / config", retryable: false),
         .init(code: 5, meaning: "tool / bridge failure", retryable: false),
         .init(code: 7, meaning: "timeout / rate-limit", retryable: true),
+        .init(code: 64, meaning: "argument-parse failure (unknown subcommand/flag; ArgumentParser EX_USAGE)", retryable: false),
     ]
 
     private func printText(_ info: AgentInfo) {

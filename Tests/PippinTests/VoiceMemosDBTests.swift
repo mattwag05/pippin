@@ -334,6 +334,68 @@ final class VoiceMemosDBTests: XCTestCase {
         XCTAssertTrue(evicted)
     }
 
+    func testListMemosSurfacesEvictionFlag() throws {
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "local", evictionDate: nil)
+        try insertMemo(db: dbQueue, id: "cloud", evictionDate: 725_846_400.0)
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        let memos = try db.listMemos()
+        XCTAssertEqual(try XCTUnwrap(memos.first { $0.id == "local" }).isEvicted, false)
+        XCTAssertEqual(try XCTUnwrap(memos.first { $0.id == "cloud" }).isEvicted, true)
+    }
+
+    func testGetMemoSurfacesEvictionFlag() throws {
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "cloud", evictionDate: 725_846_400.0)
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+
+        XCTAssertEqual(try db.getMemo(id: "cloud")?.isEvicted, true)
+    }
+
+    // MARK: - Absolute filePath resolution
+
+    func testListMemosReturnsAbsoluteFilePath() throws {
+        let recordingsDir = NSTemporaryDirectory() + "pippin-abs-\(UUID().uuidString)"
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "abs", path: "recording.m4a")
+        let db = try VoiceMemosDB(dbQueue: dbQueue, recordingsDir: recordingsDir)
+
+        let memo = try XCTUnwrap(try db.listMemos().first)
+        XCTAssertEqual(
+            memo.filePath,
+            (recordingsDir as NSString).appendingPathComponent("recording.m4a"),
+            "filePath must be resolved against the recordings directory"
+        )
+        XCTAssertTrue(memo.filePath.hasPrefix("/"))
+    }
+
+    func testGetMemoByPrefixReturnsAbsoluteFilePath() throws {
+        let recordingsDir = NSTemporaryDirectory() + "pippin-abs-\(UUID().uuidString)"
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "ABCD1234-0000-0000-0000-000000000001", path: "recording.m4a")
+        let db = try VoiceMemosDB(dbQueue: dbQueue, recordingsDir: recordingsDir)
+
+        // Prefix-scan branch (not the exact-match branch) must resolve too.
+        let memo = try XCTUnwrap(try db.getMemoByPrefix(id: "ABCD"))
+        XCTAssertEqual(
+            memo.filePath,
+            (recordingsDir as NSString).appendingPathComponent("recording.m4a")
+        )
+    }
+
+    func testEmptyPathStaysEmptyNotRecordingsDir() throws {
+        // NULL ZPATH must not resolve to the recordings directory itself.
+        let dbQueue = try makeTestDB()
+        try dbQueue.write { db in
+            try db.execute(sql: """
+            INSERT INTO ZCLOUDRECORDING (ZUNIQUEID, ZDATE, ZPATH) VALUES ('pending', 725760000.0, NULL)
+            """)
+        }
+        let db = try VoiceMemosDB(dbQueue: dbQueue, recordingsDir: "/somewhere/recordings")
+        XCTAssertEqual(try db.getMemo(id: "pending")?.filePath, "")
+    }
+
     // MARK: - Export filename helpers
 
     func testSanitizeFilenameBasic() {
@@ -431,13 +493,21 @@ final class VoiceMemosDBTests: XCTestCase {
         XCTAssertEqual(json["title"] as? String, "Test")
         XCTAssertEqual(json["durationSeconds"] as? Double, 90.5)
         XCTAssertEqual(json["filePath"] as? String, "recording.m4a")
-        // createdAt should be ISO 8601 string
+        // createdAt should be ISO 8601 string with fractional seconds
+        // (cross-module consistency — mail/calendar emit ".000Z")
         let createdAt = json["createdAt"] as? String
         XCTAssertNotNil(createdAt)
         XCTAssertTrue(createdAt?.contains("2024-01-01T") == true,
                       "Expected ISO 8601 date containing 2024-01-01T, got: \(createdAt ?? "nil")")
+        XCTAssertTrue(
+            createdAt?.range(of: #"\.\d{3}Z$"#, options: .regularExpression) != nil,
+            "Expected fractional seconds (.NNNZ), got: \(createdAt ?? "nil")"
+        )
         // transcription should be null
         XCTAssertTrue(json["transcription"] is NSNull)
+        // transcript/eviction state defaults
+        XCTAssertEqual(json["hasTranscript"] as? Bool, false)
+        XCTAssertEqual(json["isEvicted"] as? Bool, false)
     }
 
     func testVoiceMemoWithTranscription() throws {

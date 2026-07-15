@@ -56,10 +56,10 @@ public struct RemindersCommand: AsyncParsableCommand {
             abstract: "List reminders. Defaults to incomplete reminders."
         )
 
-        @Option(name: .long, help: "Reminder list ID to filter (from `pippin reminders lists`).")
+        @Option(name: .long, help: "Reminder list ID to filter (from `pippin reminders lists`); a unique list name also resolves.")
         public var list: String?
 
-        @Flag(name: .long, help: "Include completed reminders.")
+        @Flag(name: .long, help: "Show completed reminders instead of incomplete.")
         public var completed: Bool = false
 
         @Option(name: .long, help: "Only show reminders due before this date: YYYY-MM-DD or ISO 8601.")
@@ -232,7 +232,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Argument(help: "Reminder title.")
         public var title: String
 
-        @Option(name: .long, help: "Reminder list ID (default: default list).")
+        @Option(name: .long, help: "Reminder list ID (default: default list); a unique list name also resolves.")
         public var list: String?
 
         @Option(name: .long, help: "Due date: YYYY-MM-DD or ISO 8601.")
@@ -306,7 +306,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Option(name: .long, help: "New URL.")
         public var url: String?
 
-        @Option(name: .long, help: "Move to list ID.")
+        @Option(name: .long, help: "Move to list ID; a unique list name also resolves.")
         public var list: String?
 
         @OptionGroup public var output: OutputOptions
@@ -419,7 +419,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Argument(help: "Search query (matches title and notes).")
         public var query: String
 
-        @Option(name: .long, help: "Reminder list ID to search within.")
+        @Option(name: .long, help: "Reminder list ID to search within; a unique list name also resolves.")
         public var list: String?
 
         @Option(name: .long, help: "Maximum results to return (default: 50).")

@@ -222,7 +222,7 @@ final class CLIIntegrationTests: XCTestCase {
         XCTAssertEqual(probe.exitCode, 0)
         let data = try XCTUnwrap(probe.stdout.data(using: .utf8))
         let env = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(env["v"] as? Int, 1)
+        XCTAssertEqual(env["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(env["status"] as? String, "ok")
         let payload = try XCTUnwrap(env["data"] as? [String: Any])
         let mcp = try XCTUnwrap(payload["mcp"] as? [String: Any])
@@ -251,7 +251,7 @@ final class CLIIntegrationTests: XCTestCase {
             // Reminders access unavailable in this environment — skip rather than fail.
             return
         }
-        XCTAssertEqual(env["v"] as? Int, 1)
+        XCTAssertEqual(env["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(env["status"] as? String, "ok")
         XCTAssertNotNil(env["duration_ms"], "projection must not drop envelope frame")
         if let items = env["data"] as? [[String: Any]], let first = items.first {
@@ -269,7 +269,7 @@ final class CLIIntegrationTests: XCTestCase {
         if let data = result.stdout.data(using: .utf8),
            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let errorDict = dict["error"] as? [String: Any] {
-            XCTAssertEqual(dict["v"] as? Int, 1, "Envelope must have v:1")
+            XCTAssertEqual(dict["v"] as? Int, AGENT_SCHEMA_VERSION, "Envelope must have current schema version")
             XCTAssertEqual(dict["status"] as? String, "error", "Envelope status must be 'error'")
             XCTAssertNotNil(dict["duration_ms"], "Envelope must include duration_ms")
             XCTAssertNotNil(errorDict["code"], "Agent error must have 'code' field")
@@ -292,7 +292,7 @@ final class CLIIntegrationTests: XCTestCase {
             XCTFail("doctor --format agent must output a JSON envelope, got: \(result.stdout)")
             return
         }
-        XCTAssertEqual(envelope["v"] as? Int, 1, "Envelope must have v:1")
+        XCTAssertEqual(envelope["v"] as? Int, AGENT_SCHEMA_VERSION, "Envelope must have current schema version")
         XCTAssertEqual(envelope["status"] as? String, "ok", "Envelope status must be 'ok'")
         XCTAssertNotNil(envelope["duration_ms"], "Envelope must include duration_ms")
         guard let checks = envelope["data"] as? [[String: Any]] else {

@@ -33,6 +33,11 @@ struct Pippin: AsyncParsableCommand {
     }()
 
     static func main() async {
+        // Wall-clock start for error envelopes: `printAgentError` has no
+        // command-scoped `OutputOptions.startedAt` to thread, so without this
+        // every error reported `duration_ms: 0` even after a full JXA round-trip.
+        let startedAt = Date()
+
         // Before anything else: re-exec as our own TCC responsible process so
         // EventKit/Contacts/Automation grants key on pippin's signed identity
         // regardless of which app launched us (Terminal, Codex, the [agent-runtime]
@@ -79,7 +84,7 @@ struct Pippin: AsyncParsableCommand {
             if error is CleanExit || error is ExitCode {
                 Pippin.exit(withError: error)
             } else if isAgentMode() {
-                printAgentError(error)
+                printAgentError(error, startedAt: startedAt)
                 // Typed exit code so a calling shell can branch on the failure
                 // class without parsing the JSON envelope.
                 Darwin.exit(PippinExitCode.from(error))

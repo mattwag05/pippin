@@ -16,12 +16,29 @@ extension MailBridge {
         } catch ScriptRunnerError.timeout {
             throw MailBridgeError.timeout
         } catch let ScriptRunnerError.nonZeroExit(msg) {
-            throw MailBridgeError.scriptFailed(msg)
+            throw mapScriptFailure(msg)
         } catch let ScriptRunnerError.stderrOnSuccess(msg) {
             throw MailBridgeError.scriptFailed(msg)
         } catch let ScriptRunnerError.launchFailed(msg) {
             throw MailBridgeError.scriptFailed("osascript launch failed: \(msg)")
         }
+    }
+
+    /// Map a JXA script failure to a typed error. The scripts signal
+    /// message-not-found as `MAILBRIDGE_ERR_MSG_NOT_FOUND` (move/attachments/
+    /// mark's per-mailbox guard), `MAILBRIDGE_ERR_NOT_FOUND` (mark's outer
+    /// guard), or `Message not found` (read script); osascript wraps them as
+    /// `execution error: Error: Error: <msg> (-2700)`. Detecting the signature
+    /// here gives every call site `message_not_found` (exit 3) instead of the
+    /// generic `script_failed` (exit 5) with a raw JXA dump.
+    /// `MAILBRIDGE_ERR_TARGET_NOT_FOUND` / `_ACCT_NOT_FOUND` are different
+    /// resources and deliberately stay `scriptFailed`.
+    static func mapScriptFailure(_ msg: String) -> MailBridgeError {
+        let notFoundSignatures = ["MAILBRIDGE_ERR_MSG_NOT_FOUND", "MAILBRIDGE_ERR_NOT_FOUND", "Message not found"]
+        if notFoundSignatures.contains(where: msg.contains) {
+            return .messageNotFound(msg)
+        }
+        return .scriptFailed(msg)
     }
 
     // MARK: - Decoder

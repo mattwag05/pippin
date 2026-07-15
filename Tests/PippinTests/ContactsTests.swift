@@ -2,6 +2,38 @@
 import XCTest
 
 final class ContactsTests: XCTestCase {
+    // MARK: - Phone search matching (digits-only + last-10 fallback)
+
+    func testPhoneMatchesExactDigits() {
+        XCTAssertTrue(ContactsBridge.phoneMatches(query: "3179039960", candidate: "3179039960"))
+    }
+
+    func testPhoneMatchesAcrossFormatting() {
+        XCTAssertTrue(ContactsBridge.phoneMatches(query: "3179039960", candidate: "(317) 903-9960"))
+    }
+
+    func testPhoneMatchesQueryWithoutCountryCodeAgainstStoredE164() {
+        // The audit case: query "3179039960" must match stored "+13179039960".
+        XCTAssertTrue(ContactsBridge.phoneMatches(query: "3179039960", candidate: "+13179039960"))
+    }
+
+    func testPhoneMatchesQueryWithCountryCodeAgainstBareStored() {
+        XCTAssertTrue(ContactsBridge.phoneMatches(query: "+1 317 903 9960", candidate: "317-903-9960"))
+    }
+
+    func testPhoneDoesNotMatchDifferentNumber() {
+        XCTAssertFalse(ContactsBridge.phoneMatches(query: "3179039960", candidate: "3179039961"))
+    }
+
+    func testPhoneDoesNotMatchOnEmptyQuery() {
+        XCTAssertFalse(ContactsBridge.phoneMatches(query: "no digits", candidate: "3179039960"))
+    }
+
+    func testPhoneDoesNotMatchShortSuffix() {
+        // A bare 7-digit query must not match via any suffix shortcut.
+        XCTAssertFalse(ContactsBridge.phoneMatches(query: "9039960", candidate: "+13179039960"))
+    }
+
     // MARK: - ContactInfo
 
     func testContactInfoRoundTrip() throws {

@@ -50,7 +50,7 @@ public struct MemosCommand: AsyncParsableCommand {
                 let (offset, pageSize) = try Pagination.resolve(
                     pagination, defaultPageSize: limit, filterHash: hash
                 )
-                let fetched = try db.listMemos(since: sinceDate, limit: offset + pageSize + 1)
+                let fetched = try markCachedTranscripts(db.listMemos(since: sinceDate, limit: offset + pageSize + 1))
                 let page = try Pagination.paginate(
                     all: fetched, offset: offset, pageSize: pageSize, filterHash: hash
                 )
@@ -67,7 +67,7 @@ public struct MemosCommand: AsyncParsableCommand {
                 return
             }
 
-            let memos = try db.listMemos(since: sinceDate, limit: limit)
+            let memos = try markCachedTranscripts(db.listMemos(since: sinceDate, limit: limit))
             if output.isJSON {
                 try printJSON(memos)
             } else if output.isAgent {
@@ -95,8 +95,14 @@ public struct MemosCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
-            guard let memo = try db.getMemoByPrefix(id: id) else {
+            guard var memo = try db.getMemoByPrefix(id: id) else {
                 throw VoiceMemosError.memoNotFound(id)
+            }
+            // Surface a cached transcript honestly (best effort — a missing or
+            // unreadable cache just leaves transcription null).
+            if let cached = try? TranscriptCache().get(memoId: memo.id) {
+                memo.transcription = cached.transcript
+                memo.hasTranscript = true
             }
 
             if output.isJSON {
@@ -548,16 +554,29 @@ private func printMemosTable(_ memos: [VoiceMemo]) {
 }
 
 private func printMemoCard(_ memo: VoiceMemo) {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    let card = TextFormatter.card(fields: [
+    var fields: [(String, String)] = [
         ("ID", memo.id),
         ("Title", memo.title),
         ("Duration", TextFormatter.duration(memo.durationSeconds)),
         ("Created", TextFormatter.compactDate(memo.createdAt)),
         ("File", memo.filePath),
-    ])
-    print(card)
+        ("Transcript", memo.hasTranscript ? "cached" : "none"),
+    ]
+    if memo.isEvicted {
+        fields.append(("Evicted", "yes (audio in iCloud, not local)"))
+    }
+    print(TextFormatter.card(fields: fields))
+}
+
+/// Mark `hasTranscript` on each memo from a single transcript-cache query.
+/// Best effort: any cache failure leaves the flags false.
+private func markCachedTranscripts(_ memos: [VoiceMemo]) -> [VoiceMemo] {
+    guard let ids = try? TranscriptCache().cachedMemoIds(), !ids.isEmpty else { return memos }
+    return memos.map { memo in
+        var memo = memo
+        memo.hasTranscript = ids.contains(memo.id)
+        return memo
+    }
 }
 
 let allMemosLimit = 10000

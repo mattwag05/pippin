@@ -60,6 +60,24 @@ public struct MessageConversation: Codable, Sendable, Equatable {
     }
 }
 
+/// Attachment metadata on a message row (from `message_attachment_join` +
+/// `attachment`). `filename` is a display name — the last path component when
+/// the DB stores a full path.
+public struct MessageAttachment: Codable, Sendable, Equatable {
+    public let filename: String?
+    public let mimeType: String?
+
+    public init(filename: String?, mimeType: String?) {
+        self.filename = filename
+        self.mimeType = mimeType
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case filename
+        case mimeType = "mime_type"
+    }
+}
+
 public struct MessageItem: Codable, Sendable, Equatable {
     public let id: String
     public let conversationId: String
@@ -70,6 +88,8 @@ public struct MessageItem: Codable, Sendable, Equatable {
     public let isFromMe: Bool
     public let isRead: Bool
     public let service: String
+    /// nil (key omitted in JSON) when the message has no attachments.
+    public let attachments: [MessageAttachment]?
 
     public init(
         id: String,
@@ -80,7 +100,8 @@ public struct MessageItem: Codable, Sendable, Equatable {
         fromDisplayName: String?,
         isFromMe: Bool,
         isRead: Bool,
-        service: String
+        service: String,
+        attachments: [MessageAttachment]? = nil
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -91,6 +112,7 @@ public struct MessageItem: Codable, Sendable, Equatable {
         self.isFromMe = isFromMe
         self.isRead = isRead
         self.service = service
+        self.attachments = attachments
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -103,24 +125,7 @@ public struct MessageItem: Codable, Sendable, Equatable {
         case isFromMe = "is_from_me"
         case isRead = "is_read"
         case service
-    }
-}
-
-public struct MessagesListResult: Codable, Sendable {
-    public let conversations: [MessageConversation]
-    public let excludedCount: Int
-    public let windowHours: Int?
-
-    public init(conversations: [MessageConversation], excludedCount: Int, windowHours: Int?) {
-        self.conversations = conversations
-        self.excludedCount = excludedCount
-        self.windowHours = windowHours
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case conversations
-        case excludedCount = "excluded_count"
-        case windowHours = "window_hours"
+        case attachments
     }
 }
 

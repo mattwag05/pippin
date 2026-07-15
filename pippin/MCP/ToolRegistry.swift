@@ -241,7 +241,7 @@ enum MCPToolRegistry {
                 "account": Schema.string("Mail account name."),
                 "mailbox": Schema.string("Mailbox name (default: INBOX)."),
                 "unread": Schema.boolean("Only return unread messages.", default: false),
-                "limit": Schema.integer("Maximum messages to return (default: 20).", default: 20),
+                "limit": Schema.integer("Maximum messages to return (default: 20; capped at 500).", default: 20),
                 "page": Schema.integer("Page number (1-based).", default: 1),
                 "preview": Schema.integer("Include a plain-text body preview of up to N chars per message (forces per-message IMAP fetch; use ~200 for scan workflows)."),
                 "after": Schema.string("Only messages on/after YYYY-MM-DD."),
@@ -264,13 +264,13 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_activity",
-            description: "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default) with body previews. Use this for scan workflows instead of N calls to mail_list.",
+            description: "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default) with body previews. Use this for scan workflows instead of N calls to mail_list. The default preview 200 forces per-message body fetches and takes ~30-40s; set preview to 0 for metadata-only results in under a second when snippets aren't needed.",
             inputSchema: Schema.object(properties: [
                 "account": Schema.string("Mail account name."),
                 "mailboxes": Schema.string("Comma-separated mailbox names (default: INBOX,Sent)."),
                 "since": Schema.string("Only include messages on or after this date: YYYY-MM-DD or ISO 8601."),
-                "limit": Schema.integer("Maximum messages to return (default: 50).", default: 50),
-                "preview": Schema.integer("Plain-text preview length in chars (default: 200; 0 to disable).", default: 200),
+                "limit": Schema.integer("Maximum messages to return (default: 50; capped at 500).", default: 50),
+                "preview": Schema.integer("Plain-text preview length in chars (default: 200; 0 to disable). Previews cost ~30-40s; 0 is metadata-only (sub-second).", default: 200),
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "activity")
@@ -338,7 +338,7 @@ enum MCPToolRegistry {
                     "before": Schema.string("Only messages on/before YYYY-MM-DD."),
                     "to": Schema.string("Filter by recipient email."),
                     "from": Schema.string("Filter by sender email/name substring."),
-                    "limit": Schema.integer("Maximum results (default: 10).", default: 10),
+                    "limit": Schema.integer("Maximum results (default: 10; capped at 500).", default: 10),
                     "semantic": Schema.boolean(
                         "Use embedding-based semantic search (requires prior `mail index`).",
                         default: false
@@ -595,11 +595,15 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "contacts_search",
-            description: "Search contacts by name (default) or email.",
+            description: "Search contacts by name (default), email, or phone.",
             inputSchema: Schema.object(
                 properties: [
-                    "query": Schema.string("Search query."),
-                    "email": Schema.boolean("Search by email instead of name.", default: false),
+                    "query": Schema.string("Search query (a name, an email, or a phone number)."),
+                    "email": Schema.boolean("Treat the query as an email address.", default: false),
+                    "phone": Schema.boolean(
+                        "Treat the query as a phone number (digits-only match, last-10 fallback).",
+                        default: false
+                    ),
                     "fields": Schema.string("Comma-separated fields to include (e.g. id,fullName,emails)."),
                 ],
                 required: ["query"]
@@ -607,9 +611,15 @@ enum MCPToolRegistry {
             buildArgs: { args in
                 var argv = pippinArgv("contacts", "search")
                 let query = try ArgHelpers.requiredString(args, "query")
-                argv += ArgHelpers.flagIfTrue(args, "email", flagName: "--email")
                 argv += ArgHelpers.optionIfString(args, "fields", flagName: "--fields")
-                ArgHelpers.appendPositionalLast(query, into: &argv)
+                // --phone / --email carry the value as the option arg (they reject a
+                // positional query); plain name search takes the positional.
+                if ArgHelpers.bool(args, "phone") == true {
+                    argv += ["--phone", query]
+                } else {
+                    argv += ArgHelpers.flagIfTrue(args, "email", flagName: "--email")
+                    ArgHelpers.appendPositionalLast(query, into: &argv)
+                }
                 return argv
             },
             inProcess: MCPInProcessTools.contactsSearch

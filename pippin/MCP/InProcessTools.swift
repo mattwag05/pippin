@@ -273,7 +273,12 @@ enum MCPInProcessTools {
         let fieldList = FieldProjection.parse(ArgHelpers.string(args, "fields"))
         let contacts: [ContactInfo]
         let timedOut: Bool
-        if ArgHelpers.bool(args, "email") == true {
+        if ArgHelpers.bool(args, "phone") == true {
+            // searchByPhone enumerates the full contact store (sync); hop off the pool.
+            let outcome = try await detachBlocking { try ContactsBridge.searchByPhone(query, fields: fieldList) }
+            contacts = outcome.results
+            timedOut = outcome.timedOut
+        } else if ArgHelpers.bool(args, "email") == true {
             // searchByEmail enumerates the full contact store (sync); hop off the pool.
             let outcome = try await detachBlocking { try ContactsBridge.searchByEmail(query, fields: fieldList) }
             contacts = outcome.results
@@ -303,23 +308,22 @@ enum MCPInProcessTools {
 
 // MARK: - Calendar name resolution
 
-/// Duplicated from `CalendarCommand.resolveCalendarName` (file-private there,
-/// and Commands/ is off-limits to the MCP layer). The type name and messages
-/// are kept identical so the agent error envelope (`code:
-/// "calendar_name_error"`) matches the child path exactly.
-private struct CalendarNameError: LocalizedError {
-    let errorDescription: String?
-}
-
+/// Reuses the child path's `matchCalendars(named:in:)` + error types (both
+/// module-internal) so the MCP in-process path emits an identical envelope: a
+/// no-match → `calendar_not_found` (exit 3), an ambiguous match →
+/// `invalid_calendar_name` (exit 2). Previously a private duplicate here
+/// diverged (substring-only, `calendar_name_error`/exit 5) — the E2E audit
+/// caught it (2026-07-15).
 private func resolveCalendarName(_ name: String, bridge: CalendarBridge) async throws -> String {
-    let calendars = try await bridge.listCalendars()
-    let matches = calendars.filter { $0.title.localizedCaseInsensitiveContains(name) }
+    let matches = try await matchCalendars(named: name, in: bridge.listCalendars())
     guard !matches.isEmpty else {
-        throw CalendarNameError(errorDescription: "No calendar found matching '\(name)'.")
+        throw CalendarBridgeError.calendarNotFound(name)
     }
     guard matches.count == 1 else {
         let names = matches.map { $0.title }.joined(separator: ", ")
-        throw CalendarNameError(errorDescription: "'\(name)' matches multiple calendars: \(names). Use a more specific name.")
+        throw CalendarNameResolutionError.invalidCalendarName(
+            "'\(name)' matches multiple calendars: \(names). Use a more specific name."
+        )
     }
     return matches[0].id
 }

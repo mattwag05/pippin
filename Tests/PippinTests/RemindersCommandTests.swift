@@ -428,4 +428,13 @@ final class RemindersCommandTests: XCTestCase {
         let data = extractJSON(from: "No JSON here at all.")
         XCTAssertNil(data)
     }
+
+    func testListCompletedHelpDescribesExclusiveSwap() {
+        // `--completed` SWAPS to completed-only (the bridge filters
+        // isCompleted == completed); it does not ADD completed reminders. The
+        // help text must say so — "Include completed" was a docs bug.
+        let help = RemindersCommand.List.helpMessage()
+        XCTAssertTrue(help.contains("instead of incomplete"))
+        XCTAssertFalse(help.contains("Include completed"))
+    }
 }

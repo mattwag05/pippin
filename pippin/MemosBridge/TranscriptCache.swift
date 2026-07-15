@@ -67,6 +67,14 @@ public final class TranscriptCache: Sendable {
         }
     }
 
+    /// All memo ids that have a cached transcript — one query, so `memos list`
+    /// can mark `hasTranscript` without loading N transcript bodies.
+    public func cachedMemoIds() throws -> Set<String> {
+        try dbQueue.read { db in
+            try Set(String.fetchAll(db, sql: "SELECT memo_id FROM transcripts"))
+        }
+    }
+
     /// Store or update a transcript.
     public func set(memoId: String, transcript: String, provider: String) throws {
         let entry = CachedTranscript(memoId: memoId, transcript: transcript, provider: provider)

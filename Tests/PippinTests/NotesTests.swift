@@ -13,18 +13,39 @@ final class NotesTests: XCTestCase {
         )
     }
 
-    func testScriptFailedNotFoundHidesJXAMarker() {
-        let jxaError = "NOTESBRIDGE_ERR_NOT_FOUND: x-coredata://abc-123/ICNote/p1"
-        let err = NotesBridgeError.scriptFailed(jxaError)
+    // MARK: - Sentinel → typed noteNotFound mapping
+
+    func testMapScriptFailureDetectsNotFoundSentinel() {
+        // osascript wraps the JXA throw in its own prefix/suffix noise.
+        let raw = "execution error: Error: NOTESBRIDGE_ERR_NOT_FOUND: x-coredata://abc-123/ICNote/p1 (-2700)"
+        guard case let .noteNotFound(id) = NotesBridge.mapScriptFailure(raw) else {
+            return XCTFail("Sentinel must map to .noteNotFound")
+        }
+        XCTAssertEqual(id, "x-coredata://abc-123/ICNote/p1")
+    }
+
+    func testMapScriptFailurePassesThroughOtherErrors() {
+        guard case let .scriptFailed(msg) = NotesBridge.mapScriptFailure("osascript error -1743") else {
+            return XCTFail("Non-sentinel failures must stay .scriptFailed")
+        }
+        XCTAssertEqual(msg, "osascript error -1743")
+    }
+
+    func testNoteNotFoundHidesJXAMarkerAndNamesId() {
+        let err = NotesBridge.mapScriptFailure("NOTESBRIDGE_ERR_NOT_FOUND: x-coredata://abc-123/ICNote/p1")
         let desc = err.errorDescription ?? ""
         XCTAssertFalse(
             desc.contains("NOTESBRIDGE_ERR_NOT_FOUND"),
             "Should not expose internal JXA error marker to user, got: \(desc)"
         )
-        XCTAssertTrue(
-            desc.lowercased().contains("not found") || desc.lowercased().contains("note"),
-            "Should give user-friendly not-found message, got: \(desc)"
-        )
+        XCTAssertTrue(desc.contains("Note not found"), "Expected not-found message, got: \(desc)")
+        XCTAssertTrue(desc.contains("x-coredata://abc-123/ICNote/p1"), "Should name the missing id, got: \(desc)")
+    }
+
+    func testNoteNotFoundAgentCodeAndExitCode() {
+        let err = NotesBridgeError.noteNotFound("x-coredata://abc/ICNote/p1")
+        XCTAssertEqual(agentErrorCode(for: err), "note_not_found")
+        XCTAssertEqual(PippinExitCode.from(err), 3, "*_not_found codes classify to exit 3")
     }
 
     func testTimeoutDescription() {
@@ -47,11 +68,11 @@ final class NotesTests: XCTestCase {
 
     // MARK: - NoteAgentView
 
-    func testNoteAgentViewExcludesBody() throws {
-        let note = NoteInfo(
+    private static func makeNote(body: String? = "<div>This is HTML content</div>") -> NoteInfo {
+        NoteInfo(
             id: "x-coredata://abc-123/ICNote/p1",
             title: "Meeting Notes",
-            body: "<div>This is HTML content</div>",
+            body: body,
             plainText: "This is HTML content",
             folder: "Work",
             folderId: "x-coredata://abc-123/ICFolder/p1",
@@ -59,16 +80,35 @@ final class NotesTests: XCTestCase {
             creationDate: "2026-01-01T00:00:00.000Z",
             modificationDate: "2026-03-10T12:00:00.000Z"
         )
-        // NoteAgentView is private to NotesCommand — test via NoteInfo fields directly
-        // by verifying the JSON output of printAgentJSON (NoteAgentView) excludes body
-        // We test NoteInfo here and rely on the existing show command logic
-        let data = try JSONEncoder().encode(note)
+    }
+
+    func testNoteAgentViewExcludesBodyAndUsesModifiedAt() throws {
+        let view = NoteAgentView(note: Self.makeNote())
+        let data = try JSONEncoder().encode(view)
         let dict = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        // NoteInfo does include body — NoteAgentView should not
-        XCTAssertNotNil(dict["body"], "NoteInfo should have body")
-        XCTAssertNotNil(dict["plainText"], "NoteInfo should have plainText")
-        // Verify that body is HTML (as a sanity check of the fixture)
-        XCTAssertTrue((dict["body"] as? String)?.contains("<div>") == true)
+        XCTAssertNil(dict["body"], "Agent view must not carry the HTML body")
+        XCTAssertEqual(dict["plainText"] as? String, "This is HTML content")
+        XCTAssertEqual(dict["modifiedAt"] as? String, "2026-03-10T12:00:00.000Z")
+        XCTAssertNil(dict["modificationDate"], "Old field name must be gone (envelope v2 rename)")
+    }
+
+    // MARK: - NoteInfo serialized field names (envelope v2 rename)
+
+    func testNoteInfoEncodesCreatedAtModifiedAtKeys() throws {
+        let data = try JSONEncoder().encode(Self.makeNote())
+        let dict = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(dict["createdAt"] as? String, "2026-01-01T00:00:00.000Z")
+        XCTAssertEqual(dict["modifiedAt"] as? String, "2026-03-10T12:00:00.000Z")
+        XCTAssertNil(dict["creationDate"], "Old field name must be gone (envelope v2 rename)")
+        XCTAssertNil(dict["modificationDate"], "Old field name must be gone (envelope v2 rename)")
+        XCTAssertNotNil(dict["body"], "show payloads still carry body when fetched")
+    }
+
+    func testNoteInfoOmitsNilBodyFromJSON() throws {
+        let data = try JSONEncoder().encode(Self.makeNote(body: nil))
+        let dict = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(dict["body"], "nil body (list/search) must be omitted, not null")
+        XCTAssertNotNil(dict["plainText"])
     }
 
     // MARK: - NoteInfo Codable roundtrip
@@ -208,6 +248,50 @@ final class NotesTests: XCTestCase {
             script.contains("25"),
             "Expected script to contain limit value 25, got: \(script)"
         )
+    }
+
+    // MARK: - Metadata-fast list/search (no HTML body, single container resolve)
+
+    func testBuildListScriptDoesNotFetchHTMLBody() {
+        let script = NotesBridge.buildListScript(folder: nil, limit: 10)
+        XCTAssertFalse(script.contains("note.body()"), "List must not fetch the HTML body — `notes show` does")
+        XCTAssertTrue(script.contains("note.plaintext()"), "List still returns plainText")
+    }
+
+    func testBuildSearchScriptDoesNotFetchHTMLBody() {
+        let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
+        XCTAssertFalse(script.contains("note.body()"), "Search must not fetch the HTML body — `notes show` does")
+    }
+
+    func testBuildListScriptResolvesContainerOncePerNote() {
+        let script = NotesBridge.buildListScript(folder: nil, limit: 10)
+        XCTAssertEqual(
+            script.components(separatedBy: "note.container()").count - 1, 1,
+            "container() must be resolved once per note, then id()/name() read off the resolved object"
+        )
+    }
+
+    func testBuildSearchScriptReusesMatchTestReads() {
+        // The match test already read name()/plaintext(); matched notes must
+        // reuse those JS locals instead of firing two more Apple Events each.
+        let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
+        XCTAssertTrue(script.contains("title: title,"), "Matched notes must reuse the cached title")
+        XCTAssertTrue(script.contains("plainText: plain,"), "Matched notes must reuse the cached plaintext")
+        XCTAssertEqual(script.components(separatedBy: "note.plaintext()").count - 1, 1)
+        XCTAssertEqual(script.components(separatedBy: "note.container()").count - 1, 1)
+    }
+
+    func testListAndSearchScriptsEmitRenamedDateKeys() {
+        for script in [
+            NotesBridge.buildListScript(folder: nil, limit: 10),
+            NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10),
+            NotesBridge.buildShowScript(id: "x-coredata://abc/ICNote/p1"),
+        ] {
+            XCTAssertTrue(script.contains("createdAt:"), "Script must emit createdAt")
+            XCTAssertTrue(script.contains("modifiedAt:"), "Script must emit modifiedAt")
+            XCTAssertFalse(script.contains("creationDate:"), "Old creationDate key must be gone")
+            XCTAssertFalse(script.contains("modificationDate:"), "Old modificationDate key must be gone")
+        }
     }
 
     func testBuildSearchScriptContainsQuery() {

@@ -389,4 +389,37 @@ final class CalendarBridgeTests: XCTestCase {
         XCTAssertEqual(formatAlertOffset(86400), "1 day before")
         XCTAssertEqual(formatAlertOffset(172_800), "2 days before")
     }
+
+    // MARK: - formatEventDay (all-day date-only serialization)
+
+    func testFormatEventDayEmitsLocalCalendarDay() {
+        // Midnight LOCAL on Jul 23 must serialize as 2026-07-23 regardless of
+        // the machine's UTC offset (the old UTC-instant form shifted the day
+        // for positive-offset consumers).
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 7, day: 23))!
+        XCTAssertEqual(formatEventDay(date), "2026-07-23")
+    }
+
+    func testFormatEventDayRoundTripsThroughParseCalendarDate() {
+        let date = Calendar.current.date(from: DateComponents(year: 2026, month: 7, day: 23))!
+        XCTAssertEqual(parseCalendarDate(formatEventDay(date)), date)
+    }
+
+    // MARK: - calendarIdMissDetail (--calendar ID-vs-name hint)
+
+    func testCalendarIdMissDetailPlainWhenNoNameMatches() {
+        XCTAssertEqual(CalendarBridge.calendarIdMissDetail("ZZZ", matchingIds: []), "ZZZ")
+    }
+
+    func testCalendarIdMissDetailHintsRealId() {
+        let detail = CalendarBridge.calendarIdMissDetail("Family", matchingIds: ["ABC-123"])
+        XCTAssertTrue(detail.contains("ABC-123"))
+        XCTAssertTrue(detail.contains("pippin calendar list"))
+    }
+
+    func testCalendarIdMissDetailListsAllAmbiguousIds() {
+        let detail = CalendarBridge.calendarIdMissDetail("Family", matchingIds: ["ID-1", "ID-2"])
+        XCTAssertTrue(detail.contains("ID-1"))
+        XCTAssertTrue(detail.contains("ID-2"))
+    }
 }

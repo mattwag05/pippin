@@ -2,7 +2,11 @@ import Foundation
 
 /// Schema version for the agent-mode JSON envelope. Bumps on any breaking
 /// change to the envelope shape; consumers gate on this field.
-public let AGENT_SCHEMA_VERSION = 1
+/// v2 (2026-07-15): messages list `data` is a bare array (was
+/// `{excluded_count, conversations}`); notes `creationDate`/`modificationDate`
+/// renamed `createdAt`/`modifiedAt`; all-day calendar events serialize
+/// date-only (`YYYY-MM-DD`) start/end; memos dates gained `.000Z` millis.
+public let AGENT_SCHEMA_VERSION = 2
 
 // MARK: - Envelope types
 

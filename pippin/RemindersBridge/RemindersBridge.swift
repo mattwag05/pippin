@@ -74,10 +74,7 @@ public final class RemindersBridge: @unchecked Sendable {
 
         var filterCalendars: [EKCalendar]?
         if let listId {
-            guard let cal = store.calendar(withIdentifier: listId) else {
-                throw RemindersBridgeError.listNotFound(listId)
-            }
-            filterCalendars = [cal]
+            filterCalendars = try [resolveList(listId)]
         }
 
         let predicate = store.predicateForReminders(in: filterCalendars)
@@ -165,10 +162,7 @@ public final class RemindersBridge: @unchecked Sendable {
             )
         }
         if let listId {
-            guard let cal = store.calendar(withIdentifier: listId) else {
-                throw RemindersBridgeError.listNotFound(listId)
-            }
-            reminder.calendar = cal
+            reminder.calendar = try resolveList(listId)
         } else {
             guard let defaultCal = store.defaultCalendarForNewReminders() else {
                 throw RemindersBridgeError.noDefaultCalendar
@@ -215,10 +209,7 @@ public final class RemindersBridge: @unchecked Sendable {
             )
         }
         if let listId {
-            guard let cal = store.calendar(withIdentifier: listId) else {
-                throw RemindersBridgeError.listNotFound(listId)
-            }
-            reminder.calendar = cal
+            reminder.calendar = try resolveList(listId)
         }
         do {
             try store.save(reminder, commit: true)
@@ -286,10 +277,7 @@ public final class RemindersBridge: @unchecked Sendable {
 
         var filterCalendars: [EKCalendar]?
         if let listId {
-            guard let cal = store.calendar(withIdentifier: listId) else {
-                throw RemindersBridgeError.listNotFound(listId)
-            }
-            filterCalendars = [cal]
+            filterCalendars = try [resolveList(listId)]
         }
 
         let predicate = store.predicateForReminders(in: filterCalendars)
@@ -328,6 +316,41 @@ public final class RemindersBridge: @unchecked Sendable {
     }
 
     // MARK: - Private
+
+    /// Resolve a `--list` argument to an `EKCalendar`. `--list` takes IDs (from
+    /// `pippin reminders lists`), but when the identifier lookup misses and the
+    /// argument case-insensitively matches exactly ONE list's name, resolve it
+    /// transparently — matching calendar's `--calendar-name` behavior, since
+    /// passing a name where an ID is expected is the most common miss. An
+    /// ambiguous name errors with the candidate IDs instead of guessing.
+    private func resolveList(_ listId: String) throws -> EKCalendar {
+        if let cal = store.calendar(withIdentifier: listId) { return cal }
+        let named = store.calendars(for: .reminder)
+            .filter { $0.title.caseInsensitiveCompare(listId) == .orderedSame }
+        if named.count == 1 { return named[0] }
+        throw RemindersBridgeError.listNotFound(
+            Self.listIdMissDetail(listId, matchingIds: named.map(\.calendarIdentifier))
+        )
+    }
+
+    /// Detail string for a `--list` miss: plain argument when no list has that
+    /// name, or a "did you mean" hint carrying the IDs of the (multiple)
+    /// same-named lists. Pure so it's unit-testable without an EKEventStore.
+    static func listIdMissDetail(_ argument: String, matchingIds: [String]) -> String {
+        guard !matchingIds.isEmpty else { return argument }
+        return "\(argument) — \(matchingIds.count) lists are NAMED '\(argument)'; "
+            + "did you mean one of the list IDs \(matchingIds.joined(separator: ", "))? "
+            + "--list takes IDs from 'pippin reminders lists'."
+    }
+
+    /// Serialize a due date. EventKit distinguishes date-only due dates
+    /// (`dueDateComponents` without an hour) from timed ones — emit YYYY-MM-DD
+    /// (local day) for date-only so positive-UTC-offset consumers get the right
+    /// calendar day, mirroring all-day event serialization.
+    static func formatDueDate(_ components: DateComponents) -> String? {
+        guard let date = Calendar.current.date(from: components) else { return nil }
+        return components.hour == nil ? formatEventDay(date) : formatEventDate(date)
+    }
 
     /// Fetch reminders synchronously using DispatchSemaphore to avoid Swift 6
     /// Sendable errors from passing EKReminder across continuation boundaries.
@@ -370,9 +393,7 @@ public final class RemindersBridge: @unchecked Sendable {
     }
 
     private func mapReminder(_ r: EKReminder) -> ReminderItem {
-        let dueDate: String? = r.dueDateComponents.flatMap { components in
-            Calendar.current.date(from: components).map { formatEventDate($0) }
-        }
+        let dueDate: String? = r.dueDateComponents.flatMap { Self.formatDueDate($0) }
         let completionDate: String? = r.completionDate.map { formatEventDate($0) }
         let creationDate: String? = r.creationDate.map { formatEventDate($0) }
         let lastModifiedDate: String? = r.lastModifiedDate.map { formatEventDate($0) }

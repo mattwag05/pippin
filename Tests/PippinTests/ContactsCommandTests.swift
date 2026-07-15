@@ -129,6 +129,20 @@ final class ContactsCommandTests: XCTestCase {
         XCTAssertTrue(cmd.email)
     }
 
+    func testSearchContactsPhoneOptionParses() throws {
+        let cmd = try ContactsCommand.SearchContacts.parse(["--phone", "3179039960"])
+        XCTAssertEqual(cmd.phone, "3179039960")
+        XCTAssertNil(cmd.query)
+    }
+
+    func testSearchContactsPhoneWithQueryFails() {
+        XCTAssertThrowsError(try ContactsCommand.SearchContacts.parse(["John", "--phone", "555"]))
+    }
+
+    func testSearchContactsPhoneWithEmailFlagFails() {
+        XCTAssertThrowsError(try ContactsCommand.SearchContacts.parse(["--phone", "555", "--email"]))
+    }
+
     func testSearchContactsFieldsDefault() throws {
         let cmd = try ContactsCommand.SearchContacts.parse(["query"])
         XCTAssertNil(cmd.output.fields)

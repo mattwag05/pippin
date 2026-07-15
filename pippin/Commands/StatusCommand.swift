@@ -163,12 +163,14 @@ private func buildStatusReport(budgetMs: Int) -> StatusReport {
 
 private func gatherMailStatus() -> StatusReport.MailStatus? {
     guard let accounts = try? MailBridge.listAccounts() else { return nil }
-    let summaries = accounts.map { account -> StatusReport.MailAccountSummary in
-        let mailboxCount = (try? MailBridge.listMailboxes(account: account.name))?.count ?? 0
-        return StatusReport.MailAccountSummary(
+    // One Envelope Index scan for all mailbox counts (fast path), falling back
+    // to per-account JXA — avoids N serial Apple Events that dominated status.
+    let counts = MailBridge.mailboxCounts(for: accounts)
+    let summaries = accounts.map { account in
+        StatusReport.MailAccountSummary(
             name: account.name,
             email: account.email,
-            mailboxCount: mailboxCount
+            mailboxCount: counts[account.name] ?? 0
         )
     }
     return StatusReport.MailStatus(accounts: summaries)

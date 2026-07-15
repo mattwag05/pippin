@@ -52,19 +52,20 @@ final class NotesBridgeOutcomeDecodingTests: XCTestCase {
     }
 
     func testDecodeOutcomeWithNotesArray() throws {
+        // List/search payloads carry no `body` (never fetched) and use the
+        // envelope-v2 date keys `createdAt`/`modifiedAt`.
         let json = """
         {
           "results": [
             {
               "id": "x-coredata://abc/ICNote/p1",
               "title": "T",
-              "body": "<div>B</div>",
               "plainText": "B",
               "folder": "F",
               "folderId": "x-coredata://abc/ICFolder/p1",
               "account": null,
-              "creationDate": "2026-01-01T00:00:00.000Z",
-              "modificationDate": "2026-01-02T00:00:00.000Z"
+              "createdAt": "2026-01-01T00:00:00.000Z",
+              "modifiedAt": "2026-01-02T00:00:00.000Z"
             }
           ],
           "meta": {"timedOut": true}
@@ -73,5 +74,8 @@ final class NotesBridgeOutcomeDecodingTests: XCTestCase {
         let outcome = try JSONDecoder().decode(NotesBridge.Outcome<[NoteInfo]>.self, from: Data(json.utf8))
         XCTAssertTrue(outcome.timedOut)
         XCTAssertEqual(outcome.results.first?.title, "T")
+        XCTAssertNil(outcome.results.first?.body, "body is absent from list/search payloads")
+        XCTAssertEqual(outcome.results.first?.creationDate, "2026-01-01T00:00:00.000Z")
+        XCTAssertEqual(outcome.results.first?.modificationDate, "2026-01-02T00:00:00.000Z")
     }
 }

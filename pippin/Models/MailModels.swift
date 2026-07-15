@@ -4,6 +4,14 @@ import Foundation
 
 public enum MailBridgeError: LocalizedError, Sendable {
     case scriptFailed(String)
+    /// The compound id resolved to no message (JXA not-found signature or the
+    /// Envelope Index). Associated value is the raw failure detail — surfaced
+    /// only via `debugDetail`, never in `errorDescription` (agents see the
+    /// clean message + `message_not_found` code + exit 3).
+    case messageNotFound(String)
+    /// `--account` named an account Mail doesn't have. Carries the known
+    /// account names so a typo is self-correcting from the error alone.
+    case accountNotFound(String, available: [String])
     case timeout
     case decodingFailed(String)
     case invalidMessageId(String)
@@ -13,6 +21,10 @@ public enum MailBridgeError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case let .scriptFailed(msg): return "Mail automation script failed: \(msg.prefix(200))"
+        case .messageNotFound:
+            return "Message not found. The id may be stale — re-run `pippin mail list` or `mail search` to get current ids."
+        case let .accountNotFound(name, available):
+            return "Mail account not found: '\(name)'. Available accounts: \(available.joined(separator: ", "))."
         case .timeout: return "Mail automation timed out. Try narrowing with --account, --mailbox, or --after."
         case .decodingFailed: return "Failed to decode Mail response"
         case let .invalidMessageId(id): return "Invalid message id: \(id)"
@@ -25,6 +37,7 @@ public enum MailBridgeError: LocalizedError, Sendable {
     public var debugDetail: String? {
         switch self {
         case let .scriptFailed(msg): return msg
+        case let .messageNotFound(msg): return msg
         case let .decodingFailed(msg): return msg
         default: return nil
         }

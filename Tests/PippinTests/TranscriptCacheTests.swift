@@ -8,6 +8,18 @@ final class TranscriptCacheTests: XCTestCase {
         return try TranscriptCache(dbPath: tmpPath)
     }
 
+    func testCachedMemoIdsEmpty() throws {
+        let cache = try makeCache()
+        XCTAssertTrue(try cache.cachedMemoIds().isEmpty)
+    }
+
+    func testCachedMemoIds() throws {
+        let cache = try makeCache()
+        try cache.set(memoId: "memo-a", transcript: "a", provider: "mlx-audio")
+        try cache.set(memoId: "memo-b", transcript: "b", provider: "mlx-audio")
+        XCTAssertEqual(try cache.cachedMemoIds(), ["memo-a", "memo-b"])
+    }
+
     func testGetMissReturnsNil() throws {
         let cache = try makeCache()
         let result = try cache.get(memoId: "nonexistent-id")

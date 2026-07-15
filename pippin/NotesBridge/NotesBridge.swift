@@ -143,28 +143,32 @@ enum NotesBridge {
         // Sort by modificationDate, newest first (see jsSortNotesByModDate).
         \(jsSortNotesByModDate)
         // Native offset: skip the first `offset` sorted notes and emit only the
-        // `limit` window. Body/plaintext (the expensive per-note Apple Events)
-        // are fetched only for the returned window, so deep offsets don't
-        // multiply body-fetch cost — they still iterate all notes for the sort,
-        // which the soft cap above bounds (partial results set _meta.timedOut).
+        // `limit` window. Plaintext (the expensive per-note Apple Event) is
+        // fetched only for the returned window, so deep offsets don't multiply
+        // fetch cost — they still iterate all notes for the sort, which the
+        // soft cap above bounds (partial results set _meta.timedOut). The HTML
+        // .body() is deliberately NOT fetched: list callers never need it
+        // (`notes show` fetches it separately) and it dominated list latency/RSS.
         var results = [];
         for (var i = offset; i < pairs.length && results.length < limit; i++) {
             if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
             var note = pairs[i].note;
             var folderId = '';
             var folderName = '';
-            try { folderId = note.container().id(); } catch(e) {}
-            try { folderName = note.container().name(); } catch(e) {}
+            try {
+                var _c = note.container();
+                folderId = _c.id();
+                folderName = _c.name();
+            } catch(e) {}
             results.push({
                 id: note.id(),
                 title: note.name(),
-                body: note.body(),
                 plainText: note.plaintext(),
                 folder: folderName,
                 folderId: folderId,
                 account: null,
-                creationDate: note.creationDate().toISOString(),
-                modificationDate: pairs[i].iso
+                createdAt: note.creationDate().toISOString(),
+                modifiedAt: pairs[i].iso
             });
         }
         JSON.stringify({results: results, meta: _meta});
@@ -200,8 +204,11 @@ enum NotesBridge {
         var note = matches[0];
         var folderId = '';
         var folderName = '';
-        try { folderId = note.container().id(); } catch(e) {}
-        try { folderName = note.container().name(); } catch(e) {}
+        try {
+            var _c = note.container();
+            folderId = _c.id();
+            folderName = _c.name();
+        } catch(e) {}
         var result = {
             id: note.id(),
             title: note.name(),
@@ -210,8 +217,8 @@ enum NotesBridge {
             folder: folderName,
             folderId: folderId,
             account: null,
-            creationDate: note.creationDate().toISOString(),
-            modificationDate: note.modificationDate().toISOString()
+            createdAt: note.creationDate().toISOString(),
+            modifiedAt: note.modificationDate().toISOString()
         };
         JSON.stringify(result);
         """
@@ -249,18 +256,23 @@ enum NotesBridge {
             if (matched) {
                 var folderId = '';
                 var folderName = '';
-                try { folderId = note.container().id(); } catch(e) {}
-                try { folderName = note.container().name(); } catch(e) {}
+                try {
+                    var _c = note.container();
+                    folderId = _c.id();
+                    folderName = _c.name();
+                } catch(e) {}
+                // Reuse the title/plain already fetched for the match test —
+                // re-reading name()/plaintext() doubled the per-match Apple
+                // Events. HTML body is not fetched (see buildListScript).
                 results.push({
                     id: note.id(),
-                    title: note.name(),
-                    body: note.body(),
-                    plainText: note.plaintext(),
+                    title: title,
+                    plainText: plain,
                     folder: folderName,
                     folderId: folderId,
                     account: null,
-                    creationDate: note.creationDate().toISOString(),
-                    modificationDate: pairs[i].iso
+                    createdAt: note.creationDate().toISOString(),
+                    modifiedAt: pairs[i].iso
                 });
             }
         }
@@ -417,12 +429,28 @@ enum NotesBridge {
         } catch ScriptRunnerError.timeout {
             throw NotesBridgeError.timeout
         } catch let ScriptRunnerError.nonZeroExit(msg) {
-            throw NotesBridgeError.scriptFailed(msg)
+            throw mapScriptFailure(msg)
         } catch let ScriptRunnerError.stderrOnSuccess(msg) {
-            throw NotesBridgeError.scriptFailed(msg)
+            throw mapScriptFailure(msg)
         } catch let ScriptRunnerError.launchFailed(msg) {
             throw NotesBridgeError.scriptFailed("osascript launch failed: \(msg)")
         }
+    }
+
+    /// Map a raw osascript failure to a typed error. JXA errors always arrive
+    /// as opaque stderr text, so the show/edit/delete scripts throw the
+    /// sentinel `NOTESBRIDGE_ERR_NOT_FOUND: <id>` and this seam detects it,
+    /// producing `.noteNotFound` (agent code `note_not_found` → exit 3) instead
+    /// of `.scriptFailed` (exit 5). The osascript wrapper text looks like
+    /// `execution error: Error: NOTESBRIDGE_ERR_NOT_FOUND: <id> (-2700)`, so
+    /// the id is the first whitespace-delimited token after the marker.
+    static func mapScriptFailure(_ msg: String) -> NotesBridgeError {
+        guard let range = msg.range(of: "NOTESBRIDGE_ERR_NOT_FOUND") else {
+            return .scriptFailed(msg)
+        }
+        let tail = msg[range.upperBound...].drop { $0 == ":" || $0 == " " }
+        let id = tail.components(separatedBy: .whitespacesAndNewlines).first ?? ""
+        return .noteNotFound(id)
     }
 
     // MARK: - Decoder
