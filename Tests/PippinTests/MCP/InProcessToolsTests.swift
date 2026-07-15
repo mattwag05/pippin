@@ -21,10 +21,10 @@ final class InProcessToolsTests: XCTestCase {
 
     // MARK: - Registry wiring
 
-    func testRegistryStillHas45Tools() {
+    func testRegistryToolCount() {
         XCTAssertEqual(
-            MCPToolRegistry.tools.count, 45,
-            "tool surface must not change during the in-process migration"
+            MCPToolRegistry.tools.count, 47,
+            "update this count when adding/removing MCP tools (and docs/mcp-server.md)"
         )
     }
 

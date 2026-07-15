@@ -684,6 +684,52 @@ enum MCPToolRegistry {
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("notes", "folders") }
         ),
+        MCPTool(
+            name: "notes_create",
+            description: "Create a new Apple Note.",
+            inputSchema: Schema.object(
+                properties: [
+                    "title": Schema.string("Note title."),
+                    "body": Schema.string("Note body. Plain text; newlines become formatted HTML unless html=true."),
+                    "folder": Schema.string("Folder name to create the note in."),
+                    "html": Schema.boolean("Treat body as raw HTML (skip plain-text-to-HTML conversion).", default: false),
+                ],
+                required: ["title"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("notes", "create")
+                let title = try ArgHelpers.requiredString(args, "title")
+                argv += ArgHelpers.optionIfString(args, "body", flagName: "--body")
+                argv += ArgHelpers.optionIfString(args, "folder", flagName: "--folder")
+                argv += ArgHelpers.flagIfTrue(args, "html", flagName: "--html")
+                ArgHelpers.appendPositionalLast(title, into: &argv)
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "notes_edit",
+            description: "Edit an existing note's title or body (replaces, or appends with append=true).",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Note ID from notes_list."),
+                    "title": Schema.string("New title."),
+                    "body": Schema.string("New body. Plain text; newlines become formatted HTML unless html=true."),
+                    "append": Schema.boolean("Append body instead of replacing.", default: false),
+                    "html": Schema.boolean("Treat body as raw HTML (skip plain-text-to-HTML conversion).", default: false),
+                ],
+                required: ["id"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("notes", "edit")
+                let id = try ArgHelpers.requiredString(args, "id")
+                argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
+                argv += ArgHelpers.optionIfString(args, "body", flagName: "--body")
+                argv += ArgHelpers.flagIfTrue(args, "append", flagName: "--append")
+                argv += ArgHelpers.flagIfTrue(args, "html", flagName: "--html")
+                ArgHelpers.appendPositionalLast(id, into: &argv)
+                return argv
+            }
+        ),
 
         // MARK: Messages (read-only)
 

@@ -71,6 +71,12 @@ run "mail search --from filters sender (#21)" "isinstance(d['data'], (list, dict
   -- mail search "the" --from "no-reply" --limit 3
 run "mail search date-bounded body scan returns (#23)" "isinstance(d['data'], (list, dict))" \
   -- mail search "the" --body --after 2026-07-01 --limit 3
+# pippin-xz6: an empty --before result whose newest-N window never reached the
+# cutoff must carry the shortfall advisory (JXA must emit oldestExaminedMs /
+# reachedMailboxEnd). Pass if matches exist (impossible pre-2000) OR the hint fired.
+run "mail list --before shortfall hint (pippin-xz6)" "
+len(d['data']) > 0 or any('scan window did not reach' in w for w in (d.get('warnings') or []))" \
+  -- mail list --before 2000-01-01 --limit 3
 
 # --- Notes (JXA)
 run "notes list"       "isinstance(d['data'], list)"                    -- notes list --limit 3

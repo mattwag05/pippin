@@ -54,6 +54,16 @@ public struct OllamaEmbeddingProvider: EmbeddingProvider {
         let (data, httpResponse) = try sendSynchronousRequest(request, waitTimeoutSeconds: Int(timeout) + 5)
 
         guard httpResponse.statusCode == 200 else {
+            // Parity with OllamaProvider.complete: a model-not-found body is a
+            // config problem (embedding model not pulled), not a generic API
+            // failure — throw it typed so the ollama-pull remediation reaches
+            // the agent envelope + CLI via RemediationCatalog.resolve.
+            if OllamaProvider.isModelNotFoundBody(data) {
+                throw AIProviderError.modelNotFound(
+                    model: model,
+                    available: OllamaProvider.fetchAvailableModels(baseURL: baseURL) ?? []
+                )
+            }
             let detail = String(data: data, encoding: .utf8) ?? "(no body)"
             throw MailAIError.embeddingFailed("HTTP \(httpResponse.statusCode): \(detail)")
         }
@@ -95,6 +105,12 @@ public struct OllamaEmbeddingProvider: EmbeddingProvider {
         let (data, httpResponse) = try sendSynchronousRequest(request, waitTimeoutSeconds: Int(timeout) + 5)
 
         guard httpResponse.statusCode == 200 else {
+            if OllamaProvider.isModelNotFoundBody(data) {
+                throw AIProviderError.modelNotFound(
+                    model: model,
+                    available: OllamaProvider.fetchAvailableModels(baseURL: baseURL) ?? []
+                )
+            }
             let detail = String(data: data, encoding: .utf8) ?? "(no body)"
             throw MailAIError.embeddingFailed("HTTP \(httpResponse.statusCode): \(detail)")
         }

@@ -98,6 +98,9 @@ pippin mail list --unread --limit 5
 pippin mail list --unread --after 2026-06-01 --before 2026-07-01  # date-bounded listing
 pippin mail search "quarterly report" --after 2026-01-01
 pippin mail search "invoice" --from billing@vendor.com           # filter by sender
+# On large multi-account mailboxes, pair --from/--body with --account (or --after/--before):
+# an unscoped cross-account scan can hit the soft timeout and return partial (or empty) results
+# with a "narrow with --account…" warning. Scoping keeps the scan within its budget.
 pippin mail show "acct||INBOX||12345"
 pippin mail reply "acct||INBOX||12345" --body "Thanks!"
 pippin mail forward "acct||INBOX||12345" --to other@example.com

@@ -12,6 +12,11 @@ enum MailBridge {
     struct ScanOutcome {
         let messages: [MailMessage]
         let timedOut: Bool
+        /// Non-nil only for `listMessages` with a `--before` cutoff that the
+        /// newest-N scan window never reached (empty result, mailbox not fully
+        /// scanned) — a ready-to-surface advisory distinguishing "no matches"
+        /// from "window too shallow". `nil` everywhere else.
+        var windowHint: String? = nil
     }
 
     typealias ListOutcome = ScanOutcome
@@ -82,7 +87,52 @@ enum MailBridge {
         let timeout = listScanTimeout(crossAccount: crossAccount, fetchesBodies: (preview ?? 0) > 0)
         let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
         let wrapper = try decode(ListResponse.self, from: json)
-        return ListOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
+        return ListOutcome(
+            messages: wrapper.results,
+            timedOut: wrapper.meta.timedOut,
+            windowHint: beforeShortfallHint(
+                resultsEmpty: wrapper.results.isEmpty,
+                timedOut: wrapper.meta.timedOut,
+                before: before,
+                reachedMailboxEnd: wrapper.meta.reachedMailboxEnd,
+                oldestExaminedMs: wrapper.meta.oldestExaminedMs
+            )
+        )
+    }
+
+    /// Advisory when `mail list --before` returns empty because the newest-N
+    /// scan window never reached the cutoff (not because nothing matched).
+    /// Pure/static so it's unit-testable without Mail.app. Fires only when the
+    /// scan was truncated *and* the oldest message actually examined is still
+    /// newer than `--before` — i.e. deeper scanning could surface matches.
+    /// `--after` is exempt: newest-first scanning hits recent mail first, so an
+    /// empty `--after` result is a true "nothing that recent," not a shortfall.
+    static func beforeShortfallHint(
+        resultsEmpty: Bool,
+        timedOut: Bool,
+        before: String?,
+        reachedMailboxEnd: Bool,
+        oldestExaminedMs: Double?
+    ) -> String? {
+        guard resultsEmpty, !timedOut, !reachedMailboxEnd,
+              let before, let oldestMs = oldestExaminedMs,
+              let beforeDate = parseFilterDate(before)
+        else { return nil }
+        let oldest = Date(timeIntervalSince1970: oldestMs / 1000)
+        guard oldest > beforeDate else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone.current
+        return "scan window did not reach \(before): scanned the newest messages back to \(f.string(from: oldest)) but not as far as \(before) — increase --limit, or use `mail search --before` (which binary-searches the window) for older mail"
+    }
+
+    /// Parse a `--before`/`--after` filter (`YYYY-MM-DD`, local midnight) the
+    /// same way the JXA `new Date(str)` comparison does, for the shortfall check.
+    static func parseFilterDate(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone.current
+        return f.date(from: s)
     }
 
     /// Hard timeout (seconds) for a `mail list`-style scan. Cross-account inboxes
@@ -463,6 +513,12 @@ enum MailBridge {
         /// Count of mailboxes whose scan window was binary-search-shifted toward
         /// a `--before` date (search script only; list/activity omit it).
         let windowsShifted: Int
+        /// `false` when any scanned mailbox's newest-N window stopped short of its
+        /// oldest message (list script only). Feeds the `--before` shortfall hint.
+        let reachedMailboxEnd: Bool
+        /// Oldest `dateSent` (epoch ms) examined across the scan, or `nil` if none
+        /// (list script only). Names the floor the window actually reached.
+        let oldestExaminedMs: Double?
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -472,10 +528,13 @@ enum MailBridge {
             // Backward-compatible: scripts that don't emit timedOut default to false.
             timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
             windowsShifted = try container.decodeIfPresent(Int.self, forKey: .windowsShifted) ?? 0
+            reachedMailboxEnd = try container.decodeIfPresent(Bool.self, forKey: .reachedMailboxEnd) ?? true
+            oldestExaminedMs = try container.decodeIfPresent(Double.self, forKey: .oldestExaminedMs)
         }
 
         private enum CodingKeys: String, CodingKey {
             case accountsScanned, mailboxesScanned, messagesExamined, timedOut, windowsShifted
+            case reachedMailboxEnd, oldestExaminedMs
         }
     }
 

@@ -459,15 +459,24 @@ public struct MailCommand: AsyncParsableCommand {
                     ))
                 }
             } else {
-                try await emitMessages(messages, timedOut: outcome.timedOut)
+                try await emitMessages(messages, timedOut: outcome.timedOut, windowHint: outcome.windowHint)
             }
         }
 
         static let timedOutHint = "list exceeded soft timeout, returning partial results — narrow with --account, --mailbox, or a smaller --limit for complete results"
 
-        private func emitMessages(_ messages: [MailMessage], timedOut: Bool) async throws {
+        /// A soft-timeout warning takes precedence over a `--before` window-shortfall
+        /// hint (both surface through the same partial-results channel).
+        private func warning(timedOut: Bool, windowHint: String?) -> (warn: Bool, hint: String) {
+            if timedOut { return (true, Self.timedOutHint) }
+            if let windowHint { return (true, windowHint) }
+            return (false, Self.timedOutHint)
+        }
+
+        private func emitMessages(_ messages: [MailMessage], timedOut: Bool, windowHint: String? = nil) async throws {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
-            try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
+            let (warn, hint) = warning(timedOut: timedOut, windowHint: windowHint)
+            try output.emit(messages, timedOut: warn, timedOutHint: hint, fields: FieldProjection.parse(output.fields)) {
                 printMessageTable(messages)
             }
         }

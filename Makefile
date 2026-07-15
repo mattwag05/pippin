@@ -27,7 +27,8 @@ test:
 	fi
 
 lint:
-	swiftformat --lint pippin/ pippin-entry/ Tests/ 2>/dev/null || echo "swiftformat not installed — skipping lint"
+	@command -v swiftformat >/dev/null 2>&1 || { echo "❌ swiftformat not installed — brew install swiftformat (lint gate cannot pass without it)"; exit 1; }
+	swiftformat --lint pippin/ pippin-entry/ Tests/
 
 # Autonomous E2E smoke against LIVE Apple apps via the TCC-granted binary
 # (~/.local/bin/pippin). Read-only by default; E2E_RW=1 adds write round-trips.
@@ -39,6 +40,7 @@ e2e:
 ci:
 	xcrun --sdk macosx swift build -c release
 	xcrun --sdk macosx swift test
+	@command -v swiftformat >/dev/null 2>&1 || { echo "❌ swiftformat not installed — brew install swiftformat (CI lint gate cannot pass without it)"; exit 1; }
 	swiftformat --lint pippin/ pippin-entry/ Tests/
 	python3 scripts/lint-detach-blocking.py --self-test
 	python3 scripts/lint-detach-blocking.py

@@ -58,11 +58,19 @@ Designated Requirement, so a grant given once survives rebuilds and is shared
 across both install paths. `scripts/sign.sh` does this; `make install` /
 `make release` and the Homebrew formula call it.
 
-- **Guarded**: `sign.sh` resolves the first "Developer ID Application" identity
-  (override with `PIPPIN_SIGN_IDENTITY`). If none is present it warns and exits
-  0, leaving the ad-hoc signature — so CI / the ci-vm / other machines still
-  build. The formula also `File.exist?`-guards the call for tags predating the
-  script.
+- **Guarded**: `sign.sh` resolves the first "Developer ID Application" identity,
+  falling back to the first "Apple Development" identity (override either with
+  `PIPPIN_SIGN_IDENTITY`). If none is present it warns and exits 0, leaving the
+  ad-hoc signature — so CI / the ci-vm / other machines still build. The formula
+  also `File.exist?`-guards the call for tags predating the script.
+- **Apple Development is a usable fallback for LOCAL TCC persistence** (pippin-ink):
+  on a machine with only the everyday Xcode "Apple Development" cert (no paid
+  Developer ID), `make install` still yields a content-independent DR
+  (`identifier "com.mattwag05.pippin" and … certificate leaf[subject.CN] =
+  "Apple Development: …"`), so grants survive rebuilds. Caveat vs Developer ID:
+  the DR pins to the **leaf cert**, so grants reset when that cert is renewed/
+  expires (~1yr); Developer ID's DR is team-based and survives renewal. Apple
+  Development also can't be notarized for distribution — local dev loop only.
 - **Notarization is NOT needed for TCC.** It's a Gatekeeper/quarantine concern
   (binaries *downloaded* to other Macs). Set `PIPPIN_SIGN_HARDENED=1` to add
   `--options runtime --timestamp` only when you'll notarize for distribution.

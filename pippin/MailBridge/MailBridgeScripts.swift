@@ -62,7 +62,11 @@ extension MailBridge {
         var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var softTimeoutMs = \(safeSoftTimeoutMs);
         var results = [];
-        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
+        // reachedMailboxEnd / oldestExaminedMs drive the "scan window did not
+        // reach --before" hint: the newest-N window can bottom out before
+        // reaching an old --before cutoff, so an empty result is ambiguous
+        // (no matches vs window too shallow) unless we know how far back we got.
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false, reachedMailboxEnd: true, oldestExaminedMs: null};
         // Soft timeout: bail out of the per-message body-fetch loop with whatever
         // we've got so the CLI returns partial results before the ScriptRunner
         // hard timeout (and the MCP runChild 60s cap) kicks in.
@@ -88,6 +92,9 @@ extension MailBridge {
             // offset/limit are positions in newest→oldest order, mapped onto the
             // collection by the probed direction (GitHub #24).
             var windowSize = Math.max(0, Math.min(limit, totalMsgs - offset));
+            // Window truncated below the mailbox's remaining depth → we did not
+            // scan back to its oldest message (feeds the --before shortfall hint).
+            if (windowSize < totalMsgs - offset) _meta.reachedMailboxEnd = false;
 
             // Single-pass assembly: time-check fires per message so the
             // expensive msg.content() body fetch (when preview is on) can be
@@ -101,6 +108,8 @@ extension MailBridge {
 
                 // Date range filter (cheap — no IMAP fetch)
                 var msgDate = msg.dateSent();
+                var _mms = msgDate.getTime();
+                if (_meta.oldestExaminedMs === null || _mms < _meta.oldestExaminedMs) _meta.oldestExaminedMs = _mms;
                 if (afterDate !== null && msgDate < afterDate) continue;
                 if (beforeDate !== null && msgDate > beforeDate) continue;
 

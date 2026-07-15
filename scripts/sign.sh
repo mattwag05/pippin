@@ -16,7 +16,15 @@
 #
 # Env:
 #   PIPPIN_SIGN_IDENTITY  Override the signing identity. Default: the first
-#                         "Developer ID Application" identity in the keychain.
+#                         "Developer ID Application" identity, falling back to
+#                         the first "Apple Development" identity in the keychain.
+#                         Either gives a content-independent Designated
+#                         Requirement (identifier + cert), so a TCC grant given
+#                         once survives rebuilds. Developer ID additionally
+#                         survives cert *renewal* (team-based DR) and is required
+#                         for notarized distribution; Apple Development pins to
+#                         the leaf cert, so grants persist only until that cert
+#                         is renewed/expires (~1yr) — fine for a local dev loop.
 #   PIPPIN_SIGN_HARDENED  Set to 1 to add `--options runtime --timestamp`
 #                         (needed only when the binary will be notarized for
 #                         distribution to other Macs; not needed for local TCC).
@@ -35,16 +43,22 @@ if [[ -z "$BIN" || ! -f "$BIN" ]]; then
 	exit 2
 fi
 
-# Resolve the identity: explicit override wins, else first Developer ID Application.
+# Resolve the identity: explicit override wins, else first Developer ID
+# Application, else first Apple Development (the everyday Xcode dev cert — good
+# enough for local TCC-grant persistence even though it isn't distributable).
 identity="${PIPPIN_SIGN_IDENTITY:-}"
 if [[ -z "$identity" ]]; then
-	identity="$(security find-identity -p codesigning -v 2>/dev/null \
-		| grep "Developer ID Application" | head -1 \
-		| sed -E 's/.*"(.*)"$/\1/')" || true
+	# `|| true`: grep returns 1 on no-match and pipefail would otherwise trip
+	# `set -e` before the fallback runs.
+	identities="$(security find-identity -p codesigning -v 2>/dev/null)" || true
+	identity="$(printf '%s\n' "$identities" | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"$/\1/')" || true
+	if [[ -z "$identity" ]]; then
+		identity="$(printf '%s\n' "$identities" | grep "Apple Development" | head -1 | sed -E 's/.*"(.*)"$/\1/')" || true
+	fi
 fi
 
 if [[ -z "$identity" ]]; then
-	echo "sign.sh: no 'Developer ID Application' identity found — leaving the ad-hoc signature." >&2
+	echo "sign.sh: no 'Developer ID Application' or 'Apple Development' identity found — leaving the ad-hoc signature." >&2
 	echo "         TCC permission grants will NOT persist across rebuilds/upgrades on this machine." >&2
 	echo "         Set PIPPIN_SIGN_IDENTITY to sign with a different identity." >&2
 	exit 0
@@ -61,4 +75,4 @@ echo "         identity:   $identity"
 echo "         identifier: $IDENTIFIER"
 codesign "${args[@]}" "$BIN"
 codesign --verify --strict "$BIN"
-echo "sign.sh: signed. $(codesign -dvv "$BIN" 2>&1 | grep -E 'Authority=Developer ID Application|Identifier=' | tr '\n' ' ')"
+echo "sign.sh: signed. $(codesign -dvv "$BIN" 2>&1 | grep -E 'Authority=(Developer ID Application|Apple Development)|Identifier=|TeamIdentifier=' | tr '\n' ' ')"

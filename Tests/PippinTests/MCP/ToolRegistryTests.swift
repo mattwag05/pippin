@@ -171,8 +171,10 @@ final class ToolRegistryTests: XCTestCase {
             return .object(["messageId": .string("a||b||1")])
         case "reminders_show", "reminders_complete":
             return .object(["id": .string("123")])
-        case "notes_show":
+        case "notes_show", "notes_edit":
             return .object(["id": .string("123")])
+        case "notes_create":
+            return .object(["title": .string("X")])
         case "contacts_show":
             return .object(["identifier": .string("123")])
         case "calendar_create":

@@ -4,7 +4,7 @@
 
 ## What you get
 
-45 tools spanning the commonly scripted pippin surfaces:
+47 tools spanning the commonly scripted pippin surfaces:
 
 | Area | Tools |
 |---|---|
@@ -12,7 +12,7 @@
 | Calendar | `calendar_list`, `calendar_events`, `calendar_today`, `calendar_remaining`, `calendar_upcoming`, `calendar_search`, `calendar_create` |
 | Reminders | `reminders_lists`, `reminders_list`, `reminders_show`, `reminders_search`, `reminders_create`, `reminders_complete` |
 | Contacts | `contacts_search`, `contacts_show` |
-| Notes | `notes_list`, `notes_search`, `notes_show`, `notes_folders` |
+| Notes | `notes_list`, `notes_search`, `notes_show`, `notes_folders`, `notes_create`, `notes_edit` |
 | Messages | `messages_list`, `messages_search`, `messages_show`, `messages_send` (gated — see [README § Messages](../README.md#messages)) |
 | Memos | `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_capture_to_reminders`, `memos_summarize` |
 | Actions | `actions_extract` — scan Sent mail + Notes for commitments → draft (or create) reminders |
@@ -212,7 +212,7 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 
 ## Known consumers
 
-- **[agent] ([agent-runtime]-Agent on M5)** — registers `pippin mcp-server` as a stdio MCP and drives the 45 tools natively (see the operator's [agent-runtime] setup notes).
+- **[agent] ([agent-runtime]-Agent on M5)** — registers `pippin mcp-server` as a stdio MCP and drives the 47 tools natively (see the operator's [agent-runtime] setup notes).
 - **Claude Code / Claude Desktop** — register via `claude mcp add` or the desktop config JSON; both pick up tools automatically on restart.
 - **Morning-briefing scheduled task** — still shells out to the pippin CLI directly (no migration planned; the task is single-shot enough that MCP doesn't add value).
 
