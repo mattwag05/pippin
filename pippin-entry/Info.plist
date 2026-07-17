@@ -8,7 +8,7 @@
 
   Without these keys, EventKit's requestFullAccess* APIs are unreliable outside
   an interactive terminal — the exact failure mode behind background launches
-  (e.g. the [agent-runtime] LaunchAgent) hitting unexpected/silent permission denials.
+  (e.g. an agent LaunchAgent) hitting unexpected/silent permission denials.
   See pippin-1zv / docs/gotchas/permissions.md.
 -->
 <plist version="1.0">

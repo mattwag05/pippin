@@ -7,7 +7,7 @@ Load when CI is failing, `swiftformat` is misbehaving, `swift test` won't resolv
 **`swiftformat --lint` needs project root.** Run as:
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin && /opt/homebrew/bin/swiftformat --lint pippin/ Tests/
+cd ~/Projects/pippin && /opt/homebrew/bin/swiftformat --lint pippin/ Tests/
 ```
 
 Running from a worktree or with absolute paths skips the `.swiftformat` config and reports "0 eligible files".
@@ -66,7 +66,7 @@ Redirecting `make ci` (or `swift test`) to a file (`> log 2>&1`) can yield a **t
 
 ## Beads in worktrees
 
-- The `.beads/` dir in a linked worktree is empty (synced export, not the live DB). Run all `bd` commands from the main repo: `cd /Users/matthewwagner/Projects/pippin && bd ...`.
+- The `.beads/` dir in a linked worktree is empty (synced export, not the live DB). Run all `bd` commands from the main repo: `cd ~/Projects/pippin && bd ...`.
 - **Root `issues.jsonl` is gated, not regenerated:** `.beads/config.yaml` sets `export.auto: false` and `export.path: "issues.jsonl"` (which resolves *inside* `.beads/`, so the canonical export is `.beads/issues.jsonl`). The stray repo-root `issues.jsonl` was an accidental early commit; it's gitignored (`/issues.jsonl`) and `git rm --cached issues.jsonl` now sticks (the hook no longer restages it).
 
 ## CI workflow pinning

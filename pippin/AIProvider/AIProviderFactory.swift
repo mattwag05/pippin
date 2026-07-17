@@ -34,9 +34,9 @@ public struct PippinConfig: Codable, Sendable {
         }
 
         /// Any OpenAI-compatible Chat Completions endpoint (OpenAI, OpenRouter,
-        /// a homelab gateway, [local-llm], vLLM, LM Studio, Ollama `/v1`, …).
+        /// a homelab gateway, vLLM, LM Studio, Ollama `/v1`, …).
         /// `baseURL` is the API root that `/chat/completions` is appended to
-        /// (e.g. `https://manifest.example-tailnet.ts.net/v1`). `apiKey` is optional —
+        /// (e.g. `https://ai-gateway.example.com/v1`). `apiKey` is optional —
         /// omit it for local endpoints that don't authenticate.
         public struct OpenAIConfig: Codable, Sendable {
             public var baseURL: String?
@@ -129,7 +129,7 @@ public enum AIProviderFactory {
         case "openai", "openai-compatible":
             let base = config?.ai?.openai?.baseURL ?? "http://localhost:11434/v1"
             let model = modelFlag ?? config?.ai?.openai?.model ?? "gpt-4o-mini"
-            // Optional: local endpoints ([local-llm], llama.cpp, Ollama /v1) need no key.
+            // Optional: local endpoints (llama.cpp, Ollama /v1, ...) need no key.
             let key = resolveOpenAIAPIKey(flagValue: apiKeyFlag, configKey: config?.ai?.openai?.apiKey)
             return OpenAIProvider(
                 baseURL: base, model: model, apiKey: key,

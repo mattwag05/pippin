@@ -70,7 +70,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - [feat] AI provider calls (Ollama / Claude / OpenAI-compatible) now retry transient failures — HTTP 429 + 5xx and connection-level network blips — up to twice with short backoff, instead of failing on the first hiccup. Retries share the original request's time budget (so total wall-clock stays under the MCP 60s child cap) and each attempt gets the remaining budget as its timeout; timeouts and non-transient errors (4xx, bad API key, unreachable server, unparseable body) are never retried. Closes pippin-cfg.
-- [feat] The JSON-extraction AI features (`actions extract`, `do`, mail triage / data-extract / injection-scan, calendar & reminders `smart-create`) now request **native JSON output** where the backend supports it: Ollama gets `format: "json"` (on by default — safe for the default `gemma4`), and the OpenAI-compatible path sends `response_format: {"type":"json_object"}` only when you opt in via the new `ai.openai.structuredOutputs: true` config key **and** the prompt mentions "json" (OpenAI 400s otherwise). The opt-in defaults OFF because `response_format` support varies across OpenAI-compatible servers ([local-llm], older vLLM/llama.cpp) — enable it only against a backend you've verified. Claude is unchanged (no native JSON mode; the existing prompt-based extraction + fence-stripping already handle it). Closes pippin-us2.
+- [feat] The JSON-extraction AI features (`actions extract`, `do`, mail triage / data-extract / injection-scan, calendar & reminders `smart-create`) now request **native JSON output** where the backend supports it: Ollama gets `format: "json"` (on by default — safe for the default `gemma4`), and the OpenAI-compatible path sends `response_format: {"type":"json_object"}` only when you opt in via the new `ai.openai.structuredOutputs: true` config key **and** the prompt mentions "json" (OpenAI 400s otherwise). The opt-in defaults OFF because `response_format` support varies across OpenAI-compatible servers (older vLLM/llama.cpp and similar local servers) — enable it only against a backend you've verified. Claude is unchanged (no native JSON mode; the existing prompt-based extraction + fence-stripping already handle it). Closes pippin-us2.
 - [feat] New `resolveContacts` config key (top-level in `~/.config/pippin/config.json`) sets a global default for Apple Contacts name resolution on `mail`/`messages` output. Set it to `false` to skip the per-command address-book enumeration everywhere — useful for fan-out callers like the morning briefing (which runs `mail list` per account + `messages list`) that would otherwise pay an N+1 `CNContactStore` enumeration per command. A new per-command `--contacts` flag force-enables resolution over a disabling config; precedence is `--no-contacts`/`--contacts` flag > `resolveContacts` config > built-in default (ON, unchanged). Closes pippin-1jm.
 
 ### Fixed
@@ -116,7 +116,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- [feat] **pippin now runs as its own macOS TCC "responsible process."** At startup it re-execs itself disclaimed (via `responsibility_spawnattrs_setdisclaim`), so Reminders/Calendar/Contacts/Automation consent keys on pippin's own signed identity instead of whichever app launched it (Terminal, Codex, the [agent-runtime] gateway, launchd). This fixes agent/background callers being denied even though the same binary worked from a terminal: grant pippin **once** (interactively, `pippin permissions`) and it works under every launcher. **One-time migration:** because grants now attach to pippin's identity, existing permissions must be re-granted once after upgrading — run `pippin permissions` from a terminal and approve the prompts. Opt out with `PIPPIN_NO_DISCLAIM=1`. Closes pippin-0vr.
+- [feat] **pippin now runs as its own macOS TCC "responsible process."** At startup it re-execs itself disclaimed (via `responsibility_spawnattrs_setdisclaim`), so Reminders/Calendar/Contacts/Automation consent keys on pippin's own signed identity instead of whichever app launched it (Terminal, an agent gateway, launchd). This fixes agent/background callers being denied even though the same binary worked from a terminal: grant pippin **once** (interactively, `pippin permissions`) and it works under every launcher. **One-time migration:** because grants now attach to pippin's identity, existing permissions must be re-granted once after upgrading — run `pippin permissions` from a terminal and approve the prompts. Opt out with `PIPPIN_NO_DISCLAIM=1`. Closes pippin-0vr.
 
 ### Fixed
 
@@ -141,7 +141,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - [build] Stable-identity code signing so macOS TCC permission grants persist across rebuilds/upgrades. SwiftPM ad-hoc/linker-signs by default — the code identity is the CDHash, which changes every build, so TCC orphaned the prior grant on every `make install` / `brew upgrade` (and the two install paths got separate grants). `make install`/`make release` and the Homebrew formula now run `scripts/sign.sh`, which signs with a Developer ID Application identity + a fixed `com.mattwag05.pippin` identifier (guarded: ad-hoc fallback when no identity is present, so CI/other machines still build). `pippin doctor` gained a **Code signing** row reporting whether grants will persist. Notarization is not required for TCC (only for distributing downloaded binaries to other Macs; `PIPPIN_SIGN_HARDENED=1` enables it). Closes pippin-xzu.
-- [feat] New `pippin permissions` command + proactive permission priming during `pippin init`, so each app integration's macOS privacy permission is resolved once (interactively) instead of being deferred to "first use" — which silently fails when first use is a background agent (e.g. the [agent-runtime]/[agent] LaunchAgent) that can't show a TCC dialog. Run interactively, `pippin permissions` triggers each promptable prompt up front (EventKit Reminders/Calendar, Contacts, and the Mail/Notes Automation prompt), then reports the status of all seven integrations including the two Full Disk Access ones (Voice Memos, Messages) that have no prompt and must be granted manually. Priming is automatically skipped when nothing can answer a dialog — under MCP, `--format agent|json`, a non-TTY pipe, or `--status` — where it's a pure read-only report (`[{integration, mechanism, state, promptable, detail, remediation?}]`). Re-runnable any time (e.g. after a macOS upgrade or reinstall resets TCC). Closes pippin-uu3, pippin-dkf.
+- [feat] New `pippin permissions` command + proactive permission priming during `pippin init`, so each app integration's macOS privacy permission is resolved once (interactively) instead of being deferred to "first use" — which silently fails when first use is a background agent (e.g. an agent LaunchAgent) that can't show a TCC dialog. Run interactively, `pippin permissions` triggers each promptable prompt up front (EventKit Reminders/Calendar, Contacts, and the Mail/Notes Automation prompt), then reports the status of all seven integrations including the two Full Disk Access ones (Voice Memos, Messages) that have no prompt and must be granted manually. Priming is automatically skipped when nothing can answer a dialog — under MCP, `--format agent|json`, a non-TTY pipe, or `--status` — where it's a pure read-only report (`[{integration, mechanism, state, promptable, detail, remediation?}]`). Re-runnable any time (e.g. after a macOS upgrade or reinstall resets TCC). Closes pippin-uu3, pippin-dkf.
 - [build] The pippin binary now embeds an Info.plist (`__TEXT,__info_plist`) with the EventKit/Contacts/AppleEvents usage-description strings and a stable bundle identifier. Without these, `requestFullAccess*` is unreliable (or crashes) outside an interactive terminal — the root cause behind background launches hitting unexpected/silent permission failures. Closes pippin-1zv.
 
 ### Fixed
@@ -173,7 +173,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] Configurable OpenAI-compatible AI backend. A new `openai` provider talks to any OpenAI-compatible Chat Completions endpoint (`POST {baseURL}/chat/completions`) — OpenAI, OpenRouter, a homelab gateway (e.g. Manifest), [local-llm], vLLM, LM Studio, llama.cpp's server, or Ollama's own `/v1` shim. Configure via `ai.provider: "openai"` + `ai.openai.{baseURL, model, apiKey}` in `~/.config/pippin/config.json`, or per-command with `--provider openai --model <m> --api-key <k>`. The API key is optional (local endpoints that don't authenticate send no `Authorization` header). Lets `memos summarize`/`capture`, `calendar`/`reminders smart-create`, `actions`, `do`, and `mail --ai-assisted` run against any reachable model server instead of being tied to local Ollama. (Mail semantic-search embeddings remain Ollama-only.)
+- [feat] Configurable OpenAI-compatible AI backend. A new `openai` provider talks to any OpenAI-compatible Chat Completions endpoint (`POST {baseURL}/chat/completions`) — OpenAI, OpenRouter, a self-hosted OpenAI-compatible gateway, vLLM, LM Studio, llama.cpp's server, or Ollama's own `/v1` shim. Configure via `ai.provider: "openai"` + `ai.openai.{baseURL, model, apiKey}` in `~/.config/pippin/config.json`, or per-command with `--provider openai --model <m> --api-key <k>`. The API key is optional (local endpoints that don't authenticate send no `Authorization` header). Lets `memos summarize`/`capture`, `calendar`/`reminders smart-create`, `actions`, `do`, and `mail --ai-assisted` run against any reachable model server instead of being tied to local Ollama. (Mail semantic-search embeddings remain Ollama-only.)
 
 ## [0.26.0] - 2026-06-03
 
@@ -219,7 +219,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Documentation
 
 - [docs] Refresh `SKILL.md` to current state: bump to 0.24.0, document the `messages`, `digest`, `actions`, `job`, `do`, `batch`, and `mcp-server` command groups, mark `audio`/`browser` as experimental (`PIPPIN_EXPERIMENTAL=1`), fix `completions` to positional-arg syntax, and replace the pre-envelope agent-output examples with envelope v1 + pagination guidance.
-- [docs] Add a graphify knowledge graph under `graphify-out/` for repo onboarding and register `/graphify` for Claude Code, Codex, OpenCode, Pi, [agent-runtime], and [agent-cli].
+- [docs] Add a graphify knowledge graph under `graphify-out/` for repo onboarding and register `/graphify` for the various coding agents used on this repo.
 - [docs] Repo-wide doc drift sweep: fix `reminders list`/`create` (`--list` takes an ID, title is positional) and `calendar events --calendar-name` examples in `README.md`; rewrite the stale `.github/copilot-instructions.md` (was v0.1.0 / 5 subcommands / wrong deps); remove the dead SwiftLint section and correct the `.forgejo` "retired" note in `docs/gotchas/build.md`; fix the release skill's "wait for CI" step (GitHub CI is disabled — gate is local `make ci`); correct the `gastownhall/beads` URL and CHANGELOG pointer in `docs/ROADMAP.md`; fix the single-account `--body` search timeout (75s) and add the MCP-clamp note in `TIMEOUT_ANALYSIS.md`; de-hardcode stale test counts.
 - [docs] Reduce `AGENTS.md` to a thin pointer to `CLAUDE.md` (the single source of truth).
 - [build] Untrack the stray repo-root `issues.jsonl` (accidental early commit; gitignored, no longer regenerated since `export.auto: false`).
@@ -282,7 +282,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Documentation
 
 - [docs] `docs/ROADMAP.md` rewritten — every one of the previous file's 13 listed roadmap items had landed and closed. Restructured into Deferred (3 explicitly-deferred beads) and Shipped (v0.16 → v0.22) sections.
-- [docs] `docs/mcp-server.md` — tool count refreshed (33 → 44, added the messages_*, mail_activity, memos_capture_to_reminders, digest tools). [agent]/known-consumers section updated to reflect [agent-runtime]-Agent-on-M5 ([agent] drives pippin natively over stdio MCP rather than shelling out from a Pi).
+- [docs] `docs/mcp-server.md` — tool count refreshed (33 → 44, added the messages_*, mail_activity, memos_capture_to_reminders, digest tools). Known-consumers section updated: the agent gateway now drives pippin natively over stdio MCP rather than shelling out.
 - [docs] `README.md` — install URL no longer pin-points v0.14.2 specifically; replaced with a generic vX.Y.Z placeholder pointing at the Releases page.
 - [docs] `docs/agent-prompts/{review-and-ship,autonomous-audit}.md` — retired the Forgejo PR-creation flow (Forgejo retired 2026-04-17 in favor of GitHub canonical); replaced with `gh pr create`. Test-count baseline 831 → ~1648. Audit checklist gained a Concurrency section and codified envelope v1 + outcome.timedOut surfacing as AX contracts.
 - [docs] `docs/gotchas/swift.md` — new "Cooperative-thread blocking — use `detachBlocking`" section covering where the blocking lives, the mechanical fix, and the two recurring traps (mutable struct self-capture, captured-var test counters).
@@ -470,7 +470,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - [fix] vault-scan: tighten Basic Auth URL regex to prevent false positives on Google Fonts URLs with @ in query parameters
-- [fix] vault-serve: use correct Vaultwarden item name `Anthropic API` for secret lookup (was `Antropic API`)
+- [fix] vault-serve: fix a typo in the Vaultwarden item name used for the Claude API key lookup
 
 ### Changed
 
@@ -491,7 +491,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [docs] CLAUDE.md: AI Provider Configuration section with model comparison table (Gemma 4 vs Qwen 3.5 vs Claude Sonnet 4.6), config resolution order, Claude API key resolution chain, and [agent] as a known consumer
+- [docs] CLAUDE.md: AI Provider Configuration section with model comparison table (Gemma 4 vs Qwen 3.5 vs Claude Sonnet 4.6), config resolution order, Claude API key resolution chain, and known agent consumers
 - [docs] README.md: AI Configuration section with provider setup, config.json format, and per-command override syntax
 - [docs] README.md: updated memos summarize examples to show Ollama model selection
 
@@ -735,7 +735,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `memos summarize <id>` — AI-powered summarization of voice memo transcripts; saves Markdown summary to output directory
 - `memos templates` — list and manage summarization prompt templates (5 built-in + user-defined)
 - `memos delete <id> --force` — permanently delete a voice memo from the Voice Memos database
-- AI provider layer: Ollama (local) and Claude (Anthropic API) backends; configurable via `pippin init` or `--provider`
+- AI provider layer: Ollama (local) and Claude (Anthropic) backends; configurable via `pippin init` or `--provider`
 - Transcript cache: transcripts saved alongside audio exports, reused on subsequent summarize calls
 - `--format` flag for `memos export` output (text/json, consistent with other subcommands)
 - 34 new tests (228 total, 0 failures)

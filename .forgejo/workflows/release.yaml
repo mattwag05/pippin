@@ -49,7 +49,7 @@ jobs:
         run: |
           NOTES=$(cat release-notes.md)
           RESPONSE=$(curl -s -X POST \
-            "https://forgejo.example-tailnet.ts.net/api/v1/repos/matthewwagner/pippin/releases" \
+            "${{ vars.FJ_API_BASE }}/repos/${{ github.repository }}/releases" \
             -H "Content-Type: application/json" \
             -H "Authorization: token $FORGEJO_TOKEN" \
             -d "{
@@ -68,6 +68,6 @@ jobs:
         run: |
           TARBALL=".build/release-artifacts/pippin-${VERSION}-arm64-macos.tar.gz"
           curl -s -X POST \
-            "https://forgejo.example-tailnet.ts.net/api/v1/repos/matthewwagner/pippin/releases/${RELEASE_ID}/assets" \
+            "${{ vars.FJ_API_BASE }}/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets" \
             -H "Authorization: token $FORGEJO_TOKEN" \
             -F "attachment=@$TARBALL"

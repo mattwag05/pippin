@@ -33,7 +33,7 @@
 **Branch:** `feature/mail-accounts-search`
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git checkout -b feature/mail-accounts-search
 ```
 
@@ -70,7 +70,7 @@ Expected: `Build complete!`
 **Step 3: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/Models/MailModels.swift
 git commit -m "feat: add MailAccount and MailActionResult models"
 ```
@@ -154,7 +154,7 @@ Address any NEEDS REVISION or UNSAFE findings before continuing.
 **Step 6: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/MailBridge/MailBridge.swift
 git commit -m "feat: add MailBridge.listAccounts() with JXA accounts script"
 ```
@@ -230,7 +230,7 @@ Expected: No errors, pretty-printed output.
 **Step 5: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/Commands/MailCommand.swift
 git commit -m "feat: add pippin mail accounts subcommand"
 ```
@@ -351,7 +351,7 @@ Address any findings before continuing.
 **Step 5: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/MailBridge/MailBridge.swift
 git commit -m "feat: add MailBridge.searchMessages() with subject/sender/body JXA search"
 ```
@@ -441,7 +441,7 @@ Run the output validator skill on `mail search` to confirm JSON schema.
 **Step 6: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/Commands/MailCommand.swift
 git commit -m "feat: add pippin mail search subcommand"
 ```
@@ -454,20 +454,20 @@ git commit -m "feat: add pippin mail search subcommand"
 
 Retrieve Forgejo credentials:
 ```bash
-get-secret "Forge Admin Credentials"
+get-secret "<forge-admin-item>"
 ```
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git push -u origin feature/mail-accounts-search
 ```
 
 **Step 2: Create PR via Forgejo API**
 
 ```bash
-FORGEJO_PASS=$(get-secret "Forge Admin Credentials")
+FORGEJO_PASS=$(get-secret "<forge-admin-item>")
 curl -s -X POST \
-  -u "matthewwagner:${FORGEJO_PASS}" \
+  -u "<user>:${FORGEJO_PASS}" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "feat: pippin mail accounts and search subcommands",
@@ -475,28 +475,28 @@ curl -s -X POST \
     "head": "feature/mail-accounts-search",
     "base": "main"
   }' \
-  "https://forgejo.example-tailnet.ts.net/api/v1/repos/matthewwagner/pippin/pulls" | python3 -m json.tool
+  "https://<forge-host>/api/v1/repos/<user>/pippin/pulls" | python3 -m json.tool
 ```
 
 Expected: JSON response with `"state": "open"` and a PR URL.
 
 **Step 3: Merge PR**
 
-Either merge via the Forgejo web UI at `https://forgejo.example-tailnet.ts.net/matthewwagner/pippin/pulls` or via API:
+Either merge via the Forgejo web UI at `https://<forge-host>/<user>/pippin/pulls` or via API:
 
 ```bash
 PR_NUMBER=<number from above>
 curl -s -X POST \
-  -u "matthewwagner:${FORGEJO_PASS}" \
+  -u "<user>:${FORGEJO_PASS}" \
   -H "Content-Type: application/json" \
   -d '{"Do": "merge", "merge_message_field": "feat: pippin mail accounts and search subcommands"}' \
-  "https://forgejo.example-tailnet.ts.net/api/v1/repos/matthewwagner/pippin/pulls/${PR_NUMBER}/merge"
+  "https://<forge-host>/api/v1/repos/<user>/pippin/pulls/${PR_NUMBER}/merge"
 ```
 
 **Step 4: Return to main and pull**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git checkout main
 git pull origin main
 ```
@@ -508,7 +508,7 @@ git pull origin main
 **Branch:** `feature/mail-write-ops`
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git checkout -b feature/mail-write-ops
 ```
 
@@ -641,7 +641,7 @@ Address all findings before continuing.
 **Step 6: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/MailBridge/MailBridge.swift
 git commit -m "feat: add MailBridge.markMessage() and decodeActionResult()"
 ```
@@ -744,7 +744,7 @@ Validate that `--dry-run` did NOT change the actual read status by re-running `l
 **Step 5: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/Commands/MailCommand.swift
 git commit -m "feat: add pippin mail mark subcommand"
 ```
@@ -865,7 +865,7 @@ Invoke:
 **Step 5: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/MailBridge/MailBridge.swift
 git commit -m "feat: add MailBridge.moveMessage() with JXA mail.move()"
 ```
@@ -947,7 +947,7 @@ Expected:
 **Step 5: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/Commands/MailCommand.swift
 git commit -m "feat: add pippin mail move subcommand"
 ```
@@ -1143,7 +1143,7 @@ Address ALL findings before continuing. `send` is a write operation with externa
 **Step 6: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/MailBridge/MailBridge.swift
 git commit -m "feat: add MailBridge.sendMessage() with 30s timeout and JXA OutgoingMessage"
 ```
@@ -1251,7 +1251,7 @@ Expected:
 **Step 5: Commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add pippin/Commands/MailCommand.swift
 git commit -m "feat: add pippin mail send subcommand"
 ```
@@ -1277,16 +1277,16 @@ Address any schema mismatches before pushing.
 **Step 1: Push the branch**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git push -u origin feature/mail-write-ops
 ```
 
 **Step 2: Create PR via Forgejo API**
 
 ```bash
-FORGEJO_PASS=$(get-secret "Forge Admin Credentials")
+FORGEJO_PASS=$(get-secret "<forge-admin-item>")
 curl -s -X POST \
-  -u "matthewwagner:${FORGEJO_PASS}" \
+  -u "<user>:${FORGEJO_PASS}" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "feat: pippin mail mark, move, send subcommands",
@@ -1294,7 +1294,7 @@ curl -s -X POST \
     "head": "feature/mail-write-ops",
     "base": "main"
   }' \
-  "https://forgejo.example-tailnet.ts.net/api/v1/repos/matthewwagner/pippin/pulls" | python3 -m json.tool
+  "https://<forge-host>/api/v1/repos/<user>/pippin/pulls" | python3 -m json.tool
 ```
 
 **Step 3: Merge and pull**
@@ -1302,10 +1302,10 @@ curl -s -X POST \
 ```bash
 PR_NUMBER=<number from above>
 curl -s -X POST \
-  -u "matthewwagner:${FORGEJO_PASS}" \
+  -u "<user>:${FORGEJO_PASS}" \
   -H "Content-Type: application/json" \
   -d '{"Do": "merge", "merge_message_field": "feat: pippin mail mark, move, send subcommands"}' \
-  "https://forgejo.example-tailnet.ts.net/api/v1/repos/matthewwagner/pippin/pulls/${PR_NUMBER}/merge"
+  "https://<forge-host>/api/v1/repos/<user>/pippin/pulls/${PR_NUMBER}/merge"
 
 git checkout main
 git pull origin main

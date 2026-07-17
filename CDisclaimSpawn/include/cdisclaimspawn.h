@@ -8,7 +8,7 @@
 /// is detached from the parent's TCC responsibility. macOS then keys
 /// EventKit / Contacts / Automation consent on this binary's own code identity
 /// (com.mattwag05.pippin) instead of whatever app happened to launch it
-/// (Terminal, Codex, the [agent-runtime] gateway, launchd) — so one grant to pippin works
+/// (Terminal, Codex, an agent gateway, launchd) — so one grant to pippin works
 /// under every launcher.
 ///
 /// argv/stdio/environ are inherited, so the re-exec is transparent to callers,

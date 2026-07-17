@@ -73,7 +73,7 @@ DerivedData/
 **Step 2: Stage and commit**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 git add .gitignore docs/
 git commit -m "Add .gitignore and docs directory"
 ```
@@ -183,7 +183,7 @@ let package = Package(
 **Step 2: Resolve dependencies**
 
 ```bash
-cd /Users/matthewwagner/Projects/pippin
+cd ~/Projects/pippin
 swift package resolve
 ```
 

@@ -92,7 +92,7 @@ Diagnostics (startup banner, warnings) go to stderr and do not pollute the JSON-
 
 Because every tool call just shells out to `pippin <subcommand> --format agent`, the MCP server and the CLI are two surfaces over the **same binary** with **identical** [envelope v2](#envelope-v2-v1-2026-04-20-v2-2026-07-15) output. So:
 
-- **Prefer the MCP tools where they're attached** — the [agent-runtime]/[agent] gateway and Claude Cowork (via the `pippin@mw-plugins` plugin) both register `pippin mcp-server`, so `mail_list`, `calendar_today`, etc. are first-class tools there.
+- **Prefer the MCP tools where they're attached** — an agent gateway and Claude Cowork (via the `pippin@mw-plugins` plugin) can both register `pippin mcp-server`, so `mail_list`, `calendar_today`, etc. are first-class tools there.
 - **Fall back to the CLI when no MCP server is attached** — a bare Claude Code session, a scheduled task, or any shell context. The invocation maps one-to-one (tool `mail_list` → `pippin mail list`); just add `--format agent`:
 
 ```bash
@@ -162,7 +162,7 @@ Create or edit a `.mcp.json` file in the project root (machine-local, gitignored
   "mcpServers": {
     "pippin": {
       "type": "stdio",
-      "command": "/Users/matthewwagner/.local/bin/pippin",
+      "command": "/Users/<you>/.local/bin/pippin",
       "args": ["mcp-server"]
     }
   }
@@ -215,7 +215,7 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 
 ## Known consumers
 
-- **[agent] ([agent-runtime]-Agent on M5)** — registers `pippin mcp-server` as a stdio MCP and drives the 47 tools natively (see the operator's [agent-runtime] setup notes).
+- **Agent gateway** — registers `pippin mcp-server` as a stdio MCP and drives the 47 tools natively.
 - **Claude Code / Claude Desktop** — register via `claude mcp add` or the desktop config JSON; both pick up tools automatically on restart.
 - **Morning-briefing scheduled task** — still shells out to the pippin CLI directly (no migration planned; the task is single-shot enough that MCP doesn't add value).
 

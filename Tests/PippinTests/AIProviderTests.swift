@@ -108,7 +108,7 @@ final class AIProviderTests: XCTestCase {
     }
 
     func testOpenAIBuildRequestOmitsAuthAndSystemWhenEmpty() throws {
-        // Local endpoints ([local-llm], llama.cpp, Ollama /v1) need no auth header.
+        // Local endpoints (llama.cpp, Ollama /v1, ...) need no auth header.
         let p = OpenAIProvider(baseURL: "http://localhost:8080/v1", model: "local", apiKey: nil)
         let req = try p.buildRequest(prompt: "hi", system: "")
         XCTAssertNil(req.value(forHTTPHeaderField: "Authorization"))

@@ -2,7 +2,7 @@ import Foundation
 
 /// AIProvider for any OpenAI-compatible Chat Completions endpoint
 /// (`POST {baseURL}/chat/completions`). One provider covers OpenAI itself,
-/// OpenRouter, a homelab gateway (e.g. Manifest), [local-llm], vLLM, LM Studio,
+/// OpenRouter, a self-hosted OpenAI-compatible gateway, vLLM, LM Studio,
 /// llama.cpp's server, and Ollama's own `/v1` shim — the backend is just a
 /// `baseURL` + `model` + optional key.
 ///
@@ -16,7 +16,7 @@ public struct OpenAIProvider: AIProvider {
     private let apiKey: String?
     /// Config opt-in (`ai.openai.structuredOutputs`) for native JSON mode. OFF by
     /// default because `response_format` support is server-dependent — not every
-    /// OpenAI-compatible backend ([local-llm], older vLLM/llama.cpp) accepts it, and a
+    /// OpenAI-compatible backend (older vLLM/llama.cpp, some local servers) accepts it, and a
     /// server that rejects it would 400 a request that otherwise works. Enable it
     /// only against a backend you've verified accepts `response_format`.
     private let structuredOutputs: Bool

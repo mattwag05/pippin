@@ -7,7 +7,7 @@ import Foundation
 /// macOS keys EventKit / Contacts / Automation consent on the *responsible*
 /// (launching) process, not pippin's own binary — so a grant approved under one
 /// launcher (Terminal) doesn't apply when pippin is spawned by another (Codex,
-/// the [agent-runtime] gateway, launchd). Re-execing disclaimed makes pippin its own
+/// an agent gateway, launchd). Re-execing disclaimed makes pippin its own
 /// responsible process, so a single grant to `com.mattwag05.pippin` works
 /// everywhere.
 public enum DisclaimRespawn {

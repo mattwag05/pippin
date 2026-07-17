@@ -23,7 +23,7 @@ manually and relaunch the launching app.
 ## The "first use" trap (why priming exists)
 
 A `.notDetermined` EventKit/Contacts permission only prompts on first access. If
-"first use" happens from a **background LaunchAgent** (e.g. [agent-runtime]/[agent]), there
+"first use" happens from a **background LaunchAgent** (e.g. an agent gateway), there
 is no GUI session to present the dialog, so the request silently returns denied —
 the bug behind pippin-ci2/pippin-k8g. Fix: resolve every prompt once,
 interactively, via `pippin permissions` (or `pippin init`). `PermissionPriming.
@@ -94,8 +94,8 @@ across both install paths. `scripts/sign.sh` does this; `make install` /
 **TCC associates consent with the *responsible (launching) process*, not pippin's
 own binary** — for EventKit (Reminders/Calendar), Contacts, Full Disk Access, AND
 Apple Events. So a grant approved while pippin runs under **Terminal** does **not**
-transfer to pippin spawned by a **background agent / MCP gateway** (e.g. [agent-runtime],
-whose responsible process is its `python` LaunchAgent) — that's a different
+transfer to pippin spawned by a **background agent / MCP gateway** (e.g. an agent gateway
+whose responsible process is its own LaunchAgent) — that's a different
 launcher, so the call is denied. Observed 2026-06-08: `pippin permissions --status`
 on the Developer-ID-signed binary reports Reminders `not_determined` from a
 non-Terminal launcher while Terminal has a working grant.
@@ -113,7 +113,7 @@ v0.31.0 pippin re-execs itself at startup with
 `CDisclaimSpawn` C target + `DisclaimRespawn` + the `becomeOwnResponsibleProcess()`
 call in `@main`). The re-exec'd process is its own responsible process, so TCC keys
 consent on pippin's own code identity (`com.mattwag05.pippin`) regardless of
-launcher. **Grant pippin once and it works under Terminal, Codex, the [agent-runtime]
+launcher. **Grant pippin once and it works under Terminal, Codex, an agent
 gateway, launchd — everywhere.** Notes:
 
 - One disclaim per process tree: the child sets `PIPPIN_DISCLAIMED=1`, so the MCP

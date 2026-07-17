@@ -44,7 +44,7 @@ struct Pippin: AsyncParsableCommand {
 
         // Before anything else: re-exec as our own TCC responsible process so
         // EventKit/Contacts/Automation grants key on pippin's signed identity
-        // regardless of which app launched us (Terminal, Codex, the [agent-runtime]
+        // regardless of which app launched us (Terminal, Codex, an agent
         // gateway, launchd). One grant to pippin then works under every launcher.
         // See pippin-0vr.
         becomeOwnResponsibleProcess()
