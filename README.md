@@ -132,7 +132,7 @@ pippin memos summarize <uuid> --template meeting-notes
 pippin memos summarize <uuid> --provider ollama --model gemma4:latest
 pippin memos capture --to-reminders                 # most recent memo → Reminders
 pippin memos capture --to-reminders --list Work --dry-run
-pippin memos templates list
+pippin memos templates list                          # also `pippin templates list`
 ```
 
 ### Calendar
@@ -321,13 +321,16 @@ re-fetching earlier pages.
 pippin mail list --account icloud --page-size 20 --format agent
 # .data.next_cursor carries the token for the next page:
 pippin mail list --account icloud --cursor <token> --format agent
+# ...or jump to a numbered page (offset = (N-1) * page size):
+pippin mail list --account icloud --page 2 --page-size 20 --format agent
 ```
 
 Cursor tokens are bound to the query via a filter-hash, so changing any
 filter between calls is detected and rejected (`cursor_mismatch`) rather
-than silently returning mixed pages. When neither `--cursor` nor `--page-size`
-is set, the response shape is the legacy bare array — no change for existing
-callers.
+than silently returning mixed pages. `--page N` is sugar over the cursor
+offset (a `--cursor`, when both are given, wins). When none of `--cursor`,
+`--page-size`, or `--page` is set, the response shape is the legacy bare
+array — no change for existing callers.
 
 ### MCP Server Mode
 

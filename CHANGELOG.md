@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-07-17
+
 ### Added
 
 - [feat] BREAKING (envelope v2, `AGENT_SCHEMA_VERSION` 1 → 2): a full-module E2E audit drove four `--format agent` payload-shape changes. `messages list` returns a bare `data:[…]` array (was `data:{excluded_count, conversations}`; the excluded count moved to `warnings`); notes `creationDate`/`modificationDate` renamed `createdAt`/`modifiedAt`; all-day calendar events and date-only reminder due dates serialize as `YYYY-MM-DD` (local day) instead of a misleading UTC instant; memos dates gained `.000Z` fractional seconds. The envelope frame is otherwise identical to v1. Consumers that iterate `messages` `.data.conversations` or read the old notes date keys must adapt. Closes pippin-a2a.
@@ -823,7 +825,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/mattwag05/pippin/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/mattwag05/pippin/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/mattwag05/pippin/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/mattwag05/pippin/compare/v0.31.0...v0.32.0
