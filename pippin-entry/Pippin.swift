@@ -19,6 +19,10 @@ struct Pippin: AsyncParsableCommand {
             BatchCommand.self,
             JobCommand.self, JobRunnerInternalCommand.self,
             DoCommand.self,
+            // Also reachable as `memos templates`; templates aren't memo-
+            // specific (mail/notes/memos all summarize with them), so expose a
+            // top-level alias too (pippin-77t).
+            TemplatesCommand.self,
         ]
         if ProcessInfo.processInfo.environment["PIPPIN_EXPERIMENTAL"] == "1" {
             commands.append(AudioCommand.self)

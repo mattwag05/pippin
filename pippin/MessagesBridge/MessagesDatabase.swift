@@ -100,6 +100,13 @@ public final class MessagesDatabase: Sendable {
         let limit = Self.clampLimit(limit)
         let cutoffNs = since.map(Self.appleNanos(from:))
         return try readWrapping { db in
+            // Resolve each chat's last non-tapback message ROWID once, then JOIN
+            // it for date + both preview columns (pippin-77t). Previously two
+            // separate correlated subqueries re-seeked that same row to pull
+            // `text` and `attributedBody` independently; the single seek + PK
+            // join replaces both and drops the MAX/GROUP BY (last_date is just
+            // that row's date). A chat with no non-tapback message yields a NULL
+            // subquery → the INNER JOIN drops it, matching the old behavior.
             var sql = """
             SELECT
                 c.ROWID AS chat_rowid,
@@ -108,15 +115,9 @@ public final class MessagesDatabase: Sendable {
                 c.display_name,
                 c.room_name,
                 c.style,
-                MAX(m.date) AS last_date,
-                (SELECT m2.text FROM message m2
-                 JOIN chat_message_join cmj2 ON cmj2.message_id = m2.ROWID
-                 WHERE cmj2.chat_id = c.ROWID AND \(Self.excludeTapbacks("m2"))
-                 ORDER BY m2.date DESC LIMIT 1) AS last_text,
-                (SELECT m2b.attributedBody FROM message m2b
-                 JOIN chat_message_join cmj2b ON cmj2b.message_id = m2b.ROWID
-                 WHERE cmj2b.chat_id = c.ROWID AND \(Self.excludeTapbacks("m2b"))
-                 ORDER BY m2b.date DESC LIMIT 1) AS last_attributedbody,
+                lm.date AS last_date,
+                lm.text AS last_text,
+                lm.attributedBody AS last_attributedbody,
                 (SELECT COUNT(*) FROM message m3
                  JOIN chat_message_join cmj3 ON cmj3.message_id = m3.ROWID
                  WHERE cmj3.chat_id = c.ROWID
@@ -124,19 +125,25 @@ public final class MessagesDatabase: Sendable {
                    AND m3.is_read = 0
                    AND \(Self.excludeTapbacks("m3"))) AS unread_count
             FROM chat c
-            JOIN chat_message_join cmj ON cmj.chat_id = c.ROWID
-            JOIN message m ON m.ROWID = cmj.message_id
-            WHERE c.is_archived = 0 AND \(Self.excludeTapbacks("m"))
+            JOIN message lm ON lm.ROWID = (
+                SELECT m2.ROWID FROM message m2
+                JOIN chat_message_join cmj2 ON cmj2.message_id = m2.ROWID
+                WHERE cmj2.chat_id = c.ROWID AND \(Self.excludeTapbacks("m2"))
+                ORDER BY m2.date DESC LIMIT 1)
+            WHERE c.is_archived = 0
             """
             var args: [any DatabaseValueConvertible] = []
             if let cutoffNs {
-                sql += " AND m.date >= ?"
+                // "last message on/after cutoff" ≡ the old "any non-tapback
+                // message ≥ cutoff" (the last IS the max), so the filtered set
+                // is identical.
+                sql += " AND lm.date >= ?"
                 args.append(cutoffNs)
             }
             // Overshoot by the exclude-set size so we still return `limit`
             // after post-filtering. Cheaper than a `NOT IN (?,?,…)` bind for
             // an exclude list that's typically small.
-            sql += " GROUP BY c.ROWID ORDER BY last_date DESC LIMIT ?"
+            sql += " ORDER BY last_date DESC LIMIT ?"
             args.append(limit + excluded.count)
 
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))

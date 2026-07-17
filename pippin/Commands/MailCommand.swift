@@ -135,9 +135,6 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum number of results to return (default: 10; values above 500 are capped).")
         public var limit: Int = 10
 
-        @Option(name: .long, help: "Page number (1-based, with --limit as page size). Ignored when --cursor or --page-size is set.")
-        public var page: Int = 1
-
         @Flag(name: .long, help: "Use semantic (embedding-based) search. Requires running `mail index` first.")
         public var semantic: Bool = false
 
@@ -159,9 +156,6 @@ public struct MailCommand: AsyncParsableCommand {
         public mutating func validate() throws {
             guard limit >= 1 else {
                 throw ValidationError("--limit must be 1 or greater.")
-            }
-            guard page >= 1 else {
-                throw ValidationError("--page must be 1 or greater.")
             }
             if let after = after {
                 guard isValidDate(after) else {
@@ -213,7 +207,6 @@ public struct MailCommand: AsyncParsableCommand {
             let mailbox = self.mailbox
             let body = self.body
             let limit = self.limit
-            let page = self.page
             let after = self.after
             let before = self.before
             let to = self.to
@@ -229,7 +222,7 @@ public struct MailCommand: AsyncParsableCommand {
                     mailbox: mailbox,
                     searchBody: body,
                     limit: limit,
-                    offset: (page - 1) * limit,
+                    offset: 0,
                     after: after,
                     before: before,
                     to: to,
@@ -358,9 +351,6 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum number of messages to return (default: 20; values above 500 are capped).")
         public var limit: Int = 20
 
-        @Option(name: .long, help: "Page number (1-based, with --limit as page size). Ignored when --cursor or --page-size is set.")
-        public var page: Int = 1
-
         @Option(
             name: .long,
             help: "Include a plain-text body preview of up to N chars per message (e.g. --preview 200 for agent scan workflows to avoid N+1 mail_show calls). Forces a per-message IMAP fetch — bumps the timeout to 60s."
@@ -394,9 +384,6 @@ public struct MailCommand: AsyncParsableCommand {
             guard limit >= 1 else {
                 throw ValidationError("--limit must be 1 or greater.")
             }
-            guard page >= 1 else {
-                throw ValidationError("--page must be 1 or greater.")
-            }
             if let preview, preview <= 0 {
                 throw ValidationError("--preview must be a positive integer (chars).")
             }
@@ -421,8 +408,7 @@ public struct MailCommand: AsyncParsableCommand {
                 return
             }
             let limit = self.limit
-            let page = self.page
-            let outcome = try await fetchList(limit: limit, offset: (page - 1) * limit)
+            let outcome = try await fetchList(limit: limit, offset: 0)
             let messages = outcome.messages
 
             if summarize {

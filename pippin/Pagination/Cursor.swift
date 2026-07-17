@@ -51,6 +51,7 @@ public enum CursorError: LocalizedError, Sendable {
     case cursorMismatch
     case invalidCursor
     case invalidPageSize
+    case invalidPage
 
     public var errorDescription: String? {
         switch self {
@@ -60,6 +61,8 @@ public enum CursorError: LocalizedError, Sendable {
             return "Cursor token is malformed or unreadable."
         case .invalidPageSize:
             return "--page-size must be a positive integer."
+        case .invalidPage:
+            return "--page must be 1 or greater."
         }
     }
 }
@@ -75,11 +78,14 @@ public struct PaginationOptions: ParsableArguments {
     @Option(name: .long, help: "Page size when paginating (default: command's existing --limit).")
     public var pageSize: Int?
 
+    @Option(name: .long, help: "Page number (1-based; page size is --page-size or --limit). Ignored when --cursor is set.")
+    public var page: Int?
+
     public init() {}
 
-    /// True if either flag was passed — switch the response shape to {items, next_cursor}.
+    /// True if any pagination flag was passed — switch the response shape to {items, next_cursor}.
     public var isActive: Bool {
-        cursor != nil || pageSize != nil
+        cursor != nil || pageSize != nil || page != nil
     }
 }
 
@@ -127,12 +133,6 @@ public enum Pagination {
         defaultPageSize: Int,
         filterHash: String
     ) throws -> (offset: Int, pageSize: Int) {
-        var offset = 0
-        if let token = opts.cursor {
-            let parsed = try decode(token)
-            guard parsed.filterHash == filterHash else { throw CursorError.cursorMismatch }
-            offset = max(0, parsed.offset)
-        }
         let requested = opts.pageSize ?? defaultPageSize
         guard requested > 0 else { throw CursorError.invalidPageSize }
         // Cap the page size at a sane ceiling. `--page-size` is an unbounded
@@ -141,6 +141,18 @@ public enum Pagination {
         // (b) ask a bridge to materialize an absurd number of rows. The cap is
         // far beyond any real page; deep pagination still walks via the cursor.
         let pageSize = min(requested, maxPageSize)
+
+        var offset = 0
+        if let token = opts.cursor {
+            let parsed = try decode(token)
+            guard parsed.filterHash == filterHash else { throw CursorError.cursorMismatch }
+            offset = max(0, parsed.offset)
+        } else if let page = opts.page {
+            // Numbered pages are sugar over the cursor offset: page N starts at
+            // (N-1)*pageSize. A --cursor, when present, wins over --page.
+            guard page >= 1 else { throw CursorError.invalidPage }
+            offset = (page - 1) * pageSize
+        }
         return (offset, pageSize)
     }
 

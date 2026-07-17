@@ -104,6 +104,14 @@ enum NotesBridge {
     if (_notesRef) { try { _mods = _notesRef.modificationDate(); } catch (e) { _mods = []; } }
     """
 
+    /// Apple Notes `delete` is a soft-delete into this folder (no scriptable
+    /// hard-delete / empty-trash exists — pippin-cxd). list/show/search/folders
+    /// exclude it so a "deleted" note stops appearing; it still auto-purges from
+    /// the trash after 30 days, exactly like the Notes UI.
+    /// ponytail: English folder name — a non-English Notes locale won't match;
+    /// upgrade path is to detect the trash folder by identity if it matters.
+    static let recentlyDeletedFolderName = "Recently Deleted"
+
     /// JXA fragment shared by `buildListScript` / `buildSearchScript`. Builds a
     /// plain JS array `pairs = [{note, mod, iso}]` from the already-materialized
     /// `notes` + bulk `_mods` arrays (see `jsResolveNotesAndBulkMods`), then
@@ -160,6 +168,12 @@ enum NotesBridge {
                 folderId = _c.id();
                 folderName = _c.name();
             } catch(e) {}
+            // Skip soft-deleted notes (pippin-cxd). ponytail: filtering here
+            // (offset/limit applied to the pre-filter `pairs`) can under-fill a
+            // page by the count of trashed notes in the window — cosmetic, and
+            // rare; the alternative (per-folder Apple Events) would defeat the
+            // pippin-mo7 bulk-modificationDate optimization.
+            if (folderName === '\(recentlyDeletedFolderName)') { continue; }
             results.push({
                 id: note.id(),
                 title: note.name(),
@@ -209,6 +223,8 @@ enum NotesBridge {
             folderId = _c.id();
             folderName = _c.name();
         } catch(e) {}
+        // A soft-deleted note still resolves by id — treat it as gone (pippin-cxd).
+        if (folderName === '\(recentlyDeletedFolderName)') { throw new Error('NOTESBRIDGE_ERR_NOT_FOUND: \(safeId)'); }
         var result = {
             id: note.id(),
             title: note.name(),
@@ -261,6 +277,8 @@ enum NotesBridge {
                     folderId = _c.id();
                     folderName = _c.name();
                 } catch(e) {}
+                // Skip soft-deleted notes (pippin-cxd; see buildListScript note).
+                if (folderName === '\(recentlyDeletedFolderName)') { continue; }
                 // Reuse the title/plain already fetched for the match test —
                 // re-reading name()/plaintext() doubled the per-match Apple
                 // Events. HTML body is not fetched (see buildListScript).
@@ -293,6 +311,8 @@ enum NotesBridge {
         for (var i = 0; i < folders.length; i++) {
             if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
             var f = folders[i];
+            // Hide the soft-delete trash folder from the live folder list (pippin-cxd).
+            try { if (f.name() === '\(recentlyDeletedFolderName)') { continue; } } catch(e) {}
             var count = 0;
             try { count = f.notes().length; } catch(e) {}
             results.push({

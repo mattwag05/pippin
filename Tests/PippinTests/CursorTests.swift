@@ -105,6 +105,45 @@ final class CursorTests: XCTestCase {
         XCTAssertThrowsError(try Pagination.resolve(opts, defaultPageSize: 20, filterHash: "h"))
     }
 
+    // MARK: - --page numbered pagination (pippin-77t)
+
+    func testPageActivatesPagination() throws {
+        let opts = try PaginationOptions.parse(["--page", "2"])
+        XCTAssertTrue(opts.isActive)
+    }
+
+    func testResolvePageToOffset() throws {
+        // page 3 with default page size 25 → offset (3-1)*25 = 50.
+        let opts = try PaginationOptions.parse(["--page", "3"])
+        let (offset, size) = try Pagination.resolve(opts, defaultPageSize: 25, filterHash: "h")
+        XCTAssertEqual(offset, 50)
+        XCTAssertEqual(size, 25)
+    }
+
+    func testResolvePageUsesPageSizeOverLimit() throws {
+        let opts = try PaginationOptions.parse(["--page", "3", "--page-size", "10"])
+        let (offset, size) = try Pagination.resolve(opts, defaultPageSize: 25, filterHash: "h")
+        XCTAssertEqual(offset, 20) // (3-1)*10
+        XCTAssertEqual(size, 10)
+    }
+
+    func testResolveCursorWinsOverPage() throws {
+        let hash = "h"
+        let token = try Pagination.encode(Cursor(offset: 10, filterHash: hash))
+        let opts = try PaginationOptions.parse(["--cursor", token, "--page", "9"])
+        let (offset, _) = try Pagination.resolve(opts, defaultPageSize: 25, filterHash: hash)
+        XCTAssertEqual(offset, 10) // cursor offset, not (9-1)*25
+    }
+
+    func testResolveRejectsZeroPage() throws {
+        let opts = try PaginationOptions.parse(["--page", "0"])
+        XCTAssertThrowsError(try Pagination.resolve(opts, defaultPageSize: 20, filterHash: "h")) { error in
+            guard case CursorError.invalidPage = error else {
+                return XCTFail("expected invalidPage, got \(error)")
+            }
+        }
+    }
+
     // MARK: - paginate (in-memory slicing)
 
     func testPaginateFirstPage() throws {

@@ -333,20 +333,29 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertNoThrow(try MailCommand.Mailboxes.parse(["--format", "json"]))
     }
 
-    // MARK: - List --page
+    // MARK: - List --page (now the shared PaginationOptions.page — pippin-77t)
 
     func testListPageDefault() throws {
         let cmd = try MailCommand.List.parse([])
-        XCTAssertEqual(cmd.page, 1)
+        XCTAssertNil(cmd.pagination.page)
+        XCTAssertFalse(cmd.pagination.isActive)
     }
 
     func testListPageCustom() throws {
         let cmd = try MailCommand.List.parse(["--page", "3"])
-        XCTAssertEqual(cmd.page, 3)
+        XCTAssertEqual(cmd.pagination.page, 3)
+        XCTAssertTrue(cmd.pagination.isActive)
     }
 
-    func testListPageZeroFails() {
-        XCTAssertThrowsError(try MailCommand.List.parse(["--page", "0"]))
+    func testListPageZeroFailsAtResolve() throws {
+        // --page range is validated at Pagination.resolve (runtime, before any
+        // fetch), not at parse — so parsing succeeds but resolve rejects it.
+        let cmd = try MailCommand.List.parse(["--page", "0"])
+        XCTAssertThrowsError(try Pagination.resolve(cmd.pagination, defaultPageSize: 10, filterHash: "h")) { error in
+            guard case CursorError.invalidPage = error else {
+                return XCTFail("expected invalidPage, got \(error)")
+            }
+        }
     }
 
     // MARK: - List --preview
@@ -393,16 +402,18 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertThrowsError(try MailCommand.List.parse(["--page-size", "10", "--summarize"]))
     }
 
-    // MARK: - Search --page
+    // MARK: - Search --page (now the shared PaginationOptions.page — pippin-77t)
 
     func testSearchPageDefault() throws {
         let cmd = try MailCommand.Search.parse(["invoice"])
-        XCTAssertEqual(cmd.page, 1)
+        XCTAssertNil(cmd.pagination.page)
+        XCTAssertFalse(cmd.pagination.isActive)
     }
 
     func testSearchPageCustom() throws {
         let cmd = try MailCommand.Search.parse(["invoice", "--page", "2"])
-        XCTAssertEqual(cmd.page, 2)
+        XCTAssertEqual(cmd.pagination.page, 2)
+        XCTAssertTrue(cmd.pagination.isActive)
     }
 
     // pippin-yux: search now inherits --fields via OutputOptions.
@@ -411,8 +422,13 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertEqual(cmd.output.fields, "id,subject")
     }
 
-    func testSearchPageZeroFails() {
-        XCTAssertThrowsError(try MailCommand.Search.parse(["invoice", "--page", "0"]))
+    func testSearchPageZeroFailsAtResolve() throws {
+        let cmd = try MailCommand.Search.parse(["invoice", "--page", "0"])
+        XCTAssertThrowsError(try Pagination.resolve(cmd.pagination, defaultPageSize: 20, filterHash: "h")) { error in
+            guard case CursorError.invalidPage = error else {
+                return XCTFail("expected invalidPage, got \(error)")
+            }
+        }
     }
 
     // MARK: - Search pagination flags (pippin-a9m)

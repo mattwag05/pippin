@@ -237,6 +237,10 @@ if [[ $RW -eq 1 ]]; then
   if [[ -n "$NOTE_ID" ]]; then
     run "notes #26 newlines survive round-trip" "'line2' in d['data'].get('plainText','') and '\n' in d['data'].get('plainText','')" -- notes show "$NOTE_ID"
     "$BIN" notes delete "$NOTE_ID" --force --format agent >/dev/null 2>&1
+    # pippin-cxd: a soft-deleted note must disappear from show AND list (Notes
+    # `delete` only moves it to Recently Deleted, which we now filter out).
+    run_err "notes delete → show not-found (pippin-cxd)" note_not_found 3 -- notes show "$NOTE_ID"
+    run "notes delete → gone from list (pippin-cxd)" "'$NOTE_ID' not in [n.get('id') for n in d['data']]" -- notes list --limit 100
   else
     FAIL=$((FAIL+1)); fails+=("notes create round-trip: no id returned")
     echo "  FAIL  notes create round-trip (no id)"

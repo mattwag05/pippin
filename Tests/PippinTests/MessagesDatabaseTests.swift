@@ -530,6 +530,40 @@ final class MessagesDatabaseTests: XCTestCase {
         XCTAssertFalse(scanTruncated, "one blob-only row is well under the scan cap")
     }
 
+    // MARK: - Consolidated last-message join (pippin-77t)
+
+    func testListConversationsPreviewDecodesAttributedBodyWhenTextNull() throws {
+        // The single last-message join must still expose attributedBody for the
+        // preview when the last message's text column is NULL (modern-macOS shape).
+        let blob = try XCTUnwrap(Data(base64Encoded: Self.goldenAttributedBody))
+        let queue = try makeEmptySchemaDB()
+        try queue.write { db in
+            try db.execute(sql: """
+            INSERT INTO chat (guid, chat_identifier, service_name, style, is_archived)
+                VALUES ('blob-chat', 'blob-chat', 'iMessage', 45, 0);
+            INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
+            """)
+            let ns = MessagesDatabase.appleNanos(from: Date(timeIntervalSince1970: 1_750_000_000))
+            try db.execute(
+                sql: "INSERT INTO message (guid, text, attributedBody, date, is_from_me, is_read, service) VALUES ('blob-msg', NULL, ?, ?, 0, 1, 'iMessage')",
+                arguments: [blob, ns]
+            )
+        }
+        let mdb = try MessagesDatabase(dbQueue: queue)
+        let (convs, _) = try mdb.listConversations(limit: 10)
+        XCTAssertEqual(convs.first?.lastMessagePreview, "Hello, typedstream world! 🌍")
+    }
+
+    func testListConversationsSinceCutoffFiltersByLastMessage() throws {
+        // The since cutoff filters on each chat's last non-tapback message date.
+        // Fixture: DM's last message is `recent`; the group's is 30 days prior.
+        // A cutoff between them keeps only the DM.
+        let db = try MessagesDatabase(dbQueue: makeFixtureDB())
+        let cutoff = Date(timeIntervalSince1970: 1_750_000_000).addingTimeInterval(-86400 * 5)
+        let (convs, _) = try db.listConversations(since: cutoff, limit: 50)
+        XCTAssertEqual(convs.map(\.id), ["iMessage;-;+15551234567"])
+    }
+
     // MARK: - Scan-cap truncation visibility (pippin-wve)
 
     /// Seed `count` attributedBody-only messages (text NULL) into a single chat

@@ -56,10 +56,16 @@ public struct DoCommand: AsyncParsableCommand {
         let ai = try AIProviderFactory.make(
             providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
         )
-        let tools = MCPToolRegistry.tools
-        let plan = try IntentPlanner.plan(
-            intent: intent, tools: tools, provider: ai, maxSteps: maxSteps
-        )
+        // IntentPlanner.plan calls provider.complete() synchronously (a blocking
+        // network round-trip). Hop it off the cooperative pool like the execution
+        // loop below already does for runChild (pippin-77t).
+        let intent = self.intent
+        let maxSteps = self.maxSteps
+        let plan = try await detachBlocking {
+            try IntentPlanner.plan(
+                intent: intent, tools: MCPToolRegistry.tools, provider: ai, maxSteps: maxSteps
+            )
+        }
 
         // Validate each step before executing anything so a bad plan fails
         // cleanly instead of running the first N-1 steps.
