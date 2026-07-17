@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+
+# Test fixtures contain deliberately fake key material (PHI-filter and
+# provider tests) — never real credentials.
+[allowlist]
+paths = ['''^Tests/''']
