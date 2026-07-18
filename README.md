@@ -345,7 +345,7 @@ Ships with 47 tools covering mail, calendar, reminders, contacts, notes, voice m
 
 ## AI Configuration
 
-`memos summarize` and `calendar smart-create` use an LLM for natural language processing. pippin supports local inference via Ollama and cloud inference via Claude.
+`memos summarize` and `calendar smart-create` use an LLM for natural language processing. pippin supports local inference via Ollama, cloud inference via Claude, and any OpenAI-compatible Chat Completions endpoint (OpenAI, OpenRouter, vLLM, LM Studio, llama.cpp server, a local gateway, …).
 
 ```json
 {
@@ -357,6 +357,10 @@ Ships with 47 tools covering mail, calendar, reminders, contacts, notes, voice m
     },
     "claude": {
       "model": "claude-sonnet-4-6"
+    },
+    "openai": {
+      "baseURL": "https://api.openai.com/v1",
+      "model": "gpt-4o-mini"
     }
   }
 }
@@ -373,6 +377,9 @@ pippin memos summarize <id> --provider claude
 |----------|-------|-------|
 | `ollama` (default) | [Install Ollama](https://ollama.com), then `ollama pull gemma4` | ~22s/summary (Gemma 4) |
 | `claude` | Set `ANTHROPIC_API_KEY` env var | ~2-3s/summary |
+| `openai` | Set `ai.openai.baseURL` (+ `apiKey` / `$OPENAI_API_KEY` if the endpoint authenticates) | endpoint-dependent |
+
+The `openai` provider is the escape hatch for any OpenAI-compatible server — `apiKey` is optional for local endpoints that don't authenticate. Mail semantic-search embeddings remain Ollama-only.
 
 > **Model note:** Gemma 4 is recommended over Qwen 3.5 for pippin's summarization tasks — Qwen's chain-of-thought reasoning adds ~2x latency without proportional quality gains on structured extraction.
 
@@ -425,7 +432,7 @@ pippin mail list --unread --format json \
 | `pippin/NotesBridge/` | JXA subprocess bridge for Notes.app |
 | `pippin/ContactsBridge/` | CNContactStore wrapper (read + write) |
 | `pippin/MessagesBridge/` | GRDB SQLite access to Apple Messages (read + gated send) |
-| `pippin/AIProvider/` | Ollama + Claude backends for summarization |
+| `pippin/AIProvider/` | Ollama + Claude + OpenAI-compatible backends for summarization |
 | `pippin/Jobs/` | Filesystem-backed registry for detached `pippin job` subprocesses |
 | `pippin/Planner/` | LLM-driven plan-and-execute over the MCP tool registry (`pippin do`) |
 | `pippin/Pagination/` | Opaque-cursor tokens + filter-hash guards for list commands |
@@ -450,7 +457,7 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 
 ```bash
 make build      # Release build
-make test       # Run tests (~1,990 tests, 0 failures)
+make test       # Run tests (~2,100 tests, 0 failures)
 make lint       # swiftformat lint
 make ci         # Full local gate: build + test + swiftformat + detach-lint
 make install    # Build + install to ~/.local/bin
