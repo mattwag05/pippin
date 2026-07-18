@@ -31,26 +31,15 @@ enum MCPInProcessTools {
     }
 
     /// String-returning twin of `printAgentProjectedJSON` for tools that accept
-    /// a `fields` projection (contacts_search). The hand-built frame must stay
-    /// in lockstep with `AgentOkEnvelope` (v/status/duration_ms/warnings).
+    /// a `fields` projection (contacts_search). Delegates to the same
+    /// `projectedAgentJSON` frame builder the CLI path prints.
     static func projectedEnvelope(
         _ data: some Encodable,
         fields: [String],
         startedAt: Date,
         warnings: [String]? = nil
     ) throws -> String {
-        let projected = try FieldProjection.projectedObject(data, fields: fields)
-        var envelope: [String: Any] = [
-            "v": AGENT_SCHEMA_VERSION,
-            "status": "ok",
-            "duration_ms": elapsedMs(since: startedAt),
-            "data": projected,
-        ]
-        if let warnings, !warnings.isEmpty {
-            envelope["warnings"] = warnings
-        }
-        let bytes = try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])
-        return String(decoding: bytes, as: UTF8.self)
+        try projectedAgentJSON(data, fields: fields, startedAt: startedAt, warnings: warnings)
     }
 
     /// String-returning twin of `printAgentError` — same `AgentError.from`

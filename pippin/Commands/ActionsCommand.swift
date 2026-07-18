@@ -159,7 +159,6 @@ public struct ActionsCommand: AsyncParsableCommand {
                 let isoFrac = ISO8601DateFormatter()
                 isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                 let iso = ISO8601DateFormatter()
-                iso.formatOptions = [.withInternetDateTime]
                 filtered = outcome.results.filter { note in
                     guard let modDate = isoFrac.date(from: note.modificationDate)
                         ?? iso.date(from: note.modificationDate) else { return true }

@@ -37,10 +37,7 @@ public final class EmbeddingStore: Sendable {
     private let dbQueue: DatabaseQueue
 
     public init(dbPath: String? = nil) throws {
-        let path = dbPath ?? EmbeddingStore.defaultStorePath()
-        let dir = (path as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        dbQueue = try DatabaseQueue(path: path)
+        dbQueue = try openCacheQueue(path: dbPath ?? EmbeddingStore.defaultStorePath())
         try migrate()
     }
 
@@ -71,32 +68,9 @@ public final class EmbeddingStore: Sendable {
         }) != nil
     }
 
-    public func needsReindex(compoundId: String, bodyHash: String) throws -> Bool {
-        try dbQueue.read { db in
-            guard let record = try EmbeddingRecord.fetchOne(
-                db,
-                sql: "SELECT * FROM email_embeddings WHERE compound_id = ?",
-                arguments: [compoundId]
-            ) else {
-                return true
-            }
-            return record.bodyHash != bodyHash
-        }
-    }
-
     public func upsert(_ record: EmbeddingRecord) throws {
         try dbQueue.write { db in
             try record.save(db)
-        }
-    }
-
-    public func get(compoundId: String) throws -> EmbeddingRecord? {
-        try dbQueue.read { db in
-            try EmbeddingRecord.fetchOne(
-                db,
-                sql: "SELECT * FROM email_embeddings WHERE compound_id = ?",
-                arguments: [compoundId]
-            )
         }
     }
 

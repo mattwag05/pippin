@@ -194,11 +194,6 @@ public struct ShellCommand: AsyncParsableCommand {
         let s = session.currentState
         fputs("\nSession context:\n", stderr)
         fputs("  Account:      \(s.activeAccount ?? "(none)")\n", stderr)
-        fputs("  Mailbox:      \(s.activeMailbox ?? "(none)")\n", stderr)
-        fputs("  Last message: \(s.lastMessageId ?? "(none)")\n", stderr)
-        fputs("  Last event:   \(s.lastEventId ?? "(none)")\n", stderr)
-        fputs("  Last reminder:\(s.lastReminderId ?? "(none)")\n", stderr)
-        fputs("  Last note:    \(s.lastNoteId ?? "(none)")\n", stderr)
         fputs("  History:      \(s.history.count) commands\n", stderr)
 
         let formatter = DateFormatter()

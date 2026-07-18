@@ -6,21 +6,6 @@ public struct SessionState: Codable, Sendable {
     /// Active mail account name (e.g. "iCloud", "Work").
     public var activeAccount: String?
 
-    /// Active mailbox within the active account (e.g. "INBOX", "Sent").
-    public var activeMailbox: String?
-
-    /// Last message compound ID interacted with.
-    public var lastMessageId: String?
-
-    /// Last calendar event ID interacted with.
-    public var lastEventId: String?
-
-    /// Last reminder ID interacted with.
-    public var lastReminderId: String?
-
-    /// Last note ID interacted with.
-    public var lastNoteId: String?
-
     /// Command history (most recent last). Capped at 100 entries.
     public var history: [String]
 
@@ -55,26 +40,6 @@ public final class SessionManager: @unchecked Sendable {
         lock.withLock { state.activeAccount }
     }
 
-    public var activeMailbox: String? {
-        lock.withLock { state.activeMailbox }
-    }
-
-    public var lastMessageId: String? {
-        lock.withLock { state.lastMessageId }
-    }
-
-    public var lastEventId: String? {
-        lock.withLock { state.lastEventId }
-    }
-
-    public var lastReminderId: String? {
-        lock.withLock { state.lastReminderId }
-    }
-
-    public var lastNoteId: String? {
-        lock.withLock { state.lastNoteId }
-    }
-
     public var history: [String] {
         lock.withLock { state.history }
     }
@@ -88,42 +53,6 @@ public final class SessionManager: @unchecked Sendable {
     public func setActiveAccount(_ account: String?) {
         lock.withLock {
             state.activeAccount = account
-            if account == nil { state.activeMailbox = nil }
-            persistLocked()
-        }
-    }
-
-    public func setActiveMailbox(_ mailbox: String?) {
-        lock.withLock {
-            state.activeMailbox = mailbox
-            persistLocked()
-        }
-    }
-
-    public func setLastMessageId(_ id: String?) {
-        lock.withLock {
-            state.lastMessageId = id
-            persistLocked()
-        }
-    }
-
-    public func setLastEventId(_ id: String?) {
-        lock.withLock {
-            state.lastEventId = id
-            persistLocked()
-        }
-    }
-
-    public func setLastReminderId(_ id: String?) {
-        lock.withLock {
-            state.lastReminderId = id
-            persistLocked()
-        }
-    }
-
-    public func setLastNoteId(_ id: String?) {
-        lock.withLock {
-            state.lastNoteId = id
             persistLocked()
         }
     }
@@ -135,25 +64,6 @@ public final class SessionManager: @unchecked Sendable {
                 state.history.removeFirst(state.history.count - 100)
             }
             state.lastActive = Date()
-            persistLocked()
-        }
-    }
-
-    public func clearContext() {
-        lock.withLock {
-            state.activeAccount = nil
-            state.activeMailbox = nil
-            state.lastMessageId = nil
-            state.lastEventId = nil
-            state.lastReminderId = nil
-            state.lastNoteId = nil
-            persistLocked()
-        }
-    }
-
-    public func clearHistory() {
-        lock.withLock {
-            state.history = []
             persistLocked()
         }
     }

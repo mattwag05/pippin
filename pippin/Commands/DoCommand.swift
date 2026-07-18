@@ -151,10 +151,6 @@ struct ExecutedStep: Encodable {
     let tool: String
     let args: JSONValue?
     let result: JSONValue
-
-    enum CodingKeys: String, CodingKey {
-        case tool, args, result
-    }
 }
 
 struct ExecutedResult: Encodable {

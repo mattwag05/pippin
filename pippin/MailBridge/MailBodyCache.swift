@@ -51,10 +51,7 @@ public final class MailBodyCache: Sendable {
     private let dbQueue: DatabaseQueue
 
     public init(dbPath: String? = nil) throws {
-        let path = dbPath ?? Self.defaultStorePath()
-        let dir = (path as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        dbQueue = try DatabaseQueue(path: path)
+        dbQueue = try openCacheQueue(path: dbPath ?? Self.defaultStorePath())
         try migrate()
     }
 

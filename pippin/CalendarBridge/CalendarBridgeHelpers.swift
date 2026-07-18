@@ -55,9 +55,7 @@ func colorHex(_ cgColor: CGColor) -> String {
 /// canonical — it's tried first.
 func parseCalendarDate(_ s: String) -> Date? {
     // ISO 8601 with timezone (canonical).
-    let isoFormatter = ISO8601DateFormatter()
-    isoFormatter.formatOptions = [.withInternetDateTime]
-    if let date = isoFormatter.date(from: s) { return date }
+    if let date = ISO8601DateFormatter().date(from: s) { return date }
 
     // Timezone-less local-time forms, most-specific first so a string carrying
     // seconds isn't truncated by a coarser pattern's prefix match. Both `T` and
@@ -79,9 +77,7 @@ func parseCalendarDate(_ s: String) -> Date? {
 
 /// Format a Date as ISO 8601 with timezone (e.g. "2026-03-07T10:00:00Z").
 func formatEventDate(_ date: Date) -> String {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    return formatter.string(from: date)
+    ISO8601DateFormatter().string(from: date)
 }
 
 /// Format a Date as its LOCAL calendar day, "YYYY-MM-DD". All-day events (and

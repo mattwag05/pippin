@@ -19,16 +19,12 @@ final class SessionStateTests: XCTestCase {
     func testSessionStateDefaultInit() {
         let state = SessionState()
         XCTAssertNil(state.activeAccount)
-        XCTAssertNil(state.activeMailbox)
-        XCTAssertNil(state.lastMessageId)
         XCTAssertTrue(state.history.isEmpty)
     }
 
     func testSessionStateRoundTrip() throws {
         var state = SessionState()
         state.activeAccount = "Work"
-        state.activeMailbox = "INBOX"
-        state.lastMessageId = "Work||INBOX||42"
         state.history = ["mail list", "mail show Work||INBOX||42"]
 
         let encoder = JSONEncoder()
@@ -40,8 +36,6 @@ final class SessionStateTests: XCTestCase {
         let decoded = try decoder.decode(SessionState.self, from: data)
 
         XCTAssertEqual(decoded.activeAccount, "Work")
-        XCTAssertEqual(decoded.activeMailbox, "INBOX")
-        XCTAssertEqual(decoded.lastMessageId, "Work||INBOX||42")
         XCTAssertEqual(decoded.history, ["mail list", "mail show Work||INBOX||42"])
     }
 
@@ -57,16 +51,8 @@ final class SessionStateTests: XCTestCase {
         let manager = SessionManager(path: tmpPath)
         manager.setActiveAccount("iCloud")
         XCTAssertEqual(manager.activeAccount, "iCloud")
-    }
-
-    func testSessionManagerClearAccountClearsMailbox() {
-        let manager = SessionManager(path: tmpPath)
-        manager.setActiveAccount("Work")
-        manager.setActiveMailbox("INBOX")
-        XCTAssertEqual(manager.activeMailbox, "INBOX")
         manager.setActiveAccount(nil)
         XCTAssertNil(manager.activeAccount)
-        XCTAssertNil(manager.activeMailbox)
     }
 
     func testSessionManagerRecordCommand() {
@@ -84,30 +70,6 @@ final class SessionStateTests: XCTestCase {
         XCTAssertEqual(manager.history.count, 100)
         XCTAssertEqual(manager.history.first, "cmd 10")
         XCTAssertEqual(manager.history.last, "cmd 109")
-    }
-
-    func testSessionManagerClearContext() {
-        let manager = SessionManager(path: tmpPath)
-        manager.setActiveAccount("Work")
-        manager.setActiveMailbox("Sent")
-        manager.setLastMessageId("Work||Sent||1")
-        manager.setLastEventId("evt-123")
-        manager.setLastReminderId("rem-456")
-        manager.setLastNoteId("note-789")
-        manager.clearContext()
-        XCTAssertNil(manager.activeAccount)
-        XCTAssertNil(manager.activeMailbox)
-        XCTAssertNil(manager.lastMessageId)
-        XCTAssertNil(manager.lastEventId)
-        XCTAssertNil(manager.lastReminderId)
-        XCTAssertNil(manager.lastNoteId)
-    }
-
-    func testSessionManagerClearHistory() {
-        let manager = SessionManager(path: tmpPath)
-        manager.recordCommand("test")
-        manager.clearHistory()
-        XCTAssertTrue(manager.history.isEmpty)
     }
 
     func testSessionManagerPersistence() {
@@ -134,11 +96,11 @@ final class SessionStateTests: XCTestCase {
     func testDistinctFieldMutationsBothPersistToDisk() {
         let m1 = SessionManager(path: tmpPath)
         m1.setActiveAccount("Work")
-        m1.setLastMessageId("Work||INBOX||7")
+        m1.recordCommand("mail list")
         // Fresh manager reads only what reached disk.
         let m2 = SessionManager(path: tmpPath)
         XCTAssertEqual(m2.activeAccount, "Work")
-        XCTAssertEqual(m2.lastMessageId, "Work||INBOX||7")
+        XCTAssertEqual(m2.history, ["mail list"])
     }
 
     func testConcurrentMutationsRemainConsistentAndDeadlockFree() {
@@ -161,17 +123,5 @@ final class SessionStateTests: XCTestCase {
         XCTAssertNotNil(reloaded.activeAccount, "an account mutation must survive on disk")
         XCTAssertFalse(reloaded.history.isEmpty, "a recorded command must survive on disk")
         XCTAssertLessThanOrEqual(reloaded.history.count, 100, "history cap holds under concurrency")
-    }
-
-    func testSessionManagerLastIds() {
-        let manager = SessionManager(path: tmpPath)
-        manager.setLastMessageId("iCloud||INBOX||99")
-        manager.setLastEventId("evt-abc")
-        manager.setLastReminderId("rem-def")
-        manager.setLastNoteId("x-coredata://123")
-        XCTAssertEqual(manager.lastMessageId, "iCloud||INBOX||99")
-        XCTAssertEqual(manager.lastEventId, "evt-abc")
-        XCTAssertEqual(manager.lastReminderId, "rem-def")
-        XCTAssertEqual(manager.lastNoteId, "x-coredata://123")
     }
 }

@@ -112,8 +112,6 @@ public enum MessagesAuditLog {
     }
 
     public static func now() -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f.string(from: Date())
+        ISO8601DateFormatter().string(from: Date())
     }
 }

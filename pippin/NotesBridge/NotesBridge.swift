@@ -476,16 +476,6 @@ enum NotesBridge {
     // MARK: - Decoder
 
     static func decode<T: Decodable>(_ type: T.Type, from json: String) throws -> T {
-        guard !json.isEmpty else {
-            throw NotesBridgeError.decodingFailed("osascript returned empty output — possible TCC denial")
-        }
-        guard let data = json.data(using: .utf8) else {
-            throw NotesBridgeError.decodingFailed("Non-UTF8 output")
-        }
-        do {
-            return try JSONDecoder().decode(type, from: data)
-        } catch {
-            throw NotesBridgeError.decodingFailed(error.localizedDescription)
-        }
+        try decodeScriptJSON(type, from: json, makeError: NotesBridgeError.decodingFailed)
     }
 }

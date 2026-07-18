@@ -6,11 +6,7 @@ public enum PromptInjectionScanner {
     public static func scan(text: String) -> ScanResult {
         var threats: [Threat] = []
 
-        threats += boundaryManipulationThreats(in: text)
-        threats += systemPromptOverrideThreats(in: text)
-        threats += dataExfiltrationThreats(in: text)
-        threats += roleHijackingThreats(in: text)
-        threats += toolInvocationThreats(in: text)
+        threats += ruleThreats(in: text)
         threats += encodingTricksThreats(in: text)
 
         let sanitized = sanitize(body: text, threats: threats)
@@ -164,118 +160,48 @@ public enum PromptInjectionScanner {
 
     // MARK: - Category scanners
 
-    private static func boundaryManipulationThreats(in text: String) -> [Threat] {
-        let patterns = [
-            ("\\[SYSTEM\\]", "System role delimiter tag [SYSTEM] detected"),
-            ("\\[INST\\]", "Instruction delimiter tag [INST] detected"),
-            ("<\\|im_start\\|>", "OpenAI chat markup <|im_start|> detected"),
-            ("<\\|im_end\\|>", "OpenAI chat markup <|im_end|> detected"),
-            ("###\\s*System", "Markdown system header '### System' detected"),
-            ("<system>", "HTML-like system tag <system> detected"),
-        ]
-        var threats: [Threat] = []
-        for (pattern, explanation) in patterns {
-            let matches = regexMatches(pattern: pattern, in: text)
-            for match in matches {
-                threats.append(Threat(
-                    category: .boundaryManipulation,
-                    confidence: 1.0,
-                    matchedText: match,
-                    explanation: explanation
-                ))
-            }
-        }
-        return threats
-    }
+    /// How a rule-table pattern matches: a raw regex, or a literal phrase made
+    /// whitespace-tolerant via `whitespaceTolerantPattern` (first match only).
+    private enum PatternKind { case regex, phrase }
 
-    private static func systemPromptOverrideThreats(in text: String) -> [Threat] {
-        let patterns: [(String, Float, String)] = [
-            ("ignore previous instructions", 1.0, "Attempt to override previous instructions"),
-            ("disregard your", 1.0, "Attempt to disregard AI guidelines"),
-            ("forget everything", 1.0, "Attempt to reset AI context"),
-            ("you are now", 0.3, "Attempt to redefine AI identity"),
-            ("act as if", 0.3, "Attempt to make AI act under false premise"),
-        ]
-        var threats: [Threat] = []
-        for (pattern, confidence, explanation) in patterns {
-            let matches = phraseMatches([pattern], in: text)
-            for match in matches {
-                threats.append(Threat(
-                    category: .systemPromptOverride,
-                    confidence: confidence,
-                    matchedText: match,
-                    explanation: explanation
-                ))
-            }
-        }
-        return threats
-    }
+    /// The always-on rule table: (category, pattern, kind, confidence, explanation).
+    private static let rulePatterns: [(ThreatCategory, String, PatternKind, Float, String)] = [
+        (.boundaryManipulation, "\\[SYSTEM\\]", .regex, 1.0, "System role delimiter tag [SYSTEM] detected"),
+        (.boundaryManipulation, "\\[INST\\]", .regex, 1.0, "Instruction delimiter tag [INST] detected"),
+        (.boundaryManipulation, "<\\|im_start\\|>", .regex, 1.0, "OpenAI chat markup <|im_start|> detected"),
+        (.boundaryManipulation, "<\\|im_end\\|>", .regex, 1.0, "OpenAI chat markup <|im_end|> detected"),
+        (.boundaryManipulation, "###\\s*System", .regex, 1.0, "Markdown system header '### System' detected"),
+        (.boundaryManipulation, "<system>", .regex, 1.0, "HTML-like system tag <system> detected"),
+        (.systemPromptOverride, "ignore previous instructions", .phrase, 1.0, "Attempt to override previous instructions"),
+        (.systemPromptOverride, "disregard your", .phrase, 1.0, "Attempt to disregard AI guidelines"),
+        (.systemPromptOverride, "forget everything", .phrase, 1.0, "Attempt to reset AI context"),
+        (.systemPromptOverride, "you are now", .phrase, 0.3, "Attempt to redefine AI identity"),
+        (.systemPromptOverride, "act as if", .phrase, 0.3, "Attempt to make AI act under false premise"),
+        (.dataExfiltration, "send the conversation", .phrase, 1.0, "Request to exfiltrate conversation history"),
+        (.dataExfiltration, "include your api key", .phrase, 1.0, "Request to include API key"),
+        (.dataExfiltration, "output your system prompt", .phrase, 1.0, "Request to reveal system prompt"),
+        (.dataExfiltration, "repeat your instructions", .phrase, 1.0, "Request to repeat internal instructions"),
+        (.roleHijacking, "you are a", .phrase, 0.3, "Attempt to redefine AI role"),
+        (.roleHijacking, "pretend to be", .phrase, 0.6, "Attempt to make AI impersonate another entity"),
+        (.roleHijacking, "from now on you", .phrase, 0.3, "Attempt to permanently change AI behavior"),
+        (.roleHijacking, "your new instructions", .phrase, 1.0, "Attempt to replace AI instructions"),
+        (.toolInvocation, "\\bfunc\\s+\\w+\\s*\\(", .regex, 1.0, "Function definition pattern suggesting hidden tool call"),
+        (.toolInvocation, "\\btool_call\\b", .regex, 1.0, "Explicit tool_call token detected"),
+        (.toolInvocation, "\\bfunction_call\\b", .regex, 1.0, "Explicit function_call token detected"),
+        (.toolInvocation, "<tool_use>", .regex, 1.0, "Tool use tag detected"),
+        (.toolInvocation, "\\binvoke\\s+\\w+", .regex, 1.0, "Invoke command pattern detected"),
+    ]
 
-    private static func dataExfiltrationThreats(in text: String) -> [Threat] {
-        let patterns = [
-            ("send the conversation", "Request to exfiltrate conversation history"),
-            ("include your api key", "Request to include API key"),
-            ("output your system prompt", "Request to reveal system prompt"),
-            ("repeat your instructions", "Request to repeat internal instructions"),
-        ]
-        var threats: [Threat] = []
-        for (pattern, explanation) in patterns {
-            let matches = phraseMatches([pattern], in: text)
-            for match in matches {
-                threats.append(Threat(
-                    category: .dataExfiltration,
-                    confidence: 1.0,
-                    matchedText: match,
-                    explanation: explanation
-                ))
+    private static func ruleThreats(in text: String) -> [Threat] {
+        rulePatterns.flatMap { category, pattern, kind, confidence, explanation -> [Threat] in
+            let matches: [String] = switch kind {
+            case .regex: regexMatches(pattern: pattern, in: text)
+            case .phrase: phraseMatches([pattern], in: text)
+            }
+            return matches.map {
+                Threat(category: category, confidence: confidence, matchedText: $0, explanation: explanation)
             }
         }
-        return threats
-    }
-
-    private static func roleHijackingThreats(in text: String) -> [Threat] {
-        let patterns: [(String, Float, String)] = [
-            ("you are a", 0.3, "Attempt to redefine AI role"),
-            ("pretend to be", 0.6, "Attempt to make AI impersonate another entity"),
-            ("from now on you", 0.3, "Attempt to permanently change AI behavior"),
-            ("your new instructions", 1.0, "Attempt to replace AI instructions"),
-        ]
-        var threats: [Threat] = []
-        for (pattern, confidence, explanation) in patterns {
-            let matches = phraseMatches([pattern], in: text)
-            for match in matches {
-                threats.append(Threat(
-                    category: .roleHijacking,
-                    confidence: confidence,
-                    matchedText: match,
-                    explanation: explanation
-                ))
-            }
-        }
-        return threats
-    }
-
-    private static func toolInvocationThreats(in text: String) -> [Threat] {
-        let patterns: [(String, String)] = [
-            ("\\bfunc\\s+\\w+\\s*\\(", "Function definition pattern suggesting hidden tool call"),
-            ("\\btool_call\\b", "Explicit tool_call token detected"),
-            ("\\bfunction_call\\b", "Explicit function_call token detected"),
-            ("<tool_use>", "Tool use tag detected"),
-            ("\\binvoke\\s+\\w+", "Invoke command pattern detected"),
-        ]
-        var threats: [Threat] = []
-        for (pattern, explanation) in patterns {
-            let matches = regexMatches(pattern: pattern, in: text)
-            for match in matches {
-                threats.append(Threat(
-                    category: .toolInvocation,
-                    confidence: 1.0,
-                    matchedText: match,
-                    explanation: explanation
-                ))
-            }
-        }
-        return threats
     }
 
     private static func encodingTricksThreats(in text: String) -> [Threat] {

@@ -72,12 +72,6 @@ public final class VoiceMemosDB: Sendable {
         return "\(home)/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/CloudRecordings.db"
     }
 
-    /// Default recordings directory (parent of the DB file).
-    public static func defaultRecordingsDir() -> String {
-        let home = NSHomeDirectory()
-        return "\(home)/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings"
-    }
-
     // MARK: - Init
 
     /// Open the Voice Memos database at the given path.
@@ -97,13 +91,6 @@ public final class VoiceMemosDB: Sendable {
         dbQueue = try Self.openQueue(path: dbPath, readonly: true)
         recordingsDir = (dbPath as NSString).deletingLastPathComponent
         try validateSchema()
-    }
-
-    /// Pre-flight check that the Voice Memos DB is readable without keeping
-    /// a handle open. Throws the same typed errors as `init(dbPath:)` — call
-    /// this from diagnostics, or rely on the init wrapping in normal code paths.
-    public static func checkAccess(dbPath: String? = nil) throws {
-        _ = try VoiceMemosDB(dbPath: dbPath ?? defaultDBPath())
     }
 
     /// Open a GRDB queue and convert any failure into `VoiceMemosError.accessDenied`.

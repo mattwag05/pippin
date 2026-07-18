@@ -13,9 +13,7 @@ public struct CachedTranscript: Codable, FetchableRecord, PersistableRecord, Sen
         self.memoId = memoId
         self.transcript = transcript
         self.provider = provider
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        transcribedAt = formatter.string(from: Date())
+        transcribedAt = ISO8601DateFormatter().string(from: Date())
     }
 
     enum CodingKeys: String, CodingKey {
@@ -35,11 +33,7 @@ public final class TranscriptCache: Sendable {
     private let dbQueue: DatabaseQueue
 
     public init(dbPath: String? = nil) throws {
-        let path = dbPath ?? TranscriptCache.defaultCachePath()
-        // Ensure directory exists
-        let dir = (path as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        dbQueue = try DatabaseQueue(path: path)
+        dbQueue = try openCacheQueue(path: dbPath ?? TranscriptCache.defaultCachePath())
         try migrate()
     }
 

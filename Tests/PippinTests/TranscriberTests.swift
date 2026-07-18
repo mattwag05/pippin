@@ -35,19 +35,6 @@ final class TranscriberTests: XCTestCase {
 
     // MARK: - TranscriberError descriptions
 
-    func testTranscriberErrorDescriptions() throws {
-        let errors: [TranscriberError] = [
-            .notAvailable,
-            .timeout,
-            .processFailed(1, "some error"),
-            .emptyOutput,
-        ]
-        for error in errors {
-            XCTAssertNotNil(error.errorDescription, "Error should have a description: \(error)")
-            XCTAssertFalse(try XCTUnwrap(error.errorDescription?.isEmpty))
-        }
-    }
-
     func testNotAvailableErrorContainsInstallCommand() {
         let error = TranscriberError.notAvailable
         XCTAssertTrue(

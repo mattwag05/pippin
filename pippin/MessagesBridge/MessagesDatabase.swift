@@ -525,9 +525,7 @@ public final class MessagesDatabase: Sendable {
     }
 
     static func iso8601(fromAppleNanos nanos: Int64) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.string(from: date(fromAppleNanos: nanos))
+        ISO8601DateFormatter().string(from: date(fromAppleNanos: nanos))
     }
 
     static func preview(_ text: String, limit: Int = 140) -> String {

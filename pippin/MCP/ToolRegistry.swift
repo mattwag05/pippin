@@ -38,13 +38,11 @@ struct MCPTool {
 enum MCPToolArgError: LocalizedError {
     case missingRequired(String)
     case wrongType(field: String, expected: String)
-    case unknownTool(String)
 
     var errorDescription: String? {
         switch self {
         case let .missingRequired(name): return "Missing required argument: \(name)"
         case let .wrongType(field, expected): return "Argument '\(field)' must be \(expected)"
-        case let .unknownTool(name): return "Unknown tool: \(name)"
         }
     }
 }

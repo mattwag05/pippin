@@ -59,9 +59,9 @@ The annotated tag (`-a`) is **required** — bare `git tag vX.Y.Z` fails with "n
 git push origin main --tags
 ```
 
-**Before tagging**, run `make ci` (or `make ci-vm`) locally and confirm green — the GitHub `ci.yml` build/test workflow is **disabled**, so nothing on push catches build/test failures.
+**Before tagging**, run `make ci` (or `make ci-vm`) locally and confirm green — there is no GitHub build/test workflow (`ci.yml` deleted), so nothing on push catches build/test failures.
 
-The GitHub **`release.yml` workflow is also disabled** (pippin-6qi — its `macos-15` runner kept cancelling). The tag push fires the self-hosted **`.forgejo/workflows/release.yaml`** (publishes to the tailnet Forgejo), but the **GitHub release is published locally** — do it now:
+There is **no GitHub `release.yml` workflow** (disabled pippin-6qi — its `macos-15` runner kept cancelling — then deleted). The tag push fires the self-hosted **`.forgejo/workflows/release.yaml`** (publishes to the tailnet Forgejo), but the **GitHub release is published locally** — do it now:
 
 ```bash
 make tarball   # → .build/release-artifacts/pippin-X.Y.Z-arm64-macos.tar.gz
@@ -124,7 +124,7 @@ The claude-plugins `pippin` plugin's `.mcp.json` uses bare `pippin`, so the shad
 
 ## Failure recovery
 
-- **GitHub release missing after a tag push**: the GitHub `release.yml` is **disabled** (pippin-6qi — `macos-15` runner kept cancelling), so a tag push never auto-creates the GitHub release. This is expected — publishing it locally is **step 6**, not a recovery action. If you skipped it, run the `make tarball` + `gh release create` recipe in step 6.
+- **GitHub release missing after a tag push**: there is no GitHub `release.yml` workflow (disabled pippin-6qi, then deleted), so a tag push never auto-creates the GitHub release. This is expected — publishing it locally is **step 6**, not a recovery action. If you skipped it, run the `make tarball` + `gh release create` recipe in step 6.
 - **Tap push rejected**: someone else updated the tap. `cd /opt/homebrew/Library/Taps/mattwag05/homebrew-tap && git pull --rebase && git push`.
 - **`brew upgrade` says "already up to date"**: `brew update` first, then retry.
 - **`brew upgrade`/`reinstall` fails `build.rb ... exited with 1` (Homebrew 6.0.x tap-trust)**: Homebrew 6.0 added a global tap-trust gate whose in-sandbox check fails the build (with no log) when *any* tap is untrusted — and on 6.0.1 it **still fails even after `brew trust`ing every tap** (verified 2026-06-12: trusting cleared the *warning* but not the build error). Do **NOT** waste time on `brew trust mattwag05/tap/pippin` — pippin's tap is already trusted; that's never the culprit. The reliable workaround is the env-var bypass: `HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew upgrade pippin` (or set it in your shell rc until Homebrew fixes the gate). The release artifacts are unaffected — the checksum verifies and the binary installs fine under the bypass. Since agents run `~/.local/bin/pippin` (step 10's `make install`), a brew-path hiccup doesn't block the release.

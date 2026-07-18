@@ -22,20 +22,8 @@ public struct MLXAudioTranscriber: Transcriber {
 
 public enum TranscriberError: LocalizedError, Sendable {
     case notAvailable
-    case timeout
-    case processFailed(Int, String)
-    case emptyOutput
 
     public var errorDescription: String? {
-        switch self {
-        case .notAvailable:
-            return "mlx-audio not installed. Install with: pip install mlx-audio"
-        case .timeout:
-            return "Transcription timed out"
-        case let .processFailed(code, detail):
-            return "Transcription failed (exit \(code)): \(detail)"
-        case .emptyOutput:
-            return "Transcription produced no output"
-        }
+        "mlx-audio not installed. Install with: pip install mlx-audio"
     }
 }

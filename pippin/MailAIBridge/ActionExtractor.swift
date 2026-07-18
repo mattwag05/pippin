@@ -17,17 +17,6 @@ public enum ActionExtractor {
 
     private static let batchSize = 10
 
-    /// Convenience: extract under an unlimited budget (CLI/tests). Discards the
-    /// `timedOut` flag (always false here) and throws on the first batch error,
-    /// preserving the original fail-fast contract.
-    public static func extract(
-        items: [Item],
-        provider: any AIProvider,
-        minConfidence: Float = 0.5
-    ) throws -> [ExtractedAction] {
-        try extract(items: items, provider: provider, minConfidence: minConfidence, budget: BatchBudget(softTimeoutMs: 0)).actions
-    }
-
     /// Budget-aware extraction: bounds the whole AI pass by `budget` so an MCP
     /// caller gets partial results + `timedOut: true` instead of a 60s SIGKILL
     /// halfway through. Under an unlimited budget (CLI) it waits for every batch

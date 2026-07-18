@@ -108,12 +108,23 @@ public func printAgentProjectedJSON(
     startedAt: Date = Date(),
     warnings: [String]? = nil
 ) throws {
+    try print(projectedAgentJSON(value, fields: fields, startedAt: startedAt, warnings: warnings))
+}
+
+/// String form of the projected ok-envelope. The single definition of the
+/// hand-built frame, which MUST stay in lockstep with `AgentOkEnvelope`
+/// (v/status/duration_ms/warnings) — hand-built because `data` here is an
+/// opaque, already-projected JSON object, not a typed `Encodable` the generic
+/// envelope can wrap. `AgentEnvelopeTests.testProjectedFrameMatchesTyped`
+/// fails if the two diverge. Shared by `printAgentProjectedJSON` (CLI stdout)
+/// and `MCPInProcessTools.projectedEnvelope` (in-process tool results).
+public func projectedAgentJSON(
+    _ value: some Encodable,
+    fields: [String],
+    startedAt: Date = Date(),
+    warnings: [String]? = nil
+) throws -> String {
     let projected = try FieldProjection.projectedObject(value, fields: fields)
-    // This frame MUST stay in lockstep with `AgentOkEnvelope` (v/status/
-    // duration_ms/warnings) — it's hand-built because `data` here is an opaque,
-    // already-projected JSON object, not a typed `Encodable` the generic
-    // envelope can wrap. `AgentEnvelopeTests.testProjectedFrameMatchesTyped`
-    // fails if the two diverge.
     var envelope: [String: Any] = [
         "v": AGENT_SCHEMA_VERSION,
         "status": "ok",
@@ -124,7 +135,7 @@ public func printAgentProjectedJSON(
         envelope["warnings"] = warnings
     }
     let data = try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])
-    print(String(data: data, encoding: .utf8)!)
+    return String(decoding: data, as: UTF8.self)
 }
 
 // MARK: - Agent Error Output

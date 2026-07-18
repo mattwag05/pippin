@@ -137,15 +137,12 @@ enum MCPServerRuntime {
 
 enum MCPServerRuntimeError: LocalizedError {
     case processLaunchFailed(String, underlying: Error)
-    case childCrashed(signal: Int32)
     case childTimedOut(seconds: Int)
 
     var errorDescription: String? {
         switch self {
         case let .processLaunchFailed(path, error):
             return "Failed to launch child pippin at \(path): \(error.localizedDescription)"
-        case let .childCrashed(signal):
-            return "pippin child exited with signal \(signal)"
         case let .childTimedOut(seconds):
             return "pippin child exceeded \(seconds)s and was terminated. Narrow the request (--account, --mailbox, --limit) or rerun with a more specific query."
         }

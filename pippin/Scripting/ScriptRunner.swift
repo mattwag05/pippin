@@ -147,3 +147,19 @@ public enum ScriptRunner {
         return stdoutStr
     }
 }
+
+/// Decode JSON emitted by an osascript bridge script. Failures route through
+/// `makeError` so each bridge keeps its own typed decoding error.
+public func decodeScriptJSON<T: Decodable>(_ type: T.Type, from json: String, makeError: (String) -> some Error) throws -> T {
+    guard !json.isEmpty else {
+        throw makeError("osascript returned empty output — possible TCC denial")
+    }
+    guard let data = json.data(using: .utf8) else {
+        throw makeError("Non-UTF8 output")
+    }
+    do {
+        return try JSONDecoder().decode(type, from: data)
+    } catch {
+        throw makeError(error.localizedDescription)
+    }
+}

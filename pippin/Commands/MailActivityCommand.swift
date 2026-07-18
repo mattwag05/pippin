@@ -67,7 +67,7 @@ public extension MailCommand {
                 )
             }
             let messages = await MailCommand.enrichContacts(outcome.messages, options: contactResolution)
-            try output.emit(messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
+            try output.emit(messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
                 printMessageTable(messages)
             }
         }

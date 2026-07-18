@@ -3,6 +3,16 @@ import ArgumentParser
 import XCTest
 
 final class ActionsCommandTests: XCTestCase {
+    /// Unlimited-budget shorthand for the budget-aware extract: fail-fast,
+    /// actions only (the shape the CLI convenience overload used to provide).
+    private func extractUnbounded(
+        items: [ActionExtractor.Item],
+        provider: any AIProvider,
+        minConfidence: Float = 0.5
+    ) throws -> [ExtractedAction] {
+        try ActionExtractor.extract(items: items, provider: provider, minConfidence: minConfidence, budget: BatchBudget(softTimeoutMs: 0)).actions
+    }
+
     // MARK: - Configuration
 
     func testActionsCommandName() {
@@ -179,7 +189,7 @@ final class ActionsCommandTests: XCTestCase {
             ActionExtractor.Item(source: .mail, sourceId: "1", sourceTitle: "Email", text: "I'll send you Q3."),
             ActionExtractor.Item(source: .note, sourceId: "2", sourceTitle: "Note", text: "Maybe later."),
         ]
-        let results = try ActionExtractor.extract(items: items, provider: provider, minConfidence: 0.5)
+        let results = try extractUnbounded(items: items, provider: provider)
         XCTAssertEqual(results.count, 1)
         XCTAssertEqual(results[0].proposedTitle, "Send Q3")
         XCTAssertEqual(results[0].source, .mail)
@@ -196,7 +206,7 @@ final class ActionsCommandTests: XCTestCase {
             ActionExtractor.Item(source: .mail, sourceId: "a", sourceTitle: "Mail", text: "Nothing here."),
             ActionExtractor.Item(source: .note, sourceId: "b", sourceTitle: "Note", text: "I'll draft the report."),
         ]
-        let results = try ActionExtractor.extract(items: items, provider: provider, minConfidence: 0.5)
+        let results = try extractUnbounded(items: items, provider: provider)
         XCTAssertEqual(results.count, 1)
         XCTAssertEqual(results[0].source, .note)
         XCTAssertEqual(results[0].sourceId, "b")
@@ -212,21 +222,21 @@ final class ActionsCommandTests: XCTestCase {
         """
         let provider = FakeActionProvider(response: json)
         let items = [ActionExtractor.Item(source: .mail, sourceId: "1", sourceTitle: nil, text: "I'll follow up.")]
-        let results = try ActionExtractor.extract(items: items, provider: provider, minConfidence: 0.5)
+        let results = try extractUnbounded(items: items, provider: provider)
         XCTAssertEqual(results.count, 1)
     }
 
     func testExtractThrowsOnMalformedResponse() throws {
         let provider = FakeActionProvider(response: "not json at all")
         let items = [ActionExtractor.Item(source: .mail, sourceId: "1", sourceTitle: nil, text: "body")]
-        XCTAssertThrowsError(try ActionExtractor.extract(items: items, provider: provider)) { error in
+        XCTAssertThrowsError(try extractUnbounded(items: items, provider: provider)) { error in
             XCTAssertTrue(error is ActionExtractorError)
         }
     }
 
     func testExtractReturnsEmptyForEmptyItems() throws {
         let provider = FakeActionProvider(response: "{\"actions\":[]}")
-        let results = try ActionExtractor.extract(items: [], provider: provider)
+        let results = try extractUnbounded(items: [], provider: provider)
         XCTAssertTrue(results.isEmpty)
     }
 

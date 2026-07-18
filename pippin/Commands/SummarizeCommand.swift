@@ -221,7 +221,6 @@ public struct SummarizeCommand: AsyncParsableCommand {
 
         // 2. Build user prompt
         let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime]
         let userPrompt = """
         Title: \(memo.title)
         Duration: \(TextFormatter.duration(memo.durationSeconds))

@@ -1,7 +1,7 @@
 # Local CI — running the macOS CI gates off GitHub-hosted runners
 
 The GitHub-hosted `macos-15` runners are slow and queue-bound. As of 2026-06-01
-pippin's `ci.yml` workflow is **disabled** (`gh workflow disable ci.yml`) and CI
+pippin's GitHub `ci.yml` workflow is **deleted** (disabled 2026-06, removed 2026-07) and CI
 runs locally on Apple Silicon instead. Two tiers:
 
 | Command | Where | Speed | Use |

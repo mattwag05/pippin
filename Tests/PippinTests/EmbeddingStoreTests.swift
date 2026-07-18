@@ -18,45 +18,18 @@ final class EmbeddingStoreTests: XCTestCase {
         )
     }
 
-    func testGetMissReturnsNil() throws {
-        let store = try makeStore()
-        let result = try store.get(compoundId: "nonexistent||INBOX||0")
-        XCTAssertNil(result)
-    }
-
-    func testUpsertAndGet() throws {
+    func testUpsertRoundTrip() throws {
         let store = try makeStore()
         let record = makeRecord()
         try store.upsert(record)
-        let fetched = try store.get(compoundId: record.compoundId)
-        XCTAssertNotNil(fetched)
+        XCTAssertTrue(store.exists(compoundId: record.compoundId))
+        XCTAssertFalse(store.exists(compoundId: "nonexistent||INBOX||0"))
+        let fetched = try store.allEmbeddings().first
         XCTAssertEqual(fetched?.compoundId, record.compoundId)
         XCTAssertEqual(fetched?.bodyHash, record.bodyHash)
         XCTAssertEqual(fetched?.model, record.model)
         XCTAssertEqual(fetched?.indexedAt, record.indexedAt)
         XCTAssertEqual(fetched?.embedding, record.embedding)
-    }
-
-    func testNeedsReindexNewId() throws {
-        let store = try makeStore()
-        let result = try store.needsReindex(compoundId: "new||INBOX||99", bodyHash: "somehash")
-        XCTAssertTrue(result)
-    }
-
-    func testNeedsReindexSameHash() throws {
-        let store = try makeStore()
-        let record = makeRecord(id: "a||INBOX||1", hash: "fixed-hash")
-        try store.upsert(record)
-        let result = try store.needsReindex(compoundId: record.compoundId, bodyHash: "fixed-hash")
-        XCTAssertFalse(result)
-    }
-
-    func testNeedsReindexChangedHash() throws {
-        let store = try makeStore()
-        let record = makeRecord(id: "a||INBOX||1", hash: "old-hash")
-        try store.upsert(record)
-        let result = try store.needsReindex(compoundId: record.compoundId, bodyHash: "new-hash")
-        XCTAssertTrue(result)
     }
 
     func testCount() throws {
