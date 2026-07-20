@@ -108,3 +108,9 @@ In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — strin
 **GRDB `row["col"]` TRAPS on NULL:** decode system-DB columns optionally (`row["col"] as T?`) with a fallback. Apple's Voice Memos/Messages DBs store NULLs (e.g. ZPATH for a not-yet-downloaded recording); one NULL row otherwise crashes the whole list.
 
 **Deleting enum cases — grep the bare `.caseName` too**, not just `Type.caseName`: Swift's implicit member syntax (`[.notAvailable, .timeout]`, `case .timeout:`) won't match a `Type\.` grep pattern, and tests commonly enumerate cases that way. A missed hit costs a full ~12-min CI round trip (TranscriberTests, 2026-07-18).
+
+## OpenAI-compat native JSON (`jsonMode` / `response_format`, pippin-us2)
+
+Provider behavior for `AICompletionOptions(jsonMode: true)`: **Ollama** adds `format: "json"` (on by default — safe for `gemma4`; thinking models are served via the OpenAI-compat path, not Ollama). **Claude** is a no-op (no native mode). **OpenAI-compat** sends `response_format: {"type":"json_object"}` only when `ai.openai.structuredOutputs: true` **and** the prompt contains the word "json" (`OpenAIProvider.mentionsJSON` — real OpenAI 400s the request without it).
+
+Verified against a local MLX-based OpenAI-compatible server running Qwen3.6-35B-A3B-4bit (2026-06-12): it accepts `response_format: json_object` and returns clean JSON with `finish_reason: stop` — `response_format` alone suppresses Qwen3.6's default thinking output. The `chat_template_kwargs: {enable_thinking: false}` knob is NOT needed and is not sent, since it would 400 real OpenAI. Without `response_format`, the same model emits "Here's a thinking process…" prose and truncates at `finish_reason: length`. All consumers still strip fences (`stripAIResponseJSON`) and `do` self-repairs, so jsonMode is a best-effort enhancement, not a correctness dependency.

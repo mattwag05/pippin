@@ -17,6 +17,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Documentation
 
 - [docs] README now documents the `openai` provider (any OpenAI-compatible Chat Completions endpoint) alongside Ollama and Claude in the AI Configuration section.
+- [docs] Gotcha docs: jxa.md gains the Mail scan-window direction probe invariant (GitHub #23/#24); swift.md gains OpenAI-compat native JSON (`jsonMode`/`response_format`) per-provider behavior and the Qwen thinking-suppression verification notes.
 
 ## [0.34.0] - 2026-07-17
 

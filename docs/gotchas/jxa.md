@@ -13,6 +13,10 @@ Format: `account||mailbox||numericId`. Parsed in `MailBridge` and `CompoundId` h
 - `jsResolveMailbox()` resolves user aliases (`Trash`, `Junk`, `Sent`, `Drafts`) to the provider-correct mailbox via JXA special accessors (`acct.trash()`, etc.) — required because folder names vary by provider (Gmail, iCloud, Exchange).
 - Tests assert on generated script *strings* — no osascript execution needed.
 
+## Mail scan-window direction probe (GitHub #23/#24)
+
+`list`/`search`/`activity` JXA must NOT assume `mailbox.messages()` is oldest-first — collection direction varies. The builders probe the actual direction (two `dateSent()` reads) and walk the true newest-N window. Assuming an order reintroduced #23/#24: `activity` surfaced 2018 mail and date-filtered searches returned empty. `search --after` early-breaks once past the cutoff; `--before` binary-searches `dateSent()` to shift the window.
+
 ## IMAP body fetch
 
 - Always call `msg.content()` before `msg.htmlContent()` — `content()` triggers the IMAP body download.
