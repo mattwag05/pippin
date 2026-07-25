@@ -9,10 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-07-25
+
 ### Changed
 
 - [refactor] Repo-wide over-engineering cleanup (ponytail audit): removed never-written REPL session-context tracking (`shell`'s `context` now shows account + history only; `session.json` drops the always-null mailbox/last-id fields), dead API (`EmbeddingStore.get`/`needsReindex`, `VoiceMemosDB.checkAccess`/`defaultRecordingsDir`, never-thrown `TranscriberError` cases, never-constructed MCP error cases), and deduplicated shared helpers (bridge JSON decode, projected-envelope frame, cache DB open, injection-scanner rule table, redundant ISO8601 formatter options). No behavior change outside the REPL `context` display.
 - [ci] Deleted the disabled GitHub `ci.yml`/`release.yml` workflows — superseded by Forgejo Tart CI and the local release procedure since 2026-06; CodeQL and unicode-scan remain on the GitHub mirror.
+- [ci] Added the shared-workflows gitleaks full-history secret scan (test fixtures allowlisted); repo sanitized of personal/homelab references ahead of public visibility.
 
 ### Documentation
 
@@ -835,7 +838,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/mattwag05/pippin/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/mattwag05/pippin/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/mattwag05/pippin/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/mattwag05/pippin/compare/v0.32.0...v0.32.1
