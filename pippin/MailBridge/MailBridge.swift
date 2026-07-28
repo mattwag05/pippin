@@ -524,7 +524,7 @@ enum MailBridge {
     /// live.
     static func readMessage(compoundId: String, cache: MailBodyCache? = MailBodyCache.shared) throws -> MailMessage {
         if let cached = cache?.get(compoundId: compoundId) {
-            return cached.withDetectedHeaderAnomalies()
+            return cached.withDetectedHeaderAnomalies(extra: baselineWarnings(for: cached))
         }
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         let script = buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
@@ -533,7 +533,21 @@ enum MailBridge {
         let json = try runScript(script, timeoutSeconds: 45)
         let message = try decode(MailMessage.self, from: json)
         cache?.put(message)
-        return message.withDetectedHeaderAnomalies()
+        return message.withDetectedHeaderAnomalies(extra: baselineWarnings(for: message))
+    }
+
+    /// Sender-baseline deviation check (pippin-ml9): compare this message's
+    /// header fingerprint against the sender's history, record it, and return
+    /// warnings. No-ops (empty) when headers are missing or the store is
+    /// unavailable — never blocks a read.
+    static func baselineWarnings(for message: MailMessage, store: SenderBaselineStore? = SenderBaselineStore.shared) -> [String] {
+        guard let store,
+              let headers = message.headers, !headers.isEmpty,
+              let sender = HeaderAnomalies.emailAddress(in: message.from) else { return [] }
+        return store.checkAndRecord(
+            compoundId: message.id, sender: sender,
+            fingerprint: SenderFingerprint.extract(headers: headers)
+        )
     }
 
     // MARK: - Cached bulk preview (mail list --preview)

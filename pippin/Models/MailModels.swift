@@ -163,15 +163,17 @@ public extension MailMessage {
     /// Return a copy with `headerAnomalies` recomputed from this message's own
     /// headers (pippin-0pk). Applied by `MailBridge.readMessage` on both the
     /// live-fetch and cache-hit paths, so pre-existing cache entries gain the
-    /// field too.
-    func withDetectedHeaderAnomalies() -> MailMessage {
-        MailMessage(
+    /// field too. `extra` appends sender-baseline deviation warnings
+    /// (pippin-ml9) after the stateless checks.
+    func withDetectedHeaderAnomalies(extra: [String] = []) -> MailMessage {
+        let warnings = (HeaderAnomalies.detect(from: from, to: to, headers: headers) ?? []) + extra
+        return MailMessage(
             id: id, account: account, mailbox: mailbox, subject: subject,
             from: from, to: to, date: date, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
             fromContact: fromContact,
-            headerAnomalies: HeaderAnomalies.detect(from: from, to: to, headers: headers)
+            headerAnomalies: warnings.isEmpty ? nil : warnings
         )
     }
 }

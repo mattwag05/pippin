@@ -5,7 +5,7 @@ public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Activity.self, Show.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, MailIndex.self, MailSanitize.self, MailExtract.self, MailTriage.self, Watch.self, Cache.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Activity.self, Show.self, Verify.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, MailIndex.self, MailSanitize.self, MailExtract.self, MailTriage.self, Watch.self, Cache.self]
     )
 
     public init() {}
@@ -707,6 +707,109 @@ public struct MailCommand: AsyncParsableCommand {
                 } else {
                     print(TextFormatter.card(fields: MailCommand.showCardFields(message, body: message.body ?? "(no body)")))
                 }
+            }
+        }
+    }
+
+    // MARK: - Verify (pippin-ml9)
+
+    public struct Verify: AsyncParsableCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "verify",
+            abstract: "Inspect a message's headers against the sender's historical baseline (phishing check)."
+        )
+
+        @Argument(help: "Message id from `pippin mail list` output.")
+        public var messageId: String
+
+        @Flag(name: .customLong("no-cache"), help: "Bypass the local body cache and force a live IMAP fetch.")
+        public var noCache: Bool = false
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        struct DimensionReport: Codable {
+            let dimension: String
+            let name: String
+            let current: String
+            let prior: [String: Int]
+            let deviation: Bool
+        }
+
+        struct VerifyReport: Codable {
+            let id: String
+            let from: String
+            let subject: String
+            let date: String
+            let sender: String?
+            let priorMessages: Int
+            let dimensions: [DimensionReport]
+            let anomalies: [String]?
+            let verdict: String
+        }
+
+        public mutating func run() async throws {
+            let id = messageId
+            let useCache = noCache ? nil : MailBodyCache.shared
+            // readMessage spawns a blocking osascript subprocess; hop off the
+            // pool. It also runs the anomaly + baseline checks and records
+            // this message's fingerprint.
+            let message = try await detachBlocking { try MailBridge.readMessage(compoundId: id, cache: useCache) }
+
+            let sender = HeaderAnomalies.emailAddress(in: message.from)
+            let fingerprint = message.headers.map { SenderFingerprint.extract(headers: $0) } ?? [:]
+            let baseline = sender.flatMap { SenderBaselineStore.shared?.baseline(sender: $0, excluding: message.id) } ?? [:]
+
+            let dimensions = fingerprint.sorted(by: { $0.key < $1.key }).map { dim, current in
+                DimensionReport(
+                    dimension: dim,
+                    name: SenderFingerprint.dimensionNames[dim] ?? dim,
+                    current: current,
+                    prior: baseline[dim] ?? [:],
+                    deviation: SenderBaselineStore.isDeviation(prior: baseline[dim] ?? [:], current: current)
+                )
+            }
+            let priorMessages = dimensions.map { $0.prior.values.reduce(0, +) }.max() ?? 0
+
+            let verdict: String
+            if let anomalies = message.headerAnomalies, !anomalies.isEmpty {
+                verdict = "SUSPICIOUS: \(anomalies.count) warning(s) — verify with the sender out-of-band before acting on this message"
+            } else if priorMessages < SenderBaselineStore.minBaselineCount {
+                verdict = "INCONCLUSIVE: no structural anomalies, but only \(priorMessages) prior message(s) from this sender — baseline comparison not yet meaningful"
+            } else {
+                verdict = "CONSISTENT: headers match this sender's baseline (\(priorMessages) prior messages) and no structural anomalies. Not proof of authenticity — a compromised account passes every check."
+            }
+
+            let report = VerifyReport(
+                id: message.id, from: message.from, subject: message.subject, date: message.date,
+                sender: sender, priorMessages: priorMessages, dimensions: dimensions,
+                anomalies: message.headerAnomalies, verdict: verdict
+            )
+
+            if output.isJSON {
+                try printJSON(report)
+            } else if output.isAgent {
+                try output.printAgent(report)
+            } else {
+                print("From:    \(report.from)")
+                print("Subject: \(report.subject)")
+                print("Date:    \(report.date)")
+                print("")
+                for dim in report.dimensions {
+                    let priorText = dim.prior.isEmpty
+                        ? "no history"
+                        : dim.prior.sorted(by: { $0.value > $1.value }).map { "\($0.key) ×\($0.value)" }.joined(separator: ", ")
+                    print("\(dim.deviation ? "⚠️" : "  ") \(dim.name): \(dim.current)  (prior: \(priorText))")
+                }
+                print("")
+                if let anomalies = report.anomalies {
+                    for warning in anomalies {
+                        print("⚠️  \(warning)")
+                    }
+                    print("")
+                }
+                print(report.verdict)
             }
         }
     }

@@ -11,6 +11,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [feat] Per-sender header baselining (pippin-0pk phase 2): `mail show` now also flags deviations from the sender's OWN history — DKIM signing domain/selector, Message-ID domain, Date TZ offset, and SPF/DKIM/DMARC results are fingerprinted into `~/.config/pippin/mail-baseline.db` on every read, and a value diverging from an invariant baseline (≥3 prior messages) adds a `headerAnomalies` warning. Catches what absolute rules can't: the 2026-07-27 phish passed every auth check but diverged on TZ offset (-0500 vs the contact's invariant -0400). New `mail verify <id>` command + `mail_verify` MCP tool report the full per-dimension baseline comparison with a verdict. Closes pippin-ml9 (deep raw-source auth-chain parse and list/search surfacing remain follow-ons).
+
 - [feat] `mail show` now surfaces structural header anomalies in a `headerAnomalies` field (agent/JSON) and a `⚠ Anomalies` card line (text): Reply-To on a different domain than the sender, hidden recipients (undisclosed-recipients / Bcc delivery), and explicit SPF/DKIM/DMARC failures. Auth passes never suppress a warning — a compromised account signs its phish with valid DKIM (real 2026-07-27 incident). Flows to the `mail_show` MCP tool automatically. Closes pippin-0pk (stateless checks; per-contact baselining tracked separately).
 
 ### Changed

@@ -66,6 +66,15 @@ enum HeaderAnomalies {
         return warnings.isEmpty ? nil : warnings
     }
 
+    /// Lowercased full email address in a header value like
+    /// `"Jane Doe" <jane@example.com>` or a bare `jane@example.com`.
+    /// Baseline-store sender key (pippin-ml9).
+    static func emailAddress(in value: String) -> String? {
+        guard let domain = emailDomain(in: value), let at = value.lastIndex(of: "@") else { return nil }
+        let local = String(value[..<at].reversed().prefix(while: { !"< ,;\"".contains($0) }).reversed())
+        return local.isEmpty ? nil : "\(local)@\(domain)".lowercased()
+    }
+
     /// Lowercased domain of the (first) email address in a header value like
     /// `"Jane Doe" <jane@example.com>` or a bare `jane@example.com`.
     static func emailDomain(in value: String) -> String? {

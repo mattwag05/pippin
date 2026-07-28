@@ -159,6 +159,26 @@ else
   SKIP=$((SKIP+1)); echo "  SKIP  mail fast-path/JXA id parity (fast path unavailable — no FDA or unknown schema)"
 fi
 
+# --- pippin-ml9: mail verify — baseline report shape on a live message
+VID="$("$BIN" mail list --limit 1 --no-contacts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    rows = d['data'] if isinstance(d['data'], list) else d['data'].get('messages', [])
+    print(rows[0]['id'] if rows else '')
+except Exception:
+    print('')")"
+if [[ -n "$VID" ]]; then
+  run "mail verify report shape (pippin-ml9)" "
+isinstance(d['data'].get('verdict'), str)
+and isinstance(d['data'].get('dimensions'), list)
+and len(d['data']['dimensions']) == 7
+and all('current' in x and 'prior' in x and 'deviation' in x for x in d['data']['dimensions'])" \
+    -- mail verify "$VID"
+else
+  SKIP=$((SKIP+1)); echo "  SKIP  mail verify (no message id available)"
+fi
+
 # --- Notes (JXA)
 run "notes list"       "isinstance(d['data'], list)"                    -- notes list --limit 3
 # pippin-jum: agent list is body-less (HTML body only via `notes show`) and

@@ -23,7 +23,7 @@ final class InProcessToolsTests: XCTestCase {
 
     func testRegistryToolCount() {
         XCTAssertEqual(
-            MCPToolRegistry.tools.count, 47,
+            MCPToolRegistry.tools.count, 48,
             "update this count when adding/removing MCP tools (and docs/mcp-server.md)"
         )
     }

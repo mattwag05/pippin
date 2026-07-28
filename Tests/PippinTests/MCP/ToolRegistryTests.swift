@@ -167,7 +167,7 @@ final class ToolRegistryTests: XCTestCase {
             return .object(["conversationId": .string("iMessage;-;+15551234567")])
         case "messages_send":
             return .object(["to": .string("+15551234567"), "body": .string("hi")])
-        case "mail_show", "mail_attachments":
+        case "mail_show", "mail_verify", "mail_attachments":
             return .object(["messageId": .string("a||b||1")])
         case "reminders_show", "reminders_complete":
             return .object(["id": .string("123")])

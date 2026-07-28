@@ -4,11 +4,11 @@
 
 ## What you get
 
-47 tools spanning the commonly scripted pippin surfaces:
+48 tools spanning the commonly scripted pippin surfaces:
 
 | Area | Tools |
 |---|---|
-| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_activity`, `mail_show`, `mail_search`, `mail_attachments` |
+| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_activity`, `mail_show`, `mail_verify`, `mail_search`, `mail_attachments` |
 | Calendar | `calendar_list`, `calendar_events`, `calendar_today`, `calendar_remaining`, `calendar_upcoming`, `calendar_search`, `calendar_create` |
 | Reminders | `reminders_lists`, `reminders_list`, `reminders_show`, `reminders_search`, `reminders_create`, `reminders_complete` |
 | Contacts | `contacts_search`, `contacts_show` |
@@ -215,7 +215,7 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 
 ## Known consumers
 
-- **Agent gateway** — registers `pippin mcp-server` as a stdio MCP and drives the 47 tools natively.
+- **Agent gateway** — registers `pippin mcp-server` as a stdio MCP and drives the 48 tools natively.
 - **Claude Code / Claude Desktop** — register via `claude mcp add` or the desktop config JSON; both pick up tools automatically on restart.
 - **Morning-briefing scheduled task** — still shells out to the pippin CLI directly (no migration planned; the task is single-shot enough that MCP doesn't add value).
 
