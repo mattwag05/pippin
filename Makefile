@@ -10,20 +10,26 @@ build:
 # with Xcode installed it picks the Xcode SDK (XCTest present); on a CLT-only
 # macOS 26 host the CLT SDK lacks XCTest.framework so `swift test` fails with
 # "no such module XCTest". The preflight below detects that: if XCTest isn't in
-# the selected SDK but Xcode is installed, it transparently runs under Xcode's
-# DEVELOPER_DIR so `make test` just works; otherwise it prints an actionable
-# error instead of the cryptic compiler message. See pippin-ncr.
+# the selected SDK but an Xcode (any name — Xcode.app, Xcode-beta.app) is
+# installed, it transparently runs under that DEVELOPER_DIR so `make test` just
+# works; otherwise it prints an actionable error instead of the cryptic
+# compiler message. Probe checks the framework dir directly — `xcrun --find
+# xctest` gives false results under CLT. See pippin-ncr, pippin-eby.
 test:
-	@if xcrun --sdk macosx --find xctest >/dev/null 2>&1; then \
+	@platform="$$(xcrun --sdk macosx --show-sdk-platform-path 2>/dev/null)"; \
+	if [ -d "$$platform/Developer/Library/Frameworks/XCTest.framework" ]; then \
 		xcrun --sdk macosx swift test; \
-	elif [ -d /Applications/Xcode.app/Contents/Developer ]; then \
-		echo "make: XCTest not in the selected SDK (Command Line Tools); using Xcode's toolchain."; \
-		DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun --sdk macosx swift test; \
 	else \
-		echo "ERROR: XCTest.framework is unavailable — the Command Line Tools SDK on macOS 26 does not ship it."; \
-		echo "Install Xcode, or set DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer, then re-run 'make test'."; \
-		echo "See pippin-ncr."; \
-		exit 1; \
+		xcode_dev="$$(ls -d /Applications/Xcode*.app/Contents/Developer 2>/dev/null | sort | head -1)"; \
+		if [ -n "$$xcode_dev" ]; then \
+			echo "make: XCTest not in the selected SDK (Command Line Tools); using $$xcode_dev."; \
+			DEVELOPER_DIR="$$xcode_dev" xcrun --sdk macosx swift test; \
+		else \
+			echo "ERROR: XCTest.framework is unavailable — the Command Line Tools SDK on macOS 26 does not ship it."; \
+			echo "Install Xcode, or set DEVELOPER_DIR to an Xcode developer dir, then re-run 'make test'."; \
+			echo "See pippin-ncr / pippin-eby."; \
+			exit 1; \
+		fi; \
 	fi
 
 lint:
@@ -39,7 +45,7 @@ e2e:
 # Full CI gate run NATIVELY on this host (fast, no VM). Mirrors ci.yml.
 ci:
 	xcrun --sdk macosx swift build -c release
-	xcrun --sdk macosx swift test
+	@$(MAKE) test
 	@command -v swiftformat >/dev/null 2>&1 || { echo "❌ swiftformat not installed — brew install swiftformat (CI lint gate cannot pass without it)"; exit 1; }
 	swiftformat --lint pippin/ pippin-entry/ Tests/
 	python3 scripts/lint-detach-blocking.py --self-test
