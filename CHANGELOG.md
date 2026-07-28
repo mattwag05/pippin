@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-07-28
+
 ### Added
 
 - [feat] Per-sender header baselining (pippin-0pk phase 2): `mail show` now also flags deviations from the sender's OWN history — DKIM signing domain/selector, Message-ID domain, Date TZ offset, and SPF/DKIM/DMARC results are fingerprinted into `~/.config/pippin/mail-baseline.db` on every read, and a value diverging from an invariant baseline (≥3 prior messages) adds a `headerAnomalies` warning. Catches what absolute rules can't: the 2026-07-27 phish passed every auth check but diverged on TZ offset (-0500 vs the contact's invariant -0400). New `mail verify <id>` command + `mail_verify` MCP tool report the full per-dimension baseline comparison with a verdict. Closes pippin-ml9 (deep raw-source auth-chain parse and list/search surfacing remain follow-ons).
@@ -18,6 +20,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - [build] `make test` XCTest preflight now probes the SDK platform dir directly (the `xcrun --find xctest` probe gave false results under Command Line Tools) and falls back to any `/Applications/Xcode*.app` (e.g. `Xcode-beta.app`), not just `Xcode.app`; `make ci` routes through `make test` so the release gate gets the same preflight. Closes pippin-eby.
+
+### Documentation
+
+- [docs] README documents `mail verify` and the `headerAnomalies` phishing signals surfaced by `mail show`; its MCP tool count is corrected to 48.
 
 ## [0.35.0] - 2026-07-25
 
@@ -848,7 +854,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/mattwag05/pippin/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/mattwag05/pippin/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/mattwag05/pippin/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/mattwag05/pippin/compare/v0.32.1...v0.33.0
