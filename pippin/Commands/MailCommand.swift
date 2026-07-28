@@ -35,6 +35,31 @@ public struct MailCommand: AsyncParsableCommand {
         }
     }
 
+    /// Text-mode card fields for `mail show` (shared by the plain, --summarize,
+    /// and --sanitize renderings, which differ only in the body they display).
+    static func showCardFields(_ message: MailMessage, body: String) -> [(String, String)] {
+        var fields: [(String, String)] = [
+            ("From", message.from),
+            ("To", message.to.joined(separator: ", ")),
+            ("Date", TextFormatter.compactDate(message.date)),
+            ("Subject", message.subject),
+            ("Mailbox", "\(message.account) / \(message.mailbox)"),
+        ]
+        if let size = message.size {
+            fields.append(("Size", TextFormatter.fileSize(size)))
+        }
+        if let atts = message.attachments, !atts.isEmpty {
+            let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
+                .joined(separator: "\n")
+            fields.append(("Attachments", attStr))
+        }
+        if let anomalies = message.headerAnomalies {
+            fields.append(("⚠ Anomalies", anomalies.joined(separator: "\n")))
+        }
+        fields.append(("Body", body))
+        return fields
+    }
+
     // MARK: - Accounts
 
     public struct Accounts: AsyncParsableCommand {
@@ -629,23 +654,7 @@ public struct MailCommand: AsyncParsableCommand {
                         try output.printAgent(combined)
                     }
                 } else {
-                    var fields: [(String, String)] = [
-                        ("From", message.from),
-                        ("To", message.to.joined(separator: ", ")),
-                        ("Date", TextFormatter.compactDate(message.date)),
-                        ("Subject", message.subject),
-                        ("Mailbox", "\(message.account) / \(message.mailbox)"),
-                    ]
-                    if let size = message.size {
-                        fields.append(("Size", TextFormatter.fileSize(size)))
-                    }
-                    if let atts = message.attachments, !atts.isEmpty {
-                        let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
-                            .joined(separator: "\n")
-                        fields.append(("Attachments", attStr))
-                    }
-                    fields.append(("Body", message.body ?? "(no body)"))
-                    print(TextFormatter.card(fields: fields))
+                    print(TextFormatter.card(fields: MailCommand.showCardFields(message, body: message.body ?? "(no body)")))
                     print("")
                     print("Summary: \(summary)")
                 }
@@ -678,23 +687,9 @@ public struct MailCommand: AsyncParsableCommand {
                         try output.printAgent(combined)
                     }
                 } else {
-                    var fields: [(String, String)] = [
-                        ("From", message.from),
-                        ("To", message.to.joined(separator: ", ")),
-                        ("Date", TextFormatter.compactDate(message.date)),
-                        ("Subject", message.subject),
-                        ("Mailbox", "\(message.account) / \(message.mailbox)"),
-                    ]
-                    if let size = message.size {
-                        fields.append(("Size", TextFormatter.fileSize(size)))
-                    }
-                    if let atts = message.attachments, !atts.isEmpty {
-                        let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
-                            .joined(separator: "\n")
-                        fields.append(("Attachments", attStr))
-                    }
-                    fields.append(("Body", scanResult.sanitizedBody.isEmpty ? "(no body)" : scanResult.sanitizedBody))
-                    print(TextFormatter.card(fields: fields))
+                    print(TextFormatter.card(fields: MailCommand.showCardFields(
+                        message, body: scanResult.sanitizedBody.isEmpty ? "(no body)" : scanResult.sanitizedBody
+                    )))
                     print("")
                     print("Risk level: \(scanResult.riskLevel.rawValue.uppercased())")
                     print("Threats found: \(scanResult.threats.count)")
@@ -710,23 +705,7 @@ public struct MailCommand: AsyncParsableCommand {
                 } else if output.isAgent {
                     try output.printAgent(message)
                 } else {
-                    var fields: [(String, String)] = [
-                        ("From", message.from),
-                        ("To", message.to.joined(separator: ", ")),
-                        ("Date", TextFormatter.compactDate(message.date)),
-                        ("Subject", message.subject),
-                        ("Mailbox", "\(message.account) / \(message.mailbox)"),
-                    ]
-                    if let size = message.size {
-                        fields.append(("Size", TextFormatter.fileSize(size)))
-                    }
-                    if let atts = message.attachments, !atts.isEmpty {
-                        let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
-                            .joined(separator: "\n")
-                        fields.append(("Attachments", attStr))
-                    }
-                    fields.append(("Body", message.body ?? "(no body)"))
-                    print(TextFormatter.card(fields: fields))
+                    print(TextFormatter.card(fields: MailCommand.showCardFields(message, body: message.body ?? "(no body)")))
                 }
             }
         }

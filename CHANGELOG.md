@@ -9,6 +9,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] `mail show` now surfaces structural header anomalies in a `headerAnomalies` field (agent/JSON) and a `⚠ Anomalies` card line (text): Reply-To on a different domain than the sender, hidden recipients (undisclosed-recipients / Bcc delivery), and explicit SPF/DKIM/DMARC failures. Auth passes never suppress a warning — a compromised account signs its phish with valid DKIM (real 2026-07-27 incident). Flows to the `mail_show` MCP tool automatically. Closes pippin-0pk (stateless checks; per-contact baselining tracked separately).
+
+### Changed
+
+- [build] `make test` XCTest preflight now probes the SDK platform dir directly (the `xcrun --find xctest` probe gave false results under Command Line Tools) and falls back to any `/Applications/Xcode*.app` (e.g. `Xcode-beta.app`), not just `Xcode.app`; `make ci` routes through `make test` so the release gate gets the same preflight. Closes pippin-eby.
+
 ## [0.35.0] - 2026-07-25
 
 ### Changed

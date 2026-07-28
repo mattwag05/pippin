@@ -524,7 +524,7 @@ enum MailBridge {
     /// live.
     static func readMessage(compoundId: String, cache: MailBodyCache? = MailBodyCache.shared) throws -> MailMessage {
         if let cached = cache?.get(compoundId: compoundId) {
-            return cached
+            return cached.withDetectedHeaderAnomalies()
         }
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         let script = buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
@@ -533,7 +533,7 @@ enum MailBridge {
         let json = try runScript(script, timeoutSeconds: 45)
         let message = try decode(MailMessage.self, from: json)
         cache?.put(message)
-        return message
+        return message.withDetectedHeaderAnomalies()
     }
 
     // MARK: - Cached bulk preview (mail list --preview)

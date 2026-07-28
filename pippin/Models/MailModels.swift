@@ -72,6 +72,7 @@ public struct MailMessage: Codable, Sendable {
     public let headers: [String: String]? // only populated by `show`
     public let attachments: [Attachment]? // only populated by `show`
     public let fromContact: String? // Apple Contacts display name for the sender, when resolved
+    public let headerAnomalies: [String]? // derived by `show` (pippin-0pk); nil when nothing anomalous
 
     public init(
         id: String,
@@ -89,7 +90,8 @@ public struct MailMessage: Codable, Sendable {
         htmlBody: String? = nil,
         headers: [String: String]? = nil,
         attachments: [Attachment]? = nil,
-        fromContact: String? = nil
+        fromContact: String? = nil,
+        headerAnomalies: [String]? = nil
     ) {
         self.id = id
         self.account = account
@@ -107,6 +109,7 @@ public struct MailMessage: Codable, Sendable {
         self.headers = headers
         self.attachments = attachments
         self.fromContact = fromContact
+        self.headerAnomalies = headerAnomalies
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -127,6 +130,7 @@ public struct MailMessage: Codable, Sendable {
         try container.encodeIfPresent(headers, forKey: .headers)
         try container.encodeIfPresent(attachments, forKey: .attachments)
         try container.encodeIfPresent(fromContact, forKey: .fromContact)
+        try container.encodeIfPresent(headerAnomalies, forKey: .headerAnomalies)
     }
 }
 
@@ -140,7 +144,7 @@ public extension MailMessage {
             from: from, to: to, date: date, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: preview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
-            fromContact: fromContact
+            fromContact: fromContact, headerAnomalies: headerAnomalies
         )
     }
 
@@ -152,7 +156,22 @@ public extension MailMessage {
             from: from, to: to, date: date, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
-            fromContact: contact
+            fromContact: contact, headerAnomalies: headerAnomalies
+        )
+    }
+
+    /// Return a copy with `headerAnomalies` recomputed from this message's own
+    /// headers (pippin-0pk). Applied by `MailBridge.readMessage` on both the
+    /// live-fetch and cache-hit paths, so pre-existing cache entries gain the
+    /// field too.
+    func withDetectedHeaderAnomalies() -> MailMessage {
+        MailMessage(
+            id: id, account: account, mailbox: mailbox, subject: subject,
+            from: from, to: to, date: date, read: read, body: body,
+            size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
+            htmlBody: htmlBody, headers: headers, attachments: attachments,
+            fromContact: fromContact,
+            headerAnomalies: HeaderAnomalies.detect(from: from, to: to, headers: headers)
         )
     }
 }
