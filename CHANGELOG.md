@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-07-28
+
 ### Added
 
 - [feat] `mail verify` now parses the message's raw RFC822 source into a full auth chain (`authChain` in agent/JSON output; a summary block in text output): every Received hop, every Authentication-Results instance, ARC set, and DKIM signatures — sets the flat last-wins header dict destroyed. Failures found in ANY chain instance (including ARC-Authentication-Results) and a broken ARC chain (`cv=fail`) now count toward the SUSPICIOUS verdict. Degrades gracefully (chain omitted) when Mail can't produce the source. Closes pippin-fwa.
@@ -860,7 +862,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.36.1...HEAD
+[0.36.1]: https://github.com/mattwag05/pippin/compare/v0.36.0...v0.36.1
 [0.36.0]: https://github.com/mattwag05/pippin/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/mattwag05/pippin/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/mattwag05/pippin/compare/v0.33.0...v0.34.0
