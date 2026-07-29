@@ -902,6 +902,47 @@ extension MailBridge {
         """
     }
 
+    /// Raw RFC822 source for one message (`mail verify` deep auth-chain parse,
+    /// pippin-fwa). `msg.source()` forces the full body download from IMAP, but
+    /// verify runs after `readMessage` already pulled `content()`, so the
+    /// incremental cost is normally small. `source: null` (not an error) when
+    /// Mail can't produce it — verify degrades to the flat-header report.
+    static func buildSourceScript(account: String, mailbox: String, messageId: String) -> String {
+        let safeAccount = jsEscape(account)
+        let safeMailbox = jsEscape(mailbox)
+        let safeMsgId = messageId
+
+        return """
+        var mail = Application('Mail');
+        \(jsMailReadyPoll(maxAttempts: 8))
+        var result = null;
+
+        var accounts = mail.accounts();
+        for (var a = 0; a < accounts.length; a++) {
+            var acct = accounts[a];
+            if (acct.name() !== '\(safeAccount)') continue;
+
+            var mailboxes = acct.mailboxes();
+            for (var m = 0; m < mailboxes.length; m++) {
+                var mb = mailboxes[m];
+                if (mb.name() !== '\(safeMailbox)') continue;
+
+                var msgs = mb.messages.whose({id: \(safeMsgId)})();
+                if (msgs.length === 0) break;
+
+                var src = null;
+                try { src = msgs[0].source(); } catch(e) {}
+                result = { source: src };
+                break;
+            }
+            if (result !== null) break;
+        }
+
+        if (result === null) { throw new Error('Message not found'); }
+        JSON.stringify(result);
+        """
+    }
+
     /// Group of miss compound ids sharing an account + mailbox, injected into
     /// `buildBatchBodiesScript` so each mailbox is resolved once (the efficiency
     /// win over N single-message `readMessage` spawns).

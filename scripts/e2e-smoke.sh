@@ -175,6 +175,14 @@ and isinstance(d['data'].get('dimensions'), list)
 and len(d['data']['dimensions']) == 7
 and all('current' in x and 'prior' in x and 'deviation' in x for x in d['data']['dimensions'])" \
     -- mail verify "$VID"
+  # pippin-fwa: deep auth-chain parse from raw source — a real synced message
+  # must yield at least one Received hop (chain absent = source fetch broke).
+  run "mail verify auth chain (pippin-fwa)" "
+isinstance(d['data'].get('authChain'), dict)
+and isinstance(d['data']['authChain'].get('received'), list)
+and len(d['data']['authChain']['received']) >= 1
+and isinstance(d['data']['authChain'].get('authenticationResults'), list)" \
+    -- mail verify "$VID"
 else
   SKIP=$((SKIP+1)); echo "  SKIP  mail verify (no message id available)"
 fi

@@ -190,6 +190,117 @@ final class MailBridgePreviewAssemblyTests: XCTestCase {
         XCTAssertEqual(capturedIds, ["iCloud||INBOX||1"])
     }
 
+    // MARK: - Envelope Index summary previews (pippin-521)
+
+    func testSummaryFillsPreviewWithoutFetchOrCacheWrite() {
+        let meta = [metaRow(id: "iCloud||INBOX||1"), metaRow(id: "iCloud||INBOX||2")]
+
+        var capturedIds: [String]?
+        let result = MailBridge.assemblePreviews(
+            metadata: meta, previewChars: 10, cache: cache,
+            summaries: ["iCloud||INBOX||1": "A snippet from Mail's own index."],
+            fetchMisses: { ids in capturedIds = ids; return (messages: [], timedOut: false) }
+        )
+
+        XCTAssertEqual(capturedIds, ["iCloud||INBOX||2"], "summary-covered row not fetched")
+        XCTAssertEqual(result.messages[0].bodyPreview, "A snippet …", "summary truncated like a body")
+        XCTAssertEqual(cache.count(), 0, "summaries are NOT written through the body cache")
+    }
+
+    func testCachedBodyWinsOverSummary() {
+        cache.put(fullMessage(id: "iCloud||INBOX||1", body: "real body"))
+        let meta = [metaRow(id: "iCloud||INBOX||1")]
+
+        let result = MailBridge.assemblePreviews(
+            metadata: meta, previewChars: 100, cache: cache,
+            summaries: ["iCloud||INBOX||1": "index snippet"],
+            fetchMisses: { _ in (messages: [], timedOut: false) }
+        )
+        XCTAssertEqual(result.messages[0].bodyPreview, "real body", "cache hit beats index summary")
+    }
+
+    // MARK: - Cached-header anomaly surfacing (pippin-fwa)
+
+    /// A cached `mail show` copy carrying anomalous headers: Reply-To on a
+    /// different domain than From.
+    private func anomalousCached(id: String) -> MailMessage {
+        MailMessage(
+            id: id, account: "iCloud", mailbox: "INBOX",
+            subject: "Invoice", from: "billing@vendor.com", to: ["me@example.com"],
+            date: "2026-07-27T12:00:00Z", read: false, body: "pay now",
+            headers: [
+                "Reply-To": "collect@evil.example",
+                "To": "me@example.com",
+            ]
+        )
+    }
+
+    func testAttachCachedAnomaliesFlagsCachedRowsOnly() throws {
+        let store = try SenderBaselineStore(
+            dbPath: NSTemporaryDirectory() + "pippin-test-anom-\(UUID().uuidString).db"
+        )
+        cache.put(anomalousCached(id: "iCloud||INBOX||1"))
+        // Scan rows: headers nil, to [] (fast-path list shape).
+        let rows = [
+            MailMessage(id: "iCloud||INBOX||1", account: "iCloud", mailbox: "INBOX",
+                        subject: "Invoice", from: "billing@vendor.com", to: [],
+                        date: "2026-07-27T12:00:00Z", read: false),
+            MailMessage(id: "iCloud||INBOX||2", account: "iCloud", mailbox: "INBOX",
+                        subject: "Other", from: "x@y.com", to: [],
+                        date: "2026-07-27T12:00:00Z", read: false),
+        ]
+
+        let out = MailBridge.attachCachedAnomalies(rows, cache: cache, store: store)
+        XCTAssertNotNil(out[0].headerAnomalies)
+        XCTAssertTrue(out[0].headerAnomalies!.contains { $0.contains("evil.example") }, "\(out[0].headerAnomalies!)")
+        XCTAssertNil(out[1].headerAnomalies, "uncached row untouched (nil ≠ verified clean)")
+    }
+
+    func testAttachCachedAnomaliesEmptyToDoesNotFalsePositive() {
+        // Scan rows emit to: [] — the hidden-recipients check must use the
+        // cached copy's real recipients, not the scan row's empty list.
+        cache.put(fullMessage(id: "iCloud||INBOX||1", body: "hi"))
+        let row = MailMessage(id: "iCloud||INBOX||1", account: "iCloud", mailbox: "INBOX",
+                              subject: "Subj", from: "a@b.com", to: [],
+                              date: "2026-07-27T12:00:00Z", read: false)
+        let out = MailBridge.attachCachedAnomalies([row], cache: cache, store: nil)
+        XCTAssertNil(out[0].headerAnomalies, "\(out[0].headerAnomalies ?? [])")
+    }
+
+    func testAttachCachedAnomaliesSurfacesBaselineDeviationWithoutRecording() throws {
+        let store = try SenderBaselineStore(
+            dbPath: NSTemporaryDirectory() + "pippin-test-anom-\(UUID().uuidString).db"
+        )
+        let baselineHeaders = [
+            "To": "me@example.com",
+            "Date": "Mon, 27 Jul 2026 09:15:00 -0400",
+        ]
+        for i in 0 ..< 3 {
+            _ = store.checkAndRecord(
+                compoundId: "iCloud||INBOX||\(100 + i)", sender: "contact@wfmnyc.com",
+                fingerprint: SenderFingerprint.extract(headers: baselineHeaders)
+            )
+        }
+        var phishHeaders = baselineHeaders
+        phishHeaders["Date"] = "Mon, 27 Jul 2026 09:15:00 -0500"
+        cache.put(MailMessage(
+            id: "iCloud||INBOX||9", account: "iCloud", mailbox: "INBOX",
+            subject: "Urgent", from: "Contact <contact@wfmnyc.com>", to: ["me@example.com"],
+            date: "2026-07-27T12:00:00Z", read: false, body: "wire money",
+            headers: phishHeaders
+        ))
+        let row = MailMessage(id: "iCloud||INBOX||9", account: "iCloud", mailbox: "INBOX",
+                              subject: "Urgent", from: "Contact <contact@wfmnyc.com>", to: [],
+                              date: "2026-07-27T12:00:00Z", read: false)
+
+        let out = MailBridge.attachCachedAnomalies([row], cache: cache, store: store)
+        XCTAssertTrue(out[0].headerAnomalies?.contains { $0.contains("-0500") } == true,
+                      "\(out[0].headerAnomalies ?? [])")
+        // Compare-only: scan surfacing must not have recorded row 9.
+        XCTAssertEqual(store.baseline(sender: "contact@wfmnyc.com", excluding: "other")["tz_offset"],
+                       ["-0400": 3])
+    }
+
     // MARK: - buildBatchBodiesScript
 
     func testBatchScriptShape() {

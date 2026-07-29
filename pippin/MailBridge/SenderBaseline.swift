@@ -116,24 +116,9 @@ final class SenderBaselineStore: Sendable {
     /// empty on any store error — never blocks the read path.
     func checkAndRecord(compoundId: String, sender: String, fingerprint: [String: String]) -> [String] {
         (try? dbQueue.write { db -> [String] in
-            var warnings: [String] = []
-            for (dim, current) in fingerprint.sorted(by: { $0.key < $1.key }) {
-                let rows = try Row.fetchAll(
-                    db,
-                    sql: "SELECT value, COUNT(*) AS n FROM fingerprints WHERE sender = ? AND dimension = ? AND compound_id <> ? GROUP BY value",
-                    arguments: [sender, dim, compoundId]
-                )
-                var prior: [String: Int] = [:]
-                for row in rows {
-                    prior[row["value"]] = row["n"]
-                }
-                if Self.isDeviation(prior: prior, current: current), let (base, count) = prior.first {
-                    let name = SenderFingerprint.dimensionNames[dim] ?? dim
-                    warnings.append(
-                        "Sender baseline deviation: \(name) is \(current) but all \(count) prior messages from \(sender) were \(base)"
-                    )
-                }
-            }
+            let warnings = try Self.deviationWarnings(
+                db: db, compoundId: compoundId, sender: sender, fingerprint: fingerprint
+            )
             for (dim, value) in fingerprint {
                 try db.execute(
                     sql: "INSERT OR REPLACE INTO fingerprints (compound_id, sender, dimension, value) VALUES (?, ?, ?, ?)",
@@ -142,6 +127,39 @@ final class SenderBaselineStore: Sendable {
             }
             return warnings
         }) ?? []
+    }
+
+    /// Compare-only variant (pippin-fwa): list/search/activity anomaly
+    /// surfacing must never mutate the baseline store — only `mail show`/
+    /// `verify` reads (full headers) record fingerprints.
+    func check(compoundId: String, sender: String, fingerprint: [String: String]) -> [String] {
+        (try? dbQueue.read { db in
+            try Self.deviationWarnings(db: db, compoundId: compoundId, sender: sender, fingerprint: fingerprint)
+        }) ?? []
+    }
+
+    private static func deviationWarnings(
+        db: Database, compoundId: String, sender: String, fingerprint: [String: String]
+    ) throws -> [String] {
+        var warnings: [String] = []
+        for (dim, current) in fingerprint.sorted(by: { $0.key < $1.key }) {
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT value, COUNT(*) AS n FROM fingerprints WHERE sender = ? AND dimension = ? AND compound_id <> ? GROUP BY value",
+                arguments: [sender, dim, compoundId]
+            )
+            var prior: [String: Int] = [:]
+            for row in rows {
+                prior[row["value"]] = row["n"]
+            }
+            if isDeviation(prior: prior, current: current), let (base, count) = prior.first {
+                let name = SenderFingerprint.dimensionNames[dim] ?? dim
+                warnings.append(
+                    "Sender baseline deviation: \(name) is \(current) but all \(count) prior messages from \(sender) were \(base)"
+                )
+            }
+        }
+        return warnings
     }
 
     /// Full baseline for `mail verify` reporting: dimension -> value -> count,

@@ -116,8 +116,15 @@ pippin mail show "acct||INBOX||12345"
 # `⚠ Anomalies` line (text): Reply-To on a different domain than the sender, hidden
 # recipients, explicit SPF/DKIM/DMARC failures, plus deviations from the sender's own
 # history. Passing auth checks never suppress a warning — a compromised account signs
-# its phish with valid DKIM.
+# its phish with valid DKIM. list/search/activity surface the same warnings for
+# messages whose headers are already cached from a prior show/preview fetch (⚠ on
+# the subject in text tables); rows never fetched stay unflagged — absence of a
+# warning there is not a clean bill.
 pippin mail verify "acct||INBOX||12345"           # full per-dimension baseline comparison
+# `verify` also parses the raw RFC822 source into the full auth chain (`authChain`):
+# every Received hop, every Authentication-Results instance, the ARC set, and DKIM
+# signatures — auth failures hidden in older chain instances and a broken ARC chain
+# (cv=fail) count toward the verdict.
 pippin mail reply "acct||INBOX||12345" --body "Thanks!"
 pippin mail forward "acct||INBOX||12345" --to other@example.com
 pippin mail send --to user@example.com --subject "Hello" --body "Hi there" --dry-run
@@ -128,6 +135,8 @@ pippin mail list --fields id,subject,from        # project to fewer JSON keys (t
 pippin mail cache warm --limit 50                # pre-fetch bodies; show/index hits are ~75× faster
 pippin mail show "acct||INBOX||12345" --no-cache  # force a live fetch
 ```
+
+**Faster previews from the Envelope Index (opt-in).** With Full Disk Access, `mail list --preview` / `mail activity` can fill snippets from Mail's own `summaries` table instead of fetching bodies over JXA — messages with a summary row skip the body fetch entirely (the rest still batch-fetch). Enable with `"mail": { "previewFromIndex": true }` in `~/.config/pippin/config.json`. Off by default for two reasons: the summary is Mail's semantic snippet, **not** the first N characters of the body (consumers that diff preview text will see drift), and summary-served previews bypass the body cache, so a later `mail show` of that message pays a cold fetch.
 
 ### Voice Memos
 

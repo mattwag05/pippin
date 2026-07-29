@@ -528,4 +528,39 @@ final class MailEnvelopeIndexTests: XCTestCase {
             "Personal||INBOX||102",
         ])
     }
+
+    // MARK: - Summaries (pippin-521)
+
+    /// Fixture + the summaries slice: only message 101 carries a snippet;
+    /// 102's summary column is NULL and 105 references a missing row.
+    private func makeSummariesDB() throws -> DatabaseQueue {
+        let q = try makeFixtureDB()
+        try q.write { db in
+            try db.execute(sql: """
+            CREATE TABLE summaries (ROWID INTEGER PRIMARY KEY, summary TEXT NOT NULL);
+            INSERT INTO summaries (ROWID, summary) VALUES (1, 'CI build for main finished successfully.');
+            ALTER TABLE messages ADD COLUMN summary INTEGER;
+            UPDATE messages SET summary = 1 WHERE ROWID = 101;
+            UPDATE messages SET summary = 99 WHERE ROWID = 105;
+            """)
+        }
+        return q
+    }
+
+    func testSummariesByCompoundIdReturnsOnlyPopulatedRows() throws {
+        let idx = try makeIndex(makeSummariesDB())
+        let result = try idx.summariesByCompoundId(for: [
+            "Personal||INBOX||101", // has a snippet
+            "Personal||INBOX||102", // summary NULL
+            "Personal||INBOX||105", // dangling summary ref
+            "garbage-id", // unparseable → ignored
+        ])
+        XCTAssertEqual(result, ["Personal||INBOX||101": "CI build for main finished successfully."])
+    }
+
+    func testSummariesByCompoundIdEmptyInput() throws {
+        let idx = try makeIndex(makeSummariesDB())
+        XCTAssertEqual(try idx.summariesByCompoundId(for: []), [:])
+        XCTAssertEqual(try idx.summariesByCompoundId(for: ["nope"]), [:])
+    }
 }

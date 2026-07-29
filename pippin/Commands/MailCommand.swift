@@ -746,6 +746,9 @@ public struct MailCommand: AsyncParsableCommand {
             let priorMessages: Int
             let dimensions: [DimensionReport]
             let anomalies: [String]?
+            /// Full parsed chain from raw source (pippin-fwa); nil when Mail
+            /// couldn't produce the source (report degrades to flat headers).
+            let authChain: MailAuthChain?
             let verdict: String
         }
 
@@ -756,6 +759,14 @@ public struct MailCommand: AsyncParsableCommand {
             // pool. It also runs the anomaly + baseline checks and records
             // this message's fingerprint.
             let message = try await detachBlocking { try MailBridge.readMessage(compoundId: id, cache: useCache) }
+
+            // Deep auth-chain parse (pippin-fwa): the flat allHeaders dict is
+            // last-value-wins, destroying Received/Authentication-Results/ARC
+            // header SETS. Fetch raw RFC822 source and recover them; best-effort
+            // (nil chain on any failure, verify still reports the flat view).
+            let authChain = (try? await detachBlocking { try MailBridge.readRawSource(compoundId: id) })
+                .flatMap { $0 }
+                .map { RawHeaders.authChain(RawHeaders.parse($0)) }
 
             let sender = HeaderAnomalies.emailAddress(in: message.from)
             let fingerprint = message.headers.map { SenderFingerprint.extract(headers: $0) } ?? [:]
@@ -772,8 +783,14 @@ public struct MailCommand: AsyncParsableCommand {
             }
             let priorMessages = dimensions.map { $0.prior.values.reduce(0, +) }.max() ?? 0
 
+            // Deep-chain warnings share the flat check's phrasing, so a plain
+            // string dedup merges the two views without double-reporting.
+            let flat = message.headerAnomalies ?? []
+            let deep = authChain.map(RawHeaders.deepWarnings) ?? []
+            let anomalies = flat + deep.filter { !flat.contains($0) }
+
             let verdict: String
-            if let anomalies = message.headerAnomalies, !anomalies.isEmpty {
+            if !anomalies.isEmpty {
                 verdict = "SUSPICIOUS: \(anomalies.count) warning(s) — verify with the sender out-of-band before acting on this message"
             } else if priorMessages < SenderBaselineStore.minBaselineCount {
                 verdict = "INCONCLUSIVE: no structural anomalies, but only \(priorMessages) prior message(s) from this sender — baseline comparison not yet meaningful"
@@ -784,7 +801,7 @@ public struct MailCommand: AsyncParsableCommand {
             let report = VerifyReport(
                 id: message.id, from: message.from, subject: message.subject, date: message.date,
                 sender: sender, priorMessages: priorMessages, dimensions: dimensions,
-                anomalies: message.headerAnomalies, verdict: verdict
+                anomalies: anomalies.isEmpty ? nil : anomalies, authChain: authChain, verdict: verdict
             )
 
             if output.isJSON {
@@ -803,6 +820,16 @@ public struct MailCommand: AsyncParsableCommand {
                     print("\(dim.deviation ? "⚠️" : "  ") \(dim.name): \(dim.current)  (prior: \(priorText))")
                 }
                 print("")
+                if let chain = report.authChain {
+                    print("Auth chain (raw source): \(chain.received.count) Received hop(s), \(chain.authenticationResults.count) Authentication-Results, \(chain.arcSeals.count) ARC seal(s), \(chain.dkimSignatures.count) DKIM signature(s)")
+                    for auth in chain.authenticationResults + chain.arcAuthenticationResults {
+                        print("  \(auth)")
+                    }
+                    print("")
+                } else {
+                    print("Auth chain: unavailable (raw source could not be fetched)")
+                    print("")
+                }
                 if let anomalies = report.anomalies {
                     for warning in anomalies {
                         print("⚠️  \(warning)")
@@ -1243,7 +1270,8 @@ func printMessageTable(_ messages: [MailMessage]) {
             TextFormatter.truncate(msg.id, to: 8),
             TextFormatter.compactDate(msg.date),
             TextFormatter.truncate(msg.from, to: 18),
-            TextFormatter.truncate(msg.subject, to: 24),
+            // ⚠ = header anomalies known from cached headers (pippin-fwa)
+            TextFormatter.truncate((msg.headerAnomalies != nil ? "⚠ " : "") + msg.subject, to: 24),
             msg.read ? "Y" : "N",
             msg.hasAttachment == true ? "A" : " ",
             msg.size.map { TextFormatter.fileSize($0) } ?? "",

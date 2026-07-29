@@ -60,6 +60,16 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   writes stay JXA. Fast-path activity/list previews reuse
   `assemblePreviews` + `buildBatchBodiesScript` + MailBodyCache (ids match, so
   cache keys line up).
+- **`summaries` table (pippin-521, opt-in `mail.previewFromIndex`)** — Mail's
+  own snippet text (`messages.summary` → `summaries.ROWID`, `summary` column).
+  Three invariants from the deferral review, all still true: (1) the snippet is
+  Mail's SEMANTIC summary, not the body's first N chars — preview-text
+  consumers see drift, which is why the key defaults off; (2) only a fraction
+  of messages carry one (~23% measured 2026-07-28, 6.3k of 27k) — absent rows
+  MUST fall back to the batch body fetch (`assemblePreviews` treats them as
+  ordinary misses); (3) a summary-served preview bypasses the MailBodyCache
+  write-through, so a later `mail show` of that message pays a cold fetch.
+  Priority in `assemblePreviews`: cached body > summary > batch fetch.
 - **FDA required** (same class as Messages `chat.db`): the snapshot copy fails
   with EPERM → `accessDenied` → silent JXA fallback. `doctor` reports fast-path
   availability as an informational check (`.skip`, never `.fail` — mail works

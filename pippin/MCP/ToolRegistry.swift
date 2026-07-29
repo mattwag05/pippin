@@ -303,7 +303,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_verify",
-            description: "Inspect a message's headers against the sender's historical baseline (DKIM domain/selector, Message-ID domain, Date TZ offset, SPF/DKIM/DMARC results). Returns per-dimension comparison, anomaly warnings, and a verdict. Use on any suspicious message before acting on its contents.",
+            description: "Inspect a message's headers against the sender's historical baseline (DKIM domain/selector, Message-ID domain, Date TZ offset, SPF/DKIM/DMARC results). Returns per-dimension comparison, anomaly warnings, the full raw-source auth chain (every Received hop, all Authentication-Results instances, ARC set, DKIM signatures) in `authChain`, and a verdict. Use on any suspicious message before acting on its contents.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list or mail_show output."),

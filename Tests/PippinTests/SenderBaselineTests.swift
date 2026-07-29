@@ -142,6 +142,24 @@ final class SenderBaselineTests: XCTestCase {
         XCTAssertTrue(warnings.isEmpty, "one sender's baseline must not judge another sender: \(warnings)")
     }
 
+    // MARK: - Compare-only check (list/search surfacing, pippin-fwa)
+
+    func testCompareOnlyCheckFlagsWithoutRecording() throws {
+        let store = try makeStore()
+        seed(store, sender: "contact@wfmnyc.com", count: 3, headers: legitHeaders)
+
+        var phish = legitHeaders
+        phish["Date"] = "Mon, 27 Jul 2026 09:15:00 -0500"
+        let fp = SenderFingerprint.extract(headers: phish)
+        let warnings = store.check(compoundId: "acc||INBOX||9999", sender: "contact@wfmnyc.com", fingerprint: fp)
+        XCTAssertTrue(warnings.contains { $0.contains("-0500") }, "deviation flagged: \(warnings)")
+
+        // Nothing recorded: the baseline still holds exactly the 3 seeds, and
+        // the phish row does not appear when excluding an unrelated id.
+        let base = store.baseline(sender: "contact@wfmnyc.com", excluding: "acc||INBOX||other")
+        XCTAssertEqual(base["tz_offset"], ["-0400": 3], "check() must not mutate the store")
+    }
+
     // MARK: - Baseline reporting (mail verify)
 
     func testBaselineReportExcludesCurrentMessage() throws {

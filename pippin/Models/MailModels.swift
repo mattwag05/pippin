@@ -160,6 +160,20 @@ public extension MailMessage {
         )
     }
 
+    /// Return a copy with `headerAnomalies` set to precomputed warnings —
+    /// used by `MailBridge.attachCachedAnomalies` (pippin-fwa), where the
+    /// warnings come from a cached copy's headers, not this row's own (nil).
+    func withHeaderAnomalies(_ warnings: [String]) -> MailMessage {
+        MailMessage(
+            id: id, account: account, mailbox: mailbox, subject: subject,
+            from: from, to: to, date: date, read: read, body: body,
+            size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
+            htmlBody: htmlBody, headers: headers, attachments: attachments,
+            fromContact: fromContact,
+            headerAnomalies: warnings.isEmpty ? nil : warnings
+        )
+    }
+
     /// Return a copy with `headerAnomalies` recomputed from this message's own
     /// headers (pippin-0pk). Applied by `MailBridge.readMessage` on both the
     /// live-fetch and cache-hit paths, so pre-existing cache entries gain the

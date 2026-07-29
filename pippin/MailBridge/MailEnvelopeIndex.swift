@@ -599,6 +599,36 @@ final class MailEnvelopeIndex: Sendable {
         )
     }
 
+    /// Mail's own snippet text (`messages.summary` → `summaries.summary`) for
+    /// the given compound ids, keyed by compound id (pippin-521). Only a
+    /// fraction of messages carry a summary row — absent ids simply aren't in
+    /// the result (callers fall back to the batch body fetch). The snippet is
+    /// Mail's semantic summary, not a body prefix.
+    func summariesByCompoundId(for compoundIds: [String]) throws -> [String: String] {
+        var rowidToCompound: [Int64: String] = [:]
+        for cid in compoundIds {
+            if let rowid = Int64(cid.components(separatedBy: "||").last ?? "") {
+                rowidToCompound[rowid] = cid
+            }
+        }
+        guard !rowidToCompound.isEmpty else { return [:] }
+        let ids = rowidToCompound.keys.map(String.init).joined(separator: ",")
+        let rows = try dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+            SELECT m.ROWID AS msg, su.summary AS text
+            FROM messages m JOIN summaries su ON su.ROWID = m.summary
+            WHERE m.ROWID IN (\(ids))
+            """)
+        }
+        var result: [String: String] = [:]
+        for row in rows {
+            guard let msg = row["msg"] as Int64?, let text = row["text"] as String?,
+                  !text.isEmpty, let cid = rowidToCompound[msg] else { continue }
+            result[cid] = text
+        }
+        return result
+    }
+
     func listActivity(
         account: String?,
         mailboxes: [String],

@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] `mail verify` now parses the message's raw RFC822 source into a full auth chain (`authChain` in agent/JSON output; a summary block in text output): every Received hop, every Authentication-Results instance, ARC set, and DKIM signatures — sets the flat last-wins header dict destroyed. Failures found in ANY chain instance (including ARC-Authentication-Results) and a broken ARC chain (`cv=fail`) now count toward the SUSPICIOUS verdict. Degrades gracefully (chain omitted) when Mail can't produce the source. Closes pippin-fwa.
+- [feat] `mail list`/`search`/`activity` now surface `headerAnomalies` for messages whose headers are already cached from a prior `mail show`/preview fetch — stateless checks plus a compare-only baseline check, at zero Apple-Event cost (uncached rows stay unflagged; the baseline store is never mutated from scan paths). Text list tables mark flagged rows with `⚠` on the subject. Closes pippin-fwa.
+- [feat] Opt-in `mail.previewFromIndex` config key: `mail list --preview`/`mail activity` fill snippets from the Envelope Index `summaries` table (Mail's own preview text) where available, skipping the JXA body fetch for those messages entirely; messages without a summary row (~3 in 4) still use the batch body fetch. OFF by default — the summary is Mail's semantic snippet, not the body's first N chars, and summary-served previews bypass the body-cache write-through. Closes pippin-521.
+
 ## [0.36.0] - 2026-07-28
 
 ### Added

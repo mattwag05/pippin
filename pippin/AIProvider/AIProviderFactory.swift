@@ -64,6 +64,15 @@ public struct PippinConfig: Codable, Sendable {
         /// Set `false` to force the JXA path permanently; the
         /// `PIPPIN_MAIL_FASTPATH=0` env var overrides per-invocation.
         public var fastPath: Bool?
+        /// Opt-in (pippin-521): fill `mail list`/`activity` `--preview` snippets
+        /// from the Envelope Index `summaries` table (Mail's own snippet text)
+        /// instead of fetching bodies over JXA. OFF by default because the
+        /// summary is Mail's semantic snippet, NOT the first N chars of the
+        /// body (drift for preview-text consumers), and only a fraction of
+        /// messages have one (the rest still batch-fetch). When on, previews
+        /// served from a summary bypass the MailBodyCache write-through, so a
+        /// later `mail show` of that message pays a cold fetch.
+        public var previewFromIndex: Bool?
     }
 }
 

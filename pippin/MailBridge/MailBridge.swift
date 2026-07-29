@@ -185,7 +185,7 @@ enum MailBridge {
                account: account, mailbox: mailbox, unread: unread,
                limit: clampedLimit, offset: clampedOffset, after: after, before: before
            ) {
-            return ListOutcome(messages: messages, timedOut: false)
+            return ListOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
         }
         let script = buildListScript(
             account: account, mailbox: mailbox, unread: unread,
@@ -205,7 +205,7 @@ enum MailBridge {
         let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
         let wrapper = try decode(ListResponse.self, from: json)
         return ListOutcome(
-            messages: wrapper.results,
+            messages: attachCachedAnomalies(wrapper.results),
             timedOut: wrapper.meta.timedOut,
             windowHint: beforeShortfallHint(
                 resultsEmpty: wrapper.results.isEmpty,
@@ -280,17 +280,19 @@ enum MailBridge {
         // entirely, misses cost one bounded batch fetch. JXA fallback on any
         // index failure.
         if fastPath, fastPathEnabled(),
-           let metadata = try? makeFastPathIndex(accountName: account).listActivity(
+           let index = try? makeFastPathIndex(accountName: account),
+           let metadata = try? index.listActivity(
                account: account, mailboxes: mailboxes, since: since, limit: limit
            ) {
             let previewChars = (preview ?? 0) > 0 ? max(1, min(preview ?? 0, 4000)) : 0
             guard previewChars > 0 else {
-                return ActivityOutcome(messages: metadata, timedOut: false)
+                return ActivityOutcome(messages: attachCachedAnomalies(metadata), timedOut: false)
             }
             let assembled = try assemblePreviews(
                 metadata: metadata,
                 previewChars: previewChars,
                 cache: MailBodyCache.shared,
+                summaries: indexSummaries(index, for: metadata),
                 fetchMisses: { ids in
                     guard !ids.isEmpty else { return (messages: [], timedOut: false) }
                     let script = buildBatchBodiesScript(compoundIds: ids, softTimeoutMs: softTimeoutMs)
@@ -299,7 +301,7 @@ enum MailBridge {
                     return (messages: wrapper.results, timedOut: wrapper.meta.timedOut)
                 }
             )
-            return ActivityOutcome(messages: assembled.messages, timedOut: assembled.fetchTimedOut)
+            return ActivityOutcome(messages: attachCachedAnomalies(assembled.messages), timedOut: assembled.fetchTimedOut)
         }
         let script = buildActivityScript(
             account: account, mailboxes: mailboxes, since: since,
@@ -313,7 +315,7 @@ enum MailBridge {
         let timeout = (preview ?? 0) > 0 ? baseTimeout + 40 : baseTimeout
         let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
         let wrapper = try decode(ActivityResponse.self, from: json)
-        return ActivityOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
+        return ActivityOutcome(messages: attachCachedAnomalies(wrapper.results), timedOut: wrapper.meta.timedOut)
     }
 
     static func searchMessages(
@@ -348,7 +350,7 @@ enum MailBridge {
                 let line = "[search] fast path: envelope index (full-index scan, JXA bypassed)\n"
                 FileHandle.standardError.write(Data(line.utf8))
             }
-            return SearchOutcome(messages: messages, timedOut: false)
+            return SearchOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
         }
         let script = buildSearchScript(
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
@@ -381,7 +383,7 @@ enum MailBridge {
                 stderr.write(Data((line + "\n").utf8))
             }
         }
-        return SearchOutcome(messages: wrapper.results, timedOut: wrapper.meta.timedOut)
+        return SearchOutcome(messages: attachCachedAnomalies(wrapper.results), timedOut: wrapper.meta.timedOut)
     }
 
     static func markMessage(
@@ -536,6 +538,48 @@ enum MailBridge {
         return message.withDetectedHeaderAnomalies(extra: baselineWarnings(for: message))
     }
 
+    /// Raw RFC822 source for a message (pippin-fwa). Used by `mail verify` for
+    /// the deep auth-chain parse; nil when Mail can't produce the source (the
+    /// verify report then omits the chain rather than failing).
+    static func readRawSource(compoundId: String) throws -> String? {
+        let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
+        let script = buildSourceScript(account: account, mailbox: mailboxName, messageId: msgId)
+        // source() can force a full RFC822 download incl. attachments — same
+        // cost class as saveAttachments (90s there); readMessage usually ran
+        // first so the body is already local.
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(90))
+        struct SourceRow: Decodable { let source: String? }
+        return try decode(SourceRow.self, from: json).source
+    }
+
+    /// Attach header-anomaly warnings to scan rows (list/search/activity) from
+    /// already-cached data (pippin-fwa). Those paths never fetch headers (cost),
+    /// but any message previously read via `mail show`/preview batch has its
+    /// headers in `MailBodyCache` — run the stateless checks plus a compare-only
+    /// baseline check against those. Rows with no cached headers stay untouched
+    /// (nil anomalies ≠ verified clean). Zero Apple Events, two local SQLite DBs.
+    static func attachCachedAnomalies(
+        _ messages: [MailMessage],
+        cache: MailBodyCache? = MailBodyCache.shared,
+        store: SenderBaselineStore? = SenderBaselineStore.shared
+    ) -> [MailMessage] {
+        guard let cache, !messages.isEmpty else { return messages }
+        let cached = cache.getMany(compoundIds: messages.map(\.id))
+        return messages.map { msg in
+            guard let hit = cached[msg.id], let headers = hit.headers, !headers.isEmpty else { return msg }
+            // Use the cached row's from/to — scan rows emit to: [] on some paths,
+            // which would false-positive the hidden-recipients check.
+            var warnings = HeaderAnomalies.detect(from: hit.from, to: hit.to, headers: headers) ?? []
+            if let store, let sender = HeaderAnomalies.emailAddress(in: hit.from) {
+                warnings += store.check(
+                    compoundId: msg.id, sender: sender,
+                    fingerprint: SenderFingerprint.extract(headers: headers)
+                )
+            }
+            return warnings.isEmpty ? msg : msg.withHeaderAnomalies(warnings)
+        }
+    }
+
     /// Sender-baseline deviation check (pippin-ml9): compare this message's
     /// header fingerprint against the sender's history, record it, and return
     /// warnings. No-ops (empty) when headers are missing or the store is
@@ -551,6 +595,18 @@ enum MailBridge {
     }
 
     // MARK: - Cached bulk preview (mail list --preview)
+
+    /// Envelope Index summaries for preview assembly (pippin-521), gated on the
+    /// opt-in `mail.previewFromIndex` config key. `[:]` when off or on any
+    /// index failure — preview assembly then behaves exactly as before.
+    static func indexSummaries(
+        _ index: MailEnvelopeIndex,
+        for metadata: [MailMessage],
+        config: PippinConfig? = AIProviderFactory.loadConfig()
+    ) -> [String: String] {
+        guard config?.mail?.previewFromIndex == true else { return [:] }
+        return (try? index.summariesByCompoundId(for: metadata.map(\.id))) ?? [:]
+    }
 
     /// `mail list --preview N` routed through `MailBodyCache`.
     ///
@@ -588,10 +644,20 @@ enum MailBridge {
             limit: limit, offset: offset, preview: nil,
             after: after, before: before, softTimeoutMs: softTimeoutMs
         )
+        // pippin-521: opt-in summary previews. Config-gated BEFORE the index
+        // build — the snapshot copy isn't free, so the default-off path never
+        // pays it. (pass 1's own fast-path index was internal to listMessages;
+        // one extra snapshot here only on the opt-in path.)
+        var summaries: [String: String] = [:]
+        if AIProviderFactory.loadConfig()?.mail?.previewFromIndex == true, fastPathEnabled(),
+           let index = try? makeFastPathIndex(accountName: account) {
+            summaries = indexSummaries(index, for: pass1.messages)
+        }
         let assembled = try assemblePreviews(
             metadata: pass1.messages,
             previewChars: previewChars,
             cache: cache,
+            summaries: summaries,
             fetchMisses: { ids in
                 guard !ids.isEmpty else { return (messages: [], timedOut: false) }
                 let script = buildBatchBodiesScript(compoundIds: ids, softTimeoutMs: softTimeoutMs)
@@ -615,10 +681,17 @@ enum MailBridge {
     /// body, truncated by `bodyPreview(_:chars:)`). Order is preserved; a row
     /// whose body is neither cached nor returned (e.g. the fetch timed out before
     /// reaching it) gets no `bodyPreview`.
+    ///
+    /// `summaries` (pippin-521, opt-in via `mail.previewFromIndex`) supplies
+    /// Envelope Index snippet text per compound id: a row that misses the cache
+    /// but has a summary takes the (truncated) summary as its preview and is
+    /// NOT fetched — deliberately skipping the cache write-through (the summary
+    /// is not the body). Priority: cached body > summary > batch fetch.
     static func assemblePreviews(
         metadata: [MailMessage],
         previewChars: Int,
         cache: MailBodyCache?,
+        summaries: [String: String] = [:],
         fetchMisses: (_ ids: [String]) throws -> (messages: [MailMessage], timedOut: Bool)
     ) rethrows -> (messages: [MailMessage], fetchTimedOut: Bool) {
         let cached = cache?.getMany(compoundIds: metadata.map(\.id)) ?? [:]
@@ -627,6 +700,8 @@ enum MailBridge {
         for msg in metadata {
             if let body = cached[msg.id]?.body, !body.isEmpty {
                 bodyByID[msg.id] = body
+            } else if let summary = summaries[msg.id] {
+                bodyByID[msg.id] = summary
             } else {
                 missIDs.append(msg.id)
             }
