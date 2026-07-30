@@ -112,6 +112,10 @@ A soft timeout self-bounds a JXA loop, but if the per-iteration body does **one 
 
 Fix: fetch the property for the whole collection in **one** Apple Event via the bulk getter on the *plural specifier* (not the materialized array): `_notesRef.modificationDate()` returns a parallel array of all dates. Keep the specifier (`_notesRef = app.notes`), materialize elements once (`notes = _notesRef()`), bulk-fetch (`_mods = _notesRef.modificationDate()`), then the bounded loop is **pure JS** (zero Apple Events) and never starves. See `NotesBridge.jsResolveNotesAndBulkMods`. Per-note `.body()`/`.plaintext()` stay per-item but only for the returned page.
 
+## Parallel osascript into Mail.app — Apple Events do NOT serialize (pippin-17rq, measured 2026-07-30)
+
+The plausible assumption that concurrent osascripts queue on Mail's main thread is **wrong**. Measured with two bounded per-account `mail search` probes (`PIPPIN_MAIL_FASTPATH=0`, 3 alternating rounds): serial total 7.32s vs concurrent total 6.08s ≈ max(1.35s, 5.97s) — genuine parallelism, concurrent = max not sum. Per-account fan-out was still **not** built: wall time is bounded by the slowest account (real speedup only 1.20x on this account mix) and the JXA path is a rarely-hit, self-diagnosing fallback behind the ~70ms Envelope Index. Revisit only if the JXA fallback becomes hot AND account scan times are balanced (then speedup approaches N×). Full numbers in bd pippin-17rq (closed).
+
 ## Messages bodies live in `attributedBody` (typedstream), not `text` (pippin-cc1)
 
 `MessagesBridge`/`MessagesDatabase` reads `~/Library/Messages/chat.db` via GRDB (not

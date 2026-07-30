@@ -22,6 +22,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - [feat] `mail_activity` MCP tool now defaults to `preview: 0` (metadata-only, sub-second via the Envelope Index) instead of 200 (~30-40s of per-message body fetches); pass `preview > 0` explicitly for snippets. The CLI `mail activity` default is unchanged (200). Closes pippin-1son.
 
+### Documentation
+
+- [docs] Gotcha docs updated for pippin-1son: envelope `partial` field + `extraWarnings` emit path and the "MCP schema `default:` is advisory" trap (docs/gotchas/mcp.md); fast-path fallback no longer silent (docs/gotchas/envelope-index.md); measured pippin-17rq result — concurrent osascripts into Mail.app parallelize (concurrent ≈ max, not sum) but per-account fan-out isn't worth building (docs/gotchas/jxa.md).
+
 ## [0.36.1] - 2026-07-28
 
 ### Added

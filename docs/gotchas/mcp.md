@@ -28,9 +28,13 @@ ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`Val
 
 **Bridge tools must self-bound well below 60s.** Search uses a 22s JXA-loop soft cap (`softTimeoutMs`) and a 30s ScriptRunner cap; on soft-timeout it returns partial results plus `meta.timedOut=true` and an envelope-level `warnings: [...]` advisory. The MCP hard timeout exists only as a last-resort failsafe.
 
-## Optional `warnings` in agent envelope
+## Optional `warnings` + `partial` in agent envelope
 
-`AgentOkEnvelope` carries an optional top-level `warnings: [String]?` (omitted when nil/empty). Use `output.printAgent(payload, warnings: [...])` to surface non-fatal advisories alongside the data. Existing consumers reading only `.data` are unaffected.
+`AgentOkEnvelope` carries an optional top-level `warnings: [String]?` and, since pippin-1son (2026-07-30), an optional `partial: Bool?` — both omitted when empty/false, so consumers reading only `.data` are unaffected and no schema bump was needed (the additive-field precedent). `output.emit(timedOut:)` sets `partial: true` automatically; `emit(extraWarnings:)` merges non-timeout advisories (e.g. fast-path fallback reasons) into `warnings`. A timed-out empty scan is `{"status":"ok","partial":true,"data":[]}` — never emit a bare `data:[]` for an unfinished scan.
+
+## Schema `default:` is advisory — it never reaches argv
+
+An MCP arg the client omits is simply absent from `buildArgs`' input; the child then applies the **CLI** default, whatever the schema's `default:` claims. When the MCP-facing default must differ from the CLI default, `buildArgs` has to inject the flag explicitly — e.g. `mail_activity` emits `--preview=0` when `preview` is omitted (MCP default 0, CLI default 200). Test the omitted-arg case in `ToolRegistryTests`, not just the explicit one.
 
 ## ToolRegistry argv must be ArgumentParser-safe
 

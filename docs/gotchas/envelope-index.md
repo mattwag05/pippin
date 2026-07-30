@@ -2,7 +2,12 @@
 
 The fast path lives in `pippin/MailBridge/MailEnvelopeIndex.swift`, hooked at
 the top of `MailBridge.listMessages`/`searchMessages`/`listActivity` (metadata
-only; any failure falls back to JXA silently). Kill switches:
+only; any failure falls back to JXA automatically — and since pippin-1son
+(2026-07-30) the failure reason is captured in `ScanOutcome.fastPathNote` and
+surfaced as an envelope `warnings` entry (agent) / stderr `Warning:` (text,
+json), so a seconds-instead-of-milliseconds scan is self-diagnosing rather than
+silent; a fast path *disabled* by env/config intentionally emits no note).
+Kill switches:
 `PIPPIN_MAIL_FASTPATH=0` env (per-invocation, used by the e2e parity check) >
 `mail.fastPath: false` in `~/.config/pippin/config.json` > default ON.
 `doctor --latency` passes `fastPath: false` so its probes still measure the
@@ -69,8 +74,10 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   MUST fall back to the batch body fetch (`assemblePreviews` treats them as
   ordinary misses); (3) a summary-served preview bypasses the MailBodyCache
   write-through, so a later `mail show` of that message pays a cold fetch.
-  Priority in `assemblePreviews`: cached body > summary > batch fetch.
+  Priority in `assemblePreviews`: cached body > seeded snippet (e.g. a `--body`
+  search match, pippin-1son) > summary > batch fetch. Enabled in this machine's
+  `~/.config/pippin/config.json` since 2026-07-30 (backup: `config.json.bak-20260730`).
 - **FDA required** (same class as Messages `chat.db`): the snapshot copy fails
-  with EPERM → `accessDenied` → silent JXA fallback. `doctor` reports fast-path
-  availability as an informational check (`.skip`, never `.fail` — mail works
-  either way).
+  with EPERM → `accessDenied` → JXA fallback (reason in `warnings`). `doctor`
+  reports fast-path availability as an informational check (`.skip`, never
+  `.fail` — mail works either way).
