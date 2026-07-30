@@ -26,6 +26,29 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertThrowsError(try MailCommand.Show.parse([]))
     }
 
+    // MARK: - Show batch (2+ ids — pippin-1son)
+
+    func testShowWithMultipleIdsPasses() throws {
+        let cmd = try MailCommand.Show.parse(["id-one", "id-two", "id-three"])
+        XCTAssertEqual(cmd.messageIds, ["id-one", "id-two", "id-three"])
+    }
+
+    func testShowMultipleIdsWithSubjectFails() {
+        XCTAssertThrowsError(try MailCommand.Show.parse(["id-one", "id-two", "--subject", "Test"]))
+    }
+
+    func testShowMultipleIdsWithSummarizeFails() {
+        XCTAssertThrowsError(try MailCommand.Show.parse(["id-one", "id-two", "--summarize"]))
+    }
+
+    func testShowMultipleIdsWithSanitizeFails() {
+        XCTAssertThrowsError(try MailCommand.Show.parse(["id-one", "id-two", "--sanitize"]))
+    }
+
+    func testShowSingleIdWithSummarizeStillPasses() {
+        XCTAssertNoThrow(try MailCommand.Show.parse(["id-one", "--summarize"]))
+    }
+
     func testShowWithJsonFormat() throws {
         let cmd = try MailCommand.Show.parse(["some-id", "--format", "json"])
         XCTAssertTrue(cmd.output.isJSON)
@@ -557,6 +580,50 @@ final class MailCommandValidationTests: XCTestCase {
         let cmd = try MailCommand.List.parse([])
         XCTAssertNil(cmd.after)
         XCTAssertNil(cmd.before)
+    }
+
+    // MARK: - Search --preview (pippin-1son)
+
+    func testSearchPreviewDefaultIsNil() throws {
+        let cmd = try MailCommand.Search.parse(["query"])
+        XCTAssertNil(cmd.preview)
+    }
+
+    func testSearchPreviewValidPasses() throws {
+        let cmd = try MailCommand.Search.parse(["query", "--preview", "200"])
+        XCTAssertEqual(cmd.preview, 200)
+    }
+
+    func testSearchPreviewZeroFails() {
+        XCTAssertThrowsError(try MailCommand.Search.parse(["query", "--preview", "0"]))
+    }
+
+    func testSearchPreviewNegativeFails() {
+        XCTAssertThrowsError(try MailCommand.Search.parse(["query", "--preview", "-1"]))
+    }
+
+    func testSearchPreviewWithSemanticFails() {
+        XCTAssertThrowsError(try MailCommand.Search.parse(["query", "--preview", "100", "--semantic"]))
+    }
+
+    // MARK: - Timeout hint account-name suffix (pippin-1son)
+
+    func testAccountNamesSuffixListsCachedAccounts() {
+        let path = NSTemporaryDirectory() + "pippin-test-accounts-\(UUID().uuidString).json"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        MailAccountsCache.save([
+            MailAccountRecord(name: "iCloud", email: "a@icloud.com", uuid: "U1"),
+            MailAccountRecord(name: "Work", email: "b@work.com", uuid: "U2"),
+        ], fetchedAt: Date(), path: path)
+        XCTAssertEqual(
+            MailCommand.accountNamesSuffix(cachePath: path),
+            " Configured accounts: iCloud, Work."
+        )
+    }
+
+    func testAccountNamesSuffixEmptyWhenCacheAbsent() {
+        let path = NSTemporaryDirectory() + "pippin-test-accounts-missing-\(UUID().uuidString).json"
+        XCTAssertEqual(MailCommand.accountNamesSuffix(cachePath: path), "")
     }
 
     // MARK: - Search --verbose flag

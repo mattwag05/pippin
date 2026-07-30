@@ -67,12 +67,17 @@ public extension MailCommand {
                 )
             }
             let messages = await MailCommand.enrichContacts(outcome.messages, options: contactResolution)
-            try output.emit(messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint) {
+            try output.emit(
+                messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint,
+                extraWarnings: [outcome.fastPathNote].compactMap { $0 }
+            ) {
                 printMessageTable(messages)
             }
         }
 
-        static let timedOutHint = "activity exceeded soft timeout, returning partial results — narrow with --since, --account, or a smaller --limit for complete results"
+        static var timedOutHint: String {
+            "activity exceeded soft timeout, returning partial results — narrow with --since, --account, or a smaller --limit for complete results" + MailCommand.accountNamesSuffix()
+        }
 
         static func parseMailboxList(_ raw: String) -> [String] {
             raw.split(separator: ",")

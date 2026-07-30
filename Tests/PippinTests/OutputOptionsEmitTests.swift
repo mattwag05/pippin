@@ -113,6 +113,53 @@ final class OutputOptionsEmitTests: XCTestCase {
         XCTAssertFalse(stderr.contains("Warning:"), "no stderr warning when not timed out")
     }
 
+    // MARK: - Partial marker + extra warnings (pippin-1son)
+
+    func testAgentEmitTimedOutSetsPartialTrue() throws {
+        // The whole point: a timed-out empty result must be machine-
+        // distinguishable from a clean zero-match.
+        let opts = try OutputOptions.parse(["--format", "agent"])
+        let json = try decodeObject(captureStdout {
+            try opts.emit(Sample(n: 1), timedOut: true, timedOutHint: Self.hint) {}
+        })
+        XCTAssertEqual(json["partial"] as? Bool, true)
+    }
+
+    func testAgentEmitNotTimedOutOmitsPartial() throws {
+        let opts = try OutputOptions.parse(["--format", "agent"])
+        let json = try decodeObject(captureStdout {
+            try opts.emit(Sample(n: 1), timedOut: false, timedOutHint: Self.hint) {}
+        })
+        XCTAssertNil(json["partial"], "clean result must not carry partial")
+    }
+
+    func testAgentEmitExtraWarningsSurfaceWithoutPartial() throws {
+        // A fast-path fallback note is an advisory, not a partial result.
+        let opts = try OutputOptions.parse(["--format", "agent"])
+        let json = try decodeObject(captureStdout {
+            try opts.emit(Sample(n: 1), timedOut: false, timedOutHint: Self.hint, extraWarnings: ["fell back to JXA"]) {}
+        })
+        XCTAssertEqual(json["warnings"] as? [String], ["fell back to JXA"])
+        XCTAssertNil(json["partial"])
+    }
+
+    func testAgentEmitTimedOutPlusExtraWarningsMergesBoth() throws {
+        let opts = try OutputOptions.parse(["--format", "agent"])
+        let json = try decodeObject(captureStdout {
+            try opts.emit(Sample(n: 1), timedOut: true, timedOutHint: Self.hint, extraWarnings: ["fell back to JXA"]) {}
+        })
+        XCTAssertEqual(json["warnings"] as? [String], [Self.hint, "fell back to JXA"])
+        XCTAssertEqual(json["partial"] as? Bool, true)
+    }
+
+    func testTextEmitExtraWarningsGoToStderr() throws {
+        let opts = try OutputOptions.parse(["--format", "text"])
+        let stderr = try captureStderr {
+            try opts.emit(Sample(n: 1), timedOut: false, timedOutHint: Self.hint, extraWarnings: ["fell back to JXA"]) {}
+        }
+        XCTAssertTrue(stderr.contains("Warning: fell back to JXA"), "got: \(stderr)")
+    }
+
     // MARK: - Field projection defaults to `--fields` (pippin-sq6)
 
     private struct Row: Encodable {

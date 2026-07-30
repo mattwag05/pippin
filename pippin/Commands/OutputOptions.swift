@@ -51,24 +51,33 @@ public struct OutputOptions: ParsableArguments {
     public func printAgent(
         _ payload: some Encodable,
         warnings: [String]? = nil,
-        fields: [String]? = nil
+        fields: [String]? = nil,
+        partial: Bool = false
     ) throws {
         let effectiveFields = fields ?? FieldProjection.parse(self.fields)
         if let effectiveFields, !effectiveFields.isEmpty {
-            try printAgentProjectedJSON(payload, fields: effectiveFields, startedAt: startedAt, warnings: warnings)
+            try printAgentProjectedJSON(
+                payload, fields: effectiveFields, startedAt: startedAt, warnings: warnings, partial: partial
+            )
         } else {
-            try printAgentJSON(payload, startedAt: startedAt, warnings: warnings)
+            try printAgentJSON(payload, startedAt: startedAt, warnings: warnings, partial: partial)
         }
     }
 
     /// Render `payload` in the configured format, surfacing a soft-timeout
     /// advisory when `timedOut == true`:
     /// - JSON: writes `payload` unchanged + a stderr `Warning:` line.
-    /// - Agent: passes `[hint]` as `warnings` in the envelope. Stderr stays
-    ///   silent — the MCP server captures child stderr and a duplicate line
-    ///   would be double-noise alongside the structured warning.
+    /// - Agent: passes `[hint]` as `warnings` in the envelope and marks it
+    ///   `partial: true` so callers can tell an unfinished scan from a clean
+    ///   empty result. Stderr stays silent — the MCP server captures child
+    ///   stderr and a duplicate line would be double-noise alongside the
+    ///   structured warning.
     /// - Text: stderr `Warning:` line + caller's `renderText` closure +
     ///   trailing `(partial results — <hint>)` trailer.
+    ///
+    /// `extraWarnings` are advisories independent of the soft timeout (e.g.
+    /// "fast path unavailable, fell back to JXA") — merged into the agent
+    /// `warnings` array, printed as stderr `Warning:` lines in json/text.
     ///
     /// Field projection defaults to the parsed `--fields` (`self.fields`) — an
     /// explicit `fields:` argument overrides it. Projection applies in both json
@@ -78,11 +87,17 @@ public struct OutputOptions: ParsableArguments {
         timedOut: Bool = false,
         timedOutHint: String,
         fields: [String]? = nil,
+        extraWarnings: [String] = [],
         renderText: () -> Void
     ) throws {
         let effectiveFields = fields ?? FieldProjection.parse(self.fields)
-        if timedOut, !isAgent {
-            FileHandle.standardError.write(Data("Warning: \(timedOutHint)\n".utf8))
+        if !isAgent {
+            if timedOut {
+                FileHandle.standardError.write(Data("Warning: \(timedOutHint)\n".utf8))
+            }
+            for warning in extraWarnings {
+                FileHandle.standardError.write(Data("Warning: \(warning)\n".utf8))
+            }
         }
         if isJSON {
             if let effectiveFields, !effectiveFields.isEmpty {
@@ -93,7 +108,8 @@ public struct OutputOptions: ParsableArguments {
                 try printJSON(payload)
             }
         } else if isAgent {
-            try printAgent(payload, warnings: timedOut ? [timedOutHint] : nil, fields: effectiveFields)
+            let warnings = (timedOut ? [timedOutHint] : []) + extraWarnings
+            try printAgent(payload, warnings: warnings.isEmpty ? nil : warnings, fields: effectiveFields, partial: timedOut)
         } else {
             renderText()
             if timedOut {

@@ -221,7 +221,8 @@ extension MailBridge {
         before: String? = nil,
         to: String? = nil,
         from: String? = nil,
-        softTimeoutMs: Int = SoftTimeout.defaultMs
+        softTimeoutMs: Int = SoftTimeout.defaultMs,
+        preview: Int? = nil
     ) -> String {
         let safeQuery = jsEscape(query)
         let acctFilter = jsEscapeOptional(account)
@@ -234,6 +235,9 @@ extension MailBridge {
         let safeLimitVal = max(1, min(limit, 500))
         let perMailboxLimit = 500
         let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
+        // Snippet length for body-matched hits (the body is already fetched for
+        // the match test — capturing a preview costs nothing extra).
+        let previewChars = max(1, min(preview ?? 200, 4000))
 
         return """
         var mail = Application('Mail');
@@ -249,6 +253,7 @@ extension MailBridge {
         var offset = \(offset);
         var perMailboxLimit = \(perMailboxLimit);
         var softTimeoutMs = \(safeSoftTimeoutMs);
+        var previewChars = \(previewChars);
         var afterFilter = \(afterFilter);
         var beforeFilter = \(beforeFilter);
         var toFilter = \(toFilter);
@@ -332,10 +337,16 @@ extension MailBridge {
                     var matched = subject.toLowerCase().indexOf(query) !== -1
                                || sender.toLowerCase().indexOf(query) !== -1;
 
-                    // Only fetch body if explicitly requested and subject/sender didn't match
+                    // Only fetch body if explicitly requested and subject/sender didn't
+                    // match. The body is already in hand after a match — keep a snippet
+                    // instead of discarding it, so --body hits return usable content.
+                    var bodyPrev = null;
                     if (!matched && searchBody) {
-                        var body = msg.content() || '';
-                        matched = body.toLowerCase().indexOf(query) !== -1;
+                        var body = String(msg.content() || '');
+                        if (body.toLowerCase().indexOf(query) !== -1) {
+                            matched = true;
+                            bodyPrev = body.length > previewChars ? body.substring(0, previewChars) + '…' : body;
+                        }
                     }
 
                     // Recipient filter: only fetch toRecipients() after text match (avoids overhead)
@@ -375,6 +386,7 @@ extension MailBridge {
                             date: msgDate.toISOString(),
                             read: msg.readStatus(),
                             body: null,
+                            bodyPreview: bodyPrev,
                             size: msgSize,
                             hasAttachment: msgHasAtt
                         });

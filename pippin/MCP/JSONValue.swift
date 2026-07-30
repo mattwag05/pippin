@@ -88,4 +88,9 @@ enum JSONValue: Codable, Equatable, Sendable {
         default: return nil
         }
     }
+
+    var arrayValue: [JSONValue]? {
+        if case let .array(value) = self { return value }
+        return nil
+    }
 }

@@ -17,6 +17,18 @@ enum MailBridge {
         /// scanned) — a ready-to-surface advisory distinguishing "no matches"
         /// from "window too shallow". `nil` everywhere else.
         var windowHint: String? = nil
+        /// Non-nil when the Envelope Index fast path threw and the call fell
+        /// back to the slow JXA scan — the single-line reason, ready to
+        /// surface as a warning so callers can see *why* they paid seconds
+        /// instead of milliseconds. `nil` when the fast path succeeded or was
+        /// intentionally skipped (disabled, `--body`, preview fetch).
+        var fastPathNote: String? = nil
+    }
+
+    /// Single-line advisory for `ScanOutcome.fastPathNote`.
+    static func fastPathFallbackNote(_ error: Error) -> String {
+        let reason = String(describing: error).replacingOccurrences(of: "\n", with: " ")
+        return "envelope-index fast path unavailable (\(reason)); fell back to slower JXA scan"
     }
 
     typealias ListOutcome = ScanOutcome
@@ -180,12 +192,17 @@ enum MailBridge {
         // A full-index scan can't under-reach a `--before` cutoff, so no
         // windowHint. `doctor --latency` passes `fastPath: false` to measure
         // the real JXA/Mail.app path.
-        if fastPath, (preview ?? 0) == 0, fastPathEnabled(),
-           let messages = try? makeFastPathIndex(accountName: account).listMessages(
-               account: account, mailbox: mailbox, unread: unread,
-               limit: clampedLimit, offset: clampedOffset, after: after, before: before
-           ) {
-            return ListOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
+        var fastPathNote: String?
+        if fastPath, (preview ?? 0) == 0, fastPathEnabled() {
+            do {
+                let messages = try makeFastPathIndex(accountName: account).listMessages(
+                    account: account, mailbox: mailbox, unread: unread,
+                    limit: clampedLimit, offset: clampedOffset, after: after, before: before
+                )
+                return ListOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
+            } catch {
+                fastPathNote = fastPathFallbackNote(error)
+            }
         }
         let script = buildListScript(
             account: account, mailbox: mailbox, unread: unread,
@@ -213,7 +230,8 @@ enum MailBridge {
                 before: before,
                 reachedMailboxEnd: wrapper.meta.reachedMailboxEnd,
                 oldestExaminedMs: wrapper.meta.oldestExaminedMs
-            )
+            ),
+            fastPathNote: fastPathNote
         )
     }
 
@@ -279,11 +297,19 @@ enum MailBridge {
         // JXA machinery as `mail list --preview` — cache hits skip osascript
         // entirely, misses cost one bounded batch fetch. JXA fallback on any
         // index failure.
-        if fastPath, fastPathEnabled(),
-           let index = try? makeFastPathIndex(accountName: account),
-           let metadata = try? index.listActivity(
-               account: account, mailboxes: mailboxes, since: since, limit: limit
-           ) {
+        var fastPathNote: String?
+        var indexed: (index: MailEnvelopeIndex, metadata: [MailMessage])?
+        if fastPath, fastPathEnabled() {
+            do {
+                let index = try makeFastPathIndex(accountName: account)
+                indexed = try (index, index.listActivity(
+                    account: account, mailboxes: mailboxes, since: since, limit: limit
+                ))
+            } catch {
+                fastPathNote = fastPathFallbackNote(error)
+            }
+        }
+        if let (index, metadata) = indexed {
             let previewChars = (preview ?? 0) > 0 ? max(1, min(preview ?? 0, 4000)) : 0
             guard previewChars > 0 else {
                 return ActivityOutcome(messages: attachCachedAnomalies(metadata), timedOut: false)
@@ -294,11 +320,7 @@ enum MailBridge {
                 cache: MailBodyCache.shared,
                 summaries: indexSummaries(index, for: metadata),
                 fetchMisses: { ids in
-                    guard !ids.isEmpty else { return (messages: [], timedOut: false) }
-                    let script = buildBatchBodiesScript(compoundIds: ids, softTimeoutMs: softTimeoutMs)
-                    let json = try runScript(script, timeoutSeconds: mcpHardTimeout(listScanTimeout(crossAccount: crossAccount, fetchesBodies: true)))
-                    let wrapper = try decode(ScanResponse.self, from: json)
-                    return (messages: wrapper.results, timedOut: wrapper.meta.timedOut)
+                    try batchFetchBodies(ids: ids, crossAccount: crossAccount, softTimeoutMs: softTimeoutMs)
                 }
             )
             return ActivityOutcome(messages: attachCachedAnomalies(assembled.messages), timedOut: assembled.fetchTimedOut)
@@ -315,7 +337,11 @@ enum MailBridge {
         let timeout = (preview ?? 0) > 0 ? baseTimeout + 40 : baseTimeout
         let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
         let wrapper = try decode(ActivityResponse.self, from: json)
-        return ActivityOutcome(messages: attachCachedAnomalies(wrapper.results), timedOut: wrapper.meta.timedOut)
+        return ActivityOutcome(
+            messages: attachCachedAnomalies(wrapper.results),
+            timedOut: wrapper.meta.timedOut,
+            fastPathNote: fastPathNote
+        )
     }
 
     static func searchMessages(
@@ -331,7 +357,8 @@ enum MailBridge {
         from: String? = nil,
         verbose: Bool = false,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
-        fastPath: Bool = true
+        fastPath: Bool = true,
+        preview: Int? = nil
     ) throws -> SearchOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil) && (mailbox == nil)
@@ -340,22 +367,27 @@ enum MailBridge {
         // whole index in ~ms (measured 31ms over 28k messages) vs a 45–95s JXA
         // window scan — and it can't miss old matches the way the newest-N JXA
         // window can. `--body` falls through (bodies are not in the index).
-        if fastPath, !searchBody, fastPathEnabled(),
-           let messages = try? makeFastPathIndex(accountName: account).searchMessages(
-               query: query, account: account, mailbox: mailbox,
-               limit: limit, offset: clampedOffset, after: after, before: before,
-               to: to, from: from
-           ) {
-            if verbose {
-                let line = "[search] fast path: envelope index (full-index scan, JXA bypassed)\n"
-                FileHandle.standardError.write(Data(line.utf8))
+        var fastPathNote: String?
+        if fastPath, !searchBody, fastPathEnabled() {
+            do {
+                let messages = try makeFastPathIndex(accountName: account).searchMessages(
+                    query: query, account: account, mailbox: mailbox,
+                    limit: limit, offset: clampedOffset, after: after, before: before,
+                    to: to, from: from
+                )
+                if verbose {
+                    let line = "[search] fast path: envelope index (full-index scan, JXA bypassed)\n"
+                    FileHandle.standardError.write(Data(line.utf8))
+                }
+                return SearchOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
+            } catch {
+                fastPathNote = fastPathFallbackNote(error)
             }
-            return SearchOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
         }
         let script = buildSearchScript(
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
             limit: limit, offset: clampedOffset, after: after, before: before, to: to,
-            from: from, softTimeoutMs: softTimeoutMs
+            from: from, softTimeoutMs: softTimeoutMs, preview: preview
         )
         // Cross-account (no --account, no --mailbox) iterates 5 accounts ×
         // ~21 mailboxes = 100+ mailbox scans.  When --body is on, each match
@@ -383,7 +415,11 @@ enum MailBridge {
                 stderr.write(Data((line + "\n").utf8))
             }
         }
-        return SearchOutcome(messages: attachCachedAnomalies(wrapper.results), timedOut: wrapper.meta.timedOut)
+        return SearchOutcome(
+            messages: attachCachedAnomalies(wrapper.results),
+            timedOut: wrapper.meta.timedOut,
+            fastPathNote: fastPathNote
+        )
     }
 
     static func markMessage(
@@ -538,6 +574,29 @@ enum MailBridge {
         return message.withDetectedHeaderAnomalies(extra: baselineWarnings(for: message))
     }
 
+    /// Batch read (`mail show <id> <id> …`): warm the cache for all misses in
+    /// ONE osascript (`buildBatchBodiesScript` resolves each mailbox once —
+    /// batch rows are as complete as a single-show fetch), then assemble per id
+    /// via `readMessage`. Ids the batch's soft timeout skipped fall back to an
+    /// individual live fetch there — correct, just slower. With `cache: nil`
+    /// (`--no-cache`) there is nothing to warm; every id is a live single fetch.
+    static func readMessages(compoundIds: [String], cache: MailBodyCache? = MailBodyCache.shared) throws -> [MailMessage] {
+        if let cache, compoundIds.count > 1 {
+            let cached = cache.getMany(compoundIds: compoundIds)
+            let misses = compoundIds.filter { cached[$0] == nil }
+            if !misses.isEmpty {
+                let accounts = Set(misses.compactMap { try? parseCompoundId($0).account })
+                let fetched = try batchFetchBodies(
+                    ids: misses, crossAccount: accounts.count > 1, softTimeoutMs: SoftTimeout.defaultMs
+                )
+                for fresh in fetched.messages {
+                    cache.put(fresh)
+                }
+            }
+        }
+        return try compoundIds.map { try readMessage(compoundId: $0, cache: cache) }
+    }
+
     /// Raw RFC822 source for a message (pippin-fwa). Used by `mail verify` for
     /// the deep auth-chain parse; nil when Mail can't produce the source (the
     /// verify report then omits the chain rather than failing).
@@ -659,16 +718,56 @@ enum MailBridge {
             cache: cache,
             summaries: summaries,
             fetchMisses: { ids in
-                guard !ids.isEmpty else { return (messages: [], timedOut: false) }
-                let script = buildBatchBodiesScript(compoundIds: ids, softTimeoutMs: softTimeoutMs)
-                // Misses fetch bodies via msg.content() — same cost profile as a
-                // preview list, so reuse its preview-scaled hard timeout.
-                let json = try runScript(script, timeoutSeconds: mcpHardTimeout(listScanTimeout(crossAccount: crossAccount, fetchesBodies: true)))
-                let wrapper = try decode(ScanResponse.self, from: json)
-                return (messages: wrapper.results, timedOut: wrapper.meta.timedOut)
+                try batchFetchBodies(ids: ids, crossAccount: crossAccount, softTimeoutMs: softTimeoutMs)
             }
         )
         return ListOutcome(messages: assembled.messages, timedOut: pass1.timedOut || assembled.fetchTimedOut)
+    }
+
+    /// Fetch N message bodies in ONE batch osascript (`buildBatchBodiesScript`).
+    /// The shared `fetchMisses` implementation for every preview-assembly path
+    /// (list, activity, search). Misses fetch bodies via `msg.content()` — same
+    /// cost profile as a preview list, so reuse its preview-scaled hard timeout.
+    static func batchFetchBodies(
+        ids: [String], crossAccount: Bool, softTimeoutMs: Int
+    ) throws -> (messages: [MailMessage], timedOut: Bool) {
+        guard !ids.isEmpty else { return (messages: [], timedOut: false) }
+        let script = buildBatchBodiesScript(compoundIds: ids, softTimeoutMs: softTimeoutMs)
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(listScanTimeout(crossAccount: crossAccount, fetchesBodies: true)))
+        let wrapper = try decode(ScanResponse.self, from: json)
+        return (messages: wrapper.results, timedOut: wrapper.meta.timedOut)
+    }
+
+    /// `mail search --preview N`: fill `bodyPreview` on search hits through the
+    /// same cache-first assembly as `mail list --preview`. Priority per hit:
+    /// cached body > snippet already captured by a `--body` JXA match (seeded so
+    /// it is never refetched) > opt-in index summary (pippin-521) > one batch
+    /// osascript for the misses (write-through cache, so a follow-up `mail show`
+    /// is free).
+    static func attachSearchPreviews(
+        _ messages: [MailMessage],
+        previewChars: Int,
+        account: String?,
+        cache: MailBodyCache? = MailBodyCache.shared,
+        softTimeoutMs: Int = SoftTimeout.defaultMs
+    ) throws -> (messages: [MailMessage], timedOut: Bool) {
+        let clamped = max(1, min(previewChars, 4000))
+        let crossAccount = (account == nil)
+        var seeds: [String: String] = [:]
+        for msg in messages {
+            if let existing = msg.bodyPreview, !existing.isEmpty { seeds[msg.id] = existing }
+        }
+        if AIProviderFactory.loadConfig()?.mail?.previewFromIndex == true, fastPathEnabled(),
+           let index = try? makeFastPathIndex(accountName: account) {
+            seeds.merge(indexSummaries(index, for: messages)) { existing, _ in existing }
+        }
+        let assembled = try assemblePreviews(
+            metadata: messages, previewChars: clamped, cache: cache, summaries: seeds,
+            fetchMisses: { ids in
+                try batchFetchBodies(ids: ids, crossAccount: crossAccount, softTimeoutMs: softTimeoutMs)
+            }
+        )
+        return (messages: assembled.messages, timedOut: assembled.fetchTimedOut)
     }
 
     /// Pure assembly step for `listMessagesCached` — no Mail.app, no I/O beyond

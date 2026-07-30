@@ -103,6 +103,33 @@ run "mail search --from filters sender (#21)" "isinstance(d['data'], (list, dict
   -- mail search "the" --from "no-reply" --limit 3
 run "mail search date-bounded body scan returns (#23)" "isinstance(d['data'], (list, dict))" \
   -- mail search "the" --body --after 2026-07-01 --limit 3
+# pippin-1son: a clean (non-timed-out) result must NOT carry the partial marker,
+# and --preview must inline bodyPreview snippets on the hits.
+run "mail search clean result has no partial flag (pippin-1son)" "d.get('partial') is None" \
+  -- mail search "the" --limit 3
+run "mail search --preview fills bodyPreview (pippin-1son)" "
+len(d['data']) == 0 or any(isinstance(m.get('bodyPreview'), str) and m['bodyPreview'] for m in d['data'])" \
+  -- mail search "the" --limit 3 --preview 120
+
+# pippin-1son: batch mail show — 2+ ids → one batched fetch, array output;
+# single id keeps the original single-object shape.
+IDS=($("$BIN" mail list --limit 2 --no-contacts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    rows = d['data'] if isinstance(d['data'], list) else d['data'].get('messages', [])
+    print('\n'.join(r['id'] for r in rows[:2]))
+except Exception:
+    pass"))
+if [[ ${#IDS[@]} -eq 2 ]]; then
+  run "mail show 2 ids returns array (pippin-1son)" "
+isinstance(d['data'], list) and len(d['data']) == 2 and all(isinstance(m.get('body'), str) for m in d['data'])" \
+    -- mail show "${IDS[1]}" "${IDS[2]}"
+  run "mail show 1 id keeps object shape (pippin-1son)" "isinstance(d['data'], dict)" \
+    -- mail show "${IDS[1]}"
+else
+  SKIP=$((SKIP+1)); echo "  SKIP  mail show batch (need 2 message ids)"
+fi
 # pippin-xz6: an empty --before result whose newest-N window never reached the
 # cutoff must carry the shortfall advisory (JXA must emit oldestExaminedMs /
 # reachedMailboxEnd). Pass if matches exist (impossible pre-2000) OR the hint fired.

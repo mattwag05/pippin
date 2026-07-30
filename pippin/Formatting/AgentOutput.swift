@@ -13,26 +13,32 @@ public let AGENT_SCHEMA_VERSION = 2
 /// Success envelope — wraps the original payload under `data`.
 /// Shape: {"v":1,"status":"ok","duration_ms":234,"data":<payload>}
 /// Optional `warnings` array surfaces non-fatal advisories (e.g. "scan exceeded
-/// soft timeout, returning partial results"). Omitted when empty/nil so the
-/// shape stays backward-compatible for consumers that only read `.data`.
+/// soft timeout, returning partial results"). Optional `partial: true` marks a
+/// result set that is incomplete (soft timeout / scan-window shortfall) so
+/// callers can distinguish "nothing found" from "scan didn't finish". Both are
+/// omitted when empty/false so the shape stays backward-compatible for
+/// consumers that only read `.data`.
 public struct AgentOkEnvelope<T: Encodable>: Encodable {
     public let v: Int
     public let status: String
     public let durationMs: Int
+    public let partial: Bool?
     public let warnings: [String]?
     public let data: T
 
     enum CodingKeys: String, CodingKey {
         case v, status
         case durationMs = "duration_ms"
+        case partial
         case warnings
         case data
     }
 
-    public init(v: Int, status: String, durationMs: Int, data: T, warnings: [String]? = nil) {
+    public init(v: Int, status: String, durationMs: Int, data: T, warnings: [String]? = nil, partial: Bool = false) {
         self.v = v
         self.status = status
         self.durationMs = durationMs
+        self.partial = partial ? true : nil
         self.warnings = (warnings?.isEmpty ?? true) ? nil : warnings
         self.data = data
     }
@@ -42,6 +48,7 @@ public struct AgentOkEnvelope<T: Encodable>: Encodable {
         try container.encode(v, forKey: .v)
         try container.encode(status, forKey: .status)
         try container.encode(durationMs, forKey: .durationMs)
+        try container.encodeIfPresent(partial, forKey: .partial)
         try container.encodeIfPresent(warnings, forKey: .warnings)
         try container.encode(data, forKey: .data)
     }
@@ -83,14 +90,16 @@ public struct AgentErrorEnvelope: Encodable {
 public func printAgentJSON<T: Encodable>(
     _ value: T,
     startedAt: Date = Date(),
-    warnings: [String]? = nil
+    warnings: [String]? = nil,
+    partial: Bool = false
 ) throws {
     let envelope = AgentOkEnvelope(
         v: AGENT_SCHEMA_VERSION,
         status: "ok",
         durationMs: durationMs(from: startedAt),
         data: value,
-        warnings: warnings
+        warnings: warnings,
+        partial: partial
     )
     let encoder = JSONEncoder()
     let data = try encoder.encode(envelope)
@@ -106,9 +115,10 @@ public func printAgentProjectedJSON(
     _ value: some Encodable,
     fields: [String],
     startedAt: Date = Date(),
-    warnings: [String]? = nil
+    warnings: [String]? = nil,
+    partial: Bool = false
 ) throws {
-    try print(projectedAgentJSON(value, fields: fields, startedAt: startedAt, warnings: warnings))
+    try print(projectedAgentJSON(value, fields: fields, startedAt: startedAt, warnings: warnings, partial: partial))
 }
 
 /// String form of the projected ok-envelope. The single definition of the
@@ -122,7 +132,8 @@ public func projectedAgentJSON(
     _ value: some Encodable,
     fields: [String],
     startedAt: Date = Date(),
-    warnings: [String]? = nil
+    warnings: [String]? = nil,
+    partial: Bool = false
 ) throws -> String {
     let projected = try FieldProjection.projectedObject(value, fields: fields)
     var envelope: [String: Any] = [
@@ -131,6 +142,9 @@ public func projectedAgentJSON(
         "duration_ms": durationMs(from: startedAt),
         "data": projected,
     ]
+    if partial {
+        envelope["partial"] = true
+    }
     if let warnings, !warnings.isEmpty {
         envelope["warnings"] = warnings
     }

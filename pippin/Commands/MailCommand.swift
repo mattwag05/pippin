@@ -35,6 +35,16 @@ public struct MailCommand: AsyncParsableCommand {
         }
     }
 
+    /// Suffix for soft-timeout hints listing the configured account names, so
+    /// an agent can narrow with `--account` without a follow-up `mail accounts`
+    /// call. Reads only the on-disk accounts cache (zero Apple Events); empty
+    /// string when the cache is absent, leaving the hint unchanged.
+    static func accountNamesSuffix(cachePath: String = MailAccountsCache.defaultPath()) -> String {
+        let names = MailAccountsCache.load(path: cachePath).accounts.map(\.name)
+        guard !names.isEmpty else { return "" }
+        return " Configured accounts: \(names.joined(separator: ", "))."
+    }
+
     /// Text-mode card fields for `mail show` (shared by the plain, --summarize,
     /// and --sanitize renderings, which differ only in the body they display).
     static func showCardFields(_ message: MailMessage, body: String) -> [(String, String)] {
@@ -155,6 +165,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Print search diagnostics (accounts/mailboxes scanned, messages examined).")
         public var verbose: Bool = false
 
+        @Option(name: .long, help: "Include a plain-text body preview of up to N chars per hit. Uncached hits cost one batched body fetch (slower).")
+        public var preview: Int?
+
         @OptionGroup public var contactResolution: ContactResolutionOptions
 
         @Option(name: .long, help: "Maximum number of results to return (default: 10; values above 500 are capped).")
@@ -181,6 +194,12 @@ public struct MailCommand: AsyncParsableCommand {
         public mutating func validate() throws {
             guard limit >= 1 else {
                 throw ValidationError("--limit must be 1 or greater.")
+            }
+            if let preview, preview <= 0 {
+                throw ValidationError("--preview must be a positive integer (chars).")
+            }
+            if preview != nil, semantic {
+                throw ValidationError("--preview cannot be combined with --semantic.")
             }
             if let after = after {
                 guard isValidDate(after) else {
@@ -237,6 +256,7 @@ public struct MailCommand: AsyncParsableCommand {
             let to = self.to
             let from = self.from
             let verbose = self.verbose
+            let preview = self.preview
             // searchMessages spawns a blocking osascript subprocess (up to 95s
             // cross-account); hop off the cooperative pool so concurrent callers
             // (mcp-server) don't stall.
@@ -252,24 +272,44 @@ public struct MailCommand: AsyncParsableCommand {
                     before: before,
                     to: to,
                     from: from,
-                    verbose: verbose
+                    verbose: verbose,
+                    preview: preview
                 )
             }
-            try await emitMessages(outcome.messages, timedOut: outcome.timedOut)
+            var messages = outcome.messages
+            var timedOut = outcome.timedOut
+            if let preview {
+                let attached = try await detachBlocking { [messages] in
+                    try MailBridge.attachSearchPreviews(messages, previewChars: preview, account: account)
+                }
+                messages = attached.messages
+                timedOut = timedOut || attached.timedOut
+            }
+            try await emitMessages(messages, timedOut: timedOut, fastPathNote: outcome.fastPathNote)
         }
 
-        static let timedOutHint = "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results"
+        static var timedOutHint: String {
+            "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results" + MailCommand.accountNamesSuffix()
+        }
 
-        private func emitMessages(_ messages: [MailMessage], timedOut: Bool) async throws {
+        private func emitMessages(_ messages: [MailMessage], timedOut: Bool, fastPathNote: String? = nil) async throws {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
-            try output.emit(messages, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
+            try output.emit(
+                messages, timedOut: timedOut, timedOutHint: Self.timedOutHint,
+                fields: FieldProjection.parse(output.fields),
+                extraWarnings: [fastPathNote].compactMap { $0 }
+            ) {
                 printMessageTable(messages)
             }
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) async throws {
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
-            try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
+            try output.emit(
+                page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
+                fields: FieldProjection.parse(output.fields),
+                extraWarnings: [fastPathNote].compactMap { $0 }
+            ) {
                 printMessageTable(page.items)
                 if let cursor = page.nextCursor {
                     print("(more — re-run with --cursor \(cursor))")
@@ -294,6 +334,7 @@ public struct MailCommand: AsyncParsableCommand {
             )
             let page: Page<MailMessage>
             var paginatedTimedOut = false
+            var paginatedFastPathNote: String?
             if semantic {
                 guard provider == "ollama" else {
                     throw MailAIError.unsupportedEmbeddingProvider(provider)
@@ -324,6 +365,7 @@ public struct MailCommand: AsyncParsableCommand {
                 let to = self.to
                 let from = self.from
                 let verbose = self.verbose
+                let preview = self.preview
                 // searchMessages spawns a blocking osascript subprocess; hop off
                 // the cooperative pool so concurrent callers don't stall.
                 let outcome = try await detachBlocking {
@@ -338,15 +380,25 @@ public struct MailCommand: AsyncParsableCommand {
                         before: before,
                         to: to,
                         from: from,
-                        verbose: verbose
+                        verbose: verbose,
+                        preview: preview
                     )
                 }
                 paginatedTimedOut = outcome.timedOut
+                paginatedFastPathNote = outcome.fastPathNote
+                var fetched = outcome.messages
+                if let preview {
+                    let attached = try await detachBlocking { [fetched] in
+                        try MailBridge.attachSearchPreviews(fetched, previewChars: preview, account: account)
+                    }
+                    fetched = attached.messages
+                    paginatedTimedOut = paginatedTimedOut || attached.timedOut
+                }
                 page = try Pagination.pageFromPushdown(
-                    fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
+                    fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash
                 )
             }
-            try await emitPage(page, timedOut: paginatedTimedOut)
+            try await emitPage(page, timedOut: paginatedTimedOut, fastPathNote: paginatedFastPathNote)
         }
     }
 
@@ -476,11 +528,16 @@ public struct MailCommand: AsyncParsableCommand {
                     ))
                 }
             } else {
-                try await emitMessages(messages, timedOut: outcome.timedOut, windowHint: outcome.windowHint)
+                try await emitMessages(
+                    messages, timedOut: outcome.timedOut, windowHint: outcome.windowHint,
+                    fastPathNote: outcome.fastPathNote
+                )
             }
         }
 
-        static let timedOutHint = "list exceeded soft timeout, returning partial results — narrow with --account, --mailbox, or a smaller --limit for complete results"
+        static var timedOutHint: String {
+            "list exceeded soft timeout, returning partial results — narrow with --account, --mailbox, or a smaller --limit for complete results" + MailCommand.accountNamesSuffix()
+        }
 
         /// A soft-timeout warning takes precedence over a `--before` window-shortfall
         /// hint (both surface through the same partial-results channel).
@@ -490,17 +547,27 @@ public struct MailCommand: AsyncParsableCommand {
             return (false, Self.timedOutHint)
         }
 
-        private func emitMessages(_ messages: [MailMessage], timedOut: Bool, windowHint: String? = nil) async throws {
+        private func emitMessages(
+            _ messages: [MailMessage], timedOut: Bool, windowHint: String? = nil, fastPathNote: String? = nil
+        ) async throws {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
             let (warn, hint) = warning(timedOut: timedOut, windowHint: windowHint)
-            try output.emit(messages, timedOut: warn, timedOutHint: hint, fields: FieldProjection.parse(output.fields)) {
+            try output.emit(
+                messages, timedOut: warn, timedOutHint: hint,
+                fields: FieldProjection.parse(output.fields),
+                extraWarnings: [fastPathNote].compactMap { $0 }
+            ) {
                 printMessageTable(messages)
             }
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool) async throws {
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
-            try output.emit(page, timedOut: timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
+            try output.emit(
+                page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
+                fields: FieldProjection.parse(output.fields),
+                extraWarnings: [fastPathNote].compactMap { $0 }
+            ) {
                 printMessageTable(page.items)
                 if let cursor = page.nextCursor {
                     print("(more — re-run with --cursor \(cursor))")
@@ -524,7 +591,7 @@ public struct MailCommand: AsyncParsableCommand {
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
             )
-            try await emitPage(page, timedOut: outcome.timedOut)
+            try await emitPage(page, timedOut: outcome.timedOut, fastPathNote: outcome.fastPathNote)
         }
 
         /// Fetch a list page, routing `--preview N` through the body cache
@@ -563,11 +630,12 @@ public struct MailCommand: AsyncParsableCommand {
     public struct Show: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
-            abstract: "Show a message by its compound id or subject search."
+            abstract: "Show one or more messages by compound id, or one by subject search.",
+            discussion: "With 2+ ids, bodies for cache misses are fetched in a single batched Mail pass and the output is an array (single id keeps the original single-object shape)."
         )
 
-        @Argument(help: "Message id from `pippin mail list` output.")
-        public var messageId: String?
+        @Argument(help: "Message id(s) from `pippin mail list` output. 2+ ids batch-fetch in one Mail pass and emit an array.")
+        public var messageIds: [String] = []
 
         @Option(name: .long, help: "Find first message matching this subject and show it.")
         public var subject: String?
@@ -609,15 +677,22 @@ public struct MailCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func validate() throws {
-            if messageId != nil, subject != nil {
-                throw ValidationError("Provide either a message ID or --subject, not both.")
+            if !messageIds.isEmpty, subject != nil {
+                throw ValidationError("Provide either message ID(s) or --subject, not both.")
             }
-            if messageId == nil, subject == nil {
+            if messageIds.isEmpty, subject == nil {
                 throw ValidationError("Provide a message ID or --subject.")
+            }
+            if messageIds.count > 1, sanitize || summarize {
+                throw ValidationError("--sanitize and --summarize work with a single message ID.")
             }
         }
 
         public mutating func run() async throws {
+            if messageIds.count > 1 {
+                try await runBatch(compoundIds: messageIds)
+                return
+            }
             let compoundId: String
             if let subject = subject {
                 // searchMessages spawns a blocking osascript subprocess; hop off
@@ -628,7 +703,7 @@ public struct MailCommand: AsyncParsableCommand {
                 }
                 compoundId = first.id
             } else {
-                compoundId = messageId!
+                compoundId = messageIds[0]
             }
 
             // readMessage spawns a blocking osascript subprocess; hop off the pool.
@@ -705,6 +780,24 @@ public struct MailCommand: AsyncParsableCommand {
                 } else if output.isAgent {
                     try output.printAgent(message)
                 } else {
+                    print(TextFormatter.card(fields: MailCommand.showCardFields(message, body: message.body ?? "(no body)")))
+                }
+            }
+        }
+
+        /// 2+ ids: one batched Mail pass for cache misses (`readMessages`), then
+        /// emit an array. Single-id calls keep the original single-object shape.
+        private func runBatch(compoundIds: [String]) async throws {
+            let useCache = noCache ? nil : MailBodyCache.shared
+            let fetched = try await detachBlocking { try MailBridge.readMessages(compoundIds: compoundIds, cache: useCache) }
+            let messages = await MailCommand.enrichContacts(fetched, options: contactResolution)
+            if output.isJSON {
+                try printJSON(messages)
+            } else if output.isAgent {
+                try output.printAgent(messages)
+            } else {
+                for (i, message) in messages.enumerated() {
+                    if i > 0 { print("") }
                     print(TextFormatter.card(fields: MailCommand.showCardFields(message, body: message.body ?? "(no body)")))
                 }
             }
@@ -859,7 +952,7 @@ public struct MailCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             var show = Show()
-            show.messageId = messageId
+            show.messageIds = [messageId]
             show.output = output
             try await show.run()
         }

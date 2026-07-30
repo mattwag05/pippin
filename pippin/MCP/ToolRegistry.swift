@@ -88,6 +88,12 @@ enum ArgHelpers {
         args?[key]?.boolValue
     }
 
+    static func stringArray(_ args: JSONValue?, _ key: String) -> [String]? {
+        guard let items = args?[key]?.arrayValue else { return nil }
+        let strings = items.compactMap(\.stringValue)
+        return strings.isEmpty ? nil : strings
+    }
+
     static func double(_ args: JSONValue?, _ key: String) -> Double? {
         args?[key]?.doubleValue
     }
@@ -204,6 +210,14 @@ enum Schema {
         return .object(dict)
     }
 
+    static func stringArray(_ description: String) -> JSONValue {
+        .object([
+            "type": .string("array"),
+            "description": .string(description),
+            "items": .object(["type": .string("string")]),
+        ])
+    }
+
     static let empty: JSONValue = object(properties: [:])
 }
 
@@ -262,13 +276,13 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_activity",
-            description: "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default) with body previews. Use this for scan workflows instead of N calls to mail_list. The default preview 200 forces per-message body fetches and takes ~30-40s; set preview to 0 for metadata-only results in under a second when snippets aren't needed.",
+            description: "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default). Use this for scan workflows instead of N calls to mail_list. Default is metadata-only (preview 0, sub-second); pass preview > 0 for body snippets, which force per-message body fetches (~30-40s).",
             inputSchema: Schema.object(properties: [
                 "account": Schema.string("Mail account name."),
                 "mailboxes": Schema.string("Comma-separated mailbox names (default: INBOX,Sent)."),
                 "since": Schema.string("Only include messages on or after this date: YYYY-MM-DD or ISO 8601."),
                 "limit": Schema.integer("Maximum messages to return (default: 50; capped at 500).", default: 50),
-                "preview": Schema.integer("Plain-text preview length in chars (default: 200; 0 to disable). Previews cost ~30-40s; 0 is metadata-only (sub-second).", default: 200),
+                "preview": Schema.integer("Plain-text preview length in chars (default: 0 = metadata-only, sub-second). Values > 0 force per-message body fetches (~30-40s).", default: 0),
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "activity")
@@ -276,27 +290,33 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "mailboxes", flagName: "--mailboxes")
                 argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
+                // The CLI's own default is 200 (human use keeps snippets), so an
+                // omitted MCP arg must inject --preview 0 explicitly — the schema
+                // `default` above is advisory only and never reaches argv.
+                argv.append(ArgHelpers.option("--preview", String(ArgHelpers.int(args, "preview") ?? 0)))
                 return argv
             }
         ),
         MCPTool(
             name: "mail_show",
-            description: "Show a single mail message by compound ID (account||mailbox||numericId).",
+            description: "Show one or more mail messages by compound ID (account||mailbox||numericId). Pass messageIds with 2+ IDs to batch-fetch in one call (single batched Mail fetch; data becomes an array).",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
+                    "messageIds": Schema.stringArray("Two or more compound message IDs to fetch in one batched call. `data` is an array in input order."),
                     "subject": Schema.string("Alternative: find first message matching this subject."),
                 ]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "show")
-                if let id = ArgHelpers.string(args, "messageId") {
+                if let ids = ArgHelpers.stringArray(args, "messageIds") {
+                    argv.append(contentsOf: ids)
+                } else if let id = ArgHelpers.string(args, "messageId") {
                     argv.append(id)
                 } else if let subject = ArgHelpers.string(args, "subject") {
                     argv.append(ArgHelpers.option("--subject", subject))
                 } else {
-                    throw MCPToolArgError.missingRequired("messageId or subject")
+                    throw MCPToolArgError.missingRequired("messageId, messageIds, or subject")
                 }
                 return argv
             }
@@ -340,13 +360,14 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_search",
-            description: "Search messages by subject/sender (add --body to include body text).",
+            description: "Search messages by subject/sender. `body: true` widens the match to body text (body-matched hits return a bodyPreview snippet); `preview` inlines a body snippet on every hit.",
             inputSchema: Schema.object(
                 properties: [
                     "query": Schema.string("Search query (case-insensitive)."),
                     "account": Schema.string("Restrict to a single account."),
                     "mailbox": Schema.string("Restrict to a single mailbox."),
-                    "body": Schema.boolean("Search message body too (slower).", default: false),
+                    "body": Schema.boolean("Search message body too (slower). Hits matched via the body include a bodyPreview snippet.", default: false),
+                    "preview": Schema.integer("Include a plain-text bodyPreview of up to N chars on every hit. Uncached hits cost one batched body fetch (slower)."),
                     "after": Schema.string("Only messages on/after YYYY-MM-DD."),
                     "before": Schema.string("Only messages on/before YYYY-MM-DD."),
                     "to": Schema.string("Filter by recipient email."),
@@ -370,6 +391,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "to", flagName: "--to")
                 argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
                 argv += ArgHelpers.flagIfTrue(args, "semantic", flagName: "--semantic")
                 ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv

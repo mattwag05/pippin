@@ -92,6 +92,32 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("var mbFilter = 'INBOX';"))
     }
 
+    // MARK: - buildSearchScript body-match preview (pippin-1son)
+
+    func testSearchScriptCapturesBodyPreviewOnBodyMatch() {
+        // A --body hit already fetched the body for the match test — the row
+        // must carry a snippet instead of discarding it.
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, searchBody: true, limit: 10)
+        XCTAssertTrue(script.contains("var bodyPrev = null;"))
+        XCTAssertTrue(script.contains("bodyPrev = body.length > previewChars ? body.substring(0, previewChars) + '…' : body;"))
+        XCTAssertTrue(script.contains("bodyPreview: bodyPrev"))
+    }
+
+    func testSearchScriptDefaultPreviewChars200() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("var previewChars = 200;"))
+    }
+
+    func testSearchScriptClampsPreviewChars() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, preview: 9999)
+        XCTAssertTrue(script.contains("var previewChars = 4000;"))
+    }
+
+    func testSearchScriptHonorsPreviewParam() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, preview: 120)
+        XCTAssertTrue(script.contains("var previewChars = 120;"))
+    }
+
     func testSearchScriptMbFilterEscapesQuote() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, mailbox: "O'Brien", limit: 10)
         XCTAssertTrue(script.contains("mbFilter = 'O\\'Brien'"))

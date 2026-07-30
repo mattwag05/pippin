@@ -9,6 +9,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] Agent envelopes now carry `partial: true` (omitted when complete) whenever a scan soft-timed-out or under-reached, so a timed-out empty `mail search`/`list`/`activity` is machine-distinguishable from a genuine zero-match — previously both returned the identical `{"data": []}` shape. Closes pippin-1son.
+- [feat] When the Envelope Index fast path fails and a mail scan silently falls back to the slow JXA path (seconds instead of milliseconds), the reason now surfaces as a `warnings` entry in agent mode (stderr `Warning:` in text/json) — e.g. missing Full Disk Access or an unreadable index no longer look like Mail being slow. Closes pippin-1son.
+- [feat] Mail soft-timeout hints now list the configured account names inline (from the on-disk accounts cache, zero Apple Events), so "narrow with --account" is actionable without a follow-up `mail accounts` call. Closes pippin-1son.
+- [feat] `mail search --body` hits matched via the body now return a `bodyPreview` snippet — the body was already fetched for the match test and was previously discarded (`body: null`), forcing a `mail show` round-trip per hit. Closes pippin-1son.
+- [feat] `mail search --preview N` (and a `preview` param on the `mail_search` MCP tool) inlines a body snippet on every hit via the cache-first batch assembly used by `mail list --preview` (cached body > body-match snippet > opt-in index summary > one batched fetch, write-through cache). Closes pippin-1son.
+- [feat] `mail show` accepts multiple message IDs: bodies for cache misses are fetched in ONE batched Mail pass and the output becomes an array (single-ID calls keep the original single-object shape). The `mail_show` MCP tool gains a `messageIds` array param. Closes pippin-1son.
+
+### Changed
+
+- [feat] `mail_activity` MCP tool now defaults to `preview: 0` (metadata-only, sub-second via the Envelope Index) instead of 200 (~30-40s of per-message body fetches); pass `preview > 0` explicitly for snippets. The CLI `mail activity` default is unchanged (200). Closes pippin-1son.
+
 ## [0.36.1] - 2026-07-28
 
 ### Added

@@ -164,6 +164,38 @@ final class AgentEnvelopeTests: XCTestCase {
         XCTAssertEqual(projected["warnings"] as? [String], ["partial"])
     }
 
+    // MARK: - Partial marker (soft-timeout / unfinished-scan results)
+
+    func testOkEnvelopeOmitsPartialByDefault() throws {
+        let json = try decodeObject(captureStdout { try printAgentJSON(Sample(name: "x", count: 1)) })
+        XCTAssertNil(json["partial"], "partial must be absent on a complete result")
+    }
+
+    func testOkEnvelopeIncludesPartialWhenTrue() throws {
+        let json = try decodeObject(captureStdout {
+            try printAgentJSON(Sample(name: "x", count: 1), partial: true)
+        })
+        XCTAssertEqual(json["partial"] as? Bool, true)
+        XCTAssertEqual(json["status"] as? String, "ok", "partial rides on the ok envelope, status unchanged")
+    }
+
+    func testProjectedEnvelopeIncludesPartial() throws {
+        let projected = try decodeObject(captureStdout {
+            try printAgentProjectedJSON([Sample(name: "x", count: 1)], fields: ["name"], partial: true)
+        })
+        XCTAssertEqual(projected["partial"] as? Bool, true)
+    }
+
+    func testProjectedFrameMatchesTypedWithPartial() throws {
+        let payload = [Sample(name: "foo", count: 3)]
+        let typed = try decodeObject(captureStdout { try printAgentJSON(payload, partial: true) })
+        let projected = try decodeObject(captureStdout {
+            try printAgentProjectedJSON(payload, fields: ["name"], partial: true)
+        })
+        let frameKeys: (([String: Any]) -> Set<String>) = { Set($0.keys).subtracting(["data"]) }
+        XCTAssertEqual(frameKeys(typed), frameKeys(projected), "hand-built partial frame must match the typed envelope")
+    }
+
     // MARK: - Helpers
 
     private func decodeObject(_ text: String) throws -> [String: Any] {

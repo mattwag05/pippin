@@ -87,6 +87,52 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertThrowsError(try tool.buildArgs(.object([:])))
     }
 
+    func testBuildArgsForMailShowAcceptsMessageIdsArray() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_show"))
+        let argv = try tool.buildArgs(.object([
+            "messageIds": .array([.string("a||INBOX||1"), .string("a||INBOX||2")]),
+        ]))
+        XCTAssertTrue(argv.contains("a||INBOX||1"))
+        XCTAssertTrue(argv.contains("a||INBOX||2"))
+        // Array wins over a stray single messageId.
+        let both = try tool.buildArgs(.object([
+            "messageIds": .array([.string("a||INBOX||1"), .string("a||INBOX||2")]),
+            "messageId": .string("a||INBOX||9"),
+        ]))
+        XCTAssertFalse(both.contains("a||INBOX||9"))
+    }
+
+    func testBuildArgsForMailShowEmptyMessageIdsFallsThrough() throws {
+        // An empty array is treated as absent, not as "show nothing".
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_show"))
+        let argv = try tool.buildArgs(.object([
+            "messageIds": .array([]),
+            "messageId": .string("a||INBOX||7"),
+        ]))
+        XCTAssertTrue(argv.contains("a||INBOX||7"))
+    }
+
+    func testBuildArgsForMailSearchPassesPreview() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_search"))
+        let argv = try tool.buildArgs(.object([
+            "query": .string("invoice"),
+            "preview": .int(150),
+        ]))
+        XCTAssertTrue(argv.contains("--preview=150"))
+    }
+
+    func testBuildArgsForMailActivityDefaultsPreviewZero() throws {
+        // The CLI default is 200 (human use); the MCP surface must inject
+        // --preview 0 when the arg is omitted so agent calls are metadata-only
+        // (sub-second) unless snippets are explicitly requested.
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_activity"))
+        let argv = try tool.buildArgs(.object([:]))
+        XCTAssertTrue(argv.contains("--preview=0"), "\(argv)")
+        let explicit = try tool.buildArgs(.object(["preview": .int(200)]))
+        XCTAssertTrue(explicit.contains("--preview=200"), "\(explicit)")
+        XCTAssertFalse(explicit.contains("--preview=0"))
+    }
+
     func testBuildArgsForMailAttachmentsRequiresMessageId() throws {
         let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_attachments"))
         XCTAssertThrowsError(try tool.buildArgs(.object([:]))) { error in

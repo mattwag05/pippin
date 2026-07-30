@@ -125,6 +125,8 @@ Fields:
 - `duration_ms` — wall-clock milliseconds from command construction to JSON serialization.
 - `data` — the previous raw payload, shape unchanged.
 - `error` — the `AgentError.ErrorPayload` (`code`, `message`, optional `remediation`), previously emitted at the top level.
+- `partial` — *optional, additive (2026-07-30)*: `true` when the result set is incomplete (scan soft-timed-out or under-reached). **Omitted entirely on complete results**, so `{"status":"ok","partial":true,"warnings":[…],"data":[]}` (scan didn't finish) is machine-distinguishable from `{"status":"ok","data":[]}` (genuine zero-match). Emitted by the mail scan tools (`mail_list`, `mail_search`, `mail_activity`).
+- `warnings` — *optional*: non-fatal advisories (soft-timeout hints — which list the configured account names — and Envelope-Index fast-path fallback reasons). Omitted when empty.
 
 **Migration for MCP/CLI consumers:**
 
