@@ -105,6 +105,11 @@ pippin mail list --unread --limit 5
 pippin mail list --unread --after 2026-06-01 --before 2026-07-01  # date-bounded listing
 pippin mail search "quarterly report" --after 2026-01-01
 pippin mail search "invoice" --from billing@vendor.com           # filter by sender
+pippin mail search "invoice" --preview 200                       # inline a body snippet per hit
+# --body widens the match to body text; body-matched hits return a bodyPreview
+# snippet for free (the body was already fetched for the match test). A scan that
+# soft-times-out is marked `partial: true` in the agent envelope — distinguishable
+# from a genuine zero-match — and the timeout warning lists your account names.
 # With Full Disk Access granted, list/search/activity metadata reads Mail's on-disk
 # Envelope Index directly (~ms, full-history search — `pippin doctor` shows availability).
 # Without it, the JXA path applies; on large multi-account mailboxes pair --from/--body
@@ -112,6 +117,7 @@ pippin mail search "invoice" --from billing@vendor.com           # filter by sen
 # soft timeout and return partial (or empty) results with a "narrow with --account…"
 # warning. Scoping keeps the scan within its budget.
 pippin mail show "acct||INBOX||12345"
+pippin mail show "acct||INBOX||12345" "acct||INBOX||12346"   # 2+ ids: one batched fetch, array out
 # `show` flags structural phishing signals in `headerAnomalies` (agent/JSON) and a
 # `⚠ Anomalies` line (text): Reply-To on a different domain than the sender, hidden
 # recipients, explicit SPF/DKIM/DMARC failures, plus deviations from the sender's own

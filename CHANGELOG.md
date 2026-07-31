@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-07-31
+
 ### Added
 
 - [feat] Agent envelopes now carry `partial: true` (omitted when complete) whenever a scan soft-timed-out or under-reached, so a timed-out empty `mail search`/`list`/`activity` is machine-distinguishable from a genuine zero-match — previously both returned the identical `{"data": []}` shape. Closes pippin-1son.
@@ -879,7 +881,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.36.1...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/mattwag05/pippin/compare/v0.36.1...v0.37.0
 [0.36.1]: https://github.com/mattwag05/pippin/compare/v0.36.0...v0.36.1
 [0.36.0]: https://github.com/mattwag05/pippin/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/mattwag05/pippin/compare/v0.34.0...v0.35.0
