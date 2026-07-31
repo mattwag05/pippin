@@ -63,6 +63,8 @@ git push origin main --tags
 
 There is **no GitHub `release.yml` workflow** (disabled pippin-6qi — its `macos-15` runner kept cancelling — then deleted). The tag push fires the self-hosted **`.forgejo/workflows/release.yaml`** (publishes to the tailnet Forgejo), but the **GitHub release is published locally** — do it now:
 
+`gh release create --verify-tag` needs the tag on **GitHub**, which only gets it via the Forgejo push-mirror. Confirm sync first (it propagated within seconds on v0.37.0, but a lagging mirror fails the create): `gh api repos/mattwag05/pippin/git/refs/tags/vX.Y.Z --jq '.ref'` — retry after a short wait if 404.
+
 ```bash
 make tarball   # → .build/release-artifacts/pippin-X.Y.Z-arm64-macos.tar.gz
 awk "/^## \[X.Y.Z\]/{f=1;next} f&&/^## \[/{exit} f{print}" CHANGELOG.md > /tmp/notes.md
