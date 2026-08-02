@@ -362,7 +362,7 @@ pippin mcp-server                    # run the server (stdin/stdout JSON-RPC)
 pippin mcp-server --list-tools       # dump the registered tools as JSON
 ```
 
-Ships with 48 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), `actions_extract` (commitments → reminders), status, doctor, `digest`, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+Ships with 75 tools at curated parity with the CLI, covering mail (including mark, move/archive, send, reply, forward, triage), calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), `actions_extract` (commitments → reminders), status, doctor, `digest`, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). Outbound sends return a dry-run preview and deletes fail outright unless the call passes `confirm: true`. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions and the full tool list.
 
 ## AI Configuration
 

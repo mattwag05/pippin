@@ -1,3 +1,4 @@
+import ArgumentParser
 @testable import PippinLib
 import XCTest
 
@@ -204,45 +205,78 @@ final class ToolRegistryTests: XCTestCase {
         }
     }
 
+    /// Every tool's argv must actually parse as the CLI command it claims to be.
+    /// Without this a typo'd subcommand name, a renamed flag, or a `validate()`
+    /// precondition the tool fails to satisfy sails through the whole suite and
+    /// only surfaces at runtime in an agent's face.
+    ///
+    /// The root `Pippin` command lives in the executable target and can't be
+    /// imported here, so each argv is parsed against its command *group* — which
+    /// is what actually owns the subcommand tree and every flag definition.
+    func testAllArgvParseAsRealCLICommands() throws {
+        let groups: [String: ParsableCommand.Type] = [
+            "mail": MailCommand.self,
+            "calendar": CalendarCommand.self,
+            "reminders": RemindersCommand.self,
+            "notes": NotesCommand.self,
+            "contacts": ContactsCommand.self,
+            "messages": MessagesCommand.self,
+            "memos": MemosCommand.self,
+            "actions": ActionsCommand.self,
+            "job": JobCommand.self,
+            "batch": BatchCommand.self,
+            "digest": DigestCommand.self,
+            "status": StatusCommand.self,
+            "doctor": DoctorCommand.self,
+        ]
+
+        for tool in MCPToolRegistry.tools {
+            let argv = try tool.buildArgs(sampleArgs(for: tool.name))
+            guard let root = argv.first, let group = groups[root] else {
+                XCTFail("\(tool.name) targets unknown top-level command '\(argv.first ?? "")' — add it to `groups`")
+                continue
+            }
+            XCTAssertNoThrow(
+                try group.parseAsRoot(Array(argv.dropFirst())),
+                "\(tool.name) argv is not a valid pippin command: \(argv)"
+            )
+        }
+    }
+
+    /// One permissive superset of every required field any tool declares. `buildArgs`
+    /// only reads the keys it cares about, so a single object satisfies the whole
+    /// registry — no per-tool case to forget when a tool is added. Only genuinely
+    /// conflicting shapes (the same key needing a different type in two tools) get
+    /// their own case below.
     private func sampleArgs(for name: String) -> JSONValue {
-        // Provide synthetic required fields for tools that demand them.
         switch name {
-        case "mail_search", "calendar_search", "reminders_search", "contacts_search", "notes_search", "messages_search":
-            return .object(["query": .string("x")])
-        case "messages_show":
-            return .object(["conversationId": .string("iMessage;-;+15551234567")])
+        // `to` means three different things across the registry: a recipient
+        // *array* for mail_send/reply/forward (the default below), a single
+        // handle here, and a destination mailbox name for mail_move.
         case "messages_send":
             return .object(["to": .string("+15551234567"), "body": .string("hi")])
-        case "mail_show", "mail_verify", "mail_attachments":
-            return .object(["messageId": .string("a||b||1")])
-        case "reminders_show", "reminders_complete":
-            return .object(["id": .string("123")])
-        case "notes_show", "notes_edit":
-            return .object(["id": .string("123")])
-        case "notes_create":
-            return .object(["title": .string("X")])
-        case "contacts_show":
-            return .object(["identifier": .string("123")])
-        case "calendar_create":
-            return .object(["title": .string("X"), "start": .string("2026-04-15")])
-        case "reminders_create":
-            return .object(["title": .string("X")])
-        case "memos_info":
-            return .object(["id": .string("abc-123")])
-        case "memos_export":
-            return .object(["id": .string("abc-123"), "output": .string("/tmp/out")])
-        case "memos_transcribe", "memos_summarize":
-            return .object(["id": .string("abc-123")])
-        case "batch":
-            return .object(["entries": .array([
-                .object(["cmd": .string("doctor")]),
-            ])])
-        case "job_run":
-            return .object(["argv": .array([.string("doctor")])])
-        case "job_show", "job_wait":
-            return .object(["id": .string("abc")])
+        case "mail_move":
+            return .object(["messageId": .string("a||b||1"), "to": .string("Archive")])
         default:
-            return .object([:])
+            return .object([
+                "query": .string("x"),
+                "id": .string("abc-123"),
+                "messageId": .string("a||b||1"),
+                "conversationId": .string("iMessage;-;+15551234567"),
+                "identifier": .string("123"),
+                "thread": .string("iMessage;-;+15551234567"),
+                "title": .string("X"),
+                "start": .string("2026-04-15"),
+                "description": .string("lunch tomorrow at noon"),
+                "subject": .string("Subject"),
+                "body": .string("hi"),
+                "to": .array([.string("someone@example.com")]),
+                "read": .bool(true),
+                "confirm": .bool(true),
+                "output": .string("/tmp/out"),
+                "argv": .array([.string("doctor")]),
+                "entries": .array([.object(["cmd": .string("doctor")])]),
+            ])
         }
     }
 

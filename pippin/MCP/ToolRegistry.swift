@@ -111,6 +111,44 @@ enum ArgHelpers {
         bool(args, key) == true ? [flagName] : []
     }
 
+    /// Expand a string array into one repeated `--flag=value` option per element
+    /// (`--to`, `--cc`, `--bcc`, `--attach` are all repeatable on the CLI).
+    /// Returns [] when the key is absent or holds no strings.
+    static func optionPerElement(
+        _ args: JSONValue?,
+        _ key: String,
+        flagName: String
+    ) -> [String] {
+        (stringArray(args, key) ?? []).map { option(flagName, $0) }
+    }
+
+    /// The six contact fields `contacts create` and `contacts edit` share verbatim.
+    static func contactFieldOptions(_ args: JSONValue?) -> [String] {
+        [
+            ("first", "--first"), ("last", "--last"), ("email", "--email"),
+            ("phone", "--phone"), ("organization", "--organization"), ("jobTitle", "--job-title"),
+        ].flatMap { optionIfString(args, $0.0, flagName: $0.1) }
+    }
+
+    /// Outbound-send gate: emit `--dry-run` unless the caller passed `confirm: true`.
+    /// The MCP default deliberately diverges from the CLI's (which sends) and mirrors
+    /// `messages_send`'s always-`--draft` posture — an agent must see a preview and
+    /// re-call with confirm to actually deliver mail.
+    static func dryRunUnlessConfirmed(_ args: JSONValue?) -> [String] {
+        bool(args, "confirm") == true ? [] : ["--dry-run"]
+    }
+
+    /// Destructive-delete gate: resolve `--force` from an explicit `confirm: true`,
+    /// or throw before the child is ever spawned. Load-bearing — `contacts delete`
+    /// blocks on `readLine()` without `--force`, which under MCP would hang the child
+    /// until the 60s timeout instead of returning an actionable error.
+    static func forceFromConfirm(_ args: JSONValue?) throws -> [String] {
+        guard bool(args, "confirm") == true else {
+            throw MCPToolArgError.missingRequired("confirm (must be true — deletion cannot be undone)")
+        }
+        return ["--force"]
+    }
+
     /// Bind an option and its value as a single `--flag=value` token. The `=`
     /// form is load-bearing: a value supplied by an MCP client (e.g. a search
     /// body, or a note/reminder title starting with "-" like a markdown bullet)
@@ -401,6 +439,208 @@ enum MCPToolRegistry {
         // MARK: Calendar
 
         MCPTool(
+            name: "mail_mark",
+            description: "Mark a message as read or unread. Reversible — call again with the opposite `read` value.",
+            inputSchema: Schema.object(
+                properties: [
+                    "messageId": Schema.string("Compound message ID from mail_list output."),
+                    "read": Schema.boolean("true marks the message read; false marks it unread."),
+                    "dryRun": Schema.boolean("Report what would change without touching the message.", default: false),
+                ],
+                required: ["messageId", "read"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "mark")
+                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                guard let read = ArgHelpers.bool(args, "read") else {
+                    throw MCPToolArgError.missingRequired("read")
+                }
+                // `mail mark` validate() rejects both-or-neither, so emit exactly one.
+                argv.append(read ? "--read" : "--unread")
+                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "mail_move",
+            description: "Move a message to another mailbox in the same account — this is how you archive, trash, or file a message (pass the destination mailbox name from mail_mailboxes, e.g. Archive, Trash, Junk). Reversible by moving it back.",
+            inputSchema: Schema.object(
+                properties: [
+                    "messageId": Schema.string("Compound message ID from mail_list output."),
+                    "to": Schema.string("Destination mailbox name, exactly as reported by mail_mailboxes (names differ per account, e.g. '[Gmail]/Trash')."),
+                    "dryRun": Schema.boolean("Report what would move without touching the message.", default: false),
+                ],
+                required: ["messageId", "to"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "move")
+                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.option("--to", ArgHelpers.requiredString(args, "to")))
+                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "mail_send",
+            description: "Send an email. Returns a preview and sends NOTHING unless confirm=true — review the preview, then call again with confirm=true to deliver.",
+            inputSchema: Schema.object(
+                properties: [
+                    "to": Schema.stringArray("Recipient email addresses."),
+                    "subject": Schema.string("Message subject."),
+                    "body": Schema.string("Message body text."),
+                    "cc": Schema.stringArray("CC recipients."),
+                    "bcc": Schema.stringArray("BCC recipients."),
+                    "from": Schema.string("Sending account name (from mail_accounts). Defaults to the primary account."),
+                    "attach": Schema.stringArray("Absolute paths of files to attach."),
+                    "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
+                ],
+                required: ["to", "subject", "body"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "send")
+                guard let to = ArgHelpers.stringArray(args, "to") else {
+                    throw MCPToolArgError.missingRequired("to")
+                }
+                argv += to.map { ArgHelpers.option("--to", $0) }
+                try argv.append(ArgHelpers.option("--subject", ArgHelpers.requiredString(args, "subject")))
+                try argv.append(ArgHelpers.option("--body", ArgHelpers.requiredString(args, "body")))
+                argv += ArgHelpers.optionPerElement(args, "cc", flagName: "--cc")
+                argv += ArgHelpers.optionPerElement(args, "bcc", flagName: "--bcc")
+                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
+                argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
+                argv += ArgHelpers.dryRunUnlessConfirmed(args)
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "mail_reply",
+            description: "Reply to a message. Returns a preview and sends NOTHING unless confirm=true — review the preview, then call again with confirm=true to deliver.",
+            inputSchema: Schema.object(
+                properties: [
+                    "messageId": Schema.string("Compound message ID from mail_list output."),
+                    "body": Schema.string("Reply body text."),
+                    "to": Schema.stringArray("Override the reply-to addresses. Defaults to the original sender."),
+                    "cc": Schema.stringArray("CC recipients."),
+                    "bcc": Schema.stringArray("BCC recipients."),
+                    "from": Schema.string("Sending account name (from mail_accounts)."),
+                    "attach": Schema.stringArray("Absolute paths of files to attach."),
+                    "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
+                ],
+                required: ["messageId", "body"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "reply")
+                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.option("--body", ArgHelpers.requiredString(args, "body")))
+                argv += ArgHelpers.optionPerElement(args, "to", flagName: "--to")
+                argv += ArgHelpers.optionPerElement(args, "cc", flagName: "--cc")
+                argv += ArgHelpers.optionPerElement(args, "bcc", flagName: "--bcc")
+                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
+                argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
+                argv += ArgHelpers.dryRunUnlessConfirmed(args)
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "mail_forward",
+            description: "Forward a message. Returns a preview and sends NOTHING unless confirm=true — review the preview, then call again with confirm=true to deliver.",
+            inputSchema: Schema.object(
+                properties: [
+                    "messageId": Schema.string("Compound message ID from mail_list output."),
+                    "to": Schema.stringArray("Recipient email addresses."),
+                    "body": Schema.string("Optional note prepended before the forwarded content."),
+                    "cc": Schema.stringArray("CC recipients."),
+                    "bcc": Schema.stringArray("BCC recipients."),
+                    "from": Schema.string("Sending account name (from mail_accounts)."),
+                    "attach": Schema.stringArray("Absolute paths of files to attach."),
+                    "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
+                ],
+                required: ["messageId", "to"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "forward")
+                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                guard let to = ArgHelpers.stringArray(args, "to") else {
+                    throw MCPToolArgError.missingRequired("to")
+                }
+                argv += to.map { ArgHelpers.option("--to", $0) }
+                argv += ArgHelpers.optionIfString(args, "body", flagName: "--body")
+                argv += ArgHelpers.optionPerElement(args, "cc", flagName: "--cc")
+                argv += ArgHelpers.optionPerElement(args, "bcc", flagName: "--bcc")
+                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
+                argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
+                argv += ArgHelpers.dryRunUnlessConfirmed(args)
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "mail_triage",
+            description: "AI triage of a mailbox: classify and prioritize messages from metadata only (no bodies read). Read-only.",
+            inputSchema: Schema.object(
+                properties: [
+                    "account": Schema.string("Filter by account name."),
+                    "mailbox": Schema.string("Mailbox to triage (default: INBOX)."),
+                    "limit": Schema.integer("Maximum messages to triage (default: 20).", default: 20),
+                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
+                    "model": Schema.string("Model name."),
+                    "noRules": Schema.boolean("Skip the rule-based pre-pass and send every message to the AI.", default: false),
+                    "rulesFile": Schema.string("Path to a triage-rules.json (default: ~/.config/pippin/triage-rules.json)."),
+                ],
+                required: []
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "triage")
+                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
+                argv += ArgHelpers.optionIfString(args, "mailbox", flagName: "--mailbox")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
+                argv += ArgHelpers.flagIfTrue(args, "noRules", flagName: "--no-rules")
+                argv += ArgHelpers.optionIfString(args, "rulesFile", flagName: "--rules-file")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "mail_sanitize",
+            description: "Scan a message for prompt-injection patterns before acting on its contents. Read-only. Use alongside mail_verify on anything suspicious.",
+            inputSchema: Schema.object(
+                properties: [
+                    "messageId": Schema.string("Compound message ID from mail_list output."),
+                    "aiAssisted": Schema.boolean("Add an AI-assisted scan on top of the rule-based patterns.", default: false),
+                    "provider": Schema.string("AI provider for aiAssisted: ollama, claude, or openai."),
+                    "model": Schema.string("Model name."),
+                ],
+                required: ["messageId"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "sanitize")
+                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                argv += ArgHelpers.flagIfTrue(args, "aiAssisted", flagName: "--ai-assisted")
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "mail_extract",
+            description: "Extract structured data (dates, amounts, contacts, action items) from one message using AI. Read-only.",
+            inputSchema: Schema.object(
+                properties: [
+                    "messageId": Schema.string("Compound message ID from mail_list output."),
+                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
+                    "model": Schema.string("Model name."),
+                ],
+                required: ["messageId"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "extract")
+                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
+                return argv
+            }
+        ),
+        MCPTool(
             name: "calendar_list",
             description: "List calendars configured in Apple Calendar.",
             inputSchema: Schema.object(properties: [
@@ -516,6 +756,141 @@ enum MCPToolRegistry {
         // MARK: Reminders
 
         MCPTool(
+            name: "calendar_show",
+            description: "Show full details for a single event by ID (from calendar_events / calendar_search).",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Event ID."),
+                ],
+                required: ["id"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("calendar", "show")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "calendar_edit",
+            description: "Edit an existing calendar event. Only the fields you pass are changed.",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Event ID from calendar_events / calendar_search."),
+                    "title": Schema.string("New event title."),
+                    "start": Schema.string("New start date/time."),
+                    "end": Schema.string("New end date/time."),
+                    "calendar": Schema.string("Move to this calendar (EventKit ID from calendar_list, not a name)."),
+                    "location": Schema.string("New location."),
+                    "notes": Schema.string("New notes."),
+                    "url": Schema.string("New URL."),
+                    "alert": Schema.string("New alert offset."),
+                    "span": Schema.string("For a recurring event: 'this' (default) or 'future'."),
+                    "allDay": Schema.boolean("Convert to an all-day event.", default: false),
+                    "noAllDay": Schema.boolean("Convert away from an all-day event.", default: false),
+                ],
+                required: ["id"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("calendar", "edit")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
+                argv += ArgHelpers.optionIfString(args, "start", flagName: "--start")
+                argv += ArgHelpers.optionIfString(args, "end", flagName: "--end")
+                argv += ArgHelpers.optionIfString(args, "calendar", flagName: "--calendar")
+                argv += ArgHelpers.optionIfString(args, "location", flagName: "--location")
+                argv += ArgHelpers.optionIfString(args, "notes", flagName: "--notes")
+                argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
+                argv += ArgHelpers.optionIfString(args, "alert", flagName: "--alert")
+                argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
+                argv += ArgHelpers.flagIfTrue(args, "allDay", flagName: "--all-day")
+                argv += ArgHelpers.flagIfTrue(args, "noAllDay", flagName: "--no-all-day")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "calendar_delete",
+            description: "Delete a calendar event. IRREVERSIBLE — fails unless confirm=true.",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Event ID from calendar_events / calendar_search."),
+                    "confirm": Schema.boolean("Must be true. Deletion cannot be undone.", default: false),
+                    "span": Schema.string("For a recurring event: 'this' (default) or 'future'."),
+                ],
+                required: ["id", "confirm"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("calendar", "delete")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv += ArgHelpers.forceFromConfirm(args)
+                argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "calendar_smart_create",
+            description: "Create an event from a natural-language description using AI (resolves calendar names, unlike calendar_create which needs an EventKit ID). Reports scheduling conflicts unless allowConflicts is set.",
+            inputSchema: Schema.object(
+                properties: [
+                    "description": Schema.string("Natural-language event description, e.g. 'lunch with Sam next Tuesday at noon'."),
+                    "calendar": Schema.string("Target calendar name (resolved for you)."),
+                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
+                    "model": Schema.string("Model name."),
+                    "dryRun": Schema.boolean("Show the parsed event without creating it.", default: false),
+                    "allowConflicts": Schema.boolean("Create even if it overlaps an existing event.", default: false),
+                ],
+                required: ["description"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("calendar", "smart-create")
+                let description = try ArgHelpers.requiredString(args, "description")
+                argv += ArgHelpers.optionIfString(args, "calendar", flagName: "--calendar")
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
+                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                argv += ArgHelpers.flagIfTrue(args, "allowConflicts", flagName: "--allow-conflicts")
+                ArgHelpers.appendPositionalLast(description, into: &argv)
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "calendar_agenda",
+            description: "AI-generated briefing of upcoming events. Read-only.",
+            inputSchema: Schema.object(
+                properties: [
+                    "days": Schema.integer("Days to cover, 1-7 (default: 1).", default: 1),
+                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
+                    "model": Schema.string("Model name."),
+                ],
+                required: []
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("calendar", "agenda")
+                argv += ArgHelpers.optionIfInt(args, "days", flagName: "--days")
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "calendar_conflicts",
+            description: "Find overlapping events in a time window. Read-only. Use before scheduling.",
+            inputSchema: Schema.object(
+                properties: [
+                    "from": Schema.string("Window start (default: start of today)."),
+                    "to": Schema.string("Window end (default: end of today)."),
+                    "range": Schema.string("Relative window instead of from/to: today, today+N, week, or month."),
+                ],
+                required: []
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("calendar", "conflicts")
+                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
+                argv += ArgHelpers.optionIfString(args, "to", flagName: "--to")
+                argv += ArgHelpers.optionIfString(args, "range", flagName: "--range")
+                return argv
+            }
+        ),
+        MCPTool(
             name: "reminders_lists",
             description: "List all Apple Reminders lists.",
             inputSchema: Schema.empty,
@@ -629,6 +1004,74 @@ enum MCPToolRegistry {
         // MARK: Contacts
 
         MCPTool(
+            name: "reminders_edit",
+            description: "Edit an existing reminder. Only the fields you pass are changed.",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Reminder ID from reminders_list / reminders_search."),
+                    "title": Schema.string("New title."),
+                    "due": Schema.string("New due date/time."),
+                    "priority": Schema.string("New priority: high, medium, low, or none."),
+                    "notes": Schema.string("New notes."),
+                    "url": Schema.string("New URL."),
+                    "list": Schema.string("Move to this list (EventKit ID from reminders_lists, not a name)."),
+                ],
+                required: ["id"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("reminders", "edit")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
+                argv += ArgHelpers.optionIfString(args, "due", flagName: "--due")
+                argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
+                argv += ArgHelpers.optionIfString(args, "notes", flagName: "--notes")
+                argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
+                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "reminders_delete",
+            description: "Delete a reminder. IRREVERSIBLE — fails unless confirm=true. To just tick one off, use reminders_complete instead.",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Reminder ID from reminders_list / reminders_search."),
+                    "confirm": Schema.boolean("Must be true. Deletion cannot be undone.", default: false),
+                ],
+                required: ["id", "confirm"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("reminders", "delete")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv += ArgHelpers.forceFromConfirm(args)
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "reminders_smart_create",
+            description: "Create a reminder from a natural-language description using AI (resolves list names, unlike reminders_create which needs an EventKit ID).",
+            inputSchema: Schema.object(
+                properties: [
+                    "description": Schema.string("Natural-language reminder, e.g. 'call the dentist Friday morning'."),
+                    "list": Schema.string("Target list name (resolved for you)."),
+                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
+                    "model": Schema.string("Model name."),
+                    "dryRun": Schema.boolean("Show the parsed reminder without creating it.", default: false),
+                ],
+                required: ["description"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("reminders", "smart-create")
+                let description = try ArgHelpers.requiredString(args, "description")
+                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
+                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
+                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
+                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                ArgHelpers.appendPositionalLast(description, into: &argv)
+                return argv
+            }
+        ),
+        MCPTool(
             name: "contacts_search",
             description: "Search contacts by name (default), email, or phone.",
             inputSchema: Schema.object(
@@ -676,6 +1119,86 @@ enum MCPToolRegistry {
 
         // MARK: Notes
 
+        MCPTool(
+            name: "contacts_list",
+            description: "List all contacts with their primary email and phone. Read-only. Prefer contacts_search when you know who you're looking for.",
+            inputSchema: Schema.object(
+                properties: [
+                    "group": Schema.string("Restrict to a contact group name (from contacts_groups)."),
+                ],
+                required: []
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("contacts", "list")
+                argv += ArgHelpers.optionIfString(args, "group", flagName: "--group")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "contacts_groups",
+            description: "List contact groups. Read-only.",
+            inputSchema: Schema.empty,
+            buildArgs: { _ in pippinArgv("contacts", "groups") }
+        ),
+        MCPTool(
+            name: "contacts_create",
+            description: "Create a new contact. Every field is optional, but supply at least a name or an email so the card is identifiable.",
+            inputSchema: Schema.object(
+                properties: [
+                    "first": Schema.string("First name."),
+                    "last": Schema.string("Last name."),
+                    "email": Schema.string("Email address."),
+                    "phone": Schema.string("Phone number."),
+                    "organization": Schema.string("Organization."),
+                    "jobTitle": Schema.string("Job title."),
+                ],
+                required: []
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("contacts", "create")
+                argv += ArgHelpers.contactFieldOptions(args)
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "contacts_edit",
+            description: "Edit an existing contact. Only the fields you pass are changed.",
+            inputSchema: Schema.object(
+                properties: [
+                    "identifier": Schema.string("Contact identifier from contacts_search / contacts_show."),
+                    "first": Schema.string("New first name."),
+                    "last": Schema.string("New last name."),
+                    "email": Schema.string("New email address."),
+                    "phone": Schema.string("New phone number."),
+                    "organization": Schema.string("New organization."),
+                    "jobTitle": Schema.string("New job title."),
+                ],
+                required: ["identifier"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("contacts", "edit")
+                try argv.append(ArgHelpers.requiredString(args, "identifier"))
+                argv += ArgHelpers.contactFieldOptions(args)
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "contacts_delete",
+            description: "Delete a contact. IRREVERSIBLE — fails unless confirm=true.",
+            inputSchema: Schema.object(
+                properties: [
+                    "identifier": Schema.string("Contact identifier from contacts_search / contacts_show."),
+                    "confirm": Schema.boolean("Must be true. Deletion cannot be undone.", default: false),
+                ],
+                required: ["identifier", "confirm"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("contacts", "delete")
+                try argv.append(ArgHelpers.requiredString(args, "identifier"))
+                try argv += ArgHelpers.forceFromConfirm(args)
+                return argv
+            }
+        ),
         MCPTool(
             name: "notes_list",
             description: "List Apple Notes, defaulting to 50 most recently modified.",
@@ -779,6 +1302,23 @@ enum MCPToolRegistry {
         // MARK: Messages (read-only)
 
         MCPTool(
+            name: "notes_delete",
+            description: "Move a note to Recently Deleted. Fails unless confirm=true. Recoverable from Recently Deleted for 30 days.",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Note ID from notes_list / notes_search."),
+                    "confirm": Schema.boolean("Must be true.", default: false),
+                ],
+                required: ["id", "confirm"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("notes", "delete")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv += ArgHelpers.forceFromConfirm(args)
+                return argv
+            }
+        ),
+        MCPTool(
             name: "messages_list",
             description: "List recent Apple Messages conversations (most recent first). Read-only.",
             inputSchema: Schema.object(properties: [
@@ -850,6 +1390,42 @@ enum MCPToolRegistry {
 
         // MARK: Memos
 
+        MCPTool(
+            name: "messages_exclude_list",
+            description: "Show the thread exclude list — conversations hidden from every messages_* read. Read-only.",
+            inputSchema: Schema.empty,
+            buildArgs: { _ in pippinArgv("messages", "exclude", "list") }
+        ),
+        MCPTool(
+            name: "messages_exclude_add",
+            description: "Hide a conversation from every messages_* read by adding its thread GUID to the exclude list.",
+            inputSchema: Schema.object(
+                properties: [
+                    "thread": Schema.string("Thread GUID from messages_list / messages_show."),
+                ],
+                required: ["thread"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("messages", "exclude", "add")
+                try argv.append(ArgHelpers.requiredString(args, "thread"))
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "messages_exclude_remove",
+            description: "Un-hide a conversation by removing its thread GUID from the exclude list.",
+            inputSchema: Schema.object(
+                properties: [
+                    "thread": Schema.string("Thread GUID from messages_exclude_list."),
+                ],
+                required: ["thread"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("messages", "exclude", "remove")
+                try argv.append(ArgHelpers.requiredString(args, "thread"))
+                return argv
+            }
+        ),
         MCPTool(
             name: "memos_list",
             description: "List Voice Memos recordings (most recent first).",
@@ -972,6 +1548,23 @@ enum MCPToolRegistry {
 
         // MARK: Digest
 
+        MCPTool(
+            name: "memos_delete",
+            description: "Delete a voice memo — both the database row and the audio file. IRREVERSIBLE — fails unless confirm=true. Consider memos_export first.",
+            inputSchema: Schema.object(
+                properties: [
+                    "id": Schema.string("Memo ID from memos_list."),
+                    "confirm": Schema.boolean("Must be true. The audio file is unrecoverable.", default: false),
+                ],
+                required: ["id", "confirm"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("memos", "delete")
+                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv += ArgHelpers.forceFromConfirm(args)
+                return argv
+            }
+        ),
         MCPTool(
             name: "digest",
             description: "Aggregated daily digest: unread mail, today's calendar events, due and overdue reminders, and recently modified notes.",

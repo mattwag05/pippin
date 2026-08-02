@@ -4,21 +4,45 @@
 
 ## What you get
 
-48 tools spanning the commonly scripted pippin surfaces:
+75 tools, at curated parity with the CLI:
 
 | Area | Tools |
 |---|---|
-| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_activity`, `mail_show`, `mail_verify`, `mail_search`, `mail_attachments` |
-| Calendar | `calendar_list`, `calendar_events`, `calendar_today`, `calendar_remaining`, `calendar_upcoming`, `calendar_search`, `calendar_create` |
-| Reminders | `reminders_lists`, `reminders_list`, `reminders_show`, `reminders_search`, `reminders_create`, `reminders_complete` |
-| Contacts | `contacts_search`, `contacts_show` |
-| Notes | `notes_list`, `notes_search`, `notes_show`, `notes_folders`, `notes_create`, `notes_edit` |
-| Messages | `messages_list`, `messages_search`, `messages_show`, `messages_send` (gated — see [README § Messages](../README.md#messages)) |
-| Memos | `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_capture_to_reminders`, `memos_summarize` |
+| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_activity`, `mail_show`, `mail_verify`, `mail_search`, `mail_attachments`, `mail_mark`, `mail_move`, `mail_send`, `mail_reply`, `mail_forward`, `mail_triage`, `mail_sanitize`, `mail_extract` |
+| Calendar | `calendar_list`, `calendar_events`, `calendar_today`, `calendar_remaining`, `calendar_upcoming`, `calendar_search`, `calendar_show`, `calendar_create`, `calendar_smart_create`, `calendar_edit`, `calendar_delete`, `calendar_agenda`, `calendar_conflicts` |
+| Reminders | `reminders_lists`, `reminders_list`, `reminders_show`, `reminders_search`, `reminders_create`, `reminders_smart_create`, `reminders_edit`, `reminders_complete`, `reminders_delete` |
+| Contacts | `contacts_search`, `contacts_show`, `contacts_list`, `contacts_groups`, `contacts_create`, `contacts_edit`, `contacts_delete` |
+| Notes | `notes_list`, `notes_search`, `notes_show`, `notes_folders`, `notes_create`, `notes_edit`, `notes_delete` |
+| Messages | `messages_list`, `messages_search`, `messages_show`, `messages_send` (gated — see [README § Messages](../README.md#messages)), `messages_exclude_list`, `messages_exclude_add`, `messages_exclude_remove` |
+| Memos | `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_capture_to_reminders`, `memos_summarize`, `memos_delete` |
 | Actions | `actions_extract` — scan Sent mail + Notes for commitments → draft (or create) reminders |
 | System | `status`, `doctor`, `digest` |
 | Jobs  | `job_run`, `job_show`, `job_list`, `job_wait` — detach long-running work (see below) |
 | Batch | `batch` — fan out N pippin commands concurrently in one tool call (see below) |
+
+Deliberately **not** exposed: `mail watch` (a long-running NDJSON stream, wrong shape for
+request/response), `init` and `permissions` (interactive TCC prompts, suppressed under
+`PIPPIN_MCP=1` anyway), `mail cache`/`mail index`/`templates`/`job logs`/`job gc` (local
+plumbing an agent has no reason to drive), `do` (it plans *from* this registry — a tool for it
+would recurse), and the `PIPPIN_EXPERIMENTAL` `audio`/`browser` trees.
+
+### The `confirm` gate on sends and deletes
+
+Two families diverge from their CLI defaults on purpose, so a mis-planned agent step can't do
+damage on the first call:
+
+- **`mail_send`, `mail_reply`, `mail_forward`** return a dry-run preview and send nothing unless
+  `confirm: true`. (The CLI sends by default; this mirrors `messages_send`, which is hard-wired
+  to `--draft` with no override at all.)
+- **`calendar_delete`, `reminders_delete`, `notes_delete`, `contacts_delete`, `memos_delete`**
+  require `confirm: true` and fail the call outright without it. The gate is enforced in
+  `buildArgs`, before the child process is spawned — `contacts delete` blocks on `readLine()`
+  when `--force` is absent, so passing the omission through would hang the tool call until the
+  60s child timeout instead of returning an actionable error.
+
+`mail_mark` and `mail_move` are ungated: both are reversible, and `mail_move` is how you
+archive, trash, or file a message (pass the destination mailbox name from `mail_mailboxes` —
+they differ per account, e.g. `[Gmail]/Trash`).
 
 ### `job_*` — background pippin subprocesses
 
@@ -217,7 +241,7 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 
 ## Known consumers
 
-- **Agent gateway** — registers `pippin mcp-server` as a stdio MCP and drives the 48 tools natively.
+- **Agent gateway** — registers `pippin mcp-server` as a stdio MCP and drives the 75 tools natively.
 - **Claude Code / Claude Desktop** — register via `claude mcp add` or the desktop config JSON; both pick up tools automatically on restart.
 - **Morning-briefing scheduled task** — still shells out to the pippin CLI directly (no migration planned; the task is single-shot enough that MCP doesn't add value).
 

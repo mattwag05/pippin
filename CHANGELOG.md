@@ -9,6 +9,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] MCP tool surface reaches curated parity with the CLI — 27 new tools (48 → 75). Mail gains `mail_mark`, `mail_move` (archive/trash/file a message), `mail_send`, `mail_reply`, `mail_forward`, `mail_triage`, `mail_sanitize`, `mail_extract`; Calendar gains `show`, `edit`, `delete`, `smart_create`, `agenda`, `conflicts`; Reminders gains `edit`, `delete`, `smart_create`; plus `notes_delete`, `contacts_list`/`groups`/`create`/`edit`/`delete`, `memos_delete`, and `messages_exclude_list`/`add`/`remove`. Agents could previously read mail but not mark it read or file it. Closes pippin-9urs.
+- [feat] MCP write safety: `mail_send`/`mail_reply`/`mail_forward` return a dry-run preview and send nothing unless `confirm: true`, and every delete tool fails the call outright without `confirm: true`. The delete gate is enforced before the child process spawns — `contacts delete` blocks on an interactive prompt without `--force`, which would otherwise hang the tool call until the 60s timeout. Closes pippin-9urs.
+
+### Changed
+
+- [ci] Every MCP tool's generated argv is now asserted to parse as a real CLI command. Nothing previously verified that a tool's subcommand name or flags existed, so a typo reached agents at runtime instead of failing the suite. Closes pippin-9urs.
+
 ## [0.37.0] - 2026-07-31
 
 ### Added

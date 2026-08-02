@@ -242,7 +242,7 @@ run_err "mail --limit 0 → usage/2"                 command_error   2 -- mail l
 
 # --- MCP stdio smoke (pippin-c6r): initialize → tools/list → read call → unknown-tool error
 MCP_VERDICT="$(BIN="$BIN" python3 - <<'PY' 2>/dev/null
-import json, os, subprocess, sys
+import json, os, subprocess, sys, time
 bin = os.environ['BIN']
 p = subprocess.Popen([bin, "mcp-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                      stderr=subprocess.DEVNULL, text=True, bufsize=1)
@@ -263,10 +263,21 @@ try:
     send({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"no_such_tool","arguments":{}}})
     unk = recv()
     err_code = ((unk or {}).get("error") or {}).get("code")
-    if init and ntools >= 40 and ok and err_code == -32601:
+    # pippin-9urs: a delete tool called without confirm must fail in buildArgs,
+    # BEFORE the child spawns. `contacts delete` blocks on readLine() without
+    # --force, so a gate that let the omission through would hang this call for
+    # the full 60s child timeout. Timing is the assertion: a pre-spawn throw is
+    # instant, a hang is not.
+    t0 = time.monotonic()
+    send({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"contacts_delete","arguments":{"identifier":"e2e-nonexistent"}}})
+    noconfirm = recv()
+    gate_secs = time.monotonic() - t0
+    gate_ok = ((noconfirm or {}).get("result") or {}).get("isError") is True and gate_secs < 10
+    if init and ntools >= 70 and ok and err_code == -32601 and gate_ok:
         print("PASS")
     else:
-        print("FAIL: init=%s ntools=%s call_ok=%s unk=%s" % (bool(init), ntools, ok, err_code))
+        print("FAIL: init=%s ntools=%s call_ok=%s unk=%s confirm_gate=%s (%.1fs)"
+              % (bool(init), ntools, ok, err_code, gate_ok, gate_secs))
 finally:
     try: p.stdin.close()
     except Exception: pass
@@ -299,6 +310,29 @@ if [[ $RW -eq 1 ]]; then
   else
     FAIL=$((FAIL+1)); fails+=("notes create round-trip: no id returned")
     echo "  FAIL  notes create round-trip (no id)"
+  fi
+
+  # pippin-9urs: mail mark read/unread round-trip. Flips the newest INBOX
+  # message and restores its original state, so the mailbox is unchanged on
+  # exit. `mail list` reports LIVE read state (the cached MailMessage.read is a
+  # fetch-time snapshot), so it is the only honest way to verify the flip.
+  MSG="$("$BIN" mail list --limit 1 --format agent 2>/dev/null \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); m=(d.get('data') or [{}])[0]; print(m.get('id',''), str(m.get('read','')).lower())")"
+  MSG_ID="${MSG%% *}"; WAS_READ="${MSG##* }"
+  if [[ -n "$MSG_ID" && ( "$WAS_READ" == "true" || "$WAS_READ" == "false" ) ]]; then
+    if [[ "$WAS_READ" == "true" ]]; then FLIP="--unread"; WANT="False"; else FLIP="--read"; WANT="True"; fi
+    "$BIN" mail mark "$MSG_ID" $FLIP --format agent >/dev/null 2>&1
+    run "mail mark flips live read state" \
+      "[m['read'] for m in d['data'] if m['id'] == '$MSG_ID'] == [$WANT]" \
+      -- mail list --limit 1
+    # Restore. Verified below so a failed restore is a FAIL, not silent drift.
+    if [[ "$WAS_READ" == "true" ]]; then "$BIN" mail mark "$MSG_ID" --read --format agent >/dev/null 2>&1
+    else "$BIN" mail mark "$MSG_ID" --unread --format agent >/dev/null 2>&1; fi
+    run "mail mark restores original state" \
+      "[str(m['read']).lower() for m in d['data'] if m['id'] == '$MSG_ID'] == ['$WAS_READ']" \
+      -- mail list --limit 1
+  else
+    SKIP=$((SKIP+1)); echo "  SKIP  mail mark round-trip (no INBOX message to flip)"
   fi
 fi
 
