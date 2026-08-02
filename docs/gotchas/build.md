@@ -26,7 +26,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test
 sudo xcode-select -s /Applications/Xcode.app
 ```
 
-`make test` and `make lint` inherit the same defect.
+**`make test`/`make ci` do NOT inherit this** — since pippin-eby they self-heal via an SDK preflight, no `DEVELOPER_DIR` needed. It is the bare `xcrun --sdk macosx swift test` form (the one quoted in the CLAUDE.md Commands block) that fails. Reach for `make`, not the inner command.
 
 ## Testing error/exit-code paths without TCC
 

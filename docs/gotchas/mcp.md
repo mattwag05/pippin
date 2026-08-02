@@ -44,6 +44,16 @@ Bind option values as `--flag=value` (`ArgHelpers.option`), and append free-form
 
 The MCP layer SIGKILLs any child exceeding ~60s. A tool whose command runs per-item AI calls (e.g. `actions extract`) must bound its work with `BatchBudget.forCurrentContext()` (50s under MCP) and return partial results + a `timedOut` warning, or it dies mid-scan. See `ActionExtractor.extract(budget:)` + `runConcurrentlyWithBudget`. Docs also steer such commands to `job_run`.
 
-## Adding a tool: bump the count refs, but NOT the encoding fixture
+## Adding a tool: one test hardcodes the count, three don't
 
-A new `MCPTool` entry changes the live count (`MCPToolRegistry.tools.count`), asserted dynamically by `JSONRPCTests`/`CLIIntegrationTests` (no edit needed). Update the human-facing counts: `docs/mcp-server.md` (the "N tools" line + the tool table) and the pippin `CLAUDE.md` ToolRegistry row. Do NOT touch `AgentInfoCommandTests.testEnvelopeEncodesSnakeCaseKeys` — its `toolCount: 44` is a hardcoded snake_case *encoding fixture*, not the real count.
+`JSONRPCTests` and `CLIIntegrationTests` compare against `MCPToolRegistry.tools.count` (no edit needed), but **`InProcessToolsTests.testRegistryToolCount` hardcodes the literal** — it is the one that fails, and it is not in the MCP test file you'd think to check. Also update `docs/mcp-server.md` (the "N tools" line + tool table), `README.md`, and the pippin `CLAUDE.md` ToolRegistry row. Do NOT touch `AgentInfoCommandTests.testEnvelopeEncodesSnakeCaseKeys` — its `toolCount: 44` is a snake_case *encoding fixture*, not the real count.
+
+## Every tool's argv is parsed against its real command group
+
+`ToolRegistryTests.testAllArgvParseAsRealCLICommands` runs each built argv through its group's `parseAsRoot` (the root `Pippin` lives in the executable target and can't be imported by tests). This catches a typo'd subcommand, a renamed flag, or a `validate()` precondition the tool fails to satisfy — none of which any test caught before. A new top-level command must be added to its `groups` map.
+
+`sampleArgs` is ONE permissive superset object, not a per-tool switch — add a case only when a key genuinely conflicts. Two do: **`to` means three different things** (recipient array for `mail_send`/`reply`/`forward`, message handle for `messages_send`, destination mailbox for `mail_move`).
+
+## Write-safety gates live in `buildArgs`, before the child spawns
+
+`ArgHelpers.dryRunUnlessConfirmed` (sends preview unless `confirm:true`) and `ArgHelpers.forceFromConfirm` (deletes throw without it). The delete gate must stay pre-spawn: `contacts delete` blocks on `readLine()` without `--force`, so letting the omission through hangs the tool call for the full 60s child timeout instead of erroring. Verified by timing in `e2e-smoke.sh`, not by exit code.
