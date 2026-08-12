@@ -16,12 +16,27 @@ jobs:
           fetch-depth: 0
 
       - name: Install gitleaks
+        # Downloaded to a file and checksum-verified, NOT piped into tar. A truncated
+        # transfer through a pipe extracts a partial binary, exits 0 here, and then
+        # SEGFAULTS the scan step (exit 139) -- indistinguishable at a glance from a
+        # real secret finding on a required check. Verified 2026-08-12: a truncated
+        # archive is rejected below, before anything is extracted or executed.
         run: |
+          set -euo pipefail
           V=8.30.1
-          ARCH=$(uname -m); case "$ARCH" in aarch64|arm64) A=arm64;; *) A=x64;; esac
-          curl -sL "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_${A}.tar.gz" | tar xz gitleaks
+          case "$(uname -m)" in
+            aarch64|arm64) A=arm64; SHA=e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080 ;;
+            *)             A=x64;   SHA=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb ;;
+          esac
+          TB="/tmp/gitleaks_${V}_linux_${A}.tar.gz"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --max-time 300 \
+            -o "$TB" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_${A}.tar.gz"
+          echo "${SHA}  ${TB}" | sha256sum -c - \
+            || { echo "::error::gitleaks download failed its checksum - truncated or tampered download, NOT a scan result"; exit 1; }
+          tar xzf "$TB" gitleaks
+          rm -f "$TB"
           sudo mv gitleaks /usr/local/bin/ 2>/dev/null || mv gitleaks "$HOME/gitleaks"
-
       - name: Scan full history for secrets
         run: |
           GL=/usr/local/bin/gitleaks; [ -x "$GL" ] || GL="$HOME/gitleaks"
