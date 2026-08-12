@@ -47,6 +47,8 @@ final class MailEnvelopeIndexTests: XCTestCase {
             CREATE TABLE recipients (ROWID INTEGER PRIMARY KEY, message INTEGER NOT NULL,
                 address INTEGER NOT NULL, type INTEGER, position INTEGER);
             CREATE TABLE attachments (ROWID INTEGER PRIMARY KEY, message INTEGER NOT NULL, name TEXT);
+            CREATE TABLE labels (message_id INTEGER, mailbox_id INTEGER,
+                PRIMARY KEY(message_id, mailbox_id)) WITHOUT ROWID;
             """)
             try db.execute(
                 sql: "INSERT INTO properties (key, value) VALUES ('version', ?), ('minor_version', '90006')",
@@ -562,5 +564,195 @@ final class MailEnvelopeIndexTests: XCTestCase {
         let idx = try makeIndex(makeSummariesDB())
         XCTAssertEqual(try idx.summariesByCompoundId(for: []), [:])
         XCTAssertEqual(try idx.summariesByCompoundId(for: ["nope"]), [:])
+    }
+
+    // MARK: - Gmail label mailboxes (pippin-z0f6)
+
+    static let uuidG = "GGGGGGGG-3333-3333-3333-333333333333" // "Gmail" (imap, label-backed)
+
+    /// Gmail's storage model: messages live in `[Gmail]/All Mail` (a real
+    /// mailbox, `source` NULL) and INBOX/Important/custom labels are VIEWS
+    /// (`source` → All Mail) whose membership lives in `labels`. Nothing ever
+    /// sets `messages.mailbox` to a label rowid, so a plain `m.mailbox IN (...)`
+    /// matched zero rows and reported an empty inbox. Trash is a real mailbox
+    /// even on Gmail — labels and real mailboxes coexist under one account.
+    ///
+    /// Layout: All Mail=10, INBOX=11, Important=12, Trash=13 (real).
+    /// 401 labeled INBOX+Important, 402 labeled INBOX, 403 labeled Important
+    /// only (archived — must NOT appear in INBOX), 404 in Trash, 405 in All
+    /// Mail with no labels at all.
+    private func makeGmailDB() throws -> DatabaseQueue {
+        let q = try makeFixtureDB()
+        try q.write { db in
+            try db.execute(sql: """
+            INSERT INTO mailboxes (ROWID, url, source) VALUES
+              (10, 'imap://\(Self.uuidG)/%5BGmail%5D/All%20Mail', NULL),
+              (11, 'imap://\(Self.uuidG)/INBOX', 10),
+              (12, 'imap://\(Self.uuidG)/%5BGmail%5D/Important', 10),
+              (13, 'imap://\(Self.uuidG)/%5BGmail%5D/Trash', NULL);
+
+            INSERT INTO subjects (ROWID, subject) VALUES
+              (11, 'Gmail inbox newest'),
+              (12, 'Gmail inbox older'),
+              (13, 'Gmail archived'),
+              (14, 'Gmail trashed'),
+              (15, 'Gmail unlabeled');
+
+            INSERT INTO message_global_data (ROWID, message_id_header) VALUES
+              (11, '<g-401@gmail.example.com>'),
+              (12, '<g-402@gmail.example.com>'),
+              (13, '<g-403@gmail.example.com>'),
+              (14, '<g-404@gmail.example.com>'),
+              (15, '<g-405@gmail.example.com>');
+
+            INSERT INTO messages (ROWID, global_message_id, sender, subject, date_sent, date_received, mailbox, read, deleted, size) VALUES
+              (401, 11, 1, 11, \(Self.jul10 + 9 * Self.hour), \(Self.jul10 + 9 * Self.hour), 10, 0, 0, 111),
+              (402, 12, 2, 12, \(Self.jul10 + 8 * Self.hour), \(Self.jul10 + 8 * Self.hour), 10, 1, 0, 222),
+              (403, 13, 2, 13, \(Self.jul10 + 7 * Self.hour), \(Self.jul10 + 7 * Self.hour), 10, 1, 0, 333),
+              (404, 14, 2, 14, \(Self.jul10 + 6 * Self.hour), \(Self.jul10 + 6 * Self.hour), 13, 1, 0, 444),
+              (405, 15, 2, 15, \(Self.jul10 + 5 * Self.hour), \(Self.jul10 + 5 * Self.hour), 10, 1, 0, 555);
+
+            INSERT INTO labels (message_id, mailbox_id) VALUES
+              (401, 11), (401, 12), (402, 11), (403, 12);
+            """)
+        }
+        return q
+    }
+
+    private func makeGmailIndex() throws -> MailEnvelopeIndex {
+        try MailEnvelopeIndex(
+            dbQueue: makeGmailDB(),
+            accounts: Self.accounts + [
+                MailAccountRecord(name: "Gmail", email: "g@gmail.com", uuid: Self.uuidG),
+            ]
+        )
+    }
+
+    /// The regression: this returned [] with status ok, indistinguishable from
+    /// an empty inbox, for every Gmail-family account.
+    func testGmailInboxListsLabeledMessages() throws {
+        let msgs = try makeGmailIndex().listMessages(
+            account: "Gmail", mailbox: "INBOX", unread: false,
+            limit: 50, offset: 0, after: nil, before: nil
+        )
+        XCTAssertEqual(msgs.map(\.id), ["Gmail||INBOX||401", "Gmail||INBOX||402"])
+        XCTAssertEqual(msgs[0].subject, "Gmail inbox newest")
+        XCTAssertEqual(msgs[0].size, 111)
+        XCTAssertFalse(msgs[0].read)
+    }
+
+    /// A label hit's backing row has `messages.mailbox` = All Mail, but the
+    /// compound id and `mailbox` field must name what the caller asked for —
+    /// `mail show`/`mark`/`move` round-trip on that id.
+    func testGmailLabelHitNamesRequestedMailboxNotAllMail() throws {
+        let msgs = try makeGmailIndex().listMessages(
+            account: "Gmail", mailbox: "Important", unread: false,
+            limit: 50, offset: 0, after: nil, before: nil
+        )
+        XCTAssertEqual(msgs.map(\.id), ["Gmail||Important||401", "Gmail||Important||403"])
+        XCTAssertTrue(msgs.allSatisfy { $0.mailbox == "Important" })
+        XCTAssertTrue(msgs.allSatisfy { $0.account == "Gmail" })
+    }
+
+    /// Archived mail (in All Mail, not labeled INBOX) must not leak into the
+    /// inbox — the whole reason "just query All Mail" is not a fix.
+    func testGmailArchivedAndUnlabeledExcludedFromInbox() throws {
+        let ids = try makeGmailIndex().listMessages(
+            account: "Gmail", mailbox: "INBOX", unread: false,
+            limit: 50, offset: 0, after: nil, before: nil
+        ).map(\.id)
+        XCTAssertFalse(ids.contains("Gmail||INBOX||403")) // archived, Important only
+        XCTAssertFalse(ids.contains("Gmail||INBOX||405")) // no labels at all
+        XCTAssertFalse(ids.contains("Gmail||INBOX||404")) // in Trash
+    }
+
+    /// Real mailboxes still work on a label-backed account.
+    func testGmailRealMailboxStillMatchesOnMessageMailbox() throws {
+        let msgs = try makeGmailIndex().listMessages(
+            account: "Gmail", mailbox: "Trash", unread: false,
+            limit: 50, offset: 0, after: nil, before: nil
+        )
+        XCTAssertEqual(msgs.map(\.id), ["Gmail||Trash||404"])
+    }
+
+    /// A cross-account INBOX scan mixes both storage models in one statement:
+    /// Gmail contributed nothing before this fix, silently.
+    func testCrossAccountInboxMixesLabelAndRealMailboxes() throws {
+        let msgs = try makeGmailIndex().listMessages(
+            account: nil, mailbox: "INBOX", unread: false,
+            limit: 50, offset: 0, after: nil, before: nil
+        )
+        XCTAssertEqual(msgs.map(\.id), [
+            "Gmail||INBOX||401",
+            "Gmail||INBOX||402",
+            "Work||Inbox||201",
+            "Personal||INBOX||101",
+            "Personal||INBOX||102",
+            "Personal||INBOX||105",
+        ])
+    }
+
+    /// An empty label is a real "nothing here", not a resolution failure: the
+    /// mailbox resolves, so the query answers [] rather than throwing to JXA.
+    func testGmailEmptyLabelReturnsEmptyWithoutThrowing() throws {
+        let q = try makeGmailDB()
+        try q.write { db in
+            try db.execute(sql: "DELETE FROM labels WHERE mailbox_id = 11")
+        }
+        let idx = try MailEnvelopeIndex(dbQueue: q, accounts: Self.accounts + [
+            MailAccountRecord(name: "Gmail", email: "g@gmail.com", uuid: Self.uuidG),
+        ])
+        XCTAssertEqual(try idx.listMessages(
+            account: "Gmail", mailbox: "INBOX", unread: false,
+            limit: 50, offset: 0, after: nil, before: nil
+        ).map(\.id), [])
+    }
+
+    /// When a row matches both a real target and a label target (all-mailboxes
+    /// scans), the real mailbox wins — keeps "no mailbox filter" naming All
+    /// Mail exactly as it did before labels were handled.
+    func testAllMailboxesScanPrefersRealMailboxOverLabel() throws {
+        let msgs = try makeGmailIndex().searchMessages(
+            query: "Gmail inbox newest", account: "Gmail", mailbox: nil,
+            limit: 50, offset: 0, after: nil, before: nil, to: nil, from: nil
+        )
+        XCTAssertEqual(msgs.map(\.id), ["Gmail||All Mail||401"])
+    }
+
+    func testGmailLabelSearchAndActivity() throws {
+        let idx = try makeGmailIndex()
+        let hits = try idx.searchMessages(
+            query: "inbox", account: "Gmail", mailbox: "INBOX",
+            limit: 50, offset: 0, after: nil, before: nil, to: nil, from: nil
+        )
+        XCTAssertEqual(hits.map(\.id), ["Gmail||INBOX||401", "Gmail||INBOX||402"])
+
+        let activity = try idx.listActivity(
+            account: "Gmail", mailboxes: ["INBOX", "Trash"], since: nil, limit: 50
+        )
+        XCTAssertEqual(activity.map(\.id), [
+            "Gmail||INBOX||401", "Gmail||INBOX||402", "Gmail||Trash||404",
+        ])
+    }
+
+    func testGmailUnreadAndDateFiltersApplyToLabelMatches() throws {
+        let idx = try makeGmailIndex()
+        let unread = try idx.listMessages(
+            account: "Gmail", mailbox: "INBOX", unread: true,
+            limit: 50, offset: 0, after: nil, before: nil
+        )
+        XCTAssertEqual(unread.map(\.id), ["Gmail||INBOX||401"])
+
+        let deleted = try makeGmailDB()
+        try deleted.write { db in
+            try db.execute(sql: "UPDATE messages SET deleted = 1 WHERE ROWID = 401")
+        }
+        let idx2 = try MailEnvelopeIndex(dbQueue: deleted, accounts: Self.accounts + [
+            MailAccountRecord(name: "Gmail", email: "g@gmail.com", uuid: Self.uuidG),
+        ])
+        XCTAssertEqual(try idx2.listMessages(
+            account: "Gmail", mailbox: "INBOX", unread: false,
+            limit: 50, offset: 0, after: nil, before: nil
+        ).map(\.id), ["Gmail||INBOX||402"])
     }
 }

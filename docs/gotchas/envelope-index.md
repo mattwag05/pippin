@@ -58,9 +58,40 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
 - **Filter dates on `COALESCE(NULLIF(date_sent,0), NULLIF(date_received,0))`** —
   Apple leaves either column NULL or 0. GRDB NULL trap applies to every column
   (`row["x"] as T?` — see swift.md).
-- **Dedup mirrors JXA**: Gmail lists one message in both INBOX and
-  `[Gmail]/All Mail` — key on `message_id_header`, fallback
-  subject+sender+date; offset applies after dedup (search).
+- **🛑 Gmail mailboxes are LABEL VIEWS, not mailboxes (pippin-z0f6).** A
+  message row points at exactly ONE mailbox (`messages.mailbox`). On Gmail that
+  is almost always `[Gmail]/All Mail`: `INBOX`, `[Gmail]/Important`,
+  `[Gmail]/Starred`, `[Gmail]/Sent Mail` and every custom label are *views*
+  (`mailboxes.source` → the backing mailbox) whose membership lives in
+  `labels(message_id, mailbox_id)`. `messages.mailbox` NEVER points at them, so
+  the original `m.mailbox IN (...)` matched zero rows and reported a real inbox
+  as **`status: ok, data: []`** — 5,422 inbox messages across three accounts,
+  invisible, for the life of the fast path. `MailboxTargets` now splits a
+  resolved target set by `source` and queries both models in one statement.
+  Notes:
+  - **Only All Mail / Trash / Spam / Drafts are real mailboxes on Gmail** —
+    labels and real mailboxes coexist under one account, so this is per-mailbox,
+    not per-account.
+  - **A label hit's `m.mailbox` is the BACKING mailbox**, so the compound id
+    must come from the matched target (`matchColumn`), not `m.mailbox`, or
+    every id would say `All Mail` and `mail show`/`mark`/`move` would act on the
+    wrong mailbox. A row matching both a real and a label target prefers the
+    real one, keeping unfiltered ("all mailboxes") scans naming All Mail as
+    before.
+  - **A non-Gmail target set generates byte-identical SQL** to pre-fix — the
+    labels join only appears when a label target is present.
+  - **`--mailbox All Mail` is not a substitute for INBOX**: All Mail holds
+    inbox and archived mail indistinguishably, which is why "just query All
+    Mail" was rejected as a fix.
+  - The pippin-60x e2e parity check samples ONE account and passed throughout;
+    the pippin-z0f6 check asserts per-account that a fast-path empty inbox is
+    matched by an empty JXA inbox.
+- **Dedup mirrors JXA**: the same message can appear under more than one
+  mailbox row (across accounts, or Gmail All Mail vs Trash) — key on
+  `message_id_header`, fallback subject+sender+date; offset applies after dedup
+  (search). Label matching does NOT duplicate rows: `labels` is only ever an
+  `IN`-subquery, so one `messages` row yields one result row even when it
+  satisfies both the real and the label branch.
 - **Bodies are NOT in this DB** — `show`, previews-on-cache-miss, and all
   writes stay JXA. Fast-path activity/list previews reuse
   `assemblePreviews` + `buildBatchBodiesScript` + MailBodyCache (ids match, so

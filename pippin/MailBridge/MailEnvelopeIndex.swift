@@ -255,6 +255,63 @@ final class MailEnvelopeIndex: Sendable {
         let rowid: Int64
         let accountName: String
         let leaf: String
+        /// `mailboxes.source` — non-NULL marks a LABEL VIEW rather than a real
+        /// mailbox (Gmail). See `MailboxTargets` for what that changes.
+        let source: Int64?
+
+        var isLabel: Bool { source != nil }
+    }
+
+    /// A resolved mailbox target set, split by storage model (pippin-z0f6).
+    ///
+    /// Mail's index stores a message against exactly ONE mailbox
+    /// (`messages.mailbox`). Gmail's IMAP mailboxes are mostly *label views*
+    /// over `[Gmail]/All Mail`: their `mailboxes.source` points at the backing
+    /// mailbox, `messages.mailbox` NEVER points at them, and membership lives
+    /// in `labels(message_id, mailbox_id)` instead. So a plain
+    /// `m.mailbox IN (...)` matches zero rows for Gmail INBOX/Important/Starred
+    /// and every custom label, which silently returned an empty inbox rather
+    /// than an error (measured: 5,422 inbox messages across 3 accounts).
+    /// Only All Mail / Trash / Spam / Drafts are real mailboxes on Gmail.
+    ///
+    /// Both models are queried in one statement: real targets match on
+    /// `m.mailbox`, label targets via the `labels` join. `matchColumn` reports
+    /// which target a row actually matched, because for a label hit
+    /// `m.mailbox` is the backing All Mail rowid, not the requested mailbox —
+    /// the compound id and `mailbox` field must name what the caller asked for
+    /// (JXA parity). A row matching both prefers the real mailbox, so
+    /// "all mailboxes of this account" keeps naming All Mail as it does today.
+    private struct MailboxTargets {
+        let byRowid: [Int64: MailboxRef]
+        private let realList: String
+        private let labelList: String
+
+        init(_ refs: [MailboxRef]) {
+            byRowid = Dictionary(refs.map { ($0.rowid, $0) }, uniquingKeysWith: { a, _ in a })
+            realList = refs.filter { !$0.isLabel }.map { String($0.rowid) }.joined(separator: ",")
+            labelList = refs.filter(\.isLabel).map { String($0.rowid) }.joined(separator: ",")
+        }
+
+        private var labelMatch: String {
+            "(SELECT MIN(l.mailbox_id) FROM labels l WHERE l.message_id = m.ROWID AND l.mailbox_id IN (\(labelList)))"
+        }
+
+        /// Membership predicate. Non-Gmail target sets produce the exact
+        /// `m.mailbox IN (...)` clause this had before labels were handled.
+        var membershipSQL: String {
+            let real = "m.mailbox IN (\(realList))"
+            let label = "m.ROWID IN (SELECT message_id FROM labels WHERE mailbox_id IN (\(labelList)))"
+            if labelList.isEmpty { return real }
+            if realList.isEmpty { return label }
+            return "(\(real) OR \(label))"
+        }
+
+        /// SELECT expression yielding the matched mailbox ROWID (`mb_rowid`).
+        var matchColumn: String {
+            if labelList.isEmpty { return "m.mailbox" }
+            if realList.isEmpty { return labelMatch }
+            return "COALESCE(NULLIF(CASE WHEN m.mailbox IN (\(realList)) THEN m.mailbox ELSE 0 END, 0), \(labelMatch))"
+        }
     }
 
     /// Special-mailbox alias groups mirroring `jsResolveMailbox` in
@@ -307,7 +364,7 @@ final class MailEnvelopeIndex: Sendable {
         }
 
         let rows = try dbQueue.read { db in
-            try Row.fetchAll(db, sql: "SELECT ROWID, url FROM mailboxes")
+            try Row.fetchAll(db, sql: "SELECT ROWID, url, source FROM mailboxes")
         }
         var refs: [MailboxRef] = []
         for row in rows {
@@ -317,7 +374,9 @@ final class MailEnvelopeIndex: Sendable {
                   let accountName = targetUUIDs[uuid.lowercased()]
             else { continue }
             if let aliasSet, !aliasSet.contains(leaf.lowercased()) { continue }
-            refs.append(MailboxRef(rowid: rowid, accountName: accountName, leaf: leaf))
+            refs.append(MailboxRef(
+                rowid: rowid, accountName: accountName, leaf: leaf, source: row["source"] as Int64?
+            ))
         }
         guard !refs.isEmpty else {
             throw MailEnvelopeIndexError.mailboxUnresolved(mailboxName ?? "(all)")
@@ -413,19 +472,23 @@ final class MailEnvelopeIndex: Sendable {
     }
 
     /// The shared SELECT. `NULLIF(date, 0)` — some rows carry 0 instead of
-    /// NULL; both mean "use the other date column".
-    private static let baseSelect = """
-    SELECT m.ROWID AS msg_rowid, m.mailbox AS mb_rowid,
-           s.subject AS subj, a.address AS addr, a.comment AS cmt,
-           COALESCE(NULLIF(m.date_sent, 0), NULLIF(m.date_received, 0), 0) AS epoch,
-           m.read AS is_read, m.size AS size,
-           EXISTS(SELECT 1 FROM attachments att WHERE att.message = m.ROWID) AS has_att,
-           gd.message_id_header AS header
-    FROM messages m
-    LEFT JOIN subjects s ON s.ROWID = m.subject
-    LEFT JOIN addresses a ON a.ROWID = m.sender
-    LEFT JOIN message_global_data gd ON gd.ROWID = m.global_message_id
-    """
+    /// NULL; both mean "use the other date column". `mb_rowid` is the mailbox
+    /// the row matched, which is `m.mailbox` except for Gmail label hits
+    /// (see `MailboxTargets`).
+    private static func baseSelect(_ targets: MailboxTargets) -> String {
+        """
+        SELECT m.ROWID AS msg_rowid, \(targets.matchColumn) AS mb_rowid,
+               s.subject AS subj, a.address AS addr, a.comment AS cmt,
+               COALESCE(NULLIF(m.date_sent, 0), NULLIF(m.date_received, 0), 0) AS epoch,
+               m.read AS is_read, m.size AS size,
+               EXISTS(SELECT 1 FROM attachments att WHERE att.message = m.ROWID) AS has_att,
+               gd.message_id_header AS header
+        FROM messages m
+        LEFT JOIN subjects s ON s.ROWID = m.subject
+        LEFT JOIN addresses a ON a.ROWID = m.sender
+        LEFT JOIN message_global_data gd ON gd.ROWID = m.global_message_id
+        """
+    }
 
     // Every column read is optional-with-fallback: Apple's DB can hold NULL
     // anywhere and `row["x"] as T` traps on NULL (docs/gotchas/swift.md).
@@ -454,9 +517,10 @@ final class MailEnvelopeIndex: Sendable {
 
     private func buildMessages(
         _ raws: [RawRow],
-        refsByRowid: [Int64: MailboxRef],
+        targets: MailboxTargets,
         populateTo: Bool
     ) throws -> [MailMessage] {
+        let refsByRowid = targets.byRowid
         var toByMessage: [Int64: [String]] = [:]
         if populateTo, !raws.isEmpty {
             let ids = raws.map { String($0.rowid) }.joined(separator: ",")
@@ -526,16 +590,15 @@ final class MailEnvelopeIndex: Sendable {
         after: String?,
         before: String?
     ) throws -> [MailMessage] {
-        let refs = try resolveMailboxes(accountFilter: account, mailboxName: mailbox)
-        let rowids = refs.map { String($0.rowid) }.joined(separator: ",")
-        var sql = Self.baseSelect + " WHERE m.deleted = 0 AND m.mailbox IN (\(rowids))"
+        let targets = try MailboxTargets(resolveMailboxes(accountFilter: account, mailboxName: mailbox))
+        var sql = Self.baseSelect(targets) + " WHERE m.deleted = 0 AND \(targets.membershipSQL)"
         if unread { sql += " AND m.read = 0" }
         sql += Self.dateFilterSQL(after: after, before: before)
         sql += " ORDER BY epoch DESC, m.ROWID ASC LIMIT \(max(1, limit)) OFFSET \(max(0, offset))"
         let raws = try dbQueue.read { db in try Row.fetchAll(db, sql: sql) }.map(Self.rawRow)
         return try buildMessages(
             raws,
-            refsByRowid: Dictionary(uniqueKeysWithValues: refs.map { ($0.rowid, $0) }),
+            targets: targets,
             populateTo: false // JXA list rows emit to: [] — parity
         )
     }
@@ -556,13 +619,12 @@ final class MailEnvelopeIndex: Sendable {
         to: String?,
         from: String?
     ) throws -> [MailMessage] {
-        let refs = try resolveMailboxes(accountFilter: account, mailboxName: mailbox)
-        let rowids = refs.map { String($0.rowid) }.joined(separator: ",")
+        let targets = try MailboxTargets(resolveMailboxes(accountFilter: account, mailboxName: mailbox))
         // JXA parity: case-insensitive substring over subject OR the composed
         // sender string ("Name <addr>"). LIKE ... COLLATE NOCASE is ASCII-only
         // case folding vs JS toLowerCase's Unicode folding — accepted drift.
-        var sql = Self.baseSelect + """
-         WHERE m.deleted = 0 AND m.mailbox IN (\(rowids))
+        var sql = Self.baseSelect(targets) + """
+         WHERE m.deleted = 0 AND \(targets.membershipSQL)
          AND (COALESCE(s.subject, '') LIKE '%' || :query || '%' COLLATE NOCASE
               OR COALESCE(a.comment, '') || ' <' || COALESCE(a.address, '') || '>'
                  LIKE '%' || :query || '%' COLLATE NOCASE)
@@ -592,11 +654,7 @@ final class MailEnvelopeIndex: Sendable {
         // JXA applies offset AFTER dedup.
         let deduped = Self.dedup(fetched)
         let window = Array(deduped.dropFirst(max(0, offset)).prefix(max(1, limit)))
-        return try buildMessages(
-            window,
-            refsByRowid: Dictionary(uniqueKeysWithValues: refs.map { ($0.rowid, $0) }),
-            populateTo: true
-        )
+        return try buildMessages(window, targets: targets, populateTo: true)
     }
 
     /// Mail's own snippet text (`messages.summary` → `summaries.summary`) for
@@ -639,18 +697,14 @@ final class MailEnvelopeIndex: Sendable {
         for name in mailboxes {
             refs += try resolveMailboxes(accountFilter: account, mailboxName: name)
         }
-        let rowids = refs.map { String($0.rowid) }.joined(separator: ",")
-        var sql = Self.baseSelect + " WHERE m.deleted = 0 AND m.mailbox IN (\(rowids))"
+        let targets = MailboxTargets(refs)
+        var sql = Self.baseSelect(targets) + " WHERE m.deleted = 0 AND \(targets.membershipSQL)"
         if let since {
             sql += " AND epoch >= \(Int64(since.timeIntervalSince1970))"
         }
         sql += " ORDER BY epoch DESC, m.ROWID ASC LIMIT \(Self.candidateCap)"
         let fetched = try dbQueue.read { db in try Row.fetchAll(db, sql: sql) }.map(Self.rawRow)
         let window = Array(Self.dedup(fetched).prefix(max(1, limit)))
-        return try buildMessages(
-            window,
-            refsByRowid: Dictionary(uniqueKeysWithValues: refs.map { ($0.rowid, $0) }),
-            populateTo: true
-        )
+        return try buildMessages(window, targets: targets, populateTo: true)
     }
 }

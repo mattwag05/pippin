@@ -186,6 +186,53 @@ else
   SKIP=$((SKIP+1)); echo "  SKIP  mail fast-path/JXA id parity (fast path unavailable — no FDA or unknown schema)"
 fi
 
+# --- pippin-z0f6: no account's inbox may be silently empty on the fast path.
+# Gmail stores INBOX as a LABEL over [Gmail]/All Mail, so the fast path's
+# mailbox match found zero rows and returned `status: ok, data: []` — a real
+# inbox reported as empty, on every Gmail-family account. Per-account because
+# the pippin-60x parity check above samples ONE account and missed this for
+# months. Fast-path [] + JXA non-empty is the failure; both empty is a real
+# empty inbox and passes.
+if [[ "$FASTPATH_OK" == "yes" ]]; then
+  ACCTS="$("$BIN" mail accounts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit()
+for r in (d.get('data') or []):
+    if r.get('name'): print(r['name'])")"
+  EMPTY_ACCTS=()
+  while IFS= read -r acct; do
+    [[ -z "$acct" ]] && continue
+    NFAST="$("$BIN" mail list --account "$acct" --mailbox INBOX --limit 5 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(-1); sys.exit()
+print(len(d.get('data') or []) if d.get('status') == 'ok' else -1)")"
+    [[ "$NFAST" != "0" ]] && continue
+    NSLOW="$(PIPPIN_MAIL_FASTPATH=0 "$BIN" mail list --account "$acct" --mailbox INBOX --limit 5 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(-1); sys.exit()
+print(len(d.get('data') or []) if d.get('status') == 'ok' else -1)")"
+    [[ "$NSLOW" -gt 0 ]] && EMPTY_ACCTS+=("$acct($NSLOW via JXA)")
+  done <<< "$ACCTS"
+  if [[ ${#EMPTY_ACCTS[@]} -eq 0 ]]; then
+    PASS=$((PASS+1)); echo "  ok    no account's inbox is silently empty on the fast path (pippin-z0f6)"
+  else
+    FAIL=$((FAIL+1))
+    fails+=("fast path returns an empty inbox for: ${EMPTY_ACCTS[*]}")
+    echo "  FAIL  fast-path inbox empty for: ${EMPTY_ACCTS[*]}"
+  fi
+else
+  SKIP=$((SKIP+1)); echo "  SKIP  fast-path inbox non-empty check (fast path unavailable)"
+fi
+
 # --- pippin-ml9: mail verify — baseline report shape on a live message
 VID="$("$BIN" mail list --limit 1 --no-contacts --format agent 2>/dev/null | python3 -c "
 import json, sys

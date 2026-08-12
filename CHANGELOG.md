@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [bug] Gmail-family accounts no longer report an empty inbox. `mail list`/`search`/`activity` returned `status: ok` with zero rows for `INBOX`, `Important`, `Starred` and every custom label on Gmail accounts, because Mail's Envelope Index stores those as label *views* over `[Gmail]/All Mail` rather than as mailboxes — 5,422 real inbox messages across three accounts were invisible, and an unreachable inbox was indistinguishable from an empty one. Label membership is now read from the index's `labels` table, so Gmail inboxes and labels list, search, and show activity at full fast-path speed (176 ms vs 1.3 s via the fallback) with ids naming the requested mailbox. Closes pippin-z0f6.
+
 ### Added
 
 - [feat] MCP tool surface reaches curated parity with the CLI — 27 new tools (48 → 75). Mail gains `mail_mark`, `mail_move` (archive/trash/file a message), `mail_send`, `mail_reply`, `mail_forward`, `mail_triage`, `mail_sanitize`, `mail_extract`; Calendar gains `show`, `edit`, `delete`, `smart_create`, `agenda`, `conflicts`; Reminders gains `edit`, `delete`, `smart_create`; plus `notes_delete`, `contacts_list`/`groups`/`create`/`edit`/`delete`, `memos_delete`, and `messages_exclude_list`/`add`/`remove`. Agents could previously read mail but not mark it read or file it. Closes pippin-9urs.
