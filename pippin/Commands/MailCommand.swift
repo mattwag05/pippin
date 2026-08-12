@@ -305,7 +305,7 @@ public struct MailCommand: AsyncParsableCommand {
 
         private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
-            try output.emit(
+            try output.emitPage(
                 page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }
@@ -563,7 +563,7 @@ public struct MailCommand: AsyncParsableCommand {
 
         private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
-            try output.emit(
+            try output.emitPage(
                 page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }

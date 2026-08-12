@@ -57,7 +57,7 @@ public struct MemosCommand: AsyncParsableCommand {
                 if output.isJSON {
                     try printJSON(page)
                 } else if output.isAgent {
-                    try output.printAgent(page)
+                    try output.printAgentPage(page)
                 } else {
                     printMemosTable(page.items)
                     if let cursor = page.nextCursor {

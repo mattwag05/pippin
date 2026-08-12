@@ -327,15 +327,23 @@ List commands (`mail list`, `mail search`, `memos list`, `reminders list`, `note
 
 ```bash
 pippin mail list --account icloud --page-size 20 --format agent
-# .data.next_cursor carries the token for the next page:
+# top-level .next_cursor carries the token for the next page:
 pippin mail list --account icloud --cursor <token> --format agent
 ```
 
-Cursor tokens are bound to the query by a filter-hash — changing a filter mid-walk is rejected as `cursor_mismatch` rather than silently returning mixed pages. When neither `--cursor` nor `--page-size` is set, `.data` is the legacy bare array (no change for existing callers).
+**`.data` is always the payload array, paginated or not** (envelope v3). The cursor is envelope metadata and sits next to `status`/`duration_ms`, so `for m in payload["data"]` is correct in every case:
+
+```json
+{"v":3,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
+```
+
+`next_cursor` is **omitted, not null**, on the last page — its absence is the end-of-results signal. (Envelope v2 and earlier switched `.data` to `{items, next_cursor}` whenever a pagination flag was passed, so iterating `.data` yielded the dict's keys instead of rows.)
+
+Cursor tokens are bound to the query by a filter-hash — changing a filter mid-walk is rejected as `cursor_mismatch` rather than silently returning mixed pages.
 
 ### Field projection (`--fields`)
 
-`--fields id,subject,from` trims structured output to just those top-level keys, cutting tokens for scan workflows. Supported on `mail list`, `notes list`/`search`, `calendar events`/`today`/`remaining`/`upcoming`, and `reminders list`/`search`. Works in **both `--format json` and `--format agent`** (in agent mode it projects the envelope's `.data`, leaving `v`/`status`/`duration_ms` intact). For paginated output it projects each `items` element and preserves `next_cursor`.
+`--fields id,subject,from` trims structured output to just those top-level keys, cutting tokens for scan workflows. Supported on `mail list`, `notes list`/`search`, `calendar events`/`today`/`remaining`/`upcoming`, and `reminders list`/`search`. Works in **both `--format json` and `--format agent`** (in agent mode it projects the envelope's `.data`, leaving `v`/`status`/`duration_ms` intact). For paginated output it projects each element of `.data` and preserves the top-level `next_cursor`.
 
 ```bash
 pippin mail list --limit 20 --fields id,subject,from --format agent   # → [{id,subject,from}, ...] under .data

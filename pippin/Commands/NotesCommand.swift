@@ -79,7 +79,7 @@ public struct NotesCommand: ParsableCommand {
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
             )
-            try output.emit(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
+            try output.emitPage(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
                 if page.items.isEmpty {
                     print("No notes found.")
                 } else {

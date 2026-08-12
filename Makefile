@@ -50,6 +50,8 @@ ci:
 	swiftformat --lint pippin/ pippin-entry/ Tests/
 	python3 scripts/lint-detach-blocking.py --self-test
 	python3 scripts/lint-detach-blocking.py
+	python3 scripts/lint-paginated-emit.py --self-test
+	python3 scripts/lint-paginated-emit.py
 
 # Full CI gate run inside an isolated, ephemeral macOS VM (Tart + Cirrus Xcode
 # image) — local parity with the macos-15 GitHub runner, zero hosted minutes,

@@ -233,6 +233,48 @@ else
   SKIP=$((SKIP+1)); echo "  SKIP  fast-path inbox non-empty check (fast path unavailable)"
 fi
 
+# --- pippin-37az: paginated agent output keeps `data` an array (envelope v3).
+# `--page` used to switch `data` to {items, next_cursor} with no version change,
+# so a consumer iterating `.data` got dict KEYS ("items") instead of rows. Run
+# here because every paginated command is permission-gated: the XCTest sweep can
+# only reach 2 of 6 (grants attach to the launching process), while this script
+# runs the granted binary from a terminal and reaches all six.
+PAGE_BAD=()
+PAGE_OK=0
+for spec in "mail list" "notes list" "reminders list" "calendar events" "contacts search a" "memos list"; do
+  # shellcheck disable=SC2086
+  VERDICT="$("$BIN" ${=spec} --page 1 --page-size 2 --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('SKIP'); sys.exit()
+if d.get('status') != 'ok':
+    print('SKIP'); sys.exit()
+data = d.get('data')
+if isinstance(data, dict):
+    print('NESTED')          # the v2 shape — cursor re-nested inside data
+elif not isinstance(data, list):
+    print('NOT-A-LIST')
+elif 'next_cursor' in d and not isinstance(d['next_cursor'], str):
+    print('BAD-CURSOR')
+else:
+    print('PASS')")"
+  case "$VERDICT" in
+    PASS) PAGE_OK=$((PAGE_OK+1)) ;;
+    SKIP) ;;
+    *) PAGE_BAD+=("$spec:$VERDICT") ;;
+  esac
+done
+if [[ ${#PAGE_BAD[@]} -gt 0 ]]; then
+  FAIL=$((FAIL+1)); fails+=("paginated data shape: ${PAGE_BAD[*]}")
+  echo "  FAIL  paginated agent data must stay an array (${PAGE_BAD[*]})"
+elif [[ "$PAGE_OK" -eq 0 ]]; then
+  SKIP=$((SKIP+1)); echo "  SKIP  paginated agent data shape (no paginated command reachable)"
+else
+  PASS=$((PASS+1)); echo "  ok    paginated agent data stays an array, cursor top-level ($PAGE_OK/6) (pippin-37az)"
+fi
+
 # --- pippin-ml9: mail verify — baseline report shape on a live message
 VID="$("$BIN" mail list --limit 1 --no-contacts --format agent 2>/dev/null | python3 -c "
 import json, sys

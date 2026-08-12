@@ -54,7 +54,7 @@ enum MCPInProcessTools {
         guard let bytes = try? JSONEncoder().encode(envelope) else {
             // AgentErrorEnvelope is a fixed struct of strings/ints — encoding
             // can't realistically fail; keep the tool result non-empty if it does.
-            return #"{"v":1,"status":"error","duration_ms":0,"error":{"code":"unknown_error","message":"failed to encode error envelope"}}"#
+            return #"{"v":\#(AGENT_SCHEMA_VERSION),"status":"error","duration_ms":0,"error":{"code":"unknown_error","message":"failed to encode error envelope"}}"#
         }
         return String(decoding: bytes, as: UTF8.self)
     }

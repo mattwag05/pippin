@@ -142,7 +142,7 @@ public struct ContactsCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: contacts, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                try output.emit(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
+                try output.emitPage(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
                     if page.items.isEmpty {
                         print("No contacts found.")
                     } else {

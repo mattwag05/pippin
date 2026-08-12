@@ -44,6 +44,17 @@ Calling `try await command.run()` directly on a `ParsableCommand` existential in
 
 **Agent error interception — `ExitCode` passthrough:** Both `CleanExit` (--help/--version) AND `ExitCode` (e.g. `throw ExitCode(1)` from `DoctorCommand`) must pass through to `Pippin.exit(withError:)`, not be treated as agent errors. Check `error is CleanExit || error is ExitCode` before the agent branch.
 
+## Paginated agent output (pippin-37az)
+
+**A `Page` must go through `emitPage`/`printAgentPage`, never `emit`/`printAgent`.** Envelope v3 keeps `data` the same type whether or not a pagination flag was passed: the items ARE the `data`, and the cursor is hoisted to a top-level `next_cursor`. Handing a `Page` to the plain printer re-nests `{items, next_cursor}` inside `data` — the v2 bug, where a consumer iterating `.data` silently iterated dict keys and got the string `"items"` instead of rows.
+
+Two guard designs were tried and REJECTED before settling on a lint (`scripts/lint-paginated-emit.py`, wired into `make ci` and `.forgejo/workflows/ci.yaml`):
+
+- **An `@available(*, unavailable)` `Page` overload does NOT win overload resolution.** Swift prefers the *available* generic `some Encodable` overload, so `output.emit(page)` still compiled clean. An unavailable overload is only a guard when it's the sole candidate; as a more-specialized sibling of a viable generic it is dead code. Verified by building a deliberately regressed call site.
+- **The CLI integration sweep can't cover it.** Every paginated command is permission-gated, and TCC grants attach to the *launching* process, so inside `swift test` only 2 of the 6 are reachable — a regressed call site passed the sweep with the wrong shape on the wire. The sweep is still worth keeping (it asserts on whatever the environment can reach), but it is not the gate.
+
+`--format json` deliberately keeps emitting the whole `{items, next_cursor}` document: it has no envelope to hoist a cursor into.
+
 **`--fields` projection is automatic on `emit`/`printAgent` (pippin-sq6).** Both methods live on `OutputOptions`, so they default the projection list to the parsed `--fields` (`self.fields`) — **every** `output.printAgent(x)` / `output.emit(x)` call honors `--fields` with no threading. An explicit `fields:` argument still overrides (used only where a command projects a different shape, e.g. Calendar's hand-rolled json branch). Don't re-add `fields: FieldProjection.parse(output.fields)` to a `printAgent`/`emit` call — it's the default now (redundant but harmless). The per-command `isJSON` branches that pre-date this still exist for reminders/calendar/notes (they build paginated `{items,next_cursor}` dicts by hand and surface their own stderr timeout warning); those keep computing a `fieldList` because they also feed it to `jsonData(fields:)` and the bridges. All field-projection logic is consolidated onto `FieldProjection` — add new logic there, not in a copy. Rules: array → project each element; object with `items` array → project items, keep siblings; plain object → project its keys; scalar → unchanged.
 
 ## `TextFormatter.actionResult` dict overload

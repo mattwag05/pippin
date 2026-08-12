@@ -127,29 +127,38 @@ Because every tool call just shells out to `pippin <subcommand> --format agent`,
 
 Use the stable **`~/.local/bin/pippin`** path (the `make install` copy), **not** the brew symlink (`/opt/homebrew/bin/pippin`): macOS keys the bare-CLI TCC grant on the binary's resolved path, and brew's is the *versioned* `Cellar/<ver>/bin/pippin`, so a grant there is lost on every upgrade. The fallback is lossless — same envelope, same typed exit codes, same Automation/EventKit permissions — so an agent that drops to the shell behaves identically to one calling the MCP tool.
 
-## Envelope v2 (v1: 2026-04-20; v2: 2026-07-15)
+## Envelope v3 (v1: 2026-04-20; v2: 2026-07-15; v3: 2026-08-12)
 
 Every `--format agent` stdout is wrapped in a versioned envelope. The MCP tool-result text field carries the envelope verbatim — clients that parse pippin JSON must reach one level deeper.
 
 **Ok shape:**
 ```json
-{"v":2,"status":"ok","duration_ms":234,"data":<original payload>}
+{"v":3,"status":"ok","duration_ms":234,"data":<original payload>}
 ```
 
 **Error shape:**
 ```json
-{"v":2,"status":"error","duration_ms":12,"error":{"code":"access_denied","message":"…","remediation":{…}?}}
+{"v":3,"status":"error","duration_ms":12,"error":{"code":"access_denied","message":"…","remediation":{…}?}}
 ```
+
+**v3 pagination change (2026-08-12, pippin-37az):** `data` no longer changes TYPE when a pagination flag is passed. Previously `--page`/`--page-size`/`--cursor` switched `data` from `[…]` to `{items, next_cursor}` while `v` stayed `2`, so a consumer doing the documented `for m in payload["data"]` iterated the dict's KEYS and yielded the string `"items"` — no exception, no error status, just wrong data (observed: one bogus row per page across 20 pages). The cursor is now the top-level `next_cursor`, and `data` stays the payload array either way:
+
+```json
+{"v":3,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
+```
+
+`--format json` is unchanged — it has no envelope to hoist a cursor into, so it still writes the whole `{items, next_cursor}` document.
 
 **v2 payload changes (2026-07-15):** the envelope frame is identical to v1; the bump marks four payload-shape changes — `messages list` returns a bare `data:[…]` array (previously `data:{excluded_count, conversations:[…]}`; the excluded count moved to `warnings` when non-zero); notes `creationDate`/`modificationDate` were renamed `createdAt`/`modifiedAt`; all-day calendar events serialize `startDate`/`endDate` as date-only `YYYY-MM-DD` (previously a misleading UTC instant); memos dates gained `.000Z` fractional seconds. Everything else is unchanged from v1.
 
 Fields:
-- `v` — envelope schema version. `1` was the first enveloped shape, introduced in [pippin-xy0](https://github.com/mattwag05/pippin/issues); `2` is current. Future breakage bumps this.
+- `v` — envelope schema version. `1` was the first enveloped shape, introduced in [pippin-xy0](https://github.com/mattwag05/pippin/issues); `3` is current. Future breakage bumps this.
 - `status` — `"ok"` or `"error"`.
 - `duration_ms` — wall-clock milliseconds from command construction to JSON serialization.
 - `data` — the previous raw payload, shape unchanged.
 - `error` — the `AgentError.ErrorPayload` (`code`, `message`, optional `remediation`), previously emitted at the top level.
 - `partial` — *optional, additive (2026-07-30)*: `true` when the result set is incomplete (scan soft-timed-out or under-reached). **Omitted entirely on complete results**, so `{"status":"ok","partial":true,"warnings":[…],"data":[]}` (scan didn't finish) is machine-distinguishable from `{"status":"ok","data":[]}` (genuine zero-match). Emitted by the mail scan tools (`mail_list`, `mail_search`, `mail_activity`).
+- `next_cursor` — *optional, v3*: opaque pagination token for the next page, present only when a pagination flag was passed AND more results remain. **Omitted, not null, on the last page** — its absence is the end-of-results signal. Bound to the query by a filter-hash, so reusing a token after changing a filter fails as `cursor_mismatch` rather than returning mixed pages.
 - `warnings` — *optional*: non-fatal advisories (soft-timeout hints — which list the configured account names — and Envelope-Index fast-path fallback reasons). Omitted when empty.
 
 **Migration for MCP/CLI consumers:**

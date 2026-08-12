@@ -158,7 +158,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else {
-                    try output.emit(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
+                    try output.emitPage(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
                         printRemindersTable(page.items)
                         if let cursor = page.nextCursor {
                             print("(more — re-run with --cursor \(cursor))")

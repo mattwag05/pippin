@@ -340,7 +340,7 @@ re-fetching earlier pages.
 
 ```bash
 pippin mail list --account icloud --page-size 20 --format agent
-# .data.next_cursor carries the token for the next page:
+# top-level .next_cursor carries the token for the next page (.data stays an array):
 pippin mail list --account icloud --cursor <token> --format agent
 # ...or jump to a numbered page (offset = (N-1) * page size):
 pippin mail list --account icloud --page 2 --page-size 20 --format agent

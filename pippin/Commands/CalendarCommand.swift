@@ -191,7 +191,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else if output.isAgent {
-                    try output.printAgent(page, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
+                    try output.printAgentPage(page, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
                 } else {
                     printEventsTable(page.items)
                     if let cursor = page.nextCursor {
@@ -998,7 +998,7 @@ public struct CalendarCommand: AsyncParsableCommand {
                     let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
                     print(String(data: out, encoding: .utf8)!)
                 } else if output.isAgent {
-                    try output.printAgent(page, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
+                    try output.printAgentPage(page, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
                 } else {
                     printEventsTable(page.items)
                     if let cursor = page.nextCursor {

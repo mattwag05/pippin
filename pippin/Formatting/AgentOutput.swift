@@ -6,24 +6,33 @@ import Foundation
 /// `{excluded_count, conversations}`); notes `creationDate`/`modificationDate`
 /// renamed `createdAt`/`modifiedAt`; all-day calendar events serialize
 /// date-only (`YYYY-MM-DD`) start/end; memos dates gained `.000Z` millis.
-public let AGENT_SCHEMA_VERSION = 2
+/// v3 (2026-08-12): `data` no longer changes TYPE under pagination — it stays
+/// the payload array, and the cursor moves to a top-level `next_cursor`
+/// (pippin-37az). Previously `--page`/`--page-size`/`--cursor` silently
+/// switched `data` from `[...]` to `{items, next_cursor}` with no version
+/// change, so `for m in payload["data"]` iterated dict KEYS and yielded the
+/// string "items" — legal in most languages, hence no error, just wrong data.
+public let AGENT_SCHEMA_VERSION = 3
 
 // MARK: - Envelope types
 
 /// Success envelope — wraps the original payload under `data`.
-/// Shape: {"v":1,"status":"ok","duration_ms":234,"data":<payload>}
+/// Shape: {"v":3,"status":"ok","duration_ms":234,"data":<payload>}
 /// Optional `warnings` array surfaces non-fatal advisories (e.g. "scan exceeded
 /// soft timeout, returning partial results"). Optional `partial: true` marks a
 /// result set that is incomplete (soft timeout / scan-window shortfall) so
-/// callers can distinguish "nothing found" from "scan didn't finish". Both are
-/// omitted when empty/false so the shape stays backward-compatible for
-/// consumers that only read `.data`.
+/// callers can distinguish "nothing found" from "scan didn't finish". Optional
+/// `next_cursor` carries the pagination token for the next page (v3,
+/// pippin-37az) — it lives HERE rather than inside `data` so that `data`'s type
+/// never depends on whether a pagination flag was passed. All three are omitted
+/// when empty/false/absent.
 public struct AgentOkEnvelope<T: Encodable>: Encodable {
     public let v: Int
     public let status: String
     public let durationMs: Int
     public let partial: Bool?
     public let warnings: [String]?
+    public let nextCursor: String?
     public let data: T
 
     enum CodingKeys: String, CodingKey {
@@ -31,15 +40,25 @@ public struct AgentOkEnvelope<T: Encodable>: Encodable {
         case durationMs = "duration_ms"
         case partial
         case warnings
+        case nextCursor = "next_cursor"
         case data
     }
 
-    public init(v: Int, status: String, durationMs: Int, data: T, warnings: [String]? = nil, partial: Bool = false) {
+    public init(
+        v: Int,
+        status: String,
+        durationMs: Int,
+        data: T,
+        warnings: [String]? = nil,
+        partial: Bool = false,
+        nextCursor: String? = nil
+    ) {
         self.v = v
         self.status = status
         self.durationMs = durationMs
         self.partial = partial ? true : nil
         self.warnings = (warnings?.isEmpty ?? true) ? nil : warnings
+        self.nextCursor = nextCursor
         self.data = data
     }
 
@@ -50,6 +69,7 @@ public struct AgentOkEnvelope<T: Encodable>: Encodable {
         try container.encode(durationMs, forKey: .durationMs)
         try container.encodeIfPresent(partial, forKey: .partial)
         try container.encodeIfPresent(warnings, forKey: .warnings)
+        try container.encodeIfPresent(nextCursor, forKey: .nextCursor)
         try container.encode(data, forKey: .data)
     }
 }
@@ -91,7 +111,8 @@ public func printAgentJSON<T: Encodable>(
     _ value: T,
     startedAt: Date = Date(),
     warnings: [String]? = nil,
-    partial: Bool = false
+    partial: Bool = false,
+    nextCursor: String? = nil
 ) throws {
     let envelope = AgentOkEnvelope(
         v: AGENT_SCHEMA_VERSION,
@@ -99,7 +120,8 @@ public func printAgentJSON<T: Encodable>(
         durationMs: durationMs(from: startedAt),
         data: value,
         warnings: warnings,
-        partial: partial
+        partial: partial,
+        nextCursor: nextCursor
     )
     let encoder = JSONEncoder()
     let data = try encoder.encode(envelope)
@@ -116,9 +138,13 @@ public func printAgentProjectedJSON(
     fields: [String],
     startedAt: Date = Date(),
     warnings: [String]? = nil,
-    partial: Bool = false
+    partial: Bool = false,
+    nextCursor: String? = nil
 ) throws {
-    try print(projectedAgentJSON(value, fields: fields, startedAt: startedAt, warnings: warnings, partial: partial))
+    try print(projectedAgentJSON(
+        value, fields: fields, startedAt: startedAt,
+        warnings: warnings, partial: partial, nextCursor: nextCursor
+    ))
 }
 
 /// String form of the projected ok-envelope. The single definition of the
@@ -133,7 +159,8 @@ public func projectedAgentJSON(
     fields: [String],
     startedAt: Date = Date(),
     warnings: [String]? = nil,
-    partial: Bool = false
+    partial: Bool = false,
+    nextCursor: String? = nil
 ) throws -> String {
     let projected = try FieldProjection.projectedObject(value, fields: fields)
     var envelope: [String: Any] = [
@@ -147,6 +174,9 @@ public func projectedAgentJSON(
     }
     if let warnings, !warnings.isEmpty {
         envelope["warnings"] = warnings
+    }
+    if let nextCursor {
+        envelope["next_cursor"] = nextCursor
     }
     let data = try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])
     return String(decoding: data, as: UTF8.self)

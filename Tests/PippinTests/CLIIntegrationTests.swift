@@ -259,6 +259,52 @@ final class CLIIntegrationTests: XCTestCase {
         }
     }
 
+    // MARK: - Paginated envelope shape (v3, pippin-37az)
+
+    /// Sweeps EVERY paginated command: under `--page`, `data` must still be an
+    /// array and the cursor must sit at the envelope's top level. A command
+    /// whose call site was missed during the v3 conversion would emit the old
+    /// `data: {items, next_cursor}` and fail here, which unit tests on the
+    /// shared helper can't catch (they don't know which sites call it).
+    ///
+    /// Permission-gated commands that can't run are skipped, not failed — this
+    /// asserts on whatever the environment can actually reach (nothing in CI,
+    /// all six on a granted machine).
+    func testPaginatedCommandsKeepDataAnArray() {
+        guard requireBinary() else { return }
+        let commands: [[String]] = [
+            ["mail", "list"],
+            ["notes", "list"],
+            ["reminders", "list"],
+            ["calendar", "events"],
+            ["contacts", "search", "a"],
+            ["memos", "list"],
+        ]
+        var verified = 0
+        for command in commands {
+            let result = run(command + ["--page", "1", "--page-size", "2", "--format", "agent"])
+            guard let data = result.stdout.data(using: .utf8),
+                  let env = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  env["status"] as? String == "ok"
+            else { continue } // permission/environment gap — not this test's subject
+            verified += 1
+            let label = command.joined(separator: " ")
+            XCTAssertEqual(env["v"] as? Int, AGENT_SCHEMA_VERSION, "\(label): envelope version")
+            XCTAssertNotNil(
+                env["data"] as? [Any],
+                "\(label): paginated data must be an array, got \(type(of: env["data"]))"
+            )
+            XCTAssertNil(
+                (env["data"] as? [String: Any])?["items"],
+                "\(label): cursor payload must not be re-nested inside data (envelope v2 shape)"
+            )
+            if let cursor = env["next_cursor"] {
+                XCTAssertTrue(cursor is String, "\(label): top-level next_cursor must be a string token")
+            }
+        }
+        print("testPaginatedCommandsKeepDataAnArray: verified \(verified)/\(commands.count) paginated commands")
+    }
+
     // MARK: - Agent error output
 
     func testInvalidCommandAgentError() {

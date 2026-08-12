@@ -17,7 +17,9 @@ final class AgentEnvelopeTests: XCTestCase {
     func testSchemaVersionConstant() {
         // v2 (2026-07-15): payload-shape changes — messages bare array, notes
         // createdAt/modifiedAt, all-day date-only, memos millis.
-        XCTAssertEqual(AGENT_SCHEMA_VERSION, 2)
+        // v3 (2026-08-12): `data` keeps its type under pagination; the cursor
+        // moved to a top-level `next_cursor` (pippin-37az).
+        XCTAssertEqual(AGENT_SCHEMA_VERSION, 3)
     }
 
     // MARK: - Ok envelope shape
@@ -194,6 +196,76 @@ final class AgentEnvelopeTests: XCTestCase {
         })
         let frameKeys: (([String: Any]) -> Set<String>) = { Set($0.keys).subtracting(["data"]) }
         XCTAssertEqual(frameKeys(typed), frameKeys(projected), "hand-built partial frame must match the typed envelope")
+    }
+
+    // MARK: - Pagination cursor (envelope v3, pippin-37az)
+
+    /// The regression: `.data` used to become `{items, next_cursor}` under any
+    /// pagination flag while `v` stayed the same, so a consumer iterating
+    /// `.data` silently iterated dict KEYS instead of rows.
+    func testPaginatedDataStaysAnArrayAndCursorGoesTopLevel() throws {
+        let parsed = try OutputOptions.parse(["--format", "agent"])
+        let page = Page(items: [Sample(name: "foo", count: 3)], nextCursor: "tok123")
+        let json = try decodeObject(captureStdout { try parsed.printAgentPage(page) })
+
+        let data = try XCTUnwrap(json["data"] as? [[String: Any]], "data must stay an array under pagination")
+        XCTAssertEqual(data.count, 1)
+        XCTAssertEqual(data.first?["name"] as? String, "foo")
+        XCTAssertEqual(json["next_cursor"] as? String, "tok123")
+        XCTAssertNil(json["data"] as? [String: Any], "data must not be re-wrapped as an object")
+    }
+
+    /// Type stability is the whole point: the same command paginated and not
+    /// must hand back the same `data` type.
+    func testPaginatedAndUnpaginatedDataTypesMatch() throws {
+        let parsed = try OutputOptions.parse(["--format", "agent"])
+        let items = [Sample(name: "foo", count: 3)]
+        let plain = try decodeObject(captureStdout { try parsed.printAgent(items) })
+        let paged = try decodeObject(captureStdout {
+            try parsed.printAgentPage(Page(items: items, nextCursor: "tok"))
+        })
+        XCTAssertNotNil(plain["data"] as? [[String: Any]])
+        XCTAssertNotNil(paged["data"] as? [[String: Any]])
+        XCTAssertEqual(plain["data"] as? [[String: Any]] as NSArray?, paged["data"] as? [[String: Any]] as NSArray?)
+    }
+
+    /// An exhausted page carries no cursor at all — `next_cursor` is omitted,
+    /// not null, so its absence is the end-of-results signal.
+    func testExhaustedPageOmitsCursorEntirely() throws {
+        let parsed = try OutputOptions.parse(["--format", "agent"])
+        let json = try decodeObject(captureStdout {
+            try parsed.printAgentPage(Page(items: [Sample(name: "foo", count: 3)], nextCursor: nil))
+        })
+        XCTAssertFalse(json.keys.contains("next_cursor"))
+    }
+
+    /// A non-paginated envelope must never grow the key.
+    func testUnpaginatedEnvelopeHasNoCursorKey() throws {
+        let json = try decodeObject(captureStdout { try printAgentJSON(Sample(name: "x", count: 1)) })
+        XCTAssertFalse(json.keys.contains("next_cursor"))
+    }
+
+    /// `--fields` projects the page's ELEMENTS (data is an array now) while the
+    /// cursor survives in the frame — previously projection had to special-case
+    /// an `items` sibling to avoid dropping it.
+    func testProjectionAppliesToPageItemsAndKeepsCursor() throws {
+        let parsed = try OutputOptions.parse(["--format", "agent", "--fields", "name"])
+        let page = Page(items: [Sample(name: "foo", count: 3)], nextCursor: "tok123")
+        let json = try decodeObject(captureStdout { try parsed.printAgentPage(page) })
+        let data = try XCTUnwrap(json["data"] as? [[String: Any]])
+        XCTAssertEqual(data.first?.keys.sorted(), ["name"])
+        XCTAssertEqual(json["next_cursor"] as? String, "tok123")
+    }
+
+    func testProjectedFrameMatchesTypedWithCursor() throws {
+        let payload = [Sample(name: "foo", count: 3)]
+        let typed = try decodeObject(captureStdout { try printAgentJSON(payload, nextCursor: "tok") })
+        let projected = try decodeObject(captureStdout {
+            try printAgentProjectedJSON(payload, fields: ["name"], nextCursor: "tok")
+        })
+        let frameKeys: (([String: Any]) -> Set<String>) = { Set($0.keys).subtracting(["data"]) }
+        XCTAssertEqual(frameKeys(typed), frameKeys(projected), "hand-built cursor frame must match the typed envelope")
+        XCTAssertEqual(projected["next_cursor"] as? String, "tok")
     }
 
     // MARK: - Helpers

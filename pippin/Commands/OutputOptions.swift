@@ -52,16 +52,42 @@ public struct OutputOptions: ParsableArguments {
         _ payload: some Encodable,
         warnings: [String]? = nil,
         fields: [String]? = nil,
-        partial: Bool = false
+        partial: Bool = false,
+        nextCursor: String? = nil
     ) throws {
         let effectiveFields = fields ?? FieldProjection.parse(self.fields)
         if let effectiveFields, !effectiveFields.isEmpty {
             try printAgentProjectedJSON(
-                payload, fields: effectiveFields, startedAt: startedAt, warnings: warnings, partial: partial
+                payload, fields: effectiveFields, startedAt: startedAt,
+                warnings: warnings, partial: partial, nextCursor: nextCursor
             )
         } else {
-            try printAgentJSON(payload, startedAt: startedAt, warnings: warnings, partial: partial)
+            try printAgentJSON(
+                payload, startedAt: startedAt, warnings: warnings,
+                partial: partial, nextCursor: nextCursor
+            )
         }
+    }
+
+    /// Agent-mode print for a paginated payload (envelope v3, pippin-37az).
+    ///
+    /// Emits `page.items` as `data` and hoists the cursor to the envelope's
+    /// top-level `next_cursor`, so `data` is the same array type whether or not
+    /// a pagination flag was passed. Paginated commands MUST route through this
+    /// (or `emitPage`) rather than handing a `Page` to `printAgent`, which would
+    /// re-nest `{items, next_cursor}` inside `data` — the exact v2 bug. Named
+    /// distinctly rather than overloaded so a paginated call site is greppable
+    /// and can't be resolved back to the unpaginated path by accident.
+    public func printAgentPage<T: Encodable>(
+        _ page: Page<T>,
+        warnings: [String]? = nil,
+        fields: [String]? = nil,
+        partial: Bool = false
+    ) throws {
+        try printAgent(
+            page.items, warnings: warnings, fields: fields,
+            partial: partial, nextCursor: page.nextCursor
+        )
     }
 
     /// Render `payload` in the configured format, surfacing a soft-timeout
@@ -116,5 +142,34 @@ public struct OutputOptions: ParsableArguments {
                 print("(partial results — \(timedOutHint))")
             }
         }
+    }
+
+    /// `emit` for a paginated payload (envelope v3, pippin-37az).
+    ///
+    /// Agent mode unwraps the page (array `data` + top-level `next_cursor`);
+    /// json and text keep rendering the `Page` itself, since neither has an
+    /// envelope to hoist the cursor into — `--format json` writes the whole
+    /// `{items, next_cursor}` document, which is where a cursor belongs there.
+    public func emitPage<T: Encodable>(
+        _ page: Page<T>,
+        timedOut: Bool = false,
+        timedOutHint: String,
+        fields: [String]? = nil,
+        extraWarnings: [String] = [],
+        renderText: () -> Void
+    ) throws {
+        guard isAgent else {
+            return try emit(
+                page, timedOut: timedOut, timedOutHint: timedOutHint,
+                fields: fields, extraWarnings: extraWarnings, renderText: renderText
+            )
+        }
+        let warnings = (timedOut ? [timedOutHint] : []) + extraWarnings
+        try printAgentPage(
+            page,
+            warnings: warnings.isEmpty ? nil : warnings,
+            fields: fields ?? FieldProjection.parse(self.fields),
+            partial: timedOut
+        )
     }
 }
