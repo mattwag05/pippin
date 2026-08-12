@@ -9,13 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
-
-- **BREAKING (envelope v3):** [bug] The agent envelope's `data` no longer changes TYPE under pagination. `--page`/`--page-size`/`--cursor` previously switched `data` from `[…]` to `{items, next_cursor}` while `v` stayed `2`, so a consumer doing the documented `for m in payload["data"]` iterated the dict's KEYS and silently yielded the string `"items"` — no exception, no error status, just wrong data. `data` is now the payload array in both cases and the cursor moves to a top-level `next_cursor` (omitted, not null, when exhausted), where transport metadata belongs. `AGENT_SCHEMA_VERSION` is `3`. `--format json` is unchanged. Migration: read `.next_cursor` instead of `.data.next_cursor`, and drop any `.data.items` unwrapping. Closes pippin-37az.
-
-### Fixed
-
-- [bug] Gmail-family accounts no longer report an empty inbox. `mail list`/`search`/`activity` returned `status: ok` with zero rows for `INBOX`, `Important`, `Starred` and every custom label on Gmail accounts, because Mail's Envelope Index stores those as label *views* over `[Gmail]/All Mail` rather than as mailboxes — 5,422 real inbox messages across three accounts were invisible, and an unreachable inbox was indistinguishable from an empty one. Label membership is now read from the index's `labels` table, so Gmail inboxes and labels list, search, and show activity at full fast-path speed (176 ms vs 1.3 s via the fallback) with ids naming the requested mailbox. Closes pippin-z0f6.
+## [0.38.0] - 2026-08-12
 
 ### Added
 
@@ -24,7 +18,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **BREAKING (envelope v3):** [bug] The agent envelope's `data` no longer changes TYPE under pagination. `--page`/`--page-size`/`--cursor` previously switched `data` from `[…]` to `{items, next_cursor}` while `v` stayed `2`, so a consumer doing the documented `for m in payload["data"]` iterated the dict's KEYS and silently yielded the string `"items"` — no exception, no error status, just wrong data. `data` is now the payload array in both cases and the cursor moves to a top-level `next_cursor` (omitted, not null, when exhausted), where transport metadata belongs. `AGENT_SCHEMA_VERSION` is `3`. `--format json` is unchanged. Migration: read `.next_cursor` instead of `.data.next_cursor`, and drop any `.data.items` unwrapping. Closes pippin-37az.
 - [ci] Every MCP tool's generated argv is now asserted to parse as a real CLI command. Nothing previously verified that a tool's subcommand name or flags existed, so a typo reached agents at runtime instead of failing the suite. Closes pippin-9urs.
+
+### Fixed
+
+- [bug] Gmail-family accounts no longer report an empty inbox. `mail list`/`search`/`activity` returned `status: ok` with zero rows for `INBOX`, `Important`, `Starred` and every custom label on Gmail accounts, because Mail's Envelope Index stores those as label *views* over `[Gmail]/All Mail` rather than as mailboxes — 5,422 real inbox messages across three accounts were invisible, and an unreachable inbox was indistinguishable from an empty one. Label membership is now read from the index's `labels` table, so Gmail inboxes and labels list, search, and show activity at full fast-path speed (176 ms vs 1.3 s via the fallback) with ids naming the requested mailbox. Closes pippin-z0f6.
 
 ## [0.37.0] - 2026-07-31
 
@@ -898,7 +897,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.37.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/mattwag05/pippin/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/mattwag05/pippin/compare/v0.36.1...v0.37.0
 [0.36.1]: https://github.com/mattwag05/pippin/compare/v0.36.0...v0.36.1
 [0.36.0]: https://github.com/mattwag05/pippin/compare/v0.35.0...v0.36.0
