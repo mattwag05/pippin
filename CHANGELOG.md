@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-08-13
+
 ### Added
 
 - [feat] Triage rules can now act on mail, not just label it. A rule's `action` accepts `moveTo` (destination mailbox) and `markRead`, and the new `pippin mail apply-rules` (MCP: `mail_apply_rules`) executes them — previously the rules engine could classify a message but every actual mailbox change still needed a human or an agent in the loop per message, so callers reimplemented the matching externally and shelled out to `mail move` one message at a time. `mail triage` stays read-only and ignores both fields, so adding actuation to a rules file never makes triage mutate. Guardrails, all default-on: dry run unless `--live`; `--min-age-days` (default 14) never touches newer mail and holds any message whose date won't parse; `--max-actions` (default 200) caps a run and acts oldest-first so a capped run drains the oldest backlog instead of skimming; and the plan prints grouped by sender rather than as a count, which is what makes an over-broad rule visible before it runs. `--skip-unread` spares unread mail. Closes pippin-8viw.
@@ -911,7 +913,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.38.1...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.39.0...HEAD
+[0.39.0]: https://github.com/mattwag05/pippin/compare/v0.38.1...v0.39.0
 [0.38.1]: https://github.com/mattwag05/pippin/compare/v0.38.0...v0.38.1
 [0.38.0]: https://github.com/mattwag05/pippin/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/mattwag05/pippin/compare/v0.36.1...v0.37.0
