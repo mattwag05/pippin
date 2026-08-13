@@ -98,6 +98,8 @@ In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — strin
 
 ## Test / dev-tooling traps
 
+**Draining a subprocess pipe: read BEFORE `waitUntilExit()`, concurrently.** Reading after the wait deadlocks the instant a child writes more than the ~64KB pipe buffer — child blocks writing, parent blocks waiting, forever. `CLIIntegrationTests.runProcess` had this latently; it detonated when `mcp-server --list-tools` crossed 64KB at 76 tools (66,752 B), wedging `make ci` with **no failure and no output**. Copy the `DispatchGroup` + two `nonisolated(unsafe) var` drain in `MCPServerRuntime.runChild` / `AIProviderFactory.tryGetSecret`. Tell: a "slow" test run that never finishes — `sample <xctest-pid>` names the real test, since the last flushed log line points at an unrelated suite.
+
 **`CLIIntegrationTests` version assertion:** `Tests/PippinTests/CLIIntegrationTests.swift` uses `PippinVersion.version` dynamically — no manual update needed on version bumps.
 
 **`BuiltInTemplates.all` count is hardcoded in tests:** Adding any template breaks three assertions in `Tests/PippinTests/TemplateTests.swift` — bump `testBuiltInTemplatesCount`, `testAllTemplatesReturnsBuiltIns`, and `testUserTemplatePlainContent` counts by 1 each.
@@ -118,7 +120,7 @@ In files that import GRDB, `SQL` is `ExpressibleByStringInterpolation` — strin
 
 **GRDB `row["col"]` TRAPS on NULL:** decode system-DB columns optionally (`row["col"] as T?`) with a fallback. Apple's Voice Memos/Messages DBs store NULLs (e.g. ZPATH for a not-yet-downloaded recording); one NULL row otherwise crashes the whole list.
 
-**Deleting enum cases — grep the bare `.caseName` too**, not just `Type.caseName`: Swift's implicit member syntax (`[.notAvailable, .timeout]`, `case .timeout:`) won't match a `Type\.` grep pattern, and tests commonly enumerate cases that way. A missed hit costs a full ~12-min CI round trip (TranscriberTests, 2026-07-18).
+**Deleting enum cases — grep the bare `.caseName` too**, not just `Type.caseName`: Swift's implicit member syntax (`[.notAvailable, .timeout]`, `case .timeout:`) won't match a `Type\.` grep pattern, and tests commonly enumerate cases that way. A missed hit costs a full CI round trip (~3 min; TranscriberTests, 2026-07-18).
 
 ## OpenAI-compat native JSON (`jsonMode` / `response_format`, pippin-us2)
 
