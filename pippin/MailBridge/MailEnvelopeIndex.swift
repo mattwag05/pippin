@@ -432,6 +432,69 @@ final class MailEnvelopeIndex: Sendable {
         return counts
     }
 
+    /// Per-mailbox message and unread counts (pippin-zxsq), counted from the
+    /// per-message `read`/`deleted` flags rather than read off a cached
+    /// property.
+    ///
+    /// JXA's `mb.unreadCount()` under-reports badly — measured 8 vs 140
+    /// (Exchange), 34 vs 468 (Yahoo), 64 vs 396 (Gmail INBOX) — and always in
+    /// the reassuring direction. Counting here agrees exactly with `mail list
+    /// --unread` on every mailbox tested, and one pass over the whole index
+    /// costs ~15ms versus ~5.4s for the JXA enumeration it replaces.
+    ///
+    /// Label mailboxes (Gmail — see `MailboxTargets`) count through `labels`,
+    /// since no message row points at them. `local://` ("On My Mac") is
+    /// excluded to match JXA's `accounts()`, which never lists it.
+    func mailboxSummaries(account: String?) throws -> [Mailbox] {
+        var uuidToName: [String: String] = [:]
+        for record in accounts {
+            if account == nil || record.name == account {
+                uuidToName[record.uuid.lowercased()] = record.name
+            }
+        }
+        if let account, uuidToName.isEmpty {
+            throw MailEnvelopeIndexError.accountUnknown(account)
+        }
+        let rows = try dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+            SELECT mb.ROWID AS rowid, mb.url AS url,
+                   CASE WHEN mb.source IS NULL
+                     THEN (SELECT count(*) FROM messages m
+                           WHERE m.mailbox = mb.ROWID AND m.deleted = 0)
+                     ELSE (SELECT count(*) FROM messages m
+                           JOIN labels l ON l.message_id = m.ROWID
+                           WHERE l.mailbox_id = mb.ROWID AND m.deleted = 0)
+                   END AS total,
+                   CASE WHEN mb.source IS NULL
+                     THEN (SELECT count(*) FROM messages m
+                           WHERE m.mailbox = mb.ROWID AND m.deleted = 0 AND m.read = 0)
+                     ELSE (SELECT count(*) FROM messages m
+                           JOIN labels l ON l.message_id = m.ROWID
+                           WHERE l.mailbox_id = mb.ROWID AND m.deleted = 0 AND m.read = 0)
+                   END AS unread
+            FROM mailboxes mb
+            """)
+        }
+        var result: [Mailbox] = []
+        for row in rows {
+            guard let url = row["url"] as String?,
+                  !url.hasPrefix("local://"),
+                  let (uuid, leaf) = Self.parseMailboxURL(url),
+                  let accountName = uuidToName[uuid.lowercased()]
+            else { continue }
+            result.append(Mailbox(
+                name: leaf,
+                account: accountName,
+                messageCount: (row["total"] as Int64?).map(Int.init) ?? 0,
+                unreadCount: (row["unread"] as Int64?).map(Int.init) ?? 0
+            ))
+        }
+        guard !result.isEmpty else {
+            throw MailEnvelopeIndexError.mailboxUnresolved(account ?? "(all)")
+        }
+        return result
+    }
+
     // MARK: Date handling
 
     /// `YYYY-MM-DD` → UTC midnight, matching JXA's `new Date('YYYY-MM-DD')`

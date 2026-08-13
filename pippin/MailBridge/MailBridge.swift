@@ -31,6 +31,14 @@ enum MailBridge {
         return "envelope-index fast path unavailable (\(reason)); fell back to slower JXA scan"
     }
 
+    /// Outcome of `listMailboxes`: the rows plus the same `fastPathNote`
+    /// contract as `ScanOutcome`. Separate type because mailbox rows aren't
+    /// messages and this call has no soft timeout to report.
+    struct MailboxesOutcome {
+        let mailboxes: [Mailbox]
+        var fastPathNote: String? = nil
+    }
+
     typealias ListOutcome = ScanOutcome
     typealias ActivityOutcome = ScanOutcome
     typealias SearchOutcome = ScanOutcome
@@ -147,7 +155,7 @@ enum MailBridge {
         }
         var counts: [String: Int] = [:]
         for account in accounts {
-            counts[account.name] = (try? listMailboxes(account: account.name))?.count ?? 0
+            counts[account.name] = (try? listMailboxes(account: account.name))?.mailboxes.count ?? 0
         }
         return counts
     }
@@ -546,11 +554,35 @@ enum MailBridge {
         return try decode([MailAccount].self, from: json)
     }
 
-    static func listMailboxes(account: String? = nil) throws -> [Mailbox] {
+    /// Per-mailbox message/unread counts. Envelope Index fast path first
+    /// (pippin-zxsq): the index counts the per-message `read` flags, which JXA's
+    /// `mb.unreadCount()` disagrees with by more than an order of magnitude on
+    /// large mailboxes (8 vs 140, 34 vs 468) — always under-reporting. The fast
+    /// path is therefore a CORRECTNESS fix here, not just a speed one (~15ms vs
+    /// ~5.4s), so the JXA fallback carries a warning: its unread numbers are the
+    /// known-low ones.
+    static func listMailboxes(account: String? = nil) throws -> MailboxesOutcome {
+        try validateAccount(account)
+        var fastPathNote: String?
+        if fastPathEnabled() {
+            do {
+                let mailboxes = try makeFastPathIndex(accountName: account).mailboxSummaries(account: account)
+                return MailboxesOutcome(mailboxes: mailboxes)
+            } catch {
+                fastPathNote = fastPathFallbackNote(error) + Self.unreadUnderReportNote
+            }
+        }
         let script = buildMailboxesScript(account: account)
         let json = try runScript(script)
-        return try decode([Mailbox].self, from: json)
+        return try MailboxesOutcome(
+            mailboxes: decode([Mailbox].self, from: json),
+            fastPathNote: fastPathNote
+        )
     }
+
+    /// Appended to the fast-path fallback advisory for `mail mailboxes` — the
+    /// JXA path's unread numbers are not merely slower to get, they are wrong.
+    static let unreadUnderReportNote = " — unreadCount comes from Mail's own cached property on this path and is known to under-report large mailboxes (pippin-zxsq); cross-check with `mail list --unread`"
 
     /// Read a full message (body + headers + attachments) by compound id.
     ///

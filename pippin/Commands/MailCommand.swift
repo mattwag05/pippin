@@ -113,13 +113,20 @@ public struct MailCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let account = self.account
-            // listMailboxes spawns a blocking osascript subprocess; hop off the pool.
-            let mailboxes = try await detachBlocking { try MailBridge.listMailboxes(account: account) }
+            // listMailboxes may spawn a blocking osascript subprocess; hop off the pool.
+            let outcome = try await detachBlocking { try MailBridge.listMailboxes(account: account) }
+            let mailboxes = outcome.mailboxes
             if output.isJSON {
+                if let note = outcome.fastPathNote {
+                    FileHandle.standardError.write(Data("Warning: \(note)\n".utf8))
+                }
                 try printJSON(mailboxes)
             } else if output.isAgent {
-                try output.printAgent(mailboxes)
+                try output.printAgent(mailboxes, warnings: outcome.fastPathNote.map { [$0] })
             } else {
+                if let note = outcome.fastPathNote {
+                    FileHandle.standardError.write(Data("Warning: \(note)\n".utf8))
+                }
                 let rows = mailboxes.map { [$0.account, $0.name, "\($0.messageCount)", "\($0.unreadCount)"] }
                 print(TextFormatter.table(
                     headers: ["ACCOUNT", "MAILBOX", "MESSAGES", "UNREAD"],

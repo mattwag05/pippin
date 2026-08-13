@@ -233,6 +233,49 @@ else
   SKIP=$((SKIP+1)); echo "  SKIP  fast-path inbox non-empty check (fast path unavailable)"
 fi
 
+# --- pippin-zxsq: mail mailboxes unreadCount must agree with the per-message
+# read flags. JXA's `mb.unreadCount()` under-reported by more than an order of
+# magnitude (8 vs 140, 34 vs 468) and always in the reassuring direction, so a
+# too-LOW count is the failure mode to catch. Compares against `mail list
+# --unread`, an independent query path, for each account's inbox.
+UNREAD_BAD=()
+UNREAD_OK=0
+while IFS= read -r acct; do
+  [[ -z "$acct" ]] && continue
+  MB="$("$BIN" mail mailboxes --account "$acct" --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(''); sys.exit()
+rows = [r for r in (d.get('data') or []) if r.get('name','').lower() == 'inbox']
+print(rows[0].get('unreadCount', '') if rows else '')")"
+  [[ -z "$MB" ]] && continue
+  # --limit 500 is the CLI clamp; skip accounts whose unread exceeds one page.
+  [[ "$MB" -ge 500 ]] && continue
+  LS="$("$BIN" mail list --account "$acct" --mailbox INBOX --unread --limit 500 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(''); sys.exit()
+print(len(d.get('data') or []) if d.get('status') == 'ok' and not d.get('partial') else '')")"
+  [[ -z "$LS" ]] && continue
+  if [[ "$MB" -eq "$LS" ]]; then
+    UNREAD_OK=$((UNREAD_OK+1))
+  else
+    UNREAD_BAD+=("$acct(mailboxes=$MB vs list=$LS)")
+  fi
+done <<< "$ACCTS"
+if [[ ${#UNREAD_BAD[@]} -gt 0 ]]; then
+  FAIL=$((FAIL+1)); fails+=("mailboxes unreadCount disagrees with read flags: ${UNREAD_BAD[*]}")
+  echo "  FAIL  mailboxes unreadCount vs read flags (${UNREAD_BAD[*]})"
+elif [[ "$UNREAD_OK" -eq 0 ]]; then
+  SKIP=$((SKIP+1)); echo "  SKIP  mailboxes unreadCount vs read flags (no comparable inbox)"
+else
+  PASS=$((PASS+1)); echo "  ok    mailboxes unreadCount matches per-message read flags ($UNREAD_OK accounts) (pippin-zxsq)"
+fi
+
 # --- pippin-37az: paginated agent output keeps `data` an array (envelope v3).
 # `--page` used to switch `data` to {items, next_cursor} with no version change,
 # so a consumer iterating `.data` got dict KEYS ("items") instead of rows. Run

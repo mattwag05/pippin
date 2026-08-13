@@ -1,7 +1,7 @@
 # Mail Envelope Index (pippin-60x — IMPLEMENTED 2026-07-15)
 
 The fast path lives in `pippin/MailBridge/MailEnvelopeIndex.swift`, hooked at
-the top of `MailBridge.listMessages`/`searchMessages`/`listActivity` (metadata
+the top of `MailBridge.listMessages`/`searchMessages`/`listActivity`/`listMailboxes` (metadata
 only; any failure falls back to JXA automatically — and since pippin-1son
 (2026-07-30) the failure reason is captured in `ScanOutcome.fastPathNote` and
 surfaced as an envelope `warnings` entry (agent) / stderr `Warning:` (text,
@@ -86,6 +86,11 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   - The pippin-60x e2e parity check samples ONE account and passed throughout;
     the pippin-z0f6 check asserts per-account that a fast-path empty inbox is
     matched by an empty JXA inbox.
+- **🛑 JXA `mb.unreadCount()` under-reports badly — never trust it (pippin-zxsq).** Mail's own cached per-mailbox property disagreed with the per-message `read` flags by more than an order of magnitude on every large mailbox measured (Exchange Inbox 8 vs 140, Yahoo INBOX 34 vs 468, Gmail INBOX 64 vs 396, iCloud 30 vs 315), and it is always wrong in the REASSURING direction — an inbox looks handled when it isn't. `mail mailboxes` now counts from the index instead (`mailboxSummaries`), which agrees exactly with `mail list --unread` on every account and takes ~15ms for the whole index versus ~5.4s for the JXA enumeration it replaced. Notes:
+  - The index's per-message `read` flags are the ground truth, confirmed against JXA on a small mailbox (6 == 6) — the drift is purely in the cached property, not in Mail's message state.
+  - The stored `mailboxes.unread_count` column happens to be correct too (SQL triggers maintain it), but the counts are computed from the message rows anyway: a derived count can't drift from the rows it's derived from.
+  - Label mailboxes count through `labels`, same as queries — a `messages.mailbox` count reports 0 for a full Gmail inbox.
+  - This makes the fast path a CORRECTNESS dependency for `mail mailboxes`, not just an accelerator, so the JXA fallback carries an explicit "these numbers under-report" warning rather than falling back silently.
 - **Dedup mirrors JXA**: the same message can appear under more than one
   mailbox row (across accounts, or Gmail All Mail vs Trash) — key on
   `message_id_header`, fallback subject+sender+date; offset applies after dedup

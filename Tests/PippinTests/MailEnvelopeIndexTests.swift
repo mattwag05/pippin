@@ -566,6 +566,82 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertEqual(try idx.summariesByCompoundId(for: ["nope"]), [:])
     }
 
+    // MARK: - Mailbox summaries (pippin-zxsq)
+
+    /// The regression this replaces: JXA read `mb.unreadCount()`, a cached
+    /// property that under-reported by more than an order of magnitude on large
+    /// mailboxes (8 vs 140 live). Counting the per-message `read` flag is the
+    /// ground truth `mail list --unread` also uses.
+    func testMailboxSummariesCountsUnreadFromMessageFlags() throws {
+        let boxes = try makeIndex().mailboxSummaries(account: "Personal")
+        let inbox = try XCTUnwrap(boxes.first { $0.name == "INBOX" })
+        // Personal INBOX fixture: 101 unread, 102 read, 105 read, 106 deleted+unread.
+        XCTAssertEqual(inbox.messageCount, 3, "deleted rows excluded from the total")
+        XCTAssertEqual(inbox.unreadCount, 1, "only the live unread row counts")
+    }
+
+    func testMailboxSummariesExcludeDeletedFromBothCounts() throws {
+        let q = try makeFixtureDB()
+        try q.write { db in
+            // Flip 102 (read) to unread AND deleted — it must land in neither count.
+            try db.execute(sql: "UPDATE messages SET read = 0, deleted = 1 WHERE ROWID = 102")
+        }
+        let boxes = try makeIndex(q).mailboxSummaries(account: "Personal")
+        let inbox = try XCTUnwrap(boxes.first { $0.name == "INBOX" })
+        XCTAssertEqual(inbox.messageCount, 2)
+        XCTAssertEqual(inbox.unreadCount, 1)
+    }
+
+    /// Gmail label mailboxes have no message rows pointing at them, so a
+    /// `messages.mailbox` count reports 0 for a full inbox (the pippin-z0f6
+    /// failure, in count form).
+    func testMailboxSummariesCountLabelMailboxesThroughLabels() throws {
+        let boxes = try makeGmailIndex().mailboxSummaries(account: "Gmail")
+        let inbox = try XCTUnwrap(boxes.first { $0.name == "INBOX" })
+        XCTAssertEqual(inbox.messageCount, 2, "401 + 402 are labeled INBOX")
+        XCTAssertEqual(inbox.unreadCount, 1, "401 is unread, 402 is read")
+
+        let allMail = try XCTUnwrap(boxes.first { $0.name == "All Mail" })
+        XCTAssertEqual(allMail.messageCount, 4, "real mailbox still counts on messages.mailbox")
+
+        let trash = try XCTUnwrap(boxes.first { $0.name == "Trash" })
+        XCTAssertEqual(trash.messageCount, 1)
+    }
+
+    func testMailboxSummariesExcludeLocalOnMyMac() throws {
+        let q = try makeFixtureDB()
+        try q.write { db in
+            try db.execute(sql: "INSERT INTO mailboxes (ROWID, url) VALUES (99, 'local://LOCALUUID/On%20My%20Mac')")
+        }
+        let boxes = try makeIndex(q).mailboxSummaries(account: nil)
+        XCTAssertFalse(boxes.contains { $0.name == "On My Mac" }, "local:// is invisible to JXA accounts() — parity")
+    }
+
+    func testMailboxSummariesFilterByAccountAndRejectUnknown() throws {
+        let idx = try makeIndex()
+        let personal = try idx.mailboxSummaries(account: "Personal")
+        XCTAssertTrue(personal.allSatisfy { $0.account == "Personal" })
+        XCTAssertEqual(Set(personal.map(\.name)), ["INBOX", "Sent Messages", "All Mail"])
+        // Unknown account throws (→ JXA fallback) rather than returning [].
+        XCTAssertThrowsError(try idx.mailboxSummaries(account: "Nope"))
+        // The ghost account's mailbox is not attributable to a known account.
+        let all = try idx.mailboxSummaries(account: nil)
+        XCTAssertEqual(Set(all.map(\.account)), ["Personal", "Work"])
+    }
+
+    /// When the fast path is UNAVAILABLE (no Full Disk Access, unknown schema)
+    /// `mail mailboxes` still answers, but from JXA's cached property — so the
+    /// fallback advisory must say the unread numbers themselves are suspect,
+    /// not merely that the call was slow.
+    func testMailboxFallbackAdvisoryWarnsUnreadIsUnderReported() {
+        let note = MailBridge.fastPathFallbackNote(
+            MailEnvelopeIndexError.accessDenied("no Full Disk Access")
+        ) + MailBridge.unreadUnderReportNote
+        XCTAssertTrue(note.contains("fell back to slower JXA scan"))
+        XCTAssertTrue(note.contains("under-report"), "advisory must flag the count as unreliable, not just slow")
+        XCTAssertTrue(note.contains("mail list --unread"), "advisory must name the accurate cross-check")
+    }
+
     // MARK: - Gmail label mailboxes (pippin-z0f6)
 
     static let uuidG = "GGGGGGGG-3333-3333-3333-333333333333" // "Gmail" (imap, label-backed)
