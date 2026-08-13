@@ -70,10 +70,33 @@ final class CLIIntegrationTests: XCTestCase {
         guard (try? process.run()) != nil else {
             return ("", "failed to launch \(executable)", -1)
         }
-        process.waitUntilExit()
 
-        let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        // Drain both pipes concurrently BEFORE waiting, matching the pattern in
+        // MCPServerRuntime.runChild and AIProviderFactory. Reading only after
+        // waitUntilExit() deadlocks the moment a child writes more than the
+        // ~64KB pipe buffer: the child blocks writing, the parent blocks
+        // waiting, forever. `mcp-server --list-tools` crossed that threshold at
+        // 76 tools (66,752 bytes) and wedged the whole suite with no failure
+        // and no output — so the next tool added must not reintroduce this.
+        nonisolated(unsafe) var outData = Data()
+        nonisolated(unsafe) var errData = Data()
+        let drainGroup = DispatchGroup()
+        drainGroup.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+            drainGroup.leave()
+        }
+        drainGroup.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            drainGroup.leave()
+        }
+
+        process.waitUntilExit()
+        drainGroup.wait()
+
+        let stdout = String(data: outData, encoding: .utf8) ?? ""
+        let stderr = String(data: errData, encoding: .utf8) ?? ""
         return (stdout, stderr, process.terminationStatus)
     }
 
