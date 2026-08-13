@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.38.1] - 2026-08-13
+
 ### Fixed
 
 - [bug] `mail mailboxes` now reports the real unread count. It read Mail's own cached per-mailbox property, which under-reported by more than an order of magnitude on large mailboxes and always in the reassuring direction — Exchange Inbox showed 8 unread against 140 actual, Yahoo 34 against 468, Gmail INBOX 64 against 396, iCloud 30 against 315 — so anything sizing triage or digest work off it was silently wrong. Counts now come from the per-message read flags via the Envelope Index and agree exactly with `mail list --unread` on every account; the command also drops from ~5.4s to ~0.25s. When the index is unavailable the command still answers from JXA, but now warns that those numbers under-report. Closes pippin-zxsq.
@@ -901,7 +903,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.38.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.38.1...HEAD
+[0.38.1]: https://github.com/mattwag05/pippin/compare/v0.38.0...v0.38.1
 [0.38.0]: https://github.com/mattwag05/pippin/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/mattwag05/pippin/compare/v0.36.1...v0.37.0
 [0.36.1]: https://github.com/mattwag05/pippin/compare/v0.36.0...v0.36.1
