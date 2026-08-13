@@ -4,11 +4,11 @@
 
 ## What you get
 
-75 tools, at curated parity with the CLI:
+76 tools, at curated parity with the CLI:
 
 | Area | Tools |
 |---|---|
-| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_activity`, `mail_show`, `mail_verify`, `mail_search`, `mail_attachments`, `mail_mark`, `mail_move`, `mail_send`, `mail_reply`, `mail_forward`, `mail_triage`, `mail_sanitize`, `mail_extract` |
+| Mail | `mail_accounts`, `mail_mailboxes`, `mail_list`, `mail_activity`, `mail_show`, `mail_verify`, `mail_search`, `mail_attachments`, `mail_mark`, `mail_move`, `mail_send`, `mail_reply`, `mail_forward`, `mail_triage`, `mail_apply_rules`, `mail_sanitize`, `mail_extract` |
 | Calendar | `calendar_list`, `calendar_events`, `calendar_today`, `calendar_remaining`, `calendar_upcoming`, `calendar_search`, `calendar_show`, `calendar_create`, `calendar_smart_create`, `calendar_edit`, `calendar_delete`, `calendar_agenda`, `calendar_conflicts` |
 | Reminders | `reminders_lists`, `reminders_list`, `reminders_show`, `reminders_search`, `reminders_create`, `reminders_smart_create`, `reminders_edit`, `reminders_complete`, `reminders_delete` |
 | Contacts | `contacts_search`, `contacts_show`, `contacts_list`, `contacts_groups`, `contacts_create`, `contacts_edit`, `contacts_delete` |
@@ -39,6 +39,11 @@ damage on the first call:
   `buildArgs`, before the child process is spawned — `contacts delete` blocks on `readLine()`
   when `--force` is absent, so passing the omission through would hang the tool call until the
   60s child timeout instead of returning an actionable error.
+- **`mail_apply_rules`** returns the plan and mutates nothing unless `confirm: true`. This one
+  maps to a *positive* flag rather than suppressing `--dry-run`: the CLI is already
+  preview-by-default and takes an opt-in `--live`, so `confirm` emits `--live`. Since it acts on
+  a whole mailbox rather than one message, review the per-sender plan before confirming — that
+  grouping is what exposes an over-broad rule.
 
 `mail_mark` and `mail_move` are ungated: both are reversible, and `mail_move` is how you
 archive, trash, or file a message (pass the destination mailbox name from `mail_mailboxes` —
@@ -250,7 +255,7 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 
 ## Known consumers
 
-- **Agent gateway** — registers `pippin mcp-server` as a stdio MCP and drives the 75 tools natively.
+- **Agent gateway** — registers `pippin mcp-server` as a stdio MCP and drives the 76 tools natively.
 - **Claude Code / Claude Desktop** — register via `claude mcp add` or the desktop config JSON; both pick up tools automatically on restart.
 - **Morning-briefing scheduled task** — still shells out to the pippin CLI directly (no migration planned; the task is single-shot enough that MCP doesn't add value).
 

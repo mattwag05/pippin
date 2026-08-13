@@ -5,7 +5,7 @@ public struct MailCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mail",
         abstract: "Interact with Apple Mail.",
-        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Activity.self, Show.self, Verify.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, MailIndex.self, MailSanitize.self, MailExtract.self, MailTriage.self, Watch.self, Cache.self]
+        subcommands: [Accounts.self, Mailboxes.self, Search.self, List.self, Activity.self, Show.self, Verify.self, Read.self, Mark.self, Move.self, Send.self, Attachments.self, Reply.self, Forward.self, MailIndex.self, MailSanitize.self, MailExtract.self, MailTriage.self, MailApplyRules.self, Watch.self, Cache.self]
     )
 
     public init() {}

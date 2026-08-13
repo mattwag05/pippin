@@ -9,6 +9,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] Triage rules can now act on mail, not just label it. A rule's `action` accepts `moveTo` (destination mailbox) and `markRead`, and the new `pippin mail apply-rules` (MCP: `mail_apply_rules`) executes them — previously the rules engine could classify a message but every actual mailbox change still needed a human or an agent in the loop per message, so callers reimplemented the matching externally and shelled out to `mail move` one message at a time. `mail triage` stays read-only and ignores both fields, so adding actuation to a rules file never makes triage mutate. Guardrails, all default-on: dry run unless `--live`; `--min-age-days` (default 14) never touches newer mail and holds any message whose date won't parse; `--max-actions` (default 200) caps a run and acts oldest-first so a capped run drains the oldest backlog instead of skimming; and the plan prints grouped by sender rather than as a count, which is what makes an over-broad rule visible before it runs. `--skip-unread` spares unread mail. Closes pippin-8viw.
+
+### Changed
+
+- [ci] The CLI integration test helper now drains a child's stdout/stderr concurrently instead of reading them after `waitUntilExit()`. The old order deadlocked as soon as a child wrote more than the ~64KB pipe buffer — the child blocks writing, the parent blocks waiting — which is exactly what happened when `mcp-server --list-tools` crossed that threshold at 76 tools (66,752 bytes): `make ci` wedged indefinitely with no failure and no output, and the last flushed log line pointed at an unrelated suite. Production spawn paths (`MCPServerRuntime.runChild`, `AIProviderFactory`) already drained concurrently and were never affected.
+
 ## [0.38.1] - 2026-08-13
 
 ### Fixed

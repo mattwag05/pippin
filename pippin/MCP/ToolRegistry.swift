@@ -601,6 +601,37 @@ enum MCPToolRegistry {
             }
         ),
         MCPTool(
+            name: "mail_apply_rules",
+            description: "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true — review the plan first. Messages newer than minAgeDays are never touched.",
+            inputSchema: Schema.object(
+                properties: [
+                    "account": Schema.string("Filter by account name."),
+                    "mailbox": Schema.string("Mailbox to scan (default: INBOX)."),
+                    "scanLimit": Schema.integer("Messages to enumerate from the mailbox (default: 500).", default: 500),
+                    "maxActions": Schema.integer("Cap on messages actuated per run (default: 200). Oldest first.", default: 200),
+                    "minAgeDays": Schema.integer("Never touch messages newer than this many days (default: 14).", default: 14),
+                    "skipUnread": Schema.boolean("Leave unread messages alone.", default: false),
+                    "rulesFile": Schema.string("Path to a triage-rules.json (default: ~/.config/pippin/triage-rules.json)."),
+                    "confirm": Schema.boolean("Set true to actually move/mark. Omitted or false returns the plan only.", default: false),
+                ],
+                required: []
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("mail", "apply-rules")
+                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
+                argv += ArgHelpers.optionIfString(args, "mailbox", flagName: "--mailbox")
+                argv += ArgHelpers.optionIfInt(args, "scanLimit", flagName: "--scan-limit")
+                argv += ArgHelpers.optionIfInt(args, "maxActions", flagName: "--max-actions")
+                argv += ArgHelpers.optionIfInt(args, "minAgeDays", flagName: "--min-age-days")
+                argv += ArgHelpers.flagIfTrue(args, "skipUnread", flagName: "--skip-unread")
+                argv += ArgHelpers.optionIfString(args, "rulesFile", flagName: "--rules-file")
+                // Inverse of `dryRunUnlessConfirmed`: this CLI is preview-by-default
+                // and takes an opt-in `--live`, so confirm maps to the positive flag.
+                argv += ArgHelpers.flagIfTrue(args, "confirm", flagName: "--live")
+                return argv
+            }
+        ),
+        MCPTool(
             name: "mail_sanitize",
             description: "Scan a message for prompt-injection patterns before acting on its contents. Read-only. Use alongside mail_verify on anything suspicious.",
             inputSchema: Schema.object(

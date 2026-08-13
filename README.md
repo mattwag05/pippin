@@ -142,6 +142,24 @@ pippin mail cache warm --limit 50                # pre-fetch bodies; show/index 
 pippin mail show "acct||INBOX||12345" --no-cache  # force a live fetch
 ```
 
+**Rule-driven archiving (`mail apply-rules`).** `~/.config/pippin/triage-rules.json` already drives `mail triage`'s pre-pass; a rule's action can also carry `moveTo` (destination mailbox) and `markRead`, which `mail apply-rules` executes. `mail triage` stays read-only and ignores both fields, so adding actuation to a rules file never makes triage mutate.
+
+```bash
+pippin mail apply-rules                          # preview only — prints the plan, changes nothing
+pippin mail apply-rules --live                   # actually move/mark
+pippin mail apply-rules --account Work --min-age-days 30 --max-actions 50
+```
+
+```json
+[
+  { "id": "delta", "name": "Delta receipts", "enabled": true, "conditionOperator": "and",
+    "conditions": [{ "field": "sender", "operator": "contains", "value": "@t.delta.com" }],
+    "action": { "moveTo": "Archive", "markRead": true } }
+]
+```
+
+Four guardrails, all on by default: **dry run unless `--live`**; `--min-age-days` (default 14) never touches anything newer, and a message whose date won't parse is held rather than moved; `--max-actions` (default 200) caps each run, acting **oldest-first** so a capped run drains the oldest backlog instead of skimming; and the plan is **grouped by sender** rather than summarized as a count — that is what makes an over-broad rule visible, e.g. a `@example.org` domain rule quietly sweeping up two individual humans alongside the intended bulk addresses. `--skip-unread` additionally spares unread mail. A rule with `skip: true` never actuates. One unreachable message is recorded as a failure and the rest of the run continues.
+
 **Faster previews from the Envelope Index (opt-in).** With Full Disk Access, `mail list --preview` / `mail activity` can fill snippets from Mail's own `summaries` table instead of fetching bodies over JXA — messages with a summary row skip the body fetch entirely (the rest still batch-fetch). Enable with `"mail": { "previewFromIndex": true }` in `~/.config/pippin/config.json`. Off by default for two reasons: the summary is Mail's semantic snippet, **not** the first N characters of the body (consumers that diff preview text will see drift), and summary-served previews bypass the body cache, so a later `mail show` of that message pays a cold fetch.
 
 ### Voice Memos
@@ -362,7 +380,7 @@ pippin mcp-server                    # run the server (stdin/stdout JSON-RPC)
 pippin mcp-server --list-tools       # dump the registered tools as JSON
 ```
 
-Ships with 75 tools at curated parity with the CLI, covering mail (including mark, move/archive, send, reply, forward, triage), calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), `actions_extract` (commitments → reminders), status, doctor, `digest`, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). Outbound sends return a dry-run preview and deletes fail outright unless the call passes `confirm: true`. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions and the full tool list.
+Ships with 76 tools at curated parity with the CLI, covering mail (including mark, move/archive, send, reply, forward, triage, apply-rules), calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), `actions_extract` (commitments → reminders), status, doctor, `digest`, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). Outbound sends return a dry-run preview and deletes fail outright unless the call passes `confirm: true`. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions and the full tool list.
 
 ## AI Configuration
 

@@ -346,6 +346,45 @@ else
   SKIP=$((SKIP+1)); echo "  SKIP  mail verify (no message id available)"
 fi
 
+# --- pippin-8viw: mail apply-rules is preview-by-default and its guardrails hold
+# against live mail. A catch-all actuating rule is pointed at a temp rules file;
+# nothing may be mutated without --live.
+RULES_TMP="$(mktemp -t pippin-e2e-rules)"
+cat > "$RULES_TMP" <<'JSON'
+[
+  { "id":"e2e","name":"E2E catch-all","enabled":true,"conditionOperator":"and",
+    "conditions":[{"field":"sender","operator":"contains","value":"@"}],
+    "action":{"moveTo":"Archive"} }
+]
+JSON
+AGE_CUTOFF="$(date -v-30d +%Y-%m-%d)"
+
+# Run A — age floor engaged. `matched > 0` is the instrument proof: a rules file
+# that silently failed to load would return an empty plan and make every
+# assertion here pass vacuously.
+run "mail apply-rules loads rules and matches live mail (pippin-8viw)" \
+  "d['data']['matched'] > 0 and d['data']['scanned'] > 0" \
+  -- mail apply-rules --rules-file "$RULES_TMP" --min-age-days 30 --max-actions 5 --scan-limit 60
+run "mail apply-rules age floor holds newer mail (pippin-8viw)" \
+  "all(a['date'][:10] <= '$AGE_CUTOFF' for g in d['data']['bySender'] for a in g['actions'])
+and d['data']['planned'] + d['data']['heldTooNew'] + d['data']['heldUnread'] + d['data']['heldOverCap'] == d['data']['matched']" \
+  -- mail apply-rules --rules-file "$RULES_TMP" --min-age-days 30 --max-actions 5 --scan-limit 60
+
+# Run B — age floor off, so a plan is actually produced. Without this the checks
+# above are satisfied by an all-held run on a busy inbox (every message newer
+# than the floor), and neither the cap nor the dry-run default is really tested.
+# `planned == 3` is exact, not `<= 3`: a cap that silently produced fewer would
+# otherwise pass.
+run "mail apply-rules enforces --max-actions on a real plan (pippin-8viw)" \
+  "d['data']['matched'] > 3 and d['data']['planned'] == 3 and d['data']['heldOverCap'] == d['data']['matched'] - 3" \
+  -- mail apply-rules --rules-file "$RULES_TMP" --min-age-days 0 --max-actions 3 --scan-limit 60
+run "mail apply-rules previews without mutating (pippin-8viw)" \
+  "d['data']['dryRun'] is True and d['data']['applied'] == 0 and d['data']['failed'] == 0
+and len(d['data']['bySender']) > 0
+and all(not a['applied'] and a.get('error') is None for g in d['data']['bySender'] for a in g['actions'])" \
+  -- mail apply-rules --rules-file "$RULES_TMP" --min-age-days 0 --max-actions 3 --scan-limit 60
+rm -f "$RULES_TMP"
+
 # --- Notes (JXA)
 run "notes list"       "isinstance(d['data'], list)"                    -- notes list --limit 3
 # pippin-jum: agent list is body-less (HTML body only via `notes show`) and
