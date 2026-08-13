@@ -913,6 +913,18 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 
 ---
 
+<!-- Comparison links. Eight versions intentionally have no entry here:
+
+       - 0.3.0, 0.5.0, 0.6.0, 0.7.0, 0.20.3, 0.21.0, 0.22.0 were never tagged,
+         so a compare link would reference a tag that doesn't exist and 404.
+         Their successors bridge the gap to the nearest earlier tag instead
+         (0.8.0 compares against v0.4.0; 0.23.0 against v0.20.2).
+       - 0.1.0-beta is tagged, but it's the first release — nothing precedes it.
+
+     A version with no link renders as plain bracketed text, not a broken link,
+     so this is a stable end state, not a backlog item. Don't "fix" it by
+     inventing links: check `git tag -l` for both endpoints first. -->
+
 [Unreleased]: https://github.com/mattwag05/pippin/compare/v0.39.0...HEAD
 [0.39.0]: https://github.com/mattwag05/pippin/compare/v0.38.1...v0.39.0
 [0.38.1]: https://github.com/mattwag05/pippin/compare/v0.38.0...v0.38.1
@@ -936,7 +948,7 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 [0.24.2]: https://github.com/mattwag05/pippin/compare/v0.24.1...v0.24.2
 [0.24.1]: https://github.com/mattwag05/pippin/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/mattwag05/pippin/compare/v0.23.0...v0.24.0
-[0.23.0]: https://github.com/mattwag05/pippin/compare/v0.22.0...v0.23.0
+[0.23.0]: https://github.com/mattwag05/pippin/compare/v0.20.2...v0.23.0
 [0.20.2]: https://github.com/mattwag05/pippin/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/mattwag05/pippin/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/mattwag05/pippin/compare/v0.19.0...v0.20.0
