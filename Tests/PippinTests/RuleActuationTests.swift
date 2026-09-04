@@ -189,6 +189,19 @@ final class RuleApplyPlannerTests: XCTestCase {
         XCTAssertEqual(plan.planned.map(\.message.id), ["legacy"])
     }
 
+    func testRuleApplyActionCarriesOperationalReceiptTimeSeparately() {
+        let action = RuleApplyAction(
+            messageId: "message",
+            subject: "subject",
+            from: "sender",
+            date: "2025-12-01T12:00:00Z",
+            operationalDate: "2026-01-30T12:00:00Z",
+            rule: "archive"
+        )
+        XCTAssertEqual(action.date, "2025-12-01T12:00:00Z")
+        XCTAssertEqual(action.operationalDate, "2026-01-30T12:00:00Z")
+    }
+
     func testAgeGuardBoundaryIsInclusive() {
         // Exactly minAgeDays old is eligible.
         let plan = RuleApplyPlanner.plan(

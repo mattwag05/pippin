@@ -111,6 +111,7 @@ public struct RuleApplyAction: Codable, Sendable {
     public let subject: String
     public let from: String
     public let date: String
+    public let operationalDate: String
     public let rule: String
     public let moveTo: String?
     public let markRead: Bool?
@@ -122,6 +123,7 @@ public struct RuleApplyAction: Codable, Sendable {
         subject: String,
         from: String,
         date: String,
+        operationalDate: String? = nil,
         rule: String,
         moveTo: String? = nil,
         markRead: Bool? = nil,
@@ -132,6 +134,7 @@ public struct RuleApplyAction: Codable, Sendable {
         self.subject = subject
         self.from = from
         self.date = date
+        self.operationalDate = operationalDate ?? date
         self.rule = rule
         self.moveTo = moveTo
         self.markRead = markRead

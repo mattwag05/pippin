@@ -127,6 +127,7 @@ public struct MailApplyRules: AsyncParsableCommand {
                     subject: match.message.subject,
                     from: match.message.from,
                     date: match.message.date,
+                    operationalDate: match.message.operationalDate,
                     rule: match.rule.name,
                     moveTo: moveTo,
                     markRead: markRead,
@@ -194,7 +195,7 @@ public struct MailApplyRules: AsyncParsableCommand {
             print("  \(group.sender)  (\(group.count))  \(targets)  [\(rules)]")
             for action in group.actions.prefix(3) {
                 let failed = action.error.map { " — FAILED: \($0)" } ?? ""
-                print("      \(action.date.prefix(10))  \(TextFormatter.truncate(action.subject, to: 60))\(failed)")
+                print("      \(action.operationalDate.prefix(10))  \(TextFormatter.truncate(action.subject, to: 60))\(failed)")
             }
             if group.count > 3 {
                 print("      … and \(group.count - 3) more")

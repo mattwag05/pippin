@@ -60,6 +60,53 @@ final class JXAScriptBuilderTests: XCTestCase {
         }
     }
 
+    func testMailDateNormalizerGuardsBothAccessorsAndRejectsInvalidReceiptDates() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("function usableMailDate(value)"))
+        XCTAssertTrue(script.contains("millis > 0"))
+        XCTAssertTrue(script.contains("try { sentDate = usableMailDate(msg.dateSent()); } catch(e) {}"))
+        XCTAssertTrue(script.contains("try { receivedDate = usableMailDate(msg.dateReceived()); } catch(e) {}"))
+        XCTAssertTrue(script.contains("var operationalDate = receivedDate || sentDate;"))
+    }
+
+    func testDirectionProbeUsesSharedMailDateNormalizer() {
+        let script = MailBridge.jsProbeNewestFirst(collection: "allMsgs", fallbackNewestFirst: false)
+        XCTAssertTrue(script.contains("mailDates(allMsgs[0]).operationalDate"))
+        XCTAssertTrue(script.contains("mailDates(allMsgs[allMsgs.length - 1]).operationalDate"))
+        XCTAssertFalse(script.contains("allMsgs[0].dateSent()"))
+    }
+
+    func testReadRowsUseSharedMailDateNormalizer() {
+        let script = MailBridge.buildReadScript(account: "Account", mailbox: "INBOX", messageId: "1")
+        XCTAssertTrue(script.contains("function mailDates(msg)"))
+        XCTAssertTrue(script.contains("var dates = mailDates(msg);"))
+        XCTAssertTrue(script.contains("receivedAt: dates.receivedDate"))
+    }
+
+    func testUnscopedListGloballySortsThenPaginatesCandidates() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10, offset: 3)
+        XCTAssertTrue(script.contains("results.sort(function(a, b)"))
+        XCTAssertTrue(script.contains("a.__operationalAt"))
+        XCTAssertTrue(script.contains("results = results.slice(offset, offset + limit);"))
+        XCTAssertFalse(script.contains("results.length < limit && !_meta.timedOut; a++"))
+    }
+
+    func testUnscopedSearchGloballyDeduplicatesSortsThenPaginatesCandidates() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, offset: 3)
+        XCTAssertTrue(script.contains("results.sort(function(a, b)"))
+        XCTAssertTrue(script.contains("results = results.slice(offset, offset + limit);"))
+        XCTAssertTrue(script.contains("seenMsgKeys[dedupKey]"))
+        XCTAssertFalse(script.contains("if (skipped < offset)"))
+        XCTAssertFalse(script.contains("results.length < limit && !_meta.timedOut; a++"))
+    }
+
+    func testUnscopedListFetchesPreviewOnlyAfterGlobalPagination() throws {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10, offset: 3, preview: 100)
+        let slice = try XCTUnwrap(script.range(of: "results = results.slice(offset, offset + limit);")?.lowerBound)
+        let bodyFetch = try XCTUnwrap(script.range(of: "results[r].__msg.content()")?.lowerBound)
+        XCTAssertLessThan(slice, bodyFetch)
+    }
+
     // MARK: - buildSearchScript
 
     func testSearchScriptInterpolatesQuery() {
@@ -253,7 +300,7 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("var previewChars = 200;"))
         // msg.content() is required to trigger the IMAP body fetch per CLAUDE.md.
         XCTAssertTrue(script.contains("msg.content()"), "preview branch must call msg.content() to force IMAP fetch")
-        XCTAssertTrue(script.contains("row.bodyPreview"), "preview values should be attached as bodyPreview key")
+        XCTAssertTrue(script.contains("results[r].bodyPreview"), "preview values should be attached as bodyPreview key")
     }
 
     func testListScriptPreviewClampsAbove4000() {
@@ -725,8 +772,8 @@ final class JXAScriptBuilderTests: XCTestCase {
     func testJsProbeNewestFirstComparesEndpointDates() {
         let js = MailBridge.jsProbeNewestFirst(collection: "allMsgs", fallbackNewestFirst: false)
         XCTAssertTrue(js.contains("var newestFirst = false;"))
-        XCTAssertTrue(js.contains("allMsgs[0].dateSent()"))
-        XCTAssertTrue(js.contains("allMsgs[allMsgs.length - 1].dateSent()"))
+        XCTAssertTrue(js.contains("mailDates(allMsgs[0]).operationalDate"))
+        XCTAssertTrue(js.contains("mailDates(allMsgs[allMsgs.length - 1]).operationalDate"))
         XCTAssertTrue(js.contains("allMsgs.length >= 2"), "probe must guard against 0/1-message collections")
         XCTAssertTrue(js.contains("try {"), "probe must fall back to the assumption on Apple Event errors")
     }
@@ -734,7 +781,7 @@ final class JXAScriptBuilderTests: XCTestCase {
     func testJsProbeNewestFirstFallbackTrue() {
         let js = MailBridge.jsProbeNewestFirst(collection: "msgs", fallbackNewestFirst: true)
         XCTAssertTrue(js.contains("var newestFirst = true;"))
-        XCTAssertTrue(js.contains("msgs[0].dateSent()"))
+        XCTAssertTrue(js.contains("mailDates(msgs[0]).operationalDate"))
     }
 
     func testSearchScriptProbesScanDirection() {
@@ -750,8 +797,8 @@ final class JXAScriptBuilderTests: XCTestCase {
         let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
         XCTAssertTrue(script.contains("var newestFirst"))
         XCTAssertTrue(
-            script.contains("newestFirst ? offset + k : totalMsgs - 1 - offset - k"),
-            "list window must map offset/limit onto the probed direction"
+            script.contains("newestFirst ? k : totalMsgs - 1 - k"),
+            "list candidates must walk newest to oldest before global pagination"
         )
     }
 
@@ -794,10 +841,10 @@ final class JXAScriptBuilderTests: XCTestCase {
 
     func testSearchScriptShiftsWindowTowardBeforeDate() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, before: "2026-06-10")
-        // Binary search over dateSent() probes to start the window near --before.
+        // Binary search over receipt-first timestamp probes starts near --before.
         XCTAssertTrue(script.contains("var scanFrom = 0;"))
         XCTAssertTrue(script.contains("(lo + hi) >> 1"), "window shift must binary-search index positions")
-        XCTAssertTrue(script.contains(".dateSent()"), "probes must use dateSent(), never content()")
+        XCTAssertTrue(script.contains("mailDates(allMsgs"), "probes must use the shared date normalizer, never content()")
         XCTAssertTrue(script.contains("_meta.windowsShifted++"))
     }
 

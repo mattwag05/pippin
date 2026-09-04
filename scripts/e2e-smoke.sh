@@ -369,7 +369,7 @@ run "mail apply-rules loads rules and matches live mail (pippin-8viw)" \
   "d['data']['matched'] > 0 and d['data']['scanned'] > 0" \
   -- mail apply-rules --rules-file "$RULES_TMP" --min-age-days 30 --max-actions 5 --scan-limit 60
 run "mail apply-rules age floor holds newer mail (pippin-8viw)" \
-  "all(a['date'][:10] <= '$AGE_CUTOFF' for g in d['data']['bySender'] for a in g['actions'])
+  "all(a['operationalDate'][:10] <= '$AGE_CUTOFF' for g in d['data']['bySender'] for a in g['actions'])
 and d['data']['planned'] + d['data']['heldTooNew'] + d['data']['heldUnread'] + d['data']['heldOverCap'] == d['data']['matched']" \
   -- mail apply-rules --rules-file "$RULES_TMP" --min-age-days 30 --max-actions 5 --scan-limit 60
 

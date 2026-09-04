@@ -129,7 +129,7 @@ final class ToolRegistryTests: XCTestCase {
             return XCTFail("mail_search schema must expose object properties")
         }
         let expected = Set(["query", "account", "mailbox", "body", "preview", "after", "before", "to", "from", "limit", "semantic"])
-        XCTAssertTrue(expected.isSubset(of: Set(properties.keys)))
+        XCTAssertEqual(Set(properties.keys), expected)
 
         let argv = try tool.buildArgs(.object([
             "query": .string("needle"),

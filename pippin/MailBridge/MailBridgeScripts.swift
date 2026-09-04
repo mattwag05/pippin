@@ -18,11 +18,9 @@ extension MailBridge {
         var newestFirst = \(fallbackNewestFirst ? "true" : "false");
         try {
             if (\(collection).length >= 2) {
-                var firstDate = \(collection)[0].dateSent();
-                var lastDate = \(collection)[\(collection).length - 1].dateSent();
-                try { firstDate = \(collection)[0].dateReceived() || firstDate; } catch(e) {}
-                try { lastDate = \(collection)[\(collection).length - 1].dateReceived() || lastDate; } catch(e) {}
-                newestFirst = firstDate >= lastDate;
+                var firstDate = mailDates(\(collection)[0]).operationalDate;
+                var lastDate = mailDates(\(collection)[\(collection).length - 1]).operationalDate;
+                if (firstDate !== null && lastDate !== null) newestFirst = firstDate >= lastDate;
             }
         } catch(e) {}
         """
@@ -32,10 +30,16 @@ extension MailBridge {
     /// operational sorting and filtering; sent time remains the message date.
     static func jsMailDates() -> String {
         """
+        function usableMailDate(value) {
+            if (value === null || value === undefined || !(value instanceof Date)) return null;
+            var millis = value.getTime();
+            return isFinite(millis) && millis > 0 ? value : null;
+        }
         function mailDates(msg) {
-            var sentDate = msg.dateSent();
+            var sentDate = null;
             var receivedDate = null;
-            try { receivedDate = msg.dateReceived(); } catch(e) {}
+            try { sentDate = usableMailDate(msg.dateSent()); } catch(e) {}
+            try { receivedDate = usableMailDate(msg.dateReceived()); } catch(e) {}
             var operationalDate = receivedDate || sentDate;
             return {sentDate: sentDate, receivedDate: receivedDate, operationalDate: operationalDate};
         }
@@ -81,6 +85,7 @@ extension MailBridge {
         var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var softTimeoutMs = \(safeSoftTimeoutMs);
         var results = [];
+        var candidateLimit = limit + offset;
         // reachedMailboxEnd / oldestExaminedMs drive the "scan window did not
         // reach --before" hint: the newest-N window can bottom out before
         // reaching an old --before cutoff, so an empty result is ambiguous
@@ -92,14 +97,14 @@ extension MailBridge {
         var _listStart = Date.now();
 
         var accounts = mail.accounts();
-        for (var a = 0; a < accounts.length && results.length < limit && !_meta.timedOut; a++) {
+        for (var a = 0; a < accounts.length && !_meta.timedOut; a++) {
             var acct = accounts[a];
             var acctName = acct.name();
             if (acctFilter !== null && acctName !== acctFilter) continue;
             _meta.accountsScanned++;
 
             var mb = resolveMailbox(acct, mbFilter);
-            if (mb === null || results.length >= limit) continue;
+            if (mb === null) continue;
             _meta.mailboxesScanned++;
             var resolvedMbName = mb.name();
 
@@ -108,27 +113,25 @@ extension MailBridge {
             if (!msgs) continue;
             var totalMsgs = msgs.length;
             \(jsProbeNewestFirst(collection: "msgs", fallbackNewestFirst: true))
-            // offset/limit are positions in newest→oldest order, mapped onto the
-            // collection by the probed direction (GitHub #24).
-            var windowSize = Math.max(0, Math.min(limit, totalMsgs - offset));
+            // Each mailbox contributes enough newest candidates for the global
+            // post-merge offset and limit.
+            var windowSize = Math.min(candidateLimit, totalMsgs);
             // Window truncated below the mailbox's remaining depth → we did not
             // scan back to its oldest message (feeds the --before shortfall hint).
-            if (windowSize < totalMsgs - offset) _meta.reachedMailboxEnd = false;
+            if (windowSize < totalMsgs) _meta.reachedMailboxEnd = false;
 
-            // Single-pass assembly: time-check fires per message so the
-            // expensive msg.content() body fetch (when preview is on) can be
-            // bounded. Preserves the metadata-then-body order so we never
-            // discard partial work — if the soft cap fires mid-row, we keep
-            // every row already pushed to results.
-            for (var k = 0; k < windowSize && results.length < limit; k++) {
+            // Metadata assembly stays bounded per message. Preview body reads
+            // happen only after global sorting and pagination selects rows.
+            for (var k = 0; k < windowSize; k++) {
                 if (Date.now() - _listStart > softTimeoutMs) { _meta.timedOut = true; break; }
-                var msg = msgs[newestFirst ? offset + k : totalMsgs - 1 - offset - k];
+                var msg = msgs[newestFirst ? k : totalMsgs - 1 - k];
                 _meta.messagesExamined++;
 
                 // Date range filter (cheap — no IMAP fetch)
                 var dates = mailDates(msg);
-                var msgDate = dates.sentDate;
                 var operationalDate = dates.operationalDate;
+                if (operationalDate === null) continue;
+                var msgDate = dates.sentDate || operationalDate;
                 var _mms = operationalDate.getTime();
                 if (_meta.oldestExaminedMs === null || _mms < _meta.oldestExaminedMs) _meta.oldestExaminedMs = _mms;
                 if (afterDate !== null && operationalDate < afterDate) continue;
@@ -151,20 +154,34 @@ extension MailBridge {
                     read: msg.readStatus(),
                     body: null,
                     size: msgSize,
-                    hasAttachment: msgHasAtt
+                    hasAttachment: msgHasAtt,
+                    __msg: msg
                 };
-                // msg.content() triggers the IMAP body fetch per CLAUDE.md — only called when previewChars > 0.
-                if (previewChars > 0) {
-                    try {
-                        var raw = msg.content();
-                        if (raw != null && raw !== '') {
-                            var s = String(raw);
-                            row.bodyPreview = s.length > previewChars ? s.substring(0, previewChars) + '…' : s;
-                        }
-                    } catch (e) {}
-                }
+                row.__operationalAt = operationalDate.toISOString();
+                row.__tieBreak = row.id;
                 results.push(row);
             }
+        }
+
+        results.sort(function(a, b) {
+            if (a.__operationalAt < b.__operationalAt) return 1;
+            if (a.__operationalAt > b.__operationalAt) return -1;
+            return a.__tieBreak < b.__tieBreak ? -1 : (a.__tieBreak > b.__tieBreak ? 1 : 0);
+        });
+        results = results.slice(offset, offset + limit);
+        for (var r = 0; r < results.length; r++) {
+            if (previewChars > 0) {
+                try {
+                    var raw = results[r].__msg.content();
+                    if (raw != null && raw !== '') {
+                        var s = String(raw);
+                        results[r].bodyPreview = s.length > previewChars ? s.substring(0, previewChars) + '…' : s;
+                    }
+                } catch (e) {}
+            }
+            delete results[r].__msg;
+            delete results[r].__operationalAt;
+            delete results[r].__tieBreak;
         }
 
         JSON.stringify({results: results, meta: _meta});
@@ -284,7 +301,6 @@ extension MailBridge {
         var afterDate = afterFilter !== null ? new Date(afterFilter) : null;
         var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var results = [];
-        var skipped = 0;
         var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false, windowsShifted: 0};
         var seenMsgKeys = {};
         // Soft timeout: bail out of nested scan loops with whatever we've got so the
@@ -292,7 +308,7 @@ extension MailBridge {
         var _searchStart = Date.now();
 
         var accounts = mail.accounts();
-        for (var a = 0; a < accounts.length && results.length < limit && !_meta.timedOut; a++) {
+        for (var a = 0; a < accounts.length && !_meta.timedOut; a++) {
             var acct = accounts[a];
             var acctName = acct.name();
             if (acctFilter !== null && acctName !== acctFilter) continue;
@@ -305,7 +321,7 @@ extension MailBridge {
             } else {
                 mbList = collectAllMailboxes(acct.mailboxes(), []);
             }
-            for (var m = 0; m < mbList.length && results.length < limit && !_meta.timedOut; m++) {
+            for (var m = 0; m < mbList.length && !_meta.timedOut; m++) {
                 if (Date.now() - _searchStart > softTimeoutMs) { _meta.timedOut = true; break; }
                 var mb = mbList[m];
                 _meta.mailboxesScanned++;
@@ -339,7 +355,7 @@ extension MailBridge {
                 }
 
                 // k is a newest→oldest position; map it onto the real index.
-                for (var k = scanFrom; k < scanFrom + scanCount && k < totalMsgs && results.length < limit; k++) {
+                for (var k = scanFrom; k < scanFrom + scanCount && k < totalMsgs; k++) {
                     if (Date.now() - _searchStart > softTimeoutMs) { _meta.timedOut = true; break; }
                     var msg = allMsgs[newestFirst ? k : totalMsgs - 1 - k];
                     _meta.messagesExamined++;
@@ -349,8 +365,9 @@ extension MailBridge {
                     // this mailbox's scan; messages newer than --before are skipped
                     // cheaply before any content() call.
                     var dates = mailDates(msg);
-                    var msgDate = dates.sentDate;
                     var operationalDate = dates.operationalDate;
+                    if (operationalDate === null) continue;
+                    var msgDate = dates.sentDate || operationalDate;
                     if (afterDate !== null && operationalDate < afterDate) break;
                     if (beforeDate !== null && operationalDate > beforeDate) continue;
 
@@ -394,7 +411,6 @@ extension MailBridge {
                         if (seenMsgKeys[dedupKey]) continue;
                         seenMsgKeys[dedupKey] = true;
 
-                        if (skipped < offset) { skipped++; continue; }
                         var msgSize = null;
                         try { msgSize = msg.messageSize(); } catch(e) {}
                         var msgHasAtt = false;
@@ -414,12 +430,22 @@ extension MailBridge {
                             body: null,
                             bodyPreview: bodyPrev,
                             size: msgSize,
-                            hasAttachment: msgHasAtt
+                            hasAttachment: msgHasAtt,
+                            __operationalAt: operationalDate.toISOString(),
+                            __tieBreak: acctName + '||' + mb.name() + '||' + msg.id()
                         });
                     }
                 }
             }
         }
+
+        results.sort(function(a, b) {
+            if (a.__operationalAt < b.__operationalAt) return 1;
+            if (a.__operationalAt > b.__operationalAt) return -1;
+            return a.__tieBreak < b.__tieBreak ? -1 : (a.__tieBreak > b.__tieBreak ? 1 : 0);
+        });
+        results = results.slice(offset, offset + limit);
+        for (var p = 0; p < results.length; p++) { delete results[p].__operationalAt; delete results[p].__tieBreak; }
 
         JSON.stringify({results: results, meta: _meta});
         """
@@ -916,6 +942,7 @@ extension MailBridge {
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 8))
+        \(jsMailDates())
         var result = null;
 
         var accounts = mail.accounts();
@@ -1037,6 +1064,7 @@ extension MailBridge {
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 8))
+        \(jsMailDates())
         var groups = \(groupsJSON);
         var softTimeoutMs = \(safeSoftTimeoutMs);
         var _start = Date.now();
