@@ -527,7 +527,9 @@ final class MailEnvelopeIndex: Sendable {
         let subject: String
         let address: String
         let comment: String
-        let epoch: Int64
+        let sentEpoch: Int64
+        let receivedEpoch: Int64?
+        let operationalEpoch: Int64
         let read: Bool
         let size: Int?
         let hasAttachment: Bool
@@ -542,7 +544,9 @@ final class MailEnvelopeIndex: Sendable {
         """
         SELECT m.ROWID AS msg_rowid, \(targets.matchColumn) AS mb_rowid,
                s.subject AS subj, a.address AS addr, a.comment AS cmt,
-               COALESCE(NULLIF(m.date_sent, 0), NULLIF(m.date_received, 0), 0) AS epoch,
+               COALESCE(NULLIF(m.date_sent, 0), NULLIF(m.date_received, 0), 0) AS sent_epoch,
+               NULLIF(m.date_received, 0) AS received_epoch,
+               COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) AS operational_epoch,
                m.read AS is_read, m.size AS size,
                EXISTS(SELECT 1 FROM attachments att WHERE att.message = m.ROWID) AS has_att,
                gd.message_id_header AS header
@@ -562,7 +566,9 @@ final class MailEnvelopeIndex: Sendable {
             subject: row["subj"] as String? ?? "",
             address: row["addr"] as String? ?? "",
             comment: row["cmt"] as String? ?? "",
-            epoch: row["epoch"] as Int64? ?? 0,
+            sentEpoch: row["sent_epoch"] as Int64? ?? 0,
+            receivedEpoch: row["received_epoch"] as Int64?,
+            operationalEpoch: row["operational_epoch"] as Int64? ?? 0,
             read: (row["is_read"] as Int64? ?? 0) != 0,
             size: (row["size"] as Int64?).map(Int.init),
             hasAttachment: (row["has_att"] as Int64? ?? 0) != 0,
@@ -609,7 +615,8 @@ final class MailEnvelopeIndex: Sendable {
                 subject: raw.subject,
                 from: Self.composeFrom(address: raw.address, comment: raw.comment),
                 to: toByMessage[raw.rowid] ?? [],
-                date: Self.isoString(raw.epoch),
+                date: Self.isoString(raw.sentEpoch),
+                receivedAt: raw.receivedEpoch.map(Self.isoString),
                 read: raw.read,
                 body: nil,
                 size: raw.size,
@@ -624,7 +631,7 @@ final class MailEnvelopeIndex: Sendable {
     private static func dedup(_ raws: [RawRow]) -> [RawRow] {
         var seen = Set<String>()
         return raws.filter { raw in
-            let key = raw.header ?? "\(raw.subject)\0\(raw.address)\0\(raw.epoch)"
+            let key = raw.header ?? "\(raw.subject)\0\(raw.address)\0\(raw.operationalEpoch)"
             return seen.insert(key).inserted
         }
     }
@@ -633,11 +640,11 @@ final class MailEnvelopeIndex: Sendable {
         var sql = ""
         if let after, let d = parseFilterDateUTC(after) {
             // JXA keeps msgDate >= afterDate
-            sql += " AND epoch >= \(Int64(d.timeIntervalSince1970))"
+            sql += " AND COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) >= \(Int64(d.timeIntervalSince1970))"
         }
         if let before, let d = parseFilterDateUTC(before) {
             // JXA skips msgDate > beforeDate
-            sql += " AND epoch <= \(Int64(d.timeIntervalSince1970))"
+            sql += " AND COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) <= \(Int64(d.timeIntervalSince1970))"
         }
         return sql
     }
@@ -657,7 +664,7 @@ final class MailEnvelopeIndex: Sendable {
         var sql = Self.baseSelect(targets) + " WHERE m.deleted = 0 AND \(targets.membershipSQL)"
         if unread { sql += " AND m.read = 0" }
         sql += Self.dateFilterSQL(after: after, before: before)
-        sql += " ORDER BY epoch DESC, m.ROWID ASC LIMIT \(max(1, limit)) OFFSET \(max(0, offset))"
+        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(max(1, limit)) OFFSET \(max(0, offset))"
         let raws = try dbQueue.read { db in try Row.fetchAll(db, sql: sql) }.map(Self.rawRow)
         return try buildMessages(
             raws,
@@ -710,7 +717,7 @@ final class MailEnvelopeIndex: Sendable {
             arguments["to"] = to
         }
         sql += Self.dateFilterSQL(after: after, before: before)
-        sql += " ORDER BY epoch DESC, m.ROWID ASC LIMIT \(Self.candidateCap)"
+        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(Self.candidateCap)"
         let fetched = try dbQueue.read { db in
             try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
         }.map(Self.rawRow)
@@ -763,9 +770,9 @@ final class MailEnvelopeIndex: Sendable {
         let targets = MailboxTargets(refs)
         var sql = Self.baseSelect(targets) + " WHERE m.deleted = 0 AND \(targets.membershipSQL)"
         if let since {
-            sql += " AND epoch >= \(Int64(since.timeIntervalSince1970))"
+            sql += " AND COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) >= \(Int64(since.timeIntervalSince1970))"
         }
-        sql += " ORDER BY epoch DESC, m.ROWID ASC LIMIT \(Self.candidateCap)"
+        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(Self.candidateCap)"
         let fetched = try dbQueue.read { db in try Row.fetchAll(db, sql: sql) }.map(Self.rawRow)
         let window = Array(Self.dedup(fetched).prefix(max(1, limit)))
         return try buildMessages(window, targets: targets, populateTo: true)

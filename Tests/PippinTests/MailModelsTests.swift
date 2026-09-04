@@ -288,6 +288,26 @@ final class MailModelsTests: XCTestCase {
         XCTAssertNil(msg.htmlBody)
         XCTAssertNil(msg.headers)
         XCTAssertNil(msg.attachments)
+        XCTAssertNil(msg.receivedAt)
+    }
+
+    func testMailMessageEncodesReceivedAtSeparatelyFromSentDate() throws {
+        let msg = MailMessage(
+            id: "a||b||receipt",
+            account: "Work",
+            mailbox: "INBOX",
+            subject: "Skewed",
+            from: "x@x.com",
+            to: [],
+            date: "2026-01-01T09:00:00.000Z",
+            receivedAt: "2026-01-03T09:00:00.000Z",
+            read: false
+        )
+
+        let data = try encoder.encode(msg)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["date"] as? String, "2026-01-01T09:00:00.000Z")
+        XCTAssertEqual(json["receivedAt"] as? String, "2026-01-03T09:00:00.000Z")
     }
 
     // MARK: - MailAccount encoding

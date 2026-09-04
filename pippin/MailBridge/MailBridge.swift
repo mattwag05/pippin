@@ -430,6 +430,14 @@ enum MailBridge {
         )
     }
 
+    /// A timed-out scan can only establish absence after it inspected the full
+    /// search space. Nonempty timed-out results remain useful partial results.
+    static func requireCompleteSearch(resultCount: Int, timedOut: Bool) throws {
+        if timedOut, resultCount == 0 {
+            throw MailBridgeError.searchIncomplete
+        }
+    }
+
     static func markMessage(
         compoundId: String,
         read: Bool,

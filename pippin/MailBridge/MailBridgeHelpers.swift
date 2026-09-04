@@ -121,6 +121,8 @@ extension MailBridge {
         var msgSize = null;
         try { msgSize = msg.messageSize(); } catch(e) {}
 
+        var receivedAt = null;
+        try { receivedAt = msg.dateReceived().toISOString(); } catch(e) {}
         var __row = {
             id: acct.name() + '||' + mb.name() + '||' + String(msg.id()),
             account: acct.name(),
@@ -129,6 +131,7 @@ extension MailBridge {
             from: msg.sender(),
             to: msg.toRecipients().map(function(r) { return r.address(); }),
             date: msg.dateSent().toISOString(),
+            receivedAt: receivedAt,
             read: msg.readStatus(),
             body: bodyText,
             size: msgSize,

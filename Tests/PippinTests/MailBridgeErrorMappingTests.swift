@@ -69,6 +69,24 @@ final class MailBridgeErrorMappingTests: XCTestCase {
         XCTAssertTrue(desc.contains("Work"))
     }
 
+    func testSearchIncompleteUsesTypedAgentCodeAndNarrowingGuidance() throws {
+        let err = MailBridgeError.searchIncomplete
+        XCTAssertEqual(agentErrorCode(for: err), "search_incomplete")
+        let description = try XCTUnwrap(err.errorDescription)
+        XCTAssertTrue(description.contains("--account"))
+        XCTAssertTrue(description.contains("--mailbox"))
+    }
+
+    func testEmptyTimedOutSearchRequiresExplicitIncompleteError() {
+        XCTAssertThrowsError(try MailBridge.requireCompleteSearch(resultCount: 0, timedOut: true)) { error in
+            guard case MailBridgeError.searchIncomplete = error else {
+                return XCTFail("Expected .searchIncomplete, got \(error)")
+            }
+        }
+        XCTAssertNoThrow(try MailBridge.requireCompleteSearch(resultCount: 1, timedOut: true))
+        XCTAssertNoThrow(try MailBridge.requireCompleteSearch(resultCount: 0, timedOut: false))
+    }
+
     // MARK: - ensureKnownAccount (shared gate above the fast-path/JXA fork)
 
     private let records = [

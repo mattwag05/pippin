@@ -398,7 +398,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_search",
-            description: "Search messages by subject/sender. `body: true` widens the match to body text (body-matched hits return a bodyPreview snippet); `preview` inlines a body snippet on every hit.",
+            description: "Search messages by subject or sender. Use `from` for sender-only searches without body scanning. `body: true` performs the slower content scan; body-matched hits return a bodyPreview snippet.",
             inputSchema: Schema.object(
                 properties: [
                     "query": Schema.string("Search query (case-insensitive)."),

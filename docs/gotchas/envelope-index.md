@@ -55,9 +55,10 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   UTC. The fast path mirrors that (`parseFilterDateUTC`), NOT
   `MailBridge.parseFilterDate` (local, display-only) — using local midnight
   drops rows near day boundaries that JXA keeps.
-- **Filter dates on `COALESCE(NULLIF(date_sent,0), NULLIF(date_received,0))`** —
-  Apple leaves either column NULL or 0. GRDB NULL trap applies to every column
-  (`row["x"] as T?` — see swift.md).
+- **Operational sort and filter dates use `COALESCE(NULLIF(date_received,0), NULLIF(date_sent,0))`**.
+  The emitted `date` remains `date_sent` with a sent-time fallback, and optional
+  `receivedAt` carries `date_received`. Apple leaves either column NULL or 0.
+  GRDB NULL trap applies to every column (`row["x"] as T?`, see swift.md).
 - **🛑 Gmail mailboxes are LABEL VIEWS, not mailboxes (pippin-z0f6).** A
   message row points at exactly ONE mailbox (`messages.mailbox`). On Gmail that
   is almost always `[Gmail]/All Mail`: `INBOX`, `[Gmail]/Important`,

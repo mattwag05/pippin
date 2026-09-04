@@ -86,6 +86,20 @@ public struct DoctorCommand: AsyncParsableCommand {
 
 /// Classify a Mail automation error by its description string.
 func classifyMailError(_ detail: String) -> DiagnosticCheck {
+    if detail.contains("Application can't be found. (-2700)") {
+        return DiagnosticCheck(
+            name: "Mail automation",
+            status: .fail,
+            detail: "Mail automation context or app lookup failed",
+            remediation: Remediation(
+                humanHint: """
+                This does not prove Mail is absent. Envelope Index metadata can remain available while JXA body automation cannot resolve Mail in this launch context.
+                Open Mail once in this user session, verify Automation access for the calling app, then run: pippin mail list
+                """,
+                doctorCheck: "Mail automation"
+            )
+        )
+    }
     if detail.contains("not authorized") || detail.contains("AppleEvent") ||
         detail.contains("1002") || detail.contains("TCC") {
         return DiagnosticCheck(

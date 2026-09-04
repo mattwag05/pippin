@@ -4,6 +4,16 @@ import EventKit
 import XCTest
 
 final class PermissionsTests: XCTestCase {
+    func testMailAppLookupFailureExplainsAutomationContextAndIndexBoundary() throws {
+        let check = classifyMailError("Application can't be found. (-2700)")
+        XCTAssertEqual(check.name, "Mail automation")
+        XCTAssertEqual(check.status, .fail)
+        XCTAssertTrue(check.detail.contains("automation context"))
+        let hint = try XCTUnwrap(check.remediation).humanHint
+        XCTAssertTrue(hint.contains("Envelope Index"))
+        XCTAssertTrue(hint.contains("JXA"))
+    }
+
     // MARK: - Priming gate (pippin-dkf)
 
     /// The whole feature's safety hinges on this: only prime when a human at a

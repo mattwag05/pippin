@@ -9,7 +9,7 @@ extension MailBridge {
     /// newest→oldest varies by account/provider (GitHub #23/#24 — Gmail All
     /// Mail returned 2018-era mail from a "newest N" window built on the wrong
     /// assumption). Instead of assuming, probe the direction with two cheap
-    /// Apple Events (`dateSent()` on the first and last message) and let the
+    /// Apple Events (receipt time with sent-time fallback on the first and last message) and let the
     /// caller derive its scan window/iteration order from the result.
     /// Falls back to `fallbackNewestFirst` (the script's historical
     /// assumption) on error or when the collection has fewer than 2 messages.
@@ -18,9 +18,27 @@ extension MailBridge {
         var newestFirst = \(fallbackNewestFirst ? "true" : "false");
         try {
             if (\(collection).length >= 2) {
-                newestFirst = \(collection)[0].dateSent() >= \(collection)[\(collection).length - 1].dateSent();
+                var firstDate = \(collection)[0].dateSent();
+                var lastDate = \(collection)[\(collection).length - 1].dateSent();
+                try { firstDate = \(collection)[0].dateReceived() || firstDate; } catch(e) {}
+                try { lastDate = \(collection)[\(collection).length - 1].dateReceived() || lastDate; } catch(e) {}
+                newestFirst = firstDate >= lastDate;
             }
         } catch(e) {}
+        """
+    }
+
+    /// JXA keeps sent and receipt timestamps separate. Receipt time drives
+    /// operational sorting and filtering; sent time remains the message date.
+    static func jsMailDates() -> String {
+        """
+        function mailDates(msg) {
+            var sentDate = msg.dateSent();
+            var receivedDate = null;
+            try { receivedDate = msg.dateReceived(); } catch(e) {}
+            var operationalDate = receivedDate || sentDate;
+            return {sentDate: sentDate, receivedDate: receivedDate, operationalDate: operationalDate};
+        }
         """
     }
 
@@ -50,6 +68,7 @@ extension MailBridge {
         \(jsMailReadyPoll(maxAttempts: 8))
         \(jsFindMailboxByName())
         \(jsResolveMailbox())
+        \(jsMailDates())
         var acctFilter = \(acctFilter);
         var mbFilter = '\(mbName)';
         var unreadOnly = \(unread ? "true" : "false");
@@ -107,11 +126,13 @@ extension MailBridge {
                 _meta.messagesExamined++;
 
                 // Date range filter (cheap — no IMAP fetch)
-                var msgDate = msg.dateSent();
-                var _mms = msgDate.getTime();
+                var dates = mailDates(msg);
+                var msgDate = dates.sentDate;
+                var operationalDate = dates.operationalDate;
+                var _mms = operationalDate.getTime();
                 if (_meta.oldestExaminedMs === null || _mms < _meta.oldestExaminedMs) _meta.oldestExaminedMs = _mms;
-                if (afterDate !== null && msgDate < afterDate) continue;
-                if (beforeDate !== null && msgDate > beforeDate) continue;
+                if (afterDate !== null && operationalDate < afterDate) continue;
+                if (beforeDate !== null && operationalDate > beforeDate) continue;
 
                 var msgSize = null;
                 try { msgSize = msg.messageSize(); } catch(e) {}
@@ -126,6 +147,7 @@ extension MailBridge {
                     from: msg.sender(),
                     to: [],
                     date: msgDate.toISOString(),
+                    receivedAt: dates.receivedDate === null ? null : dates.receivedDate.toISOString(),
                     read: msg.readStatus(),
                     body: null,
                     size: msgSize,
@@ -245,6 +267,7 @@ extension MailBridge {
         \(jsFindMailboxByName())
         \(jsCollectAllMailboxes())
         \(jsResolveMailbox())
+        \(jsMailDates())
         var query = '\(safeQuery)'.toLowerCase();
         var acctFilter = \(acctFilter);
         var mbFilter = \(mbFilter);
@@ -287,7 +310,7 @@ extension MailBridge {
                 var mb = mbList[m];
                 _meta.mailboxesScanned++;
                 // Cap messages scanned per mailbox. Probe the collection's index
-                // order with two cheap dateSent() Apple Events so the window
+                // order with receipt-time Apple Events and sent-time fallback so the window
                 // always covers the NEWEST perMailboxLimit messages and walks
                 // newest→oldest, regardless of underlying order (GitHub #23/#24).
                 var allMsgs = mb.messages();
@@ -298,15 +321,15 @@ extension MailBridge {
                 var scanFrom = 0;
                 if (beforeDate !== null && totalMsgs > 0) {
                     // --before set and the newest message is after it: binary-search
-                    // dateSent() probes (one cheap Apple Event each, no content())
+                    // receipt-time probes with sent-time fallback (one cheap Apple Event each, no content())
                     // to start the window near the date range instead of burning it
                     // on messages the date guard would skip anyway (#23).
                     try {
-                        if (allMsgs[newestFirst ? 0 : totalMsgs - 1].dateSent() > beforeDate) {
+                        if (mailDates(allMsgs[newestFirst ? 0 : totalMsgs - 1]).operationalDate > beforeDate) {
                             var lo = 0, hi = totalMsgs - 1;
                             while (lo < hi) {
                                 var mid = (lo + hi) >> 1;
-                                var probeDate = allMsgs[newestFirst ? mid : totalMsgs - 1 - mid].dateSent();
+                                var probeDate = mailDates(allMsgs[newestFirst ? mid : totalMsgs - 1 - mid]).operationalDate;
                                 if (probeDate > beforeDate) { lo = mid + 1; } else { hi = mid; }
                             }
                             scanFrom = lo;
@@ -325,9 +348,11 @@ extension MailBridge {
                     // newest→oldest, so the first message older than --after ends
                     // this mailbox's scan; messages newer than --before are skipped
                     // cheaply before any content() call.
-                    var msgDate = msg.dateSent();
-                    if (afterDate !== null && msgDate < afterDate) break;
-                    if (beforeDate !== null && msgDate > beforeDate) continue;
+                    var dates = mailDates(msg);
+                    var msgDate = dates.sentDate;
+                    var operationalDate = dates.operationalDate;
+                    if (afterDate !== null && operationalDate < afterDate) break;
+                    if (beforeDate !== null && operationalDate > beforeDate) continue;
 
                     var subject = msg.subject() || '';
                     var sender = msg.sender() || '';
@@ -384,6 +409,7 @@ extension MailBridge {
                             from: sender,
                             to: toAddrs,
                             date: msgDate.toISOString(),
+                            receivedAt: dates.receivedDate === null ? null : dates.receivedDate.toISOString(),
                             read: msg.readStatus(),
                             body: null,
                             bodyPreview: bodyPrev,
@@ -423,6 +449,7 @@ extension MailBridge {
         \(jsFindMailboxByName())
         \(jsCollectAllMailboxes())
         \(jsResolveMailbox())
+        \(jsMailDates())
         var acctFilter = \(acctFilter);
         var targetNames = \(mbNamesJS);
         var sinceRaw = \(sinceJS);
@@ -460,8 +487,8 @@ extension MailBridge {
                 _meta.mailboxesScanned++;
                 var resolvedMbName = mb.name();
 
-                // Probe the collection's index order with two cheap dateSent()
-                // Apple Events so the window always covers the NEWEST
+                // Probe the collection's index order with receipt-time Apple
+                // Events and sent-time fallback so the window always covers the NEWEST
                 // perMailboxLimit messages, regardless of underlying order
                 // (GitHub #24 — the old last-N window grabbed the OLDEST 500
                 // on accounts whose messages() is newest-first).
@@ -474,8 +501,10 @@ extension MailBridge {
                     if (Date.now() - _activityStart > softTimeoutMs) { _meta.timedOut = true; break; }
                     var msg = allMsgs[newestFirst ? k : totalMsgs - 1 - k];
                     _meta.messagesExamined++;
-                    var msgDate = msg.dateSent();
-                    if (sinceDate !== null && msgDate < sinceDate) continue;
+                    var dates = mailDates(msg);
+                    var msgDate = dates.sentDate;
+                    var operationalDate = dates.operationalDate;
+                    if (sinceDate !== null && operationalDate < sinceDate) continue;
 
                     var subject = msg.subject() || '';
                     var sender = msg.sender() || '';
@@ -503,11 +532,13 @@ extension MailBridge {
                         from: sender,
                         to: toAddrs,
                         date: msgDate.toISOString(),
+                        receivedAt: dates.receivedDate === null ? null : dates.receivedDate.toISOString(),
                         read: msg.readStatus(),
                         body: null,
                         size: msgSize,
                         hasAttachment: msgHasAtt,
-                        __msg: msg
+                        __msg: msg,
+                        __operationalAt: operationalDate.toISOString()
                     };
                     results.push(row);
                 }
@@ -516,8 +547,8 @@ extension MailBridge {
 
         // ISO 8601 lexicographic sort == chronological (descending).
         results.sort(function(a, b) {
-            if (a.date < b.date) return 1;
-            if (a.date > b.date) return -1;
+            if (a.__operationalAt < b.__operationalAt) return 1;
+            if (a.__operationalAt > b.__operationalAt) return -1;
             return 0;
         });
         if (results.length > limit) results = results.slice(0, limit);
@@ -536,7 +567,7 @@ extension MailBridge {
                 } catch (e) {}
             }
         }
-        for (var p2 = 0; p2 < results.length; p2++) { delete results[p2].__msg; }
+        for (var p2 = 0; p2 < results.length; p2++) { delete results[p2].__msg; delete results[p2].__operationalAt; }
 
         JSON.stringify({results: results, meta: _meta});
         """

@@ -49,6 +49,17 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("acctFilter = 'O\\'Brien'"))
     }
 
+    func testMailScriptsUseReceiptTimeForOperationalDatesAndEmitBothTimestamps() {
+        let list = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        let search = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        let activity = MailBridge.buildActivityScript(account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0)
+        for script in [list, search, activity] {
+            XCTAssertTrue(script.contains("dateReceived"))
+            XCTAssertTrue(script.contains("receivedAt"))
+            XCTAssertTrue(script.contains("operationalDate"))
+        }
+    }
+
     // MARK: - buildSearchScript
 
     func testSearchScriptInterpolatesQuery() {
@@ -768,7 +779,7 @@ final class JXAScriptBuilderTests: XCTestCase {
     func testSearchScriptBreaksOnceOlderThanAfterDate() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, after: "2026-06-01")
         XCTAssertTrue(
-            script.contains("if (afterDate !== null && msgDate < afterDate) break;"),
+            script.contains("if (afterDate !== null && operationalDate < afterDate) break;"),
             "walking newest→oldest, the first message older than --after ends the mailbox scan"
         )
     }
@@ -776,7 +787,7 @@ final class JXAScriptBuilderTests: XCTestCase {
     func testSearchScriptKeepsBeforeContinueGuard() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, before: "2026-06-10")
         XCTAssertTrue(
-            script.contains("if (beforeDate !== null && msgDate > beforeDate) continue;"),
+            script.contains("if (beforeDate !== null && operationalDate > beforeDate) continue;"),
             "messages newer than --before must be skipped cheaply before any content() call"
         )
     }
@@ -792,7 +803,7 @@ final class JXAScriptBuilderTests: XCTestCase {
 
     func testSearchScriptDateGuardPrecedesContentFetch() throws {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, searchBody: true, limit: 10, after: "2026-06-01")
-        let guardIdx = try XCTUnwrap(script.range(of: "msgDate < afterDate")?.lowerBound)
+        let guardIdx = try XCTUnwrap(script.range(of: "operationalDate < afterDate")?.lowerBound)
         let bodyIdx = try XCTUnwrap(script.range(of: "msg.content()")?.lowerBound)
         XCTAssertLessThan(guardIdx, bodyIdx)
     }
@@ -860,8 +871,8 @@ final class JXAScriptBuilderTests: XCTestCase {
         let script = MailBridge.buildListScript(
             account: nil, mailbox: "INBOX", unread: false, limit: 10, after: "2026-06-01", before: "2026-06-10"
         )
-        XCTAssertTrue(script.contains("afterDate !== null && msgDate < afterDate"))
-        XCTAssertTrue(script.contains("beforeDate !== null && msgDate > beforeDate"))
+        XCTAssertTrue(script.contains("afterDate !== null && operationalDate < afterDate"))
+        XCTAssertTrue(script.contains("beforeDate !== null && operationalDate > beforeDate"))
     }
 
     func testSearchScriptOutputsMetaWrapper() {
@@ -893,8 +904,8 @@ final class JXAScriptBuilderTests: XCTestCase {
 
     func testSearchScriptDateComparisonLogic() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, after: "2026-01-01")
-        XCTAssertTrue(script.contains("afterDate !== null && msgDate < afterDate"))
-        XCTAssertTrue(script.contains("beforeDate !== null && msgDate > beforeDate"))
+        XCTAssertTrue(script.contains("afterDate !== null && operationalDate < afterDate"))
+        XCTAssertTrue(script.contains("beforeDate !== null && operationalDate > beforeDate"))
     }
 
     // MARK: - buildSearchScript (to filter)

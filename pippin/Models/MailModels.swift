@@ -12,6 +12,7 @@ public enum MailBridgeError: LocalizedError, Sendable {
     /// `--account` named an account Mail doesn't have. Carries the known
     /// account names so a typo is self-correcting from the error alone.
     case accountNotFound(String, available: [String])
+    case searchIncomplete
     case timeout
     case decodingFailed(String)
     case invalidMessageId(String)
@@ -25,6 +26,8 @@ public enum MailBridgeError: LocalizedError, Sendable {
             return "Message not found. The id may be stale — re-run `pippin mail list` or `mail search` to get current ids."
         case let .accountNotFound(name, available):
             return "Mail account not found: '\(name)'. Available accounts: \(available.joined(separator: ", "))."
+        case .searchIncomplete:
+            return "Mail search timed out before examining a complete result set. Narrow with --account, --mailbox, --after, or --before and retry."
         case .timeout: return "Mail automation timed out. Try narrowing with --account, --mailbox, or --after."
         case .decodingFailed: return "Failed to decode Mail response"
         case let .invalidMessageId(id): return "Invalid message id: \(id)"
@@ -63,6 +66,8 @@ public struct MailMessage: Codable, Sendable {
     public let from: String
     public let to: [String]
     public let date: String // ISO 8601
+    /// Receipt timestamp when Mail exposes one. `date` remains the sender's sent time.
+    public let receivedAt: String?
     public let read: Bool // snapshot at fetch/cache time, NOT live — use `mail list`/`search` for live read state
     public let body: String? // only populated by `show` command
     public let size: Int? // bytes; available in list/search
@@ -82,6 +87,7 @@ public struct MailMessage: Codable, Sendable {
         from: String,
         to: [String],
         date: String,
+        receivedAt: String? = nil,
         read: Bool,
         body: String? = nil,
         size: Int? = nil,
@@ -100,6 +106,7 @@ public struct MailMessage: Codable, Sendable {
         self.from = from
         self.to = to
         self.date = date
+        self.receivedAt = receivedAt
         self.read = read
         self.body = body
         self.size = size
@@ -121,6 +128,7 @@ public struct MailMessage: Codable, Sendable {
         try container.encode(from, forKey: .from)
         try container.encode(to, forKey: .to)
         try container.encode(date, forKey: .date)
+        try container.encodeIfPresent(receivedAt, forKey: .receivedAt)
         try container.encode(read, forKey: .read)
         try container.encode(body, forKey: .body) // encodes nil as JSON null
         try container.encodeIfPresent(size, forKey: .size)
@@ -135,13 +143,17 @@ public struct MailMessage: Codable, Sendable {
 }
 
 public extension MailMessage {
+    /// The timestamp used for Mail scan ordering, filtering, and CLI display.
+    /// `date` deliberately remains the sender-declared sent time.
+    var operationalDate: String { receivedAt ?? date }
+
     /// Return a copy with `bodyPreview` replaced, all other fields preserved.
     /// Used by `MailBridge.assemblePreviews` to attach a derived preview to a
     /// live metadata row without disturbing its read/unread or other fields.
     func withBodyPreview(_ preview: String?) -> MailMessage {
         MailMessage(
             id: id, account: account, mailbox: mailbox, subject: subject,
-            from: from, to: to, date: date, read: read, body: body,
+            from: from, to: to, date: date, receivedAt: receivedAt, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: preview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
             fromContact: fromContact, headerAnomalies: headerAnomalies
@@ -153,7 +165,7 @@ public extension MailMessage {
     func withFromContact(_ contact: String?) -> MailMessage {
         MailMessage(
             id: id, account: account, mailbox: mailbox, subject: subject,
-            from: from, to: to, date: date, read: read, body: body,
+            from: from, to: to, date: date, receivedAt: receivedAt, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
             fromContact: contact, headerAnomalies: headerAnomalies
@@ -166,7 +178,7 @@ public extension MailMessage {
     func withHeaderAnomalies(_ warnings: [String]) -> MailMessage {
         MailMessage(
             id: id, account: account, mailbox: mailbox, subject: subject,
-            from: from, to: to, date: date, read: read, body: body,
+            from: from, to: to, date: date, receivedAt: receivedAt, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
             fromContact: fromContact,
@@ -183,7 +195,7 @@ public extension MailMessage {
         let warnings = (HeaderAnomalies.detect(from: from, to: to, headers: headers) ?? []) + extra
         return MailMessage(
             id: id, account: account, mailbox: mailbox, subject: subject,
-            from: from, to: to, date: date, read: read, body: body,
+            from: from, to: to, date: date, receivedAt: receivedAt, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
             fromContact: fromContact,

@@ -91,14 +91,17 @@ run "contacts search"  "isinstance(d['data'], list)"                    -- conta
 
 # --- Mail (JXA) — includes regression checks for GitHub #21/#23/#24/#25
 run "mail accounts"    "isinstance(d['data'], list) and len(d['data']) > 0" -- mail accounts
-run "mail activity newest-first (#24)" "
-(lambda rows: len(rows) < 2 or all(rows[i]['date'] >= rows[i+1]['date'] for i in range(len(rows)-1)))(
+run "mail activity newest-first by receipt time (#24)" "
+(lambda rows: len(rows) < 2 or all((rows[i].get('receivedAt') or rows[i]['date']) >= (rows[i+1].get('receivedAt') or rows[i+1]['date']) for i in range(len(rows)-1)))(
   d['data'] if isinstance(d['data'], list) else d['data'].get('messages', []))" \
   -- mail activity --limit 10
-run "mail list --after honors cutoff (#25)" "
-(lambda rows: all(m['date'] >= '2026-01-01' for m in rows))(
+run "mail list --after honors receipt-time cutoff (#25)" "
+(lambda rows: all((m.get('receivedAt') or m['date']) >= '2026-01-01' for m in rows))(
   d['data'] if isinstance(d['data'], list) else d['data'].get('messages', []))" \
   -- mail list --after 2026-01-01 --limit 5
+run "mail metadata keeps sent time and optional receipt time" "
+all(isinstance(m.get('date'), str) and (m.get('receivedAt') is None or isinstance(m.get('receivedAt'), str)) for m in d['data'])" \
+  -- mail list --limit 5
 run "mail search --from filters sender (#21)" "isinstance(d['data'], (list, dict))" \
   -- mail search "the" --from "no-reply" --limit 3
 run "mail search date-bounded body scan returns (#23)" "isinstance(d['data'], (list, dict))" \

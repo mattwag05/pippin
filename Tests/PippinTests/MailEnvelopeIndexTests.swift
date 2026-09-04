@@ -286,6 +286,22 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertEqual(msgs[0].date, iso(Self.jul10 + 4 * Self.hour))
     }
 
+    func testListUsesReceiptTimeForOrderAndPreservesSentTime() throws {
+        let q = try makeFixtureDB()
+        try q.write { db in
+            try db.execute(sql: "UPDATE messages SET date_sent = ?, date_received = ? WHERE ROWID = 101", arguments: [Self.jul10 + 20 * Self.hour, Self.jul10 + Self.hour])
+            try db.execute(sql: "UPDATE messages SET date_sent = ?, date_received = ? WHERE ROWID = 102", arguments: [Self.jul10 + 2 * Self.hour, Self.jul10 + 10 * Self.hour])
+        }
+
+        let messages = try makeIndex(q).listMessages(
+            account: "Personal", mailbox: "INBOX", unread: false,
+            limit: 50, offset: 0, after: nil, before: nil
+        )
+        XCTAssertEqual(messages.prefix(2).map(\.id), ["Personal||INBOX||102", "Personal||INBOX||101"])
+        XCTAssertEqual(messages[0].date, iso(Self.jul10 + 2 * Self.hour))
+        XCTAssertEqual(messages[0].receivedAt, iso(Self.jul10 + 10 * Self.hour))
+    }
+
     func testListAfterIsUTCMidnightInclusive() throws {
         let idx = try makeIndex()
         // --after 2026-07-10 must include everything on jul10 (UTC) and exclude

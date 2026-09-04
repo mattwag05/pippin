@@ -38,9 +38,9 @@ public enum RuleApplyPlanner {
         var eligible: [(match: RuleMatch, date: Date)] = []
 
         for match in matches {
-            // A message whose date won't parse is held, never acted on: the age
+            // A message whose receipt or sent date won't parse is held, never acted on: the age
             // guard fails closed.
-            guard let date = parseISODate(match.message.date), date <= cutoff else {
+            guard let date = parseISODate(match.message.receivedAt ?? match.message.date), date <= cutoff else {
                 heldTooNew += 1
                 continue
             }

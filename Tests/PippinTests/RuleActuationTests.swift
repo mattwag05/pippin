@@ -8,6 +8,7 @@ private func actuationMessage(
     subject: String = "Hello",
     from: String = "bulk@example.com",
     date: String = "2026-01-01T12:00:00Z",
+    receivedAt: String? = nil,
     read: Bool = true
 ) -> MailMessage {
     MailMessage(
@@ -18,6 +19,7 @@ private func actuationMessage(
         from: from,
         to: ["me@example.com"],
         date: date,
+        receivedAt: receivedAt,
         read: read
     )
 }
@@ -136,9 +138,9 @@ final class TriageRulesActionableTests: XCTestCase {
 // MARK: - RuleApplyPlanner guardrails
 
 final class RuleApplyPlannerTests: XCTestCase {
-    private func match(id: String, date: String, read: Bool = true) -> RuleMatch {
+    private func match(id: String, date: String, receivedAt: String? = nil, read: Bool = true) -> RuleMatch {
         RuleMatch(
-            message: actuationMessage(id: id, date: date, read: read),
+            message: actuationMessage(id: id, date: date, receivedAt: receivedAt, read: read),
             rule: actuationRule(action: RuleAction(moveTo: "Archive"))
         )
     }
@@ -156,6 +158,35 @@ final class RuleApplyPlannerTests: XCTestCase {
         )
         XCTAssertEqual(plan.planned.map(\.message.id), ["old"])
         XCTAssertEqual(plan.heldTooNew, 1)
+    }
+
+    func testAgeGuardUsesReceiptTimeBeforeSentTime() {
+        let plan = RuleApplyPlanner.plan(
+            matches: [
+                match(
+                    id: "delayed",
+                    date: "2025-12-01T12:00:00Z",
+                    receivedAt: "2026-01-30T12:00:00Z"
+                ),
+            ],
+            now: referenceNow,
+            minAgeDays: 14,
+            skipUnread: false,
+            maxActions: 100
+        )
+        XCTAssertTrue(plan.planned.isEmpty)
+        XCTAssertEqual(plan.heldTooNew, 1)
+    }
+
+    func testAgeGuardFallsBackToSentTimeWithoutReceiptTime() {
+        let plan = RuleApplyPlanner.plan(
+            matches: [match(id: "legacy", date: "2025-12-01T12:00:00Z")],
+            now: referenceNow,
+            minAgeDays: 14,
+            skipUnread: false,
+            maxActions: 100
+        )
+        XCTAssertEqual(plan.planned.map(\.message.id), ["legacy"])
     }
 
     func testAgeGuardBoundaryIsInclusive() {

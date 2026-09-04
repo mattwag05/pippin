@@ -30,7 +30,7 @@ ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`Val
 
 ## Optional `warnings` + `partial` in agent envelope
 
-`AgentOkEnvelope` carries an optional top-level `warnings: [String]?` and, since pippin-1son (2026-07-30), an optional `partial: Bool?` — both omitted when empty/false, so consumers reading only `.data` are unaffected and no schema bump was needed (the additive-field precedent). `output.emit(timedOut:)` sets `partial: true` automatically; `emit(extraWarnings:)` merges non-timeout advisories (e.g. fast-path fallback reasons) into `warnings`. A timed-out empty scan is `{"status":"ok","partial":true,"data":[]}` — never emit a bare `data:[]` for an unfinished scan.
+`AgentOkEnvelope` carries an optional top-level `warnings: [String]?` and, since pippin-1son (2026-07-30), an optional `partial: Bool?`. Both are omitted when empty or false, so consumers reading only `.data` are unaffected and no schema bump was needed. `output.emit(timedOut:)` sets `partial: true` automatically; `emit(extraWarnings:)` merges non-timeout advisories such as fast-path fallback reasons into `warnings`. A timed-out search with nonempty results remains partial success. A timed-out search with an empty result or page throws `MailBridgeError.searchIncomplete`, yielding `status:error` and code `search_incomplete` so an agent cannot mistake incomplete coverage for no matches.
 
 ## Schema `default:` is advisory — it never reaches argv
 

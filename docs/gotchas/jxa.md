@@ -15,7 +15,7 @@ Format: `account||mailbox||numericId`. Parsed in `MailBridge` and `CompoundId` h
 
 ## Mail scan-window direction probe (GitHub #23/#24)
 
-`list`/`search`/`activity` JXA must NOT assume `mailbox.messages()` is oldest-first — collection direction varies. The builders probe the actual direction (two `dateSent()` reads) and walk the true newest-N window. Assuming an order reintroduced #23/#24: `activity` surfaced 2018 mail and date-filtered searches returned empty. `search --after` early-breaks once past the cutoff; `--before` binary-searches `dateSent()` to shift the window.
+`list`/`search`/`activity` JXA must NOT assume `mailbox.messages()` is oldest-first. Collection direction varies. The builders probe receipt time with a guarded `dateReceived()` and fall back to `dateSent()`, then walk the true newest-N window. Assuming an order reintroduced #23/#24: `activity` surfaced 2018 mail and date-filtered searches returned empty. Operational ordering and date filters use receipt time with sent-time fallback, while emitted `date` remains sent time and optional `receivedAt` carries receipt time.
 
 ## IMAP body fetch
 

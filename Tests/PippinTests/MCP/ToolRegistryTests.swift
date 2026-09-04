@@ -122,6 +122,33 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertTrue(argv.contains("--preview=150"))
     }
 
+    func testMailSearchSchemaAndArgsRetainAllSupportedFilters() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "mail_search"))
+        guard case let .object(schema) = tool.inputSchema,
+              case let .object(properties)? = schema["properties"] else {
+            return XCTFail("mail_search schema must expose object properties")
+        }
+        let expected = Set(["query", "account", "mailbox", "body", "preview", "after", "before", "to", "from", "limit", "semantic"])
+        XCTAssertTrue(expected.isSubset(of: Set(properties.keys)))
+
+        let argv = try tool.buildArgs(.object([
+            "query": .string("needle"),
+            "account": .string("account"),
+            "mailbox": .string("INBOX"),
+            "body": .bool(true),
+            "preview": .int(120),
+            "after": .string("2026-01-01"),
+            "before": .string("2026-01-31"),
+            "to": .string("recipient@example.com"),
+            "from": .string("sender@example.com"),
+            "limit": .int(25),
+            "semantic": .bool(true),
+        ]))
+        for flag in ["--account=account", "--mailbox=INBOX", "--body", "--preview=120", "--after=2026-01-01", "--before=2026-01-31", "--to=recipient@example.com", "--from=sender@example.com", "--limit=25", "--semantic"] {
+            XCTAssertTrue(argv.contains(flag), "Missing \(flag) in \(argv)")
+        }
+    }
+
     func testBuildArgsForMailActivityDefaultsPreviewZero() throws {
         // The CLI default is 200 (human use); the MCP surface must inject
         // --preview 0 when the arg is omitted so agent calls are metadata-only

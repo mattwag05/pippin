@@ -51,7 +51,7 @@ public struct MailCommand: AsyncParsableCommand {
         var fields: [(String, String)] = [
             ("From", message.from),
             ("To", message.to.joined(separator: ", ")),
-            ("Date", TextFormatter.compactDate(message.date)),
+            ("Received", TextFormatter.compactDate(message.operationalDate)),
             ("Subject", message.subject),
             ("Mailbox", "\(message.account) / \(message.mailbox)"),
         ]
@@ -142,7 +142,7 @@ public struct MailCommand: AsyncParsableCommand {
     public struct Search: AsyncParsableCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
-            abstract: "Search messages by subject or sender. Use --body for body content."
+            abstract: "Search messages by subject or sender. Use --from for sender-only searches; use --body only for slower body-content scans."
         )
 
         @Argument(help: "Search query (case-insensitive, matches subject/sender).")
@@ -292,6 +292,7 @@ public struct MailCommand: AsyncParsableCommand {
                 messages = attached.messages
                 timedOut = timedOut || attached.timedOut
             }
+            try MailBridge.requireCompleteSearch(resultCount: messages.count, timedOut: timedOut)
             try await emitMessages(messages, timedOut: timedOut, fastPathNote: outcome.fastPathNote)
         }
 
@@ -405,6 +406,7 @@ public struct MailCommand: AsyncParsableCommand {
                     fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash
                 )
             }
+            try MailBridge.requireCompleteSearch(resultCount: page.items.count, timedOut: paginatedTimedOut)
             try await emitPage(page, timedOut: paginatedTimedOut, fastPathNote: paginatedFastPathNote)
         }
     }
@@ -521,7 +523,7 @@ public struct MailCommand: AsyncParsableCommand {
                     let rows = messages.map { msg in
                         [
                             TextFormatter.truncate(msg.id, to: 8),
-                            TextFormatter.compactDate(msg.date),
+                            TextFormatter.compactDate(msg.operationalDate),
                             TextFormatter.truncate(msg.from, to: 18),
                             TextFormatter.truncate(msg.subject, to: 24),
                             msg.read ? "Y" : "N",
@@ -1368,7 +1370,7 @@ func printMessageTable(_ messages: [MailMessage]) {
     let rows = messages.map { msg in
         [
             TextFormatter.truncate(msg.id, to: 8),
-            TextFormatter.compactDate(msg.date),
+            TextFormatter.compactDate(msg.operationalDate),
             TextFormatter.truncate(msg.from, to: 18),
             // ⚠ = header anomalies known from cached headers (pippin-fwa)
             TextFormatter.truncate((msg.headerAnomalies != nil ? "⚠ " : "") + msg.subject, to: 24),
