@@ -14,6 +14,8 @@ final class StructuredOutputTests: XCTestCase {
     func testCompletionOptionsDefaultsToNoJSON() {
         XCTAssertFalse(AICompletionOptions().jsonMode)
         XCTAssertTrue(AICompletionOptions(jsonMode: true).jsonMode)
+        XCTAssertNil(AICompletionOptions().temperature)
+        XCTAssertEqual(AICompletionOptions(temperature: 0).temperature, 0)
     }
 
     // MARK: - Ollama: format: "json"
@@ -28,6 +30,16 @@ final class StructuredOutputTests: XCTestCase {
         let p = OllamaProvider(model: "gemma4:latest")
         let body = p.requestBody(prompt: "x", system: "y", jsonMode: false)
         XCTAssertNil(body["format"], "no format key on a free-text completion")
+    }
+
+    func testOllamaSerializesTemperatureOnlyWhenSupplied() {
+        let provider = OllamaProvider(model: "gemma4:latest")
+        XCTAssertNil(provider.requestBody(prompt: "x", system: "y", options: AICompletionOptions())["options"])
+        let body = provider.requestBody(
+            prompt: "x", system: "y", options: AICompletionOptions(temperature: 0)
+        )
+        let options = body["options"] as? [String: Any]
+        XCTAssertEqual(options?["temperature"] as? Double, 0)
     }
 
     // MARK: - OpenAI: response_format (config-gated + prompt-guarded)
@@ -59,6 +71,32 @@ final class StructuredOutputTests: XCTestCase {
         let p = OpenAIProvider(baseURL: "https://api.example/v1", model: "m", structuredOutputs: true)
         let req = try p.buildRequest(prompt: "Return JSON.", system: "", jsonMode: false)
         XCTAssertNil(try bodyObject(req)["response_format"])
+    }
+
+    func testOpenAISerializesTemperatureOnlyWhenSupplied() throws {
+        let provider = OpenAIProvider(baseURL: "https://api.example/v1", model: "m")
+        let omitted = try bodyObject(provider.buildRequest(
+            prompt: "x", system: "", options: AICompletionOptions()
+        ))
+        XCTAssertNil(omitted["temperature"])
+        let supplied = try bodyObject(provider.buildRequest(
+            prompt: "x", system: "", options: AICompletionOptions(temperature: 0)
+        ))
+        XCTAssertEqual(supplied["temperature"] as? Double, 0)
+    }
+
+    func testClaudeSerializesTemperatureOnlyWhenSupplied() throws {
+        let provider = ClaudeProvider(model: "claude-sonnet-4-6", apiKey: "test")
+        let omitted = try JSONSerialization.jsonObject(
+            with: provider.requestBody(prompt: "x", system: "", options: AICompletionOptions())
+        ) as? [String: Any]
+        XCTAssertNil(omitted?["temperature"])
+        let supplied = try JSONSerialization.jsonObject(
+            with: provider.requestBody(
+                prompt: "x", system: "", options: AICompletionOptions(temperature: 0)
+            )
+        ) as? [String: Any]
+        XCTAssertEqual(supplied?["temperature"] as? Double, 0)
     }
 
     func testMentionsJSONIsCaseInsensitiveAcrossPromptAndSystem() {

@@ -10,19 +10,15 @@ public struct ClaudeProvider: AIProvider {
     }
 
     public func complete(prompt: String, system: String) throws -> String {
+        try complete(prompt: prompt, system: system, options: AICompletionOptions())
+    }
+
+    public func complete(prompt: String, system: String, options: AICompletionOptions) throws -> String {
         guard let url = URL(string: "https://api.anthropic.com/v1/messages") else {
             throw AIProviderError.networkError("Invalid Anthropic API URL")
         }
 
-        let body: [String: Any] = [
-            "model": model,
-            "max_tokens": 4096,
-            "system": system,
-            "messages": [
-                ["role": "user", "content": prompt],
-            ],
-        ]
-        let httpBody = try JSONSerialization.data(withJSONObject: body)
+        let httpBody = try requestBody(prompt: prompt, system: system, options: options)
 
         return try withAIRetry(totalBudget: aiRequestTimeoutSeconds()) { attemptTimeout in
             var request = URLRequest(url: url, timeoutInterval: attemptTimeout)
@@ -55,5 +51,20 @@ public struct ClaudeProvider: AIProvider {
 
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
+    }
+
+    func requestBody(prompt: String, system: String, options: AICompletionOptions) throws -> Data {
+        var body: [String: Any] = [
+            "model": model,
+            "max_tokens": 4096,
+            "system": system,
+            "messages": [
+                ["role": "user", "content": prompt],
+            ],
+        ]
+        if let temperature = options.temperature {
+            body["temperature"] = temperature
+        }
+        return try JSONSerialization.data(withJSONObject: body)
     }
 }

@@ -125,13 +125,37 @@ final class AIProviderTests: XCTestCase {
     }
 
     func testOpenAIParseCompletion() throws {
-        let data = #"{"choices":[{"message":{"role":"assistant","content":"  Hello there.  "}}]}"#.data(using: .utf8)!
+        let data = #"{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"  Hello there.  "}}]}"#.data(using: .utf8)!
         XCTAssertEqual(try OpenAIProvider.parseCompletion(data), "Hello there.")
     }
 
     func testOpenAIParseCompletionMalformedThrows() {
         let data = #"{"choices":[]}"#.data(using: .utf8)!
         XCTAssertThrowsError(try OpenAIProvider.parseCompletion(data))
+    }
+
+    func testOpenAIParseCompletionRequiresCompletedNonblankContent() {
+        let cases = [
+            #"{"choices":[{"finish_reason":"stop","message":{"content":"   "}}]}"#,
+            #"{"choices":[{"finish_reason":"length","message":{"content":"secret reasoning"}}]}"#,
+            #"{"choices":[{"finish_reason":"content_filter","message":{"content":"secret reasoning"}}]}"#,
+            #"{"choices":[{"finish_reason":"tool_calls","message":{"content":null,"reasoning_content":"secret reasoning","tool_calls":[]}}]}"#,
+            #"{"choices":[{"message":{"content":"answer"}}]}"#,
+        ]
+        for raw in cases {
+            XCTAssertThrowsError(try OpenAIProvider.parseCompletion(Data(raw.utf8))) { error in
+                guard case AIProviderError.incompleteCompletion = error else {
+                    return XCTFail("expected incompleteCompletion, got \(error)")
+                }
+            }
+        }
+    }
+
+    func testOpenAIParseCompletionDoesNotExposeReasoningInIncompleteError() {
+        let raw = #"{"choices":[{"finish_reason":"length","message":{"content":"", "reasoning_content":"private chain of thought"}}]}"#
+        XCTAssertThrowsError(try OpenAIProvider.parseCompletion(Data(raw.utf8))) { error in
+            XCTAssertFalse(error.localizedDescription.contains("private chain of thought"))
+        }
     }
 
     func testMakeOpenAIProvider() throws {

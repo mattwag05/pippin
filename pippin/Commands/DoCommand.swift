@@ -67,42 +67,53 @@ public struct DoCommand: AsyncParsableCommand {
             )
         }
 
-        // Validate each step before executing anything so a bad plan fails
-        // cleanly instead of running the first N-1 steps.
-        for step in plan.steps {
-            guard let tool = MCPToolRegistry.tool(named: step.tool) else {
-                throw IntentPlannerError.unknownTool(step.tool)
-            }
-            do {
-                try SchemaValidator.validate(args: step.args, against: tool.inputSchema)
-            } catch let error as SchemaValidatorError {
-                throw DoError.stepValidationFailed(tool: step.tool, underlying: error)
-            }
-        }
-
         if dryRun {
-            let dry = DryRunResult(steps: plan.steps, finalAnswer: plan.finalAnswer)
+            // The executor validates even in dry-run mode, but its runner is
+            // never called. This keeps the output useful without claiming work ran.
+            _ = try await DoExecutor.execute(
+                plan: plan,
+                tools: MCPToolRegistry.tools,
+                maxSteps: maxSteps,
+                dryRun: true,
+                runTool: { _, _ in .null }
+            )
+            let dry = DryRunResult(
+                steps: plan.steps,
+                finalAnswer: plan.finalAnswer,
+                dryRun: true,
+                executed: false
+            )
             try emit(dry)
             return
         }
 
         let pippinPath = MCPServerRuntime.resolvePippinPath()
-        var executed: [ExecutedStep] = []
-        for step in plan.steps {
-            let tool = MCPToolRegistry.tool(named: step.tool)! // validated above
-            let argv: [String]
-            do {
-                argv = try tool.buildArgs(step.args)
-            } catch {
-                throw DoError.buildArgsFailed(tool: step.tool, underlying: error)
+        let execution = try await DoExecutor.execute(
+            plan: plan,
+            tools: MCPToolRegistry.tools,
+            maxSteps: maxSteps,
+            dryRun: false,
+            runTool: { tool, args in
+                let argv: [String]
+                do {
+                    argv = try tool.buildArgs(args)
+                } catch {
+                    throw DoError.buildArgsFailed(tool: tool.name, underlying: error)
+                }
+                // runChild blocks on process.waitUntilExit(); hop off the cooperative pool.
+                let child = try await detachBlocking {
+                    try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath)
+                }
+                return Self.decodeChildStdout(child.stdout)
             }
-            // runChild blocks on process.waitUntilExit(); hop off the cooperative pool.
-            let child = try await detachBlocking { try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath) }
-            let payload = Self.decodeChildStdout(child.stdout)
-            executed.append(ExecutedStep(tool: step.tool, args: step.args, result: payload))
-        }
+        )
 
-        let result = ExecutedResult(steps: executed, finalAnswer: plan.finalAnswer)
+        let result = ExecutedResult(
+            steps: execution.executedSteps,
+            finalAnswer: plan.finalAnswer,
+            dryRun: false,
+            executed: execution.executed
+        )
         try emit(result)
     }
 
@@ -140,14 +151,18 @@ public struct DoCommand: AsyncParsableCommand {
 struct DryRunResult: Encodable {
     let steps: [IntentPlanner.PlannedStep]
     let finalAnswer: String?
+    let dryRun: Bool
+    let executed: Bool
 
     enum CodingKeys: String, CodingKey {
         case steps
         case finalAnswer = "final_answer"
+        case dryRun = "dry_run"
+        case executed
     }
 }
 
-struct ExecutedStep: Encodable {
+struct ExecutedStep: Encodable, Sendable {
     let tool: String
     let args: JSONValue?
     let result: JSONValue
@@ -156,10 +171,53 @@ struct ExecutedStep: Encodable {
 struct ExecutedResult: Encodable {
     let steps: [ExecutedStep]
     let finalAnswer: String?
+    let dryRun: Bool
+    let executed: Bool
 
     enum CodingKeys: String, CodingKey {
         case steps
         case finalAnswer = "final_answer"
+        case dryRun = "dry_run"
+        case executed
+    }
+}
+
+struct DoExecutionOutput: Sendable {
+    let executedSteps: [ExecutedStep]
+    let dryRun: Bool
+    let executed: Bool
+}
+
+/// Injectable plan executor. Validation happens before the first runner call,
+/// and dry-run mode deliberately skips the runner entirely.
+enum DoExecutor {
+    typealias ToolRunner = @Sendable (MCPTool, JSONValue?) async throws -> JSONValue
+
+    static func execute(
+        plan: IntentPlanner.Plan,
+        tools: [MCPTool],
+        maxSteps: Int,
+        dryRun: Bool,
+        runTool: @escaping ToolRunner
+    ) async throws -> DoExecutionOutput {
+        try IntentPlanner.validate(plan: plan, tools: tools, maxSteps: maxSteps)
+        guard !dryRun else {
+            return DoExecutionOutput(executedSteps: [], dryRun: true, executed: false)
+        }
+
+        var executedSteps: [ExecutedStep] = []
+        for step in plan.steps {
+            guard let tool = tools.first(where: { $0.name == step.tool }) else {
+                throw IntentPlannerError.unknownTool(step.tool)
+            }
+            let payload = try await runTool(tool, step.args)
+            executedSteps.append(ExecutedStep(tool: step.tool, args: step.args, result: payload))
+        }
+        return DoExecutionOutput(
+            executedSteps: executedSteps,
+            dryRun: false,
+            executed: !executedSteps.isEmpty
+        )
     }
 }
 

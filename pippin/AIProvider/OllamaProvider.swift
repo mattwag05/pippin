@@ -18,13 +18,28 @@ public struct OllamaProvider: AIProvider {
     /// default `gemma4` (no thinking pass); thinking models (e.g. Qwen3.6) are
     /// served via the OpenAI path, not here.
     func requestBody(prompt: String, system: String, jsonMode: Bool) -> [String: Any] {
+        requestBody(
+            prompt: prompt,
+            system: system,
+            options: AICompletionOptions(jsonMode: jsonMode)
+        )
+    }
+
+    func requestBody(
+        prompt: String,
+        system: String,
+        options: AICompletionOptions
+    ) -> [String: Any] {
         var body: [String: Any] = [
             "model": model,
             "prompt": prompt,
             "system": system,
             "stream": false,
         ]
-        if jsonMode { body["format"] = "json" }
+        if options.jsonMode { body["format"] = "json" }
+        if let temperature = options.temperature {
+            body["options"] = ["temperature": temperature]
+        }
         return body
     }
 
@@ -40,7 +55,7 @@ public struct OllamaProvider: AIProvider {
         // retry — `.providerUnreachable` is non-transient (the server is down).
         try preflight()
 
-        let httpBody = try JSONSerialization.data(withJSONObject: requestBody(prompt: prompt, system: system, jsonMode: options.jsonMode))
+        let httpBody = try JSONSerialization.data(withJSONObject: requestBody(prompt: prompt, system: system, options: options))
 
         return try withAIRetry(totalBudget: aiRequestTimeoutSeconds()) { attemptTimeout in
             var request = URLRequest(url: url, timeoutInterval: attemptTimeout)

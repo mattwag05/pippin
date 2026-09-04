@@ -6,6 +6,7 @@ import XCTest
 final class ScriptedAIProvider: AIProvider, @unchecked Sendable {
     private var responses: [String]
     private(set) var calls: [(prompt: String, system: String)] = []
+    private(set) var optionCalls: [AICompletionOptions] = []
 
     init(_ responses: [String]) {
         self.responses = responses
@@ -17,6 +18,11 @@ final class ScriptedAIProvider: AIProvider, @unchecked Sendable {
             throw AIProviderError.networkError("ScriptedAIProvider exhausted")
         }
         return responses.removeFirst()
+    }
+
+    func complete(prompt: String, system: String, options: AICompletionOptions) throws -> String {
+        optionCalls.append(options)
+        return try complete(prompt: prompt, system: system)
     }
 }
 
@@ -68,6 +74,14 @@ final class IntentPlannerTests: XCTestCase {
         XCTAssertNil(plan.finalAnswer)
     }
 
+    func testPlannerRequestsDeterministicTemperature() throws {
+        let provider = ScriptedAIProvider([#"{"steps":[{"tool":"status"}]}"#])
+        _ = try IntentPlanner.plan(intent: "status", tools: MCPToolRegistry.tools, provider: provider)
+        XCTAssertEqual(provider.optionCalls.count, 1)
+        XCTAssertEqual(provider.optionCalls[0].temperature, 0)
+        XCTAssertTrue(provider.optionCalls[0].jsonMode)
+    }
+
     // MARK: - Self-repair
 
     func testMarkdownFencesStripped() throws {
@@ -101,6 +115,47 @@ final class IntentPlannerTests: XCTestCase {
         XCTAssertEqual(plan.steps.first?.tool, "status")
         // Repair prompt includes the bad output so the model has context.
         XCTAssertTrue(provider.calls[1].prompt.contains("not JSON at all"))
+        XCTAssertTrue(provider.calls[1].prompt.contains("status"), "repair must preserve original intent")
+    }
+
+    func testInvalidFirstPlanIsRepairedAfterUnknownTool() throws {
+        let bad = #"{"steps":[{"tool":"not_a_tool","args":{}}]}"#
+        let good = #"{"steps":[{"tool":"status","args":{}}]}"#
+        let provider = ScriptedAIProvider([bad, good])
+        let plan = try IntentPlanner.plan(intent: "status", tools: MCPToolRegistry.tools, provider: provider)
+        XCTAssertEqual(plan.steps.first?.tool, "status")
+        XCTAssertEqual(provider.calls.count, 2)
+    }
+
+    func testInvalidFirstPlanIsRepairedAfterStepSchemaFailure() throws {
+        let bad = #"{"steps":[{"tool":"mail_search","args":{}}]}"#
+        let good = #"{"steps":[{"tool":"status","args":{}}]}"#
+        let provider = ScriptedAIProvider([bad, good])
+        let plan = try IntentPlanner.plan(intent: "status", tools: MCPToolRegistry.tools, provider: provider)
+        XCTAssertEqual(plan.steps.first?.tool, "status")
+        XCTAssertEqual(provider.calls.count, 2)
+    }
+
+    func testEmptyPlanRequiresNonblankExplanation() {
+        let provider = ScriptedAIProvider([
+            #"{"steps":[],"final_answer":"   "}"#,
+            #"{"steps":[],"final_answer":"No matching tool is available."}"#,
+        ])
+        XCTAssertNoThrow(try IntentPlanner.plan(
+            intent: "summon a dragon", tools: MCPToolRegistry.tools, provider: provider
+        ))
+        XCTAssertEqual(provider.calls.count, 2)
+    }
+
+    func testPlannerRejectsPlanAboveStepLimitEvenWhenToolsAreKnown() {
+        let provider = ScriptedAIProvider([
+            #"{"steps":[{"tool":"status"},{"tool":"status"}]}"#,
+            #"{"steps":[{"tool":"status"}]}"#,
+        ])
+        XCTAssertNoThrow(try IntentPlanner.plan(
+            intent: "status", tools: MCPToolRegistry.tools, provider: provider, maxSteps: 1
+        ))
+        XCTAssertEqual(provider.calls.count, 2)
     }
 
     func testSelfRepairCappedAtTwoAttempts() {
@@ -146,6 +201,26 @@ final class IntentPlannerTests: XCTestCase {
         XCTAssertThrowsError(try IntentPlanner.parsePlan("not json")) { error in
             guard let parsed = error as? IntentPlannerError else { return XCTFail() }
             XCTAssertEqual(parsed.rawOutput, "not json")
+        }
+    }
+
+    func testParsePlanRejectsUnknownTopLevelFields() {
+        XCTAssertThrowsError(try IntentPlanner.parsePlan(
+            #"{"steps":[],"final_answer":"explanation","unexpected":true}"#
+        )) { error in
+            guard case IntentPlannerError.parseFailed = error else {
+                return XCTFail("expected top-level schema parse failure, got \(error)")
+            }
+        }
+    }
+
+    func testParsePlanRejectsUnknownStepFields() {
+        XCTAssertThrowsError(try IntentPlanner.parsePlan(
+            #"{"steps":[{"tool":"status","args":{},"unexpected":true}]}"#
+        )) { error in
+            guard case IntentPlannerError.parseFailed = error else {
+                return XCTFail("expected step schema parse failure, got \(error)")
+            }
         }
     }
 }

@@ -8,9 +8,12 @@ public struct AICompletionOptions: Sendable {
     /// prompt-based JSON, which the callers already parse defensively
     /// (`stripAIResponseJSON`). See pippin-us2.
     public var jsonMode: Bool
+    /// Optional sampling temperature. Nil leaves each provider's default in place.
+    public var temperature: Double?
 
-    public init(jsonMode: Bool = false) {
+    public init(jsonMode: Bool = false, temperature: Double? = nil) {
         self.jsonMode = jsonMode
+        self.temperature = temperature
     }
 }
 
@@ -47,6 +50,8 @@ public enum AIProviderError: LocalizedError, Sendable {
     /// `invalid_` prefix classifies as usage (exit 2) — a typo, not a bridge
     /// failure.
     case invalidProvider(String)
+    /// The provider returned no usable completed assistant answer.
+    case incompleteCompletion
 
     public var errorDescription: String? {
         switch self {
@@ -63,6 +68,8 @@ public enum AIProviderError: LocalizedError, Sendable {
             return "Model \"\(model)\" is not served by the OpenAI-compatible endpoint at \(baseURL) — set ai.openai.model in ~/.config/pippin/config.json (or pass --model) to a model the server actually serves"
         case let .invalidProvider(name):
             return "Unknown provider '\(name)'. Use 'ollama', 'claude', or 'openai'."
+        case .incompleteCompletion:
+            return "AI provider returned an incomplete completion."
         }
     }
 }
@@ -138,7 +145,7 @@ func isTransientAIError(_ error: AIProviderError) -> Bool {
     case let .apiError(code, _): return code == 429 || (500 ... 599).contains(code)
     case .networkError: return true
     case .timeout, .providerUnreachable, .decodingFailed, .missingAPIKey, .modelNotFound,
-         .remoteModelNotFound, .invalidProvider: return false
+         .remoteModelNotFound, .invalidProvider, .incompleteCompletion: return false
     }
 }
 

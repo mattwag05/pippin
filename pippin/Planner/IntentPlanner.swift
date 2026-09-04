@@ -7,7 +7,7 @@ import Foundation
 /// Self-repairs once on parse failure by feeding the error + bad output
 /// back to the model; hard cap at 2 attempts.
 enum IntentPlanner {
-    struct Plan: Codable, Equatable {
+    struct Plan: Codable, Equatable, Sendable {
         let steps: [PlannedStep]
         let finalAnswer: String?
 
@@ -17,7 +17,7 @@ enum IntentPlanner {
         }
     }
 
-    struct PlannedStep: Codable, Equatable {
+    struct PlannedStep: Codable, Equatable, Sendable {
         let tool: String
         let args: JSONValue?
 
@@ -35,14 +35,26 @@ enum IntentPlanner {
         provider: any AIProvider,
         maxSteps: Int = 5
     ) throws -> Plan {
+        guard maxSteps > 0, maxSteps <= 20 else {
+            throw IntentPlannerError.invalidPlan("Maximum plan length must be between 1 and 20.")
+        }
         let system = buildSystemPrompt(tools: tools, maxSteps: maxSteps)
         let user = "Intent: \(intent)\n\nRespond with only the JSON object."
         do {
-            let raw = try provider.complete(prompt: user, system: system, options: AICompletionOptions(jsonMode: true))
-            return try parsePlan(raw)
+            let raw = try provider.complete(
+                prompt: user,
+                system: system,
+                options: AICompletionOptions(jsonMode: true, temperature: 0)
+            )
+            let plan = try parsePlan(raw)
+            try validate(plan: plan, tools: tools, maxSteps: maxSteps)
+            return plan
         } catch let first as IntentPlannerError {
             // One self-repair round-trip — feed the error back to the model.
             let repairUser = """
+            Original user intent:
+            \(intent)
+
             Your previous response could not be parsed: \(first.localizedDescription)
 
             Your previous response:
@@ -50,8 +62,47 @@ enum IntentPlanner {
 
             Respond with ONLY the JSON object, no markdown fences or prose.
             """
-            let raw = try provider.complete(prompt: repairUser, system: system, options: AICompletionOptions(jsonMode: true))
-            return try parsePlan(raw)
+            let raw = try provider.complete(
+                prompt: repairUser,
+                system: system,
+                options: AICompletionOptions(jsonMode: true, temperature: 0)
+            )
+            let plan = try parsePlan(raw)
+            try validate(plan: plan, tools: tools, maxSteps: maxSteps)
+            return plan
+        }
+    }
+
+    /// Validate every aspect of a plan before any tool can run.
+    static func validate(plan: Plan, tools: [MCPTool], maxSteps: Int) throws {
+        guard maxSteps > 0, maxSteps <= 20 else {
+            throw IntentPlannerError.invalidPlan("Maximum plan length must be between 1 and 20.")
+        }
+        guard plan.steps.count <= maxSteps else {
+            throw IntentPlannerError.invalidPlan(
+                "Plan contains \(plan.steps.count) steps, but the limit is \(maxSteps)."
+            )
+        }
+        if plan.steps.isEmpty {
+            guard let answer = plan.finalAnswer,
+                  !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                throw IntentPlannerError.invalidPlan(
+                    "An empty plan requires a nonblank final_answer explanation."
+                )
+            }
+        }
+        for step in plan.steps {
+            guard let tool = tools.first(where: { $0.name == step.tool }) else {
+                throw IntentPlannerError.unknownTool(step.tool)
+            }
+            do {
+                try SchemaValidator.validate(args: step.args, against: tool.inputSchema)
+            } catch let error as SchemaValidatorError {
+                throw IntentPlannerError.invalidPlan(
+                    "Step for '\(step.tool)' failed schema validation: \(error.localizedDescription)"
+                )
+            }
         }
     }
 
@@ -115,6 +166,41 @@ enum IntentPlanner {
                 reason: "Could not encode response as UTF-8.", rawOutput: raw
             )
         }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw IntentPlannerError.parseFailed(
+                reason: "Plan must be a JSON object.", rawOutput: raw
+            )
+        }
+        let allowedKeys: Set = ["steps", "final_answer"]
+        guard Set(object.keys).isSubset(of: allowedKeys) else {
+            throw IntentPlannerError.parseFailed(
+                reason: "Plan contains unknown top-level fields.", rawOutput: raw
+            )
+        }
+        guard object["steps"] is [Any] else {
+            throw IntentPlannerError.parseFailed(
+                reason: "Plan must contain a steps array.", rawOutput: raw
+            )
+        }
+        if let steps = object["steps"] as? [[String: Any]] {
+            let allowedStepKeys: Set = ["tool", "args"]
+            for step in steps {
+                guard Set(step.keys).isSubset(of: allowedStepKeys) else {
+                    throw IntentPlannerError.parseFailed(
+                        reason: "A plan step contains unknown fields.", rawOutput: raw
+                    )
+                }
+            }
+        } else if !(object["steps"] as? [Any] ?? []).isEmpty {
+            throw IntentPlannerError.parseFailed(
+                reason: "Each plan step must be an object.", rawOutput: raw
+            )
+        }
+        if let finalAnswer = object["final_answer"], !(finalAnswer is String), !(finalAnswer is NSNull) {
+            throw IntentPlannerError.parseFailed(
+                reason: "final_answer must be a string when supplied.", rawOutput: raw
+            )
+        }
         do {
             return try JSONDecoder().decode(Plan.self, from: data)
         } catch {
@@ -143,6 +229,7 @@ enum IntentPlanner {
 enum IntentPlannerError: LocalizedError {
     case parseFailed(reason: String, rawOutput: String?)
     case unknownTool(String)
+    case invalidPlan(String)
 
     var errorDescription: String? {
         switch self {
@@ -150,6 +237,8 @@ enum IntentPlannerError: LocalizedError {
             return "Plan JSON could not be parsed: \(reason)"
         case let .unknownTool(name):
             return "Planner returned an unknown tool: '\(name)'."
+        case let .invalidPlan(reason):
+            return "Planner returned an invalid plan: \(reason)"
         }
     }
 

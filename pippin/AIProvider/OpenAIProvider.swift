@@ -42,7 +42,7 @@ public struct OpenAIProvider: AIProvider {
     public func complete(prompt: String, system: String, options: AICompletionOptions) throws -> String {
         try withAIRetry(totalBudget: aiRequestTimeoutSeconds()) { attemptTimeout in
             let request = try buildRequest(
-                prompt: prompt, system: system, jsonMode: options.jsonMode, timeout: attemptTimeout
+                prompt: prompt, system: system, options: options, timeout: attemptTimeout
             )
             let (data, httpResponse) = try sendSynchronousRequest(
                 request,
@@ -72,6 +72,20 @@ public struct OpenAIProvider: AIProvider {
         jsonMode: Bool = false,
         timeout: TimeInterval? = nil
     ) throws -> URLRequest {
+        try buildRequest(
+            prompt: prompt,
+            system: system,
+            options: AICompletionOptions(jsonMode: jsonMode),
+            timeout: timeout
+        )
+    }
+
+    func buildRequest(
+        prompt: String,
+        system: String,
+        options: AICompletionOptions,
+        timeout: TimeInterval? = nil
+    ) throws -> URLRequest {
         guard let url = URL(string: "\(baseURL)/chat/completions") else {
             throw AIProviderError.networkError("Invalid OpenAI-compatible base URL: \(baseURL)")
         }
@@ -87,11 +101,14 @@ public struct OpenAIProvider: AIProvider {
             "messages": messages,
             "stream": false,
         ]
+        if let temperature = options.temperature {
+            body["temperature"] = temperature
+        }
         // Native JSON mode is sent ONLY when: the caller asked for it, config
         // opted in (`structuredOutputs`), and the prompt mentions "json" — OpenAI
         // (and compatible servers) reject `response_format: json_object` with a
         // 400 unless the word "json" appears in the messages.
-        if jsonMode, structuredOutputs, Self.mentionsJSON(prompt: prompt, system: system) {
+        if options.jsonMode, structuredOutputs, Self.mentionsJSON(prompt: prompt, system: system) {
             body["response_format"] = ["type": "json_object"]
         }
 
@@ -115,12 +132,22 @@ public struct OpenAIProvider: AIProvider {
     /// Extract `choices[0].message.content` from an OpenAI-compatible
     /// chat-completions response.
     static func parseCompletion(_ data: Data) throws -> String {
-        guard
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let choices = json["choices"] as? [[String: Any]],
-            let message = choices.first?["message"] as? [String: Any],
-            let content = message["content"] as? String
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let choice = choices.first,
+              let finishReason = choice["finish_reason"] as? String,
+              finishReason == "stop",
+              let message = choice["message"] as? [String: Any],
+              let content = message["content"] as? String,
+              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
+            // Never include the provider payload here. It may contain hidden
+            // reasoning or tool-call arguments that must not reach logs/errors.
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let choices = json["choices"] as? [[String: Any]],
+               !choices.isEmpty {
+                throw AIProviderError.incompleteCompletion
+            }
             throw AIProviderError.decodingFailed(
                 "Missing choices[0].message.content in OpenAI-compatible response"
             )
