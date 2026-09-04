@@ -1,3 +1,4 @@
+import JavaScriptCore
 @testable import PippinLib
 import XCTest
 
@@ -105,6 +106,53 @@ final class JXAScriptBuilderTests: XCTestCase {
         let slice = try XCTUnwrap(script.range(of: "results = results.slice(offset, offset + limit);")?.lowerBound)
         let bodyFetch = try XCTUnwrap(script.range(of: "results[r].__msg.content()")?.lowerBound)
         XCTAssertLessThan(slice, bodyFetch)
+    }
+
+    func testListTieSortUsesNumericMessageRowID() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("__rowId: Number(msg.id())"))
+        XCTAssertTrue(script.contains("return a.__rowId - b.__rowId;"))
+        XCTAssertFalse(script.contains("return a.__tieBreak < b.__tieBreak"))
+    }
+
+    func testSearchTieSortUsesNumericMessageRowID() {
+        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        XCTAssertTrue(script.contains("__rowId: Number(msg.id())"))
+        XCTAssertTrue(script.contains("return a.__rowId - b.__rowId;"))
+    }
+
+    func testGeneratedTieComparatorOrdersRowID2Before10() throws {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        let start = try XCTUnwrap(script.range(of: "results.sort(function(a, b) {")?.lowerBound)
+        let suffix = script[start...]
+        let end = try XCTUnwrap(suffix.range(of: "});")?.upperBound)
+        let sort = String(suffix[..<end])
+        let fixture = "var results = [{__operationalAt: '2026-01-01T00:00:00Z', __rowId: 10}, {__operationalAt: '2026-01-01T00:00:00Z', __rowId: 2}];\n\(sort)\nJSON.stringify(results.map(function(row) { return row.__rowId; }));"
+        let context = try XCTUnwrap(JSContext())
+        XCTAssertEqual(context.evaluateScript(fixture)?.toString(), "[2,10]")
+    }
+
+    func testListExtendsCandidateScanThroughTimestampTieBoundary() {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
+        XCTAssertTrue(script.contains("var candidateBoundaryMs = null;"))
+        XCTAssertTrue(script.contains("candidateBoundaryMs !== null && operationalDate.getTime() < candidateBoundaryMs"))
+        XCTAssertTrue(script.contains("if (k === candidateLimit - 1) candidateBoundaryMs = operationalDate.getTime();"))
+    }
+
+    func testDeferredListPreviewChecksTimeoutThenCleansAllInternalFields() throws {
+        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10, preview: 100)
+        let slice = try XCTUnwrap(script.range(of: "results = results.slice(offset, offset + limit);")?.lowerBound)
+        let afterSlice = String(script[slice...])
+        XCTAssertTrue(afterSlice.contains("if (Date.now() - _listStart > softTimeoutMs) { _meta.timedOut = true; break; }"))
+        XCTAssertTrue(afterSlice.contains("delete results[r].__msg;"))
+        XCTAssertTrue(afterSlice.contains("delete results[r].__operationalAt;"))
+        XCTAssertTrue(afterSlice.contains("delete results[r].__rowId;"))
+    }
+
+    func testActivityRowsFallBackToReceiptTimeWhenSentAccessorFails() {
+        let script = MailBridge.buildActivityScript(account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0)
+        XCTAssertTrue(script.contains("var msgDate = dates.sentDate || operationalDate;"))
+        XCTAssertTrue(script.contains("if (operationalDate === null) continue;"))
     }
 
     // MARK: - buildSearchScript

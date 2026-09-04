@@ -114,15 +114,13 @@ extension MailBridge {
             var totalMsgs = msgs.length;
             \(jsProbeNewestFirst(collection: "msgs", fallbackNewestFirst: true))
             // Each mailbox contributes enough newest candidates for the global
-            // post-merge offset and limit.
-            var windowSize = Math.min(candidateLimit, totalMsgs);
-            // Window truncated below the mailbox's remaining depth → we did not
-            // scan back to its oldest message (feeds the --before shortfall hint).
-            if (windowSize < totalMsgs) _meta.reachedMailboxEnd = false;
+            // post-merge offset and limit. Equal boundary timestamps are also
+            // included so numeric row-id ordering can choose the correct page.
+            var candidateBoundaryMs = null;
 
             // Metadata assembly stays bounded per message. Preview body reads
             // happen only after global sorting and pagination selects rows.
-            for (var k = 0; k < windowSize; k++) {
+            for (var k = 0; k < totalMsgs; k++) {
                 if (Date.now() - _listStart > softTimeoutMs) { _meta.timedOut = true; break; }
                 var msg = msgs[newestFirst ? k : totalMsgs - 1 - k];
                 _meta.messagesExamined++;
@@ -132,6 +130,11 @@ extension MailBridge {
                 var operationalDate = dates.operationalDate;
                 if (operationalDate === null) continue;
                 var msgDate = dates.sentDate || operationalDate;
+                if (candidateBoundaryMs !== null && operationalDate.getTime() < candidateBoundaryMs) {
+                    _meta.reachedMailboxEnd = false;
+                    break;
+                }
+                if (k === candidateLimit - 1) candidateBoundaryMs = operationalDate.getTime();
                 var _mms = operationalDate.getTime();
                 if (_meta.oldestExaminedMs === null || _mms < _meta.oldestExaminedMs) _meta.oldestExaminedMs = _mms;
                 if (afterDate !== null && operationalDate < afterDate) continue;
@@ -155,10 +158,10 @@ extension MailBridge {
                     body: null,
                     size: msgSize,
                     hasAttachment: msgHasAtt,
-                    __msg: msg
+                    __msg: msg,
+                    __rowId: Number(msg.id())
                 };
                 row.__operationalAt = operationalDate.toISOString();
-                row.__tieBreak = row.id;
                 results.push(row);
             }
         }
@@ -166,10 +169,11 @@ extension MailBridge {
         results.sort(function(a, b) {
             if (a.__operationalAt < b.__operationalAt) return 1;
             if (a.__operationalAt > b.__operationalAt) return -1;
-            return a.__tieBreak < b.__tieBreak ? -1 : (a.__tieBreak > b.__tieBreak ? 1 : 0);
+            return a.__rowId - b.__rowId;
         });
         results = results.slice(offset, offset + limit);
         for (var r = 0; r < results.length; r++) {
+            if (Date.now() - _listStart > softTimeoutMs) { _meta.timedOut = true; break; }
             if (previewChars > 0) {
                 try {
                     var raw = results[r].__msg.content();
@@ -181,8 +185,9 @@ extension MailBridge {
             }
             delete results[r].__msg;
             delete results[r].__operationalAt;
-            delete results[r].__tieBreak;
+            delete results[r].__rowId;
         }
+        for (var c = 0; c < results.length; c++) { delete results[c].__msg; delete results[c].__operationalAt; delete results[c].__rowId; }
 
         JSON.stringify({results: results, meta: _meta});
         """
@@ -432,7 +437,7 @@ extension MailBridge {
                             size: msgSize,
                             hasAttachment: msgHasAtt,
                             __operationalAt: operationalDate.toISOString(),
-                            __tieBreak: acctName + '||' + mb.name() + '||' + msg.id()
+                            __rowId: Number(msg.id())
                         });
                     }
                 }
@@ -442,10 +447,10 @@ extension MailBridge {
         results.sort(function(a, b) {
             if (a.__operationalAt < b.__operationalAt) return 1;
             if (a.__operationalAt > b.__operationalAt) return -1;
-            return a.__tieBreak < b.__tieBreak ? -1 : (a.__tieBreak > b.__tieBreak ? 1 : 0);
+            return a.__rowId - b.__rowId;
         });
         results = results.slice(offset, offset + limit);
-        for (var p = 0; p < results.length; p++) { delete results[p].__operationalAt; delete results[p].__tieBreak; }
+        for (var p = 0; p < results.length; p++) { delete results[p].__operationalAt; delete results[p].__rowId; }
 
         JSON.stringify({results: results, meta: _meta});
         """
@@ -528,8 +533,9 @@ extension MailBridge {
                     var msg = allMsgs[newestFirst ? k : totalMsgs - 1 - k];
                     _meta.messagesExamined++;
                     var dates = mailDates(msg);
-                    var msgDate = dates.sentDate;
                     var operationalDate = dates.operationalDate;
+                    if (operationalDate === null) continue;
+                    var msgDate = dates.sentDate || operationalDate;
                     if (sinceDate !== null && operationalDate < sinceDate) continue;
 
                     var subject = msg.subject() || '';
