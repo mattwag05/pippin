@@ -55,6 +55,8 @@ The annotated tag (`-a`) is **required** — bare `git tag vX.Y.Z` fails with "n
 
 ### 6. Push commit + tag
 
+Stop and obtain Matt's explicit approval for this exact Git push. Local commits and tags do not need approval, but remote Git writes do.
+
 ```bash
 git push origin main --tags
 ```
@@ -87,6 +89,8 @@ The formula installs the **pre-signed release tarball** (not a from-source build
 Then lint: `brew style mattwag05/tap/pippin` (must be clean). The `test do` block asserts both the version and a `Developer ID Application` signature — if the asset is ad-hoc, the formula test fails by design.
 
 ### 8. Commit and push the tap
+
+Create the local tap commit without waiting. Obtain Matt's explicit approval before pushing it.
 
 ```bash
 cd /opt/homebrew/Library/Taps/mattwag05/homebrew-tap
