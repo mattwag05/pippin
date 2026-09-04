@@ -135,8 +135,17 @@ final class JXAScriptBuilderTests: XCTestCase {
     func testListExtendsCandidateScanThroughTimestampTieBoundary() {
         let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
         XCTAssertTrue(script.contains("var candidateBoundaryMs = null;"))
+        XCTAssertTrue(script.contains("var usableCandidateCount = 0;"))
+        XCTAssertTrue(script.contains("usableCandidateCount += 1;"))
         XCTAssertTrue(script.contains("candidateBoundaryMs !== null && operationalDate.getTime() < candidateBoundaryMs"))
-        XCTAssertTrue(script.contains("if (k === candidateLimit - 1) candidateBoundaryMs = operationalDate.getTime();"))
+        XCTAssertTrue(script.contains("if (usableCandidateCount === candidateLimit) candidateBoundaryMs = operationalDate.getTime();"))
+        XCTAssertFalse(script.contains("k === candidateLimit - 1"))
+    }
+
+    func testUsableCandidateFixtureSkipsUndatedRowsBeforeSettingTieBoundary() throws {
+        let context = try XCTUnwrap(JSContext())
+        let fixture = "var usableCandidateCount = 0; var boundary = null; var accepted = []; var rows = [100, null, 90, 90, 80]; for (var i = 0; i < rows.length; i++) { var timestamp = rows[i]; if (timestamp === null) continue; if (boundary !== null && timestamp < boundary) break; usableCandidateCount += 1; if (usableCandidateCount === 2) boundary = timestamp; accepted.push(timestamp); } JSON.stringify({accepted: accepted, boundary: boundary});"
+        XCTAssertEqual(context.evaluateScript(fixture)?.toString(), "{\"accepted\":[100,90,90],\"boundary\":90}")
     }
 
     func testDeferredListPreviewChecksTimeoutThenCleansAllInternalFields() throws {
@@ -147,6 +156,10 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(afterSlice.contains("delete results[r].__msg;"))
         XCTAssertTrue(afterSlice.contains("delete results[r].__operationalAt;"))
         XCTAssertTrue(afterSlice.contains("delete results[r].__rowId;"))
+        XCTAssertTrue(afterSlice.contains("for (var c = 0; c < results.length; c++)"))
+        XCTAssertTrue(afterSlice.contains("delete results[c].__msg;"))
+        XCTAssertTrue(afterSlice.contains("delete results[c].__operationalAt;"))
+        XCTAssertTrue(afterSlice.contains("delete results[c].__rowId;"))
     }
 
     func testActivityRowsFallBackToReceiptTimeWhenSentAccessorFails() {

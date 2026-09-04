@@ -117,6 +117,7 @@ extension MailBridge {
             // post-merge offset and limit. Equal boundary timestamps are also
             // included so numeric row-id ordering can choose the correct page.
             var candidateBoundaryMs = null;
+            var usableCandidateCount = 0;
 
             // Metadata assembly stays bounded per message. Preview body reads
             // happen only after global sorting and pagination selects rows.
@@ -134,7 +135,8 @@ extension MailBridge {
                     _meta.reachedMailboxEnd = false;
                     break;
                 }
-                if (k === candidateLimit - 1) candidateBoundaryMs = operationalDate.getTime();
+                usableCandidateCount += 1;
+                if (usableCandidateCount === candidateLimit) candidateBoundaryMs = operationalDate.getTime();
                 var _mms = operationalDate.getTime();
                 if (_meta.oldestExaminedMs === null || _mms < _meta.oldestExaminedMs) _meta.oldestExaminedMs = _mms;
                 if (afterDate !== null && operationalDate < afterDate) continue;
