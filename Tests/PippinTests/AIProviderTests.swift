@@ -158,6 +158,38 @@ final class AIProviderTests: XCTestCase {
         }
     }
 
+    func testOpenAIGenericHTTPErrorDoesNotExposeResponseBody() {
+        let body = #"{"error":"request failed","reasoning_content":"private chain","prompt":"echoed user intent"}"#
+        let error = OpenAIProvider.errorForHTTPStatus(
+            400,
+            data: Data(body.utf8),
+            model: "m",
+            baseURL: "https://api.example/v1"
+        )
+        guard case let AIProviderError.apiError(code, detail) = error else {
+            return XCTFail("expected typed generic API error, got \(error)")
+        }
+        XCTAssertEqual(code, 400)
+        XCTAssertTrue(detail.contains("HTTP 400"))
+        XCTAssertFalse(detail.contains("private chain"))
+        XCTAssertFalse(detail.contains("echoed user intent"))
+    }
+
+    func testOpenAI404ModelErrorRemainsTyped() {
+        let body = #"{"error":"model m not found"}"#
+        let error = OpenAIProvider.errorForHTTPStatus(
+            404,
+            data: Data(body.utf8),
+            model: "m",
+            baseURL: "https://api.example/v1"
+        )
+        guard case let AIProviderError.remoteModelNotFound(model, baseURL) = error else {
+            return XCTFail("expected remote model-not-found error, got \(error)")
+        }
+        XCTAssertEqual(model, "m")
+        XCTAssertEqual(baseURL, "https://api.example/v1")
+    }
+
     func testMakeOpenAIProvider() throws {
         let provider = try AIProviderFactory.make(providerFlag: "openai", modelFlag: "gpt-4o-mini")
         XCTAssertTrue(provider is OpenAIProvider)

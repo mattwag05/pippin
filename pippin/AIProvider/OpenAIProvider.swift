@@ -49,18 +49,38 @@ public struct OpenAIProvider: AIProvider {
                 waitTimeoutSeconds: Int(attemptTimeout) + 5
             )
             guard httpResponse.statusCode == 200 else {
-                let detail = String(data: data, encoding: .utf8) ?? ""
-                // A 404 whose body names the model is "model not served here",
-                // not a generic API failure — surface it typed (exit 3) with a
-                // config-pointing remediation, matching the Ollama path.
-                if httpResponse.statusCode == 404,
-                   detail.range(of: "model", options: .caseInsensitive) != nil {
-                    throw AIProviderError.remoteModelNotFound(model: model, baseURL: baseURL)
-                }
-                throw AIProviderError.apiError(httpResponse.statusCode, detail)
+                throw Self.errorForHTTPStatus(
+                    httpResponse.statusCode, data: data, model: model, baseURL: baseURL
+                )
             }
             return try Self.parseCompletion(data)
         }
+    }
+
+    /// Classify an HTTP failure without copying untrusted provider response
+    /// content into an error that can be returned or logged to a user.
+    static func errorForHTTPStatus(
+        _ statusCode: Int,
+        data: Data,
+        model: String,
+        baseURL: String
+    ) -> AIProviderError {
+        let body = String(data: data, encoding: .utf8) ?? ""
+        // A 404 whose body names the model is "model not served here", not a
+        // generic API failure. Keep this typed path and its remediation.
+        if statusCode == 404, body.range(of: "model", options: .caseInsensitive) != nil {
+            return .remoteModelNotFound(model: model, baseURL: baseURL)
+        }
+        let classification: String
+        switch statusCode {
+        case 400 ..< 500:
+            classification = "request rejected by endpoint"
+        case 500 ... 599:
+            classification = "endpoint server failure"
+        default:
+            classification = "endpoint returned an HTTP error"
+        }
+        return .apiError(statusCode, "OpenAI-compatible \(classification) (HTTP \(statusCode)).")
     }
 
     /// Build the chat-completions POST request. Pure (no network I/O) so the
