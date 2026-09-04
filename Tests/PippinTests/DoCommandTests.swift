@@ -74,6 +74,27 @@ final class DoCommandTests: XCTestCase {
         }
     }
 
+    func testUnexpectedArgumentExecutesZeroToolsThroughExecutorSeam() async {
+        let plan = IntentPlanner.Plan(
+            steps: [
+                IntentPlanner.PlannedStep(
+                    tool: "doctor", args: .object(["unexpected": .bool(true)])
+                ),
+            ],
+            finalAnswer: nil
+        )
+        let counter = CallCounter()
+        do {
+            _ = try await DoExecutor.execute(
+                plan: plan, tools: MCPToolRegistry.tools, maxSteps: 5, dryRun: false,
+                runTool: { _, _ in counter.count += 1; return .null }
+            )
+            XCTFail("plan with an undeclared argument should throw")
+        } catch {
+            XCTAssertEqual(counter.count, 0)
+        }
+    }
+
     func testDryRunExecutesZeroToolsThroughExecutorSeam() async throws {
         let plan = IntentPlanner.Plan(
             steps: [IntentPlanner.PlannedStep(tool: "status", args: nil)], finalAnswer: "note"

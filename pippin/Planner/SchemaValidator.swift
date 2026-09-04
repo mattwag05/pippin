@@ -3,7 +3,8 @@ import Foundation
 // MARK: - SchemaValidator
 
 /// Best-effort validator for LLM-proposed tool arguments against an
-/// `MCPTool.inputSchema`. Checks required fields + top-level type tags
+/// `MCPTool.inputSchema`. Checks required fields, undeclared top-level fields
+/// when the schema forbids them, and top-level type tags
 /// (`"string"`, `"integer"`, `"boolean"`, `"array"`). Does not recurse into
 /// nested `properties` of array items — the MCP tool's `buildArgs` closure
 /// will fail downstream if the shape is truly wrong, so this validator
@@ -30,6 +31,11 @@ enum SchemaValidator {
 
         for name in required where argsObject[name] == nil {
             throw SchemaValidatorError.missingRequired(name)
+        }
+
+        if schema["additionalProperties"]?.boolValue == false,
+           let name = argsObject.keys.filter({ properties[$0] == nil }).sorted().first {
+            throw SchemaValidatorError.unexpectedArgument(name)
         }
 
         for (name, value) in argsObject {
@@ -98,12 +104,15 @@ enum SchemaValidator {
 
 enum SchemaValidatorError: LocalizedError, Equatable {
     case missingRequired(String)
+    case unexpectedArgument(String)
     case wrongType(field: String, expected: String, got: String)
 
     var errorDescription: String? {
         switch self {
         case let .missingRequired(name):
             return "Missing required argument: '\(name)'."
+        case let .unexpectedArgument(name):
+            return "Unexpected argument: '\(name)'."
         case let .wrongType(field, expected, got):
             return "Argument '\(field)' must be \(expected), got \(got)."
         }

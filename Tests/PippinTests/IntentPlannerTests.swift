@@ -140,6 +140,18 @@ final class IntentPlannerTests: XCTestCase {
         XCTAssertTrue(provider.calls[1].prompt.contains("Original user intent:\nstatus"))
     }
 
+    func testInvalidFirstPlanIsRepairedAfterUnexpectedArgument() throws {
+        let bad = #"{"steps":[{"tool":"doctor","args":{"unexpected":true}}]}"#
+        let good = #"{"steps":[{"tool":"doctor","args":{}}]}"#
+        let provider = ScriptedAIProvider([bad, good])
+        let plan = try IntentPlanner.plan(
+            intent: "Run Pippin doctor", tools: MCPToolRegistry.tools, provider: provider
+        )
+        XCTAssertEqual(plan.steps.first?.tool, "doctor")
+        XCTAssertEqual(provider.calls.count, 2)
+        XCTAssertTrue(provider.calls[1].prompt.contains(bad))
+    }
+
     func testEmptyPlanRequiresNonblankExplanation() {
         let provider = ScriptedAIProvider([
             #"{"steps":[],"final_answer":"   "}"#,

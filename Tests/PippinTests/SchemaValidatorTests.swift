@@ -96,8 +96,8 @@ final class SchemaValidatorTests: XCTestCase {
         ))
     }
 
-    func testExtraFieldsTolerated() throws {
-        // Schema doesn't declare `extra`; validator should ignore it.
+    func testExtraFieldsToleratedWhenSchemaDoesNotForbidThem() throws {
+        // JSON Schema permits undeclared properties unless explicitly disabled.
         let schema: JSONValue = .object([
             "properties": .object([
                 "query": .object(["type": .string("string")]),
@@ -107,6 +107,21 @@ final class SchemaValidatorTests: XCTestCase {
             args: .object(["query": .string("x"), "extra": .int(99)]),
             against: schema
         ))
+    }
+
+    func testExtraFieldsRejectedWhenAdditionalPropertiesIsFalse() {
+        let schema: JSONValue = .object([
+            "properties": .object([
+                "query": .object(["type": .string("string")]),
+            ]),
+            "additionalProperties": .bool(false),
+        ])
+        XCTAssertThrowsError(try SchemaValidator.validate(
+            args: .object(["query": .string("x"), "extra": .int(99)]),
+            against: schema
+        )) { error in
+            XCTAssertEqual(error as? SchemaValidatorError, .unexpectedArgument("extra"))
+        }
     }
 
     func testUnknownTypeTagTolerated() throws {
