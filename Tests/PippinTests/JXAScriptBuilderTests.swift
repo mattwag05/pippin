@@ -168,6 +168,29 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("if (operationalDate === null) continue;"))
     }
 
+    func testActivityTieSortUsesNumericRowIDAndCleansIt() throws {
+        let script = MailBridge.buildActivityScript(account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0)
+        XCTAssertTrue(script.contains("__rowId: Number(msg.id())"))
+        XCTAssertTrue(script.contains("return a.__rowId - b.__rowId;"))
+        XCTAssertTrue(script.contains("delete results[p2].__rowId;"))
+        let start = try XCTUnwrap(script.range(of: "results.sort(function(a, b) {")?.lowerBound)
+        let suffix = script[start...]
+        let end = try XCTUnwrap(suffix.range(of: "});")?.upperBound)
+        let sort = String(suffix[..<end])
+        let fixture = "var results = [{__operationalAt: '2026-01-01T00:00:00Z', __rowId: 10}, {__operationalAt: '2026-01-01T00:00:00Z', __rowId: 2}];\n\(sort)\nJSON.stringify(results.map(function(row) { return row.__rowId; }));"
+        let context = try XCTUnwrap(JSContext())
+        XCTAssertEqual(context.evaluateScript(fixture)?.toString(), "[2,10]")
+    }
+
+    func testHeaderlessSearchAndActivityDedupUseOperationalTimestamp() {
+        let search = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
+        let activity = MailBridge.buildActivityScript(account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0)
+        for script in [search, activity] {
+            XCTAssertTrue(script.contains("sender + '\\x00' + operationalDate.toISOString()"))
+            XCTAssertFalse(script.contains("sender + '\\x00' + msgDate.toISOString()"))
+        }
+    }
+
     // MARK: - buildSearchScript
 
     func testSearchScriptInterpolatesQuery() {

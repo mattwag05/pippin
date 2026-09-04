@@ -414,7 +414,7 @@ extension MailBridge {
                         // Gmail lists the same message in both INBOX and [Gmail]/All Mail.
                         var dedupKey = null;
                         try { dedupKey = msg.messageId(); } catch(e) {}
-                        if (!dedupKey) dedupKey = subject + '\\x00' + sender + '\\x00' + msgDate.toISOString();
+                        if (!dedupKey) dedupKey = subject + '\\x00' + sender + '\\x00' + operationalDate.toISOString();
                         if (seenMsgKeys[dedupKey]) continue;
                         seenMsgKeys[dedupKey] = true;
 
@@ -546,7 +546,7 @@ extension MailBridge {
                     var dedupKey = null;
                     try { dedupKey = msg.messageId(); } catch(e) {}
                     if (!dedupKey) {
-                        dedupKey = subject + '\\x00' + sender + '\\x00' + msgDate.toISOString();
+                        dedupKey = subject + '\\x00' + sender + '\\x00' + operationalDate.toISOString();
                     }
                     if (seenMsgKeys[dedupKey]) continue;
                     seenMsgKeys[dedupKey] = true;
@@ -572,7 +572,8 @@ extension MailBridge {
                         size: msgSize,
                         hasAttachment: msgHasAtt,
                         __msg: msg,
-                        __operationalAt: operationalDate.toISOString()
+                        __operationalAt: operationalDate.toISOString(),
+                        __rowId: Number(msg.id())
                     };
                     results.push(row);
                 }
@@ -583,7 +584,7 @@ extension MailBridge {
         results.sort(function(a, b) {
             if (a.__operationalAt < b.__operationalAt) return 1;
             if (a.__operationalAt > b.__operationalAt) return -1;
-            return 0;
+            return a.__rowId - b.__rowId;
         });
         if (results.length > limit) results = results.slice(0, limit);
 
@@ -601,7 +602,7 @@ extension MailBridge {
                 } catch (e) {}
             }
         }
-        for (var p2 = 0; p2 < results.length; p2++) { delete results[p2].__msg; delete results[p2].__operationalAt; }
+        for (var p2 = 0; p2 < results.length; p2++) { delete results[p2].__msg; delete results[p2].__operationalAt; delete results[p2].__rowId; }
 
         JSON.stringify({results: results, meta: _meta});
         """
