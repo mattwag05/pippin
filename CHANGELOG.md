@@ -21,9 +21,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - [bug] OpenAI-compatible blank, reasoning-only, truncated, and filtered responses now fail as the typed non-retryable `incomplete_completion` error without exposing reasoning content.
-- [bug] Mail newest-first ordering, date filters, CLI display, and rule age guards now use receipt time with a sent-time fallback across both JXA and Envelope Index paths.
-- [bug] A body search that times out before finding a match now returns `search_incomplete` with narrowing guidance; nonempty timed-out searches continue to return useful partial results.
-- [bug] Generic Mail `Application can't be found. (-2700)` failures are now diagnosed as automation-context or app-lookup failures rather than proof that Mail is not installed, while Envelope Index metadata access is reported separately.
+- [bug] Mail newest-first ordering, date filters, CLI display, and rule age guards now use receipt time with a sent-time fallback across both JXA and Envelope Index paths. Closes pippin-wrdm and pippin-23bi.
+- [bug] A body search that times out before finding a match now returns `search_incomplete` with narrowing guidance; nonempty timed-out searches continue to return useful partial results. Closes pippin-qeer.
+- [bug] Generic Mail `Application can't be found. (-2700)` failures are now diagnosed as automation-context or app-lookup failures rather than proof that Mail is not installed, while Envelope Index metadata access is reported separately. Closes pippin-v1ia.
 
 ### Documentation
 
