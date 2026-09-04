@@ -125,6 +125,8 @@ final class IntentPlannerTests: XCTestCase {
         let plan = try IntentPlanner.plan(intent: "status", tools: MCPToolRegistry.tools, provider: provider)
         XCTAssertEqual(plan.steps.first?.tool, "status")
         XCTAssertEqual(provider.calls.count, 2)
+        XCTAssertTrue(provider.calls[1].prompt.contains(bad))
+        XCTAssertTrue(provider.calls[1].prompt.contains("Original user intent:\nstatus"))
     }
 
     func testInvalidFirstPlanIsRepairedAfterStepSchemaFailure() throws {
@@ -134,6 +136,8 @@ final class IntentPlannerTests: XCTestCase {
         let plan = try IntentPlanner.plan(intent: "status", tools: MCPToolRegistry.tools, provider: provider)
         XCTAssertEqual(plan.steps.first?.tool, "status")
         XCTAssertEqual(provider.calls.count, 2)
+        XCTAssertTrue(provider.calls[1].prompt.contains(bad))
+        XCTAssertTrue(provider.calls[1].prompt.contains("Original user intent:\nstatus"))
     }
 
     func testEmptyPlanRequiresNonblankExplanation() {

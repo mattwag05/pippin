@@ -40,25 +40,26 @@ enum IntentPlanner {
         }
         let system = buildSystemPrompt(tools: tools, maxSteps: maxSteps)
         let user = "Intent: \(intent)\n\nRespond with only the JSON object."
+        let raw = try provider.complete(
+            prompt: user,
+            system: system,
+            options: AICompletionOptions(jsonMode: true, temperature: 0)
+        )
         do {
-            let raw = try provider.complete(
-                prompt: user,
-                system: system,
-                options: AICompletionOptions(jsonMode: true, temperature: 0)
-            )
             let plan = try parsePlan(raw)
             try validate(plan: plan, tools: tools, maxSteps: maxSteps)
             return plan
         } catch let first as IntentPlannerError {
-            // One self-repair round-trip — feed the error back to the model.
+            // One self-repair round-trip. Keep the rejected JSON even when it
+            // parsed successfully but failed semantic plan validation.
             let repairUser = """
             Original user intent:
             \(intent)
 
-            Your previous response could not be parsed: \(first.localizedDescription)
+            Your previous response was invalid: \(first.localizedDescription)
 
             Your previous response:
-            \(first.rawOutput ?? "<empty>")
+            \(first.rawOutput ?? raw)
 
             Respond with ONLY the JSON object, no markdown fences or prose.
             """
