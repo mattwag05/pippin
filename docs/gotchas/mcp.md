@@ -36,6 +36,14 @@ ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`Val
 
 An MCP arg the client omits is simply absent from `buildArgs`' input; the child then applies the **CLI** default, whatever the schema's `default:` claims. When the MCP-facing default must differ from the CLI default, `buildArgs` has to inject the flag explicitly — e.g. `mail_activity` emits `--preview=0` when `preview` is omitted (MCP default 0, CLI default 200). Test the omitted-arg case in `ToolRegistryTests`, not just the explicit one.
 
+## Installed schema changes require a client reconnect
+
+The registry is evaluated by the installed binary, but MCP clients commonly
+cache `tools/list` until the stdio connection ends. After `make install`, verify
+the binary with `pippin mcp-server --list-tools`, then reconnect the client or
+start a new session. Do not reimplement an apparently missing flag until the
+fresh installed schema and a fresh MCP connection both disagree with source.
+
 ## ToolRegistry argv must be ArgumentParser-safe
 
 Bind option values as `--flag=value` (`ArgHelpers.option`), and append free-form positionals (search queries, titles) LAST behind a `--` separator (`ArgHelpers.appendPositionalLast`). A value starting with `-` (search body `-19%`, markdown-bullet title `- item`) otherwise trips ArgumentParser and fails the whole tool call. `JSONValue.intValue` clamps out-of-range doubles to nil so a huge `{"limit": 1e19}` can't crash the child.

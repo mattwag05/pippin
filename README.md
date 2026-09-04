@@ -104,18 +104,20 @@ background). Run it again any time TCC resets (e.g. after a macOS upgrade).
 pippin mail list --unread --limit 5
 pippin mail list --unread --after 2026-06-01 --before 2026-07-01  # date-bounded listing
 pippin mail search "quarterly report" --after 2026-01-01
-pippin mail search "invoice" --from billing@vendor.com           # filter by sender
+pippin mail search "invoice" --from billing@vendor.com           # fast sender filter, no --body needed
 pippin mail search "invoice" --preview 200                       # inline a body snippet per hit
 # --body widens the match to body text; body-matched hits return a bodyPreview
-# snippet for free (the body was already fetched for the match test). A scan that
-# soft-times-out is marked `partial: true` in the agent envelope — distinguishable
-# from a genuine zero-match — and the timeout warning lists your account names.
+# snippet for free (the body was already fetched for the match test). Use --from
+# without --body for sender searches; body scanning is intentionally slower.
+# A timed-out scan with matches returns them with `partial: true`. A timed-out scan
+# with no matches returns `search_incomplete` plus guidance to narrow the search,
+# so incomplete coverage is never reported as a clean empty result.
 # With Full Disk Access granted, list/search/activity metadata reads Mail's on-disk
 # Envelope Index directly (~ms, full-history search — `pippin doctor` shows availability).
 # Without it, the JXA path applies; on large multi-account mailboxes pair --from/--body
 # with --account (or --after/--before): an unscoped cross-account JXA scan can hit the
-# soft timeout and return partial (or empty) results with a "narrow with --account…"
-# warning. Scoping keeps the scan within its budget.
+# soft timeout and return partial results or `search_incomplete` with narrowing
+# guidance. Scoping keeps the scan within its budget.
 pippin mail show "acct||INBOX||12345"
 pippin mail show "acct||INBOX||12345" "acct||INBOX||12346"   # 2+ ids: one batched fetch, array out
 # `show` flags structural phishing signals in `headerAnomalies` (agent/JSON) and a
@@ -159,6 +161,8 @@ pippin mail apply-rules --account Work --min-age-days 30 --max-actions 50
 ```
 
 Four guardrails, all on by default: **dry run unless `--live`**; `--min-age-days` (default 14) never touches anything newer, and a message whose date won't parse is held rather than moved; `--max-actions` (default 200) caps each run, acting **oldest-first** so a capped run drains the oldest backlog instead of skimming; and the plan is **grouped by sender** rather than summarized as a count — that is what makes an over-broad rule visible, e.g. a `@example.org` domain rule quietly sweeping up two individual humans alongside the intended bulk addresses. `--skip-unread` additionally spares unread mail. A rule with `skip: true` never actuates. One unreachable message is recorded as a failure and the rest of the run continues.
+
+Mail JSON keeps `date` as the sender-declared sent timestamp and may also include `receivedAt`. Listing, search date filters, newest-first ordering, and the `apply-rules` age guard use `receivedAt` when present, then fall back to `date`. This avoids a stale or future-dated sender header changing operational order or bypassing age protection.
 
 **Faster previews from the Envelope Index (opt-in).** With Full Disk Access, `mail list --preview` / `mail activity` can fill snippets from Mail's own `summaries` table instead of fetching bodies over JXA — messages with a summary row skip the body fetch entirely (the rest still batch-fetch). Enable with `"mail": { "previewFromIndex": true }` in `~/.config/pippin/config.json`. Off by default for two reasons: the summary is Mail's semantic snippet, **not** the first N characters of the body (consumers that diff preview text will see drift), and summary-served previews bypass the body cache, so a later `mail show` of that message pays a cold fetch.
 
@@ -296,8 +300,18 @@ pippin do "summarize yesterday's voice memos" --provider claude --max-steps 3
 ```
 
 `--dry-run` returns the plan (`{steps: [{tool, args}...], final_answer}`)
-without executing. Single-turn: one planning round, optionally one self-repair
-retry if the model's JSON fails to parse.
+without executing. Planning requests use temperature `0`. The complete plan is
+validated before execution for step count, known tools, argument schemas, and
+empty-plan semantics. Invalid JSON or an invalid plan gets one repair attempt
+that retains the original intent. An unsupported request is valid only as zero
+steps plus a nonblank explanation.
+
+Both dry-run and real output include `dry_run` and `executed`. Dry runs always
+report `{"dry_run":true,"executed":false}`. Real runs report `executed:true`
+only after at least one tool ran. `final_answer` is a planning note, not evidence
+that any action occurred. OpenAI-compatible blank, reasoning-only, truncated,
+or filtered responses fail as the non-retryable `incomplete_completion` error;
+reasoning content is never returned or logged by pippin.
 
 ### Action Extraction
 
@@ -419,6 +433,13 @@ pippin memos summarize <id> --provider claude
 | `openai` | Set `ai.openai.baseURL` (+ `apiKey` / `$OPENAI_API_KEY` if the endpoint authenticates) | endpoint-dependent |
 
 The `openai` provider is the escape hatch for any OpenAI-compatible server — `apiKey` is optional for local endpoints that don't authenticate. Mail semantic-search embeddings remain Ollama-only.
+
+AI callers can opt into a request temperature. The planner is the only built-in
+caller that sets it, using `0` for deterministic plans; other callers continue
+to use each provider's existing default. OpenAI-compatible completions must have
+nonblank assistant content and a completed finish reason. Incomplete or filtered
+responses return the typed `incomplete_completion` error without exposing hidden
+reasoning fields.
 
 > **Model note:** Gemma 4 is recommended over Qwen 3.5 for pippin's summarization tasks — Qwen's chain-of-thought reasoning adds ~2x latency without proportional quality gains on structured extraction.
 

@@ -20,6 +20,10 @@
 | Jobs  | `job_run`, `job_show`, `job_list`, `job_wait` — detach long-running work (see below) |
 | Batch | `batch` — fan out N pippin commands concurrently in one tool call (see below) |
 
+`mail_search` accepts exactly `query`, `account`, `mailbox`, `body`, `preview`,
+`after`, `before`, `to`, `from`, `limit`, and `semantic`. For sender searches,
+use `from` without `body`; body scanning is the intentionally slower path.
+
 Deliberately **not** exposed: `mail watch` (a long-running NDJSON stream, wrong shape for
 request/response), `init` and `permissions` (interactive TCC prompts, suppressed under
 `PIPPIN_MCP=1` anyway), `mail cache`/`mail index`/`templates`/`job logs`/`job gc` (local
@@ -162,7 +166,7 @@ Fields:
 - `duration_ms` — wall-clock milliseconds from command construction to JSON serialization.
 - `data` — the previous raw payload, shape unchanged.
 - `error` — the `AgentError.ErrorPayload` (`code`, `message`, optional `remediation`), previously emitted at the top level.
-- `partial` — *optional, additive (2026-07-30)*: `true` when the result set is incomplete (scan soft-timed-out or under-reached). **Omitted entirely on complete results**, so `{"status":"ok","partial":true,"warnings":[…],"data":[]}` (scan didn't finish) is machine-distinguishable from `{"status":"ok","data":[]}` (genuine zero-match). Emitted by the mail scan tools (`mail_list`, `mail_search`, `mail_activity`).
+- `partial` (*optional, additive since 2026-07-30*): `true` when a result set is incomplete (scan soft-timed-out or under-reached). **Omitted entirely on complete results.** For `mail_search` specifically, a timed-out scan with no matches returns an error envelope with code `search_incomplete` and narrowing guidance instead of partial success with an empty array. Empty timed-out `mail_list` and `mail_activity` results may still carry `partial:true`. Emitted by the mail scan tools (`mail_list`, `mail_search`, `mail_activity`).
 - `next_cursor` — *optional, v3*: opaque pagination token for the next page, present only when a pagination flag was passed AND more results remain. **Omitted, not null, on the last page** — its absence is the end-of-results signal. Bound to the query by a filter-hash, so reusing a token after changing a filter fails as `cursor_mismatch` rather than returning mixed pages.
 - `warnings` — *optional*: non-fatal advisories (soft-timeout hints — which list the configured account names — and Envelope-Index fast-path fallback reasons). Omitted when empty.
 
@@ -242,6 +246,17 @@ Dump the tool registry without running the server:
 pippin mcp-server --list-tools | jq '.tools[].name'
 ```
 
+MCP clients cache `tools/list` for the lifetime of a connection. After
+installing a new pippin binary, disconnect and reconnect the MCP server, or
+start a new client session, before diagnosing a missing argument. No gateway
+restart is required when the client can reconnect its stdio session. Verify the
+installed schema directly with:
+
+```bash
+pippin mcp-server --list-tools \
+  | jq '.tools[] | select(.name == "mail_search") | .inputSchema.properties | keys'
+```
+
 Drive the server manually from the shell to test individual messages:
 
 ```bash
@@ -259,4 +274,4 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 - **Claude Code / Claude Desktop** — register via `claude mcp add` or the desktop config JSON; both pick up tools automatically on restart.
 - **Morning-briefing scheduled task** — still shells out to the pippin CLI directly (no migration planned; the task is single-shot enough that MCP doesn't add value).
 
-All CLI and MCP consumers receive envelope v2 responses (see above) as of 2026-07-15 (v1 from 2026-04-20).
+All CLI and MCP consumers receive envelope v3 responses (see above) as of 2026-08-12.

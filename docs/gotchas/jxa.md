@@ -17,6 +17,16 @@ Format: `account||mailbox||numericId`. Parsed in `MailBridge` and `CompoundId` h
 
 `list`/`search`/`activity` JXA must NOT assume `mailbox.messages()` is oldest-first. Collection direction varies. The builders probe receipt time with a guarded `dateReceived()` and fall back to `dateSent()`, then walk the true newest-N window. Assuming an order reintroduced #23/#24: `activity` surfaced 2018 mail and date-filtered searches returned empty. Operational ordering and date filters use receipt time with sent-time fallback, while emitted `date` remains sent time and optional `receivedAt` carries receipt time.
 
+## Mail `-2700` errors need context
+
+Generic `Application can't be found. (-2700)` text means the current automation
+context could not resolve or drive Mail. It does not prove that Mail is absent.
+`pippin doctor` classifies that generic form as an automation-context or app-lookup
+failure. The Envelope Index path is separate: it reads metadata from a SQLite
+snapshot under Full Disk Access and can remain healthy while JXA body automation
+fails. A message-specific native `Message not found (-2700)` is still mapped to
+the typed `message_not_found` error.
+
 ## IMAP body fetch
 
 - Always call `msg.content()` before `msg.htmlContent()` — `content()` triggers the IMAP body download.

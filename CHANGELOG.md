@@ -9,6 +9,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] `pippin do` output now includes `dry_run` and `executed`, so callers can distinguish a plan from completed tool execution; `final_answer` remains a planning note rather than proof of action.
+- [feat] Mail JSON now optionally includes `receivedAt` while retaining `date` as the sender-declared sent timestamp for compatibility.
+
+### Changed
+
+- [refactor] `pippin do` now plans at temperature 0, validates the entire plan before execution, preserves the original intent for one repair attempt, and invokes no tools for dry runs or invalid plans.
+
+### Fixed
+
+- [bug] OpenAI-compatible blank, reasoning-only, truncated, and filtered responses now fail as the typed non-retryable `incomplete_completion` error without exposing reasoning content.
+- [bug] Mail newest-first ordering, date filters, CLI display, and rule age guards now use receipt time with a sent-time fallback across both JXA and Envelope Index paths.
+- [bug] A body search that times out before finding a match now returns `search_incomplete` with narrowing guidance; nonempty timed-out searches continue to return useful partial results.
+- [bug] Generic Mail `Application can't be found. (-2700)` failures are now diagnosed as automation-context or app-lookup failures rather than proof that Mail is not installed, while Envelope Index metadata access is reported separately.
+
+### Documentation
+
+- [docs] Mail sender-search guidance now favors the fast `from` filter without body scanning, and MCP setup documents reconnecting clients after an installed schema refresh.
+
 ## [0.39.0] - 2026-08-13
 
 ### Added

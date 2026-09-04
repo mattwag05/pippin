@@ -58,6 +58,8 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
 - **Operational sort and filter dates use `COALESCE(NULLIF(date_received,0), NULLIF(date_sent,0))`**.
   The emitted `date` remains `date_sent` with a sent-time fallback, and optional
   `receivedAt` carries `date_received`. Apple leaves either column NULL or 0.
+  Newest-first displays and `mail apply-rules` age checks use the same
+  receipt-first value, so the fast path and JXA cannot disagree about message age.
   GRDB NULL trap applies to every column (`row["x"] as T?`, see swift.md).
 - **🛑 Gmail mailboxes are LABEL VIEWS, not mailboxes (pippin-z0f6).** A
   message row points at exactly ONE mailbox (`messages.mailbox`). On Gmail that
