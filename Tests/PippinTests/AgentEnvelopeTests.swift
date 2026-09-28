@@ -215,6 +215,21 @@ final class AgentEnvelopeTests: XCTestCase {
         XCTAssertNil(json["data"] as? [String: Any], "data must not be re-wrapped as an object")
     }
 
+    /// CI has no TCC-granted Mail, Notes, or Contacts session. Exercise the
+    /// same `emitPage` path those commands use with a synthetic page instead.
+    func testEmitPageKeepsArrayAndCursorWithoutAppleAppAccess() throws {
+        let parsed = try OutputOptions.parse(["--format", "agent"])
+        let page = Page(items: [Sample(name: "fixture", count: 1)], nextCursor: "next")
+        let json = try decodeObject(captureStdout {
+            try parsed.emitPage(page, timedOutHint: "fixture timeout", renderText: {})
+        })
+
+        let items = try XCTUnwrap(json["data"] as? [[String: Any]])
+        XCTAssertEqual(items.first?["name"] as? String, "fixture")
+        XCTAssertEqual(json["next_cursor"] as? String, "next")
+        XCTAssertNil(json["data"] as? [String: Any])
+    }
+
     /// Type stability is the whole point: the same command paginated and not
     /// must hand back the same `data` type.
     func testPaginatedAndUnpaginatedDataTypesMatch() throws {

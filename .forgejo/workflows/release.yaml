@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Run tests
-        run: swift test
+        run: PIPPIN_HEADLESS_CI=1 swift test
 
       - name: Build release tarball
         run: make tarball

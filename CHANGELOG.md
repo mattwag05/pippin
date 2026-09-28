@@ -20,6 +20,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- [ci] Headless Forgejo tests now skip the live Apple-app pagination sweep with a visible XCTest skip. A synthetic fixture checks its array and cursor output, while CLI subprocesses time out instead of hanging. TCC-granted runs retain the live sweep.
 - [bug] OpenAI-compatible blank, reasoning-only, truncated, and filtered responses now fail as the typed non-retryable `incomplete_completion` error without exposing reasoning content.
 - [bug] Mail newest-first ordering, date filters, CLI display, and rule age guards now use receipt time with a sent-time fallback across both JXA and Envelope Index paths. Closes pippin-wrdm and pippin-23bi.
 - [bug] A body search that times out before finding a match now returns `search_incomplete` with narrowing guidance; nonempty timed-out searches continue to return useful partial results. Closes pippin-qeer.

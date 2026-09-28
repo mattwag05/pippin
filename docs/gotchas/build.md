@@ -83,6 +83,8 @@ Redirecting `make ci` (or `swift test`) to a file (`> log 2>&1`) can yield a **t
 
 GitHub `ci.yml` is disabled; CI runs locally via `make ci-vm` (Tart VM) or `make ci` (native). Full guide: [../local-ci.md](../local-ci.md). Three gotchas, all already handled in `scripts/ci-vm.sh`:
 
+Forgejo's headless Tart jobs set `PIPPIN_HEADLESS_CI=1` for `swift test`. This makes the live Mail, Notes and other Apple-app pagination sweep an explicit XCTest skip because a fresh guest has no interactive TCC grants. A synthetic `emitPage` test still checks the array and cursor contract. Run the unflagged sweep and `make e2e` on a TCC-granted Mac when changing a live app command; a green headless job does not verify those app integrations. The CLI test subprocess helper fails an unexpected child timeout after 30 seconds and also bounds output-pipe draining, so a permission prompt cannot hold the CI runner indefinitely.
+
 1. **Homebrew missing in the VM.** Non-interactive ssh skips `~/.zprofile` → minimal `PATH` without `/opt/homebrew/bin`, so `brew`/`swiftformat` aren't found. The script `export`s the Homebrew path in the remote command.
 2. **SwiftFormat `--lint` path parsing.** `swiftformat --lint pippin` (no trailing slash) errors `--lint argument does not expect a value` on SwiftFormat 0.61. Use trailing slashes: `pippin/ pippin-entry/ Tests/`.
 3. **ssh `MaxAuthTries`.** sshpass offers agent keys first and trips the VM sshd ("Too many authentication failures"). Force password-only auth: `-o PreferredAuthentications=password -o PubkeyAuthentication=no -o IdentitiesOnly=yes`.

@@ -1,3 +1,4 @@
+import Darwin
 @testable import PippinLib
 import XCTest
 
@@ -49,10 +50,18 @@ final class CLIIntegrationTests: XCTestCase {
     }
 
     @discardableResult
-    static func runProcess(_ executable: String, args: [String], env: [String: String]? = nil) -> (stdout: String, stderr: String, exitCode: Int32) {
+    static func runProcess(
+        _ executable: String,
+        args: [String],
+        env: [String: String]? = nil,
+        timeoutSeconds: TimeInterval = 30,
+        expectTimeout: Bool = false
+    ) -> (stdout: String, stderr: String, exitCode: Int32) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
         // Integration tests cover command behavior, not the disclaim re-exec
         // wrapper (unit-tested in DisclaimRespawnTests + verified out-of-band).
         // Skipping it keeps the suite fast and deterministic: a disclaimed binary
@@ -92,8 +101,22 @@ final class CLIIntegrationTests: XCTestCase {
             drainGroup.leave()
         }
 
-        process.waitUntilExit()
-        drainGroup.wait()
+        if finished.wait(timeout: .now() + timeoutSeconds) == .timedOut {
+            if process.isRunning { _ = Darwin.kill(process.processIdentifier, SIGTERM) }
+            if finished.wait(timeout: .now() + 2) == .timedOut {
+                if process.isRunning { _ = Darwin.kill(process.processIdentifier, SIGKILL) }
+                _ = finished.wait(timeout: .now() + 2)
+            }
+            // A child blocked in Apple Events may leave a helper with a pipe
+            // open. Do not let output draining become another unbounded wait.
+            _ = drainGroup.wait(timeout: .now() + 2)
+            if !expectTimeout { XCTFail("subprocess timed out after \(timeoutSeconds)s") }
+            return ("", "process timed out after \(timeoutSeconds)s", -1)
+        }
+        if drainGroup.wait(timeout: .now() + 5) == .timedOut {
+            XCTFail("subprocess exited but its output pipes stayed open")
+            return ("", "subprocess output pipes stayed open", -1)
+        }
 
         let stdout = String(data: outData, encoding: .utf8) ?? ""
         let stderr = String(data: errData, encoding: .utf8) ?? ""
@@ -114,6 +137,14 @@ final class CLIIntegrationTests: XCTestCase {
             return ("", "", -1)
         }
         return Self.runProcess(binary.path, args: args, env: env)
+    }
+
+    func testRunProcessReportsTimeoutForHungChild() {
+        let started = Date()
+        let result = Self.runProcess("/bin/sleep", args: ["30"], timeoutSeconds: 0.2, expectTimeout: true)
+        XCTAssertEqual(result.exitCode, -1)
+        XCTAssertTrue(result.stderr.contains("timed out"), result.stderr)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3)
     }
 
     // MARK: - Version
@@ -290,10 +321,13 @@ final class CLIIntegrationTests: XCTestCase {
     /// `data: {items, next_cursor}` and fail here, which unit tests on the
     /// shared helper can't catch (they don't know which sites call it).
     ///
-    /// Permission-gated commands that can't run are skipped, not failed — this
-    /// asserts on whatever the environment can actually reach (nothing in CI,
-    /// all six on a granted machine).
-    func testPaginatedCommandsKeepDataAnArray() {
+    /// In a TCC-granted session, commands that return permission errors are
+    /// skipped. Headless CI skips this live sweep explicitly and uses the
+    /// synthetic `emitPage` fixture in AgentEnvelopeTests instead.
+    func testPaginatedCommandsKeepDataAnArray() throws {
+        if ProcessInfo.processInfo.environment["PIPPIN_HEADLESS_CI"] == "1" {
+            throw XCTSkip("Live Apple app pagination requires an interactive, TCC-granted session")
+        }
         guard requireBinary() else { return }
         let commands: [[String]] = [
             ["mail", "list"],
