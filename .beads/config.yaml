@@ -1,0 +1,5 @@
+dolt.auto-push: false
+export.auto: false
+export.git-add: false
+sync:
+    remote: "git+ssh://git@pironman.tail6e035b.ts.net:3022/matthewwagner/pippin.git"
