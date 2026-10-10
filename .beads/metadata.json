@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "pippin",
+  "project_id": "2946aef3-8983-4259-bd2b-635d525433c2"
+}
