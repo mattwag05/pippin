@@ -582,6 +582,33 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertEqual(try idx.summariesByCompoundId(for: ["nope"]), [:])
     }
 
+    // MARK: - Cache identity (pippin-pvak)
+
+    /// `sentDatesByCompoundId` is the identity the body cache validates
+    /// against: it must emit exactly the `date` a list row carries, including
+    /// the received-date fallback when `date_sent` is NULL.
+    func testSentDatesByCompoundIdMatchesListRowDates() throws {
+        let idx = try makeIndex()
+        let result = try idx.sentDatesByCompoundId(for: [
+            "Personal||INBOX||101",
+            "Work||Inbox||201", // date_sent NULL -> date_received
+            "Personal||INBOX||999", // no such row
+            "garbage-id",
+        ])
+        XCTAssertEqual(result, [
+            "Personal||INBOX||101": iso(Self.jul10 + 3 * Self.hour),
+            "Work||Inbox||201": iso(Self.jul10 + 4 * Self.hour),
+        ])
+        let listed = try idx.listMessages(account: "Work", mailbox: "INBOX", unread: false, limit: 10, offset: 0, after: nil, before: nil)
+        XCTAssertEqual(listed.first { $0.id == "Work||Inbox||201" }?.date, result["Work||Inbox||201"])
+    }
+
+    func testSentDatesByCompoundIdEmptyInput() throws {
+        let idx = try makeIndex()
+        XCTAssertEqual(try idx.sentDatesByCompoundId(for: []), [:])
+        XCTAssertEqual(try idx.sentDatesByCompoundId(for: ["nope"]), [:])
+    }
+
     // MARK: - Mailbox summaries (pippin-zxsq)
 
     /// The regression this replaces: JXA read `mb.unreadCount()`, a cached

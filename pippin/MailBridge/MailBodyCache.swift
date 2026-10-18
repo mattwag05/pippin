@@ -33,9 +33,10 @@ public struct MailCacheStats: Codable, Sendable {
 ///
 /// The expensive part of reading a message is `msg.content()` — a per-message
 /// IMAP body download issued through JXA (see `docs/gotchas/jxa.md`). A
-/// message's *body* is immutable for a given compound id
-/// (`account||mailbox||numericId`), so caching the fetched `MailMessage` is
-/// safe. Mutable metadata (read/unread, flags) is intentionally **not** served
+/// message's *body* is immutable, but a compound id
+/// (`account||mailbox||numericId`) can later name a DIFFERENT message, so
+/// every read is checked against the message's current date (pippin-pvak).
+/// Mutable metadata (read/unread, flags) is intentionally **not** served
 /// from here — `mail list`/`search` always enumerate it live; only `mail show`
 /// and `mail index` (which need the body anyway) read through this cache, and
 /// `mail show` documents that its read flag reflects cache time.
@@ -72,32 +73,61 @@ public final class MailBodyCache: Sendable {
 
     // MARK: - Read / write
 
-    /// Return the cached message for `compoundId`, or `nil` on miss or decode
-    /// failure (a corrupt row is treated as a miss, never a crash).
-    public func get(compoundId: String) -> MailMessage? {
-        guard let rec = try? dbQueue.read({ db in try MailBodyRecord.fetchOne(db, key: compoundId) }),
-              let message = try? JSONDecoder().decode(MailMessage.self, from: rec.messageData)
-        else { return nil }
-        return message
+    /// Return the cached message for `compoundId` only if it is still the same
+    /// message: its `date` must be the same instant as `expectedDate` (the date
+    /// the live list row or the Envelope Index reports for that id). `nil` on a
+    /// miss, a decode failure, or an identity mismatch; a mismatched row is
+    /// evicted.
+    ///
+    /// The identity check exists because a compound id is NOT permanent
+    /// (pippin-pvak): Mail can hand a message's ROWID to a different message
+    /// (an index rebuild renumbers them), and an unchecked hit then serves the
+    /// old message's body, headers and anomalies under the new message's id.
+    public func get(compoundId: String, expectedDate: String) -> MailMessage? {
+        getMany(expectedDates: [compoundId: expectedDate])[compoundId]
     }
 
-    /// Batch read: return the cached messages for `compoundIds` in a single
-    /// query (the `mail list --preview` partition step — one transaction instead
-    /// of N single-key reads). Misses are simply absent from the returned map;
-    /// corrupt rows are skipped, never crash.
-    public func getMany(compoundIds: [String]) -> [String: MailMessage] {
-        guard !compoundIds.isEmpty,
-              let records = try? dbQueue.read({ db in try MailBodyRecord.filter(keys: compoundIds).fetchAll(db) })
+    /// Batch form of `get(compoundId:expectedDate:)`: one read for every id in
+    /// `expectedDates` (the `mail list --preview` partition step). Misses,
+    /// corrupt rows and identity mismatches are absent from the result;
+    /// mismatched rows are evicted so the write-through of the fresh fetch
+    /// replaces them.
+    public func getMany(expectedDates: [String: String]) -> [String: MailMessage] {
+        guard !expectedDates.isEmpty,
+              let records = try? dbQueue.read({ db in
+                  try MailBodyRecord.filter(keys: Array(expectedDates.keys)).fetchAll(db)
+              })
         else { return [:] }
         let decoder = JSONDecoder()
         var out: [String: MailMessage] = [:]
-        out.reserveCapacity(records.count)
+        var stale: [String] = []
         for record in records {
-            if let message = try? decoder.decode(MailMessage.self, from: record.messageData) {
+            guard let message = try? decoder.decode(MailMessage.self, from: record.messageData),
+                  let expected = expectedDates[record.compoundId] else { continue }
+            if Self.sameInstant(message.date, expected) {
                 out[record.compoundId] = message
+            } else {
+                stale.append(record.compoundId)
             }
         }
+        if !stale.isEmpty {
+            _ = try? dbQueue.write { db in try MailBodyRecord.deleteAll(db, keys: stale) }
+        }
         return out
+    }
+
+    /// ISO 8601 instants compare equal with or without fractional seconds
+    /// (`…:20Z` == `…:20.000Z`); unparseable strings fall back to exact match.
+    static func sameInstant(_ lhs: String, _ rhs: String) -> Bool {
+        if lhs == rhs { return true }
+        guard let a = parseInstant(lhs), let b = parseInstant(rhs) else { return false }
+        return a == b
+    }
+
+    private static func parseInstant(_ s: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: s) ?? ISO8601DateFormatter().date(from: s)
     }
 
     /// Write-through store. Best-effort: cache failures never propagate to the

@@ -114,7 +114,7 @@ public extension MailCommand {
                     var failed = 0
                     for message in outcome.messages {
                         do {
-                            _ = try MailBridge.readMessage(compoundId: message.id)
+                            _ = try MailBridge.readMessage(row: message)
                             warmed += 1
                         } catch {
                             failed += 1

@@ -99,7 +99,7 @@ final class MailBridgePreviewAssemblyTests: XCTestCase {
         XCTAssertEqual(capturedIds, ["iCloud||INBOX||1", "iCloud||INBOX||2"])
         XCTAssertEqual(result.messages.map(\.bodyPreview), ["alpha", "beta"])
         XCTAssertEqual(cache.count(), 2, "fresh bodies written through")
-        XCTAssertEqual(cache.get(compoundId: "iCloud||INBOX||1")?.body, "alpha")
+        XCTAssertEqual(cache.get(compoundId: "iCloud||INBOX||1", expectedDate: "2026-06-03T12:00:00Z")?.body, "alpha")
     }
 
     func testMixedHitsAndMissesPreserveOrder() {
@@ -256,13 +256,74 @@ final class MailBridgePreviewAssemblyTests: XCTestCase {
         XCTAssertNil(out[1].headerAnomalies, "uncached row untouched (nil ≠ verified clean)")
     }
 
+    /// pippin-pvak: a cached message whose compound id Mail has since given to
+    /// a different message must not lend its anomalies to the new row.
+    func testAttachCachedAnomaliesIgnoresCachedEntryForADifferentMessage() {
+        cache.put(anomalousCached(id: "iCloud||INBOX||1")) // cached 2026-07-27
+        let row = MailMessage(id: "iCloud||INBOX||1", account: "iCloud", mailbox: "INBOX",
+                              subject: "Dependabot", from: "bot@github.com", to: [],
+                              date: "2026-10-18T17:15:18.000Z", read: false)
+        let out = MailBridge.attachCachedAnomalies([row], cache: cache, store: nil)
+        XCTAssertNil(out[0].headerAnomalies, "\(out[0].headerAnomalies ?? [])")
+    }
+
+    /// pippin-pvak: the preview must come from the row's own message. A cached
+    /// body for a different message under the same compound id is a miss.
+    func testStaleCacheEntryForADifferentMessageIsRefetched() {
+        cache.put(MailMessage(
+            id: "iCloud||INBOX||29556", account: "iCloud", mailbox: "INBOX",
+            subject: "Run failed", from: "ci@github.com", to: [],
+            date: "2026-07-29T15:32:20.000Z", read: true, body: "old CI failure"
+        ))
+        let row = MailMessage(id: "iCloud||INBOX||29556", account: "iCloud", mailbox: "INBOX",
+                              subject: "Tesla takes a joyride", from: "news@example.com", to: [],
+                              date: "2026-10-18T17:27:25.000Z", read: false)
+        var capturedIds: [String]?
+        let result = MailBridge.assemblePreviews(
+            metadata: [row], previewChars: 100, cache: cache,
+            fetchMisses: { ids in
+                capturedIds = ids
+                return (messages: [MailMessage(
+                    id: "iCloud||INBOX||29556", account: "iCloud", mailbox: "INBOX",
+                    subject: "Tesla takes a joyride", from: "news@example.com", to: [],
+                    date: "2026-10-18T17:27:25.000Z", read: false, body: "newsletter body"
+                )], timedOut: false)
+            }
+        )
+        XCTAssertEqual(capturedIds, ["iCloud||INBOX||29556"])
+        XCTAssertEqual(result.messages.map(\.bodyPreview), ["newsletter body"])
+        XCTAssertEqual(
+            cache.get(compoundId: "iCloud||INBOX||29556", expectedDate: "2026-10-18T17:27:25.000Z")?.body,
+            "newsletter body", "fresh body replaced the stale row"
+        )
+    }
+
+    /// pippin-pvak: `mail show` (and reply/forward, which quote the original)
+    /// may serve a cached body only when the message's identity is known and
+    /// matches. No identity means a live fetch, never an unchecked hit.
+    func testCachedMessageRequiresMatchingIdentity() {
+        cache.put(fullMessage(id: "iCloud||INBOX||1", body: "cached"))
+        XCTAssertNil(MailBridge.cachedMessage(compoundId: "iCloud||INBOX||1", cache: cache, identity: nil))
+        XCTAssertNil(MailBridge.cachedMessage(compoundId: "iCloud||INBOX||1", cache: cache, identity: "2026-10-18T00:00:00.000Z"))
+        cache.put(fullMessage(id: "iCloud||INBOX||1", body: "cached"))
+        XCTAssertEqual(MailBridge.cachedMessage(compoundId: "iCloud||INBOX||1", cache: cache, identity: "2026-06-03T12:00:00Z")?.body, "cached")
+    }
+
+    /// `readMessage(row:)` serves the cached body when the row's own date
+    /// vouches for it, with no Mail round-trip (`mail cache warm`, `mail index`).
+    func testReadMessageForRowServesMatchingCacheEntry() throws {
+        cache.put(fullMessage(id: "iCloud||INBOX||1", body: "cached"))
+        let full = try MailBridge.readMessage(row: metaRow(id: "iCloud||INBOX||1"), cache: cache)
+        XCTAssertEqual(full.body, "cached")
+    }
+
     func testAttachCachedAnomaliesEmptyToDoesNotFalsePositive() {
         // Scan rows emit to: [] — the hidden-recipients check must use the
         // cached copy's real recipients, not the scan row's empty list.
         cache.put(fullMessage(id: "iCloud||INBOX||1", body: "hi"))
         let row = MailMessage(id: "iCloud||INBOX||1", account: "iCloud", mailbox: "INBOX",
                               subject: "Subj", from: "a@b.com", to: [],
-                              date: "2026-07-27T12:00:00Z", read: false)
+                              date: "2026-06-03T12:00:00Z", read: false)
         let out = MailBridge.attachCachedAnomalies([row], cache: cache, store: nil)
         XCTAssertNil(out[0].headerAnomalies, "\(out[0].headerAnomalies ?? [])")
     }

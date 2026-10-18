@@ -76,7 +76,7 @@ public struct MailIndex: AsyncParsableCommand {
                     }
                     continue
                 }
-                let full = try MailBridge.readMessage(compoundId: message.id)
+                let full = try MailBridge.readMessage(row: message)
                 let body = (full.body ?? "") + full.subject
                 let hash = sha256Hex(body)
                 let embedText = "Subject: \(message.subject)\nFrom: \(message.from)\nDate: \(message.date)"

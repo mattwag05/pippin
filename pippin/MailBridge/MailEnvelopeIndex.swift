@@ -757,6 +757,39 @@ final class MailEnvelopeIndex: Sendable {
         return result
     }
 
+    /// The `date` each compound id's message carries in a list row
+    /// (`date_sent`, falling back to `date_received`), keyed by compound id.
+    /// This is the identity `MailBodyCache` checks before serving a cached body
+    /// for an id that has no list row in hand (`mail show`, reply, forward):
+    /// a ROWID Mail has reassigned to another message reports a different date
+    /// (pippin-pvak). Ids with no message row are absent.
+    func sentDatesByCompoundId(for compoundIds: [String]) throws -> [String: String] {
+        var compoundByRowid: [Int64: [String]] = [:]
+        for cid in compoundIds {
+            if let rowid = Int64(cid.components(separatedBy: "||").last ?? "") {
+                compoundByRowid[rowid, default: []].append(cid)
+            }
+        }
+        guard !compoundByRowid.isEmpty else { return [:] }
+        let ids = compoundByRowid.keys.map(String.init).joined(separator: ",")
+        let rows = try dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+            SELECT ROWID AS msg,
+                   COALESCE(NULLIF(date_sent, 0), NULLIF(date_received, 0), 0) AS sent_epoch
+            FROM messages WHERE ROWID IN (\(ids))
+            """)
+        }
+        var result: [String: String] = [:]
+        for row in rows {
+            guard let msg = row["msg"] as Int64?, let cids = compoundByRowid[msg] else { continue }
+            let date = Self.isoString(row["sent_epoch"] as Int64? ?? 0)
+            for cid in cids {
+                result[cid] = date
+            }
+        }
+        return result
+    }
+
     func listActivity(
         account: String?,
         mailboxes: [String],

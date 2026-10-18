@@ -24,6 +24,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] OpenAI-compatible blank, reasoning-only, truncated, and filtered responses now fail as the typed non-retryable `incomplete_completion` error without exposing reasoning content.
 - [bug] Mail newest-first ordering, date filters, CLI display, and rule age guards now use receipt time with a sent-time fallback across both JXA and Envelope Index paths. Closes pippin-wrdm and pippin-23bi.
 - [bug] A body search that times out before finding a match now returns `search_incomplete` with narrowing guidance; nonempty timed-out searches continue to return useful partial results. Closes pippin-qeer.
+- [bug] `mail show`, reply/forward quoting, `mail list`/`search`/`activity` previews, `digest`, and cached header anomalies no longer return a different, older message when Mail has reused a message id. Each cached body is checked against the message's current date before use, and a mismatched entry is evicted and refetched. Without Full Disk Access, `mail show` cannot check the date, so it reads live instead of serving from the cache. Closes pippin-pvak.
 - [bug] Generic Mail `Application can't be found. (-2700)` failures are now diagnosed as automation-context or app-lookup failures rather than proof that Mail is not installed, while Envelope Index metadata access is reported separately. Closes pippin-v1ia.
 
 ### Documentation

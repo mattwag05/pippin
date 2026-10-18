@@ -133,6 +133,37 @@ isinstance(d['data'], list) and len(d['data']) == 2 and all(isinstance(m.get('bo
 else
   SKIP=$((SKIP+1)); echo "  SKIP  mail show batch (need 2 message ids)"
 fi
+
+# pippin-pvak: a compound id can be reassigned to a different message, so the
+# body cache must never answer for the wrong one. `mail show` (cache-first)
+# for each listed id must return that row's message, matched on its date.
+# Sample every account: the stale entries surfaced on iCloud and Yahoo only.
+PVAK="$(BIN="$BIN" python3 -c "
+import json, os, subprocess
+b = os.environ['BIN']
+def agent(*a):
+    r = subprocess.run([b, *a, '--format', 'agent'], capture_output=True, text=True, timeout=180)
+    try: return json.loads(r.stdout)
+    except Exception: return {}
+accts = [a['name'] for a in (agent('mail', 'accounts').get('data') or [])]
+checked, bad = 0, []
+for acct in accts:
+    for row in (agent('mail', 'list', '--account', acct, '--limit', '5', '--no-contacts').get('data') or []):
+        shown = agent('mail', 'show', row['id'], '--no-contacts').get('data') or {}
+        if not shown: continue
+        checked += 1
+        if shown.get('date', '')[:19] != row['date'][:19]:
+            bad.append('%s list=%s show=%s' % (row['id'], row['date'], shown.get('date')))
+print('%d|%s' % (checked, '; '.join(bad)))")"
+PVAK_N="${PVAK%%|*}"; PVAK_BAD="${PVAK#*|}"
+if [[ "$PVAK_N" -eq 0 ]]; then
+  SKIP=$((SKIP+1)); echo "  SKIP  mail show returns the listed message (no rows shown)"
+elif [[ -n "$PVAK_BAD" ]]; then
+  FAIL=$((FAIL+1)); fails+=("mail show returns the listed message (pippin-pvak): $PVAK_BAD")
+  echo "  FAIL  mail show returns the listed message (pippin-pvak): $PVAK_BAD"
+else
+  PASS=$((PASS+1)); echo "  ok    mail show returns the listed message, $PVAK_N ids across accounts (pippin-pvak)"
+fi
 # pippin-xz6: an empty --before result whose newest-N window never reached the
 # cutoff must carry the shortfall advisory (JXA must emit oldestExaminedMs /
 # reachedMailboxEnd). Pass if matches exist (impossible pre-2000) OR the hint fired.

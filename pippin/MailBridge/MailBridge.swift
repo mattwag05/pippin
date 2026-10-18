@@ -594,14 +594,28 @@ enum MailBridge {
 
     /// Read a full message (body + headers + attachments) by compound id.
     ///
-    /// The body fetch (`msg.content()`) is the expensive IMAP download. Because
-    /// a body is immutable for a given compound id, results are served from
-    /// `cache` when present and written through on a miss. Pass `cache: nil`
-    /// (e.g. `mail show --no-cache`) to force a live fetch. `mail list`/`search`
-    /// deliberately do NOT use this path, so their read/unread metadata stays
-    /// live.
+    /// The body fetch (`msg.content()`) is the expensive IMAP download, so a
+    /// cached copy is served when `cache` holds one for the SAME message: the
+    /// id's current date comes from the Envelope Index (`cacheIdentities`) and
+    /// must match the cached copy (pippin-pvak). When the index can't vouch
+    /// for the id (fast path off or unreadable), the read is live. Pass
+    /// `cache: nil` (e.g. `mail show --no-cache`) to force a live fetch.
+    /// `mail list`/`search` deliberately do NOT use this path, so their
+    /// read/unread metadata stays live.
     static func readMessage(compoundId: String, cache: MailBodyCache? = MailBodyCache.shared) throws -> MailMessage {
-        if let cached = cache?.get(compoundId: compoundId) {
+        let identity = cache == nil ? nil : cacheIdentities(for: [compoundId])[compoundId]
+        return try readMessage(compoundId: compoundId, cache: cache, identity: identity)
+    }
+
+    /// `readMessage` for a caller that already holds the message's list row:
+    /// its `date` is the cache identity, so no Envelope Index snapshot is
+    /// taken (`mail cache warm` and `mail index` loop over many rows).
+    static func readMessage(row: MailMessage, cache: MailBodyCache? = MailBodyCache.shared) throws -> MailMessage {
+        try readMessage(compoundId: row.id, cache: cache, identity: row.date)
+    }
+
+    private static func readMessage(compoundId: String, cache: MailBodyCache?, identity: String?) throws -> MailMessage {
+        if let cached = cachedMessage(compoundId: compoundId, cache: cache, identity: identity) {
             return cached.withDetectedHeaderAnomalies(extra: baselineWarnings(for: cached))
         }
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
@@ -614,15 +628,32 @@ enum MailBridge {
         return message.withDetectedHeaderAnomalies(extra: baselineWarnings(for: message))
     }
 
+    /// The cached copy of `compoundId`, only when its identity is known and
+    /// matches. `identity == nil` (nothing can vouch for the id) is a miss.
+    static func cachedMessage(compoundId: String, cache: MailBodyCache?, identity: String?) -> MailMessage? {
+        guard let cache, let identity else { return nil }
+        return cache.get(compoundId: compoundId, expectedDate: identity)
+    }
+
+    /// Current date per compound id from the Envelope Index, for cache
+    /// validation on paths with no list row in hand. Empty when the fast path
+    /// is disabled or unreadable, which makes every cache read a miss.
+    static func cacheIdentities(for compoundIds: [String]) -> [String: String] {
+        guard fastPathEnabled(), let index = try? makeFastPathIndex(accountName: nil) else { return [:] }
+        return (try? index.sentDatesByCompoundId(for: compoundIds)) ?? [:]
+    }
+
     /// Batch read (`mail show <id> <id> …`): warm the cache for all misses in
     /// ONE osascript (`buildBatchBodiesScript` resolves each mailbox once —
     /// batch rows are as complete as a single-show fetch), then assemble per id
-    /// via `readMessage`. Ids the batch's soft timeout skipped fall back to an
-    /// individual live fetch there — correct, just slower. With `cache: nil`
-    /// (`--no-cache`) there is nothing to warm; every id is a live single fetch.
+    /// from the cache. Ids the batch's soft timeout skipped (or whose identity
+    /// the index can't vouch for) fall back to an individual live fetch —
+    /// correct, just slower. With `cache: nil` (`--no-cache`) there is nothing
+    /// to warm; every id is a live single fetch.
     static func readMessages(compoundIds: [String], cache: MailBodyCache? = MailBodyCache.shared) throws -> [MailMessage] {
+        let identities = cache == nil ? [:] : cacheIdentities(for: compoundIds)
         if let cache, compoundIds.count > 1 {
-            let cached = cache.getMany(compoundIds: compoundIds)
+            let cached = cache.getMany(expectedDates: identities)
             let misses = compoundIds.filter { cached[$0] == nil }
             if !misses.isEmpty {
                 let accounts = Set(misses.compactMap { try? parseCompoundId($0).account })
@@ -634,7 +665,7 @@ enum MailBridge {
                 }
             }
         }
-        return try compoundIds.map { try readMessage(compoundId: $0, cache: cache) }
+        return try compoundIds.map { try readMessage(compoundId: $0, cache: cache, identity: identities[$0]) }
     }
 
     /// Raw RFC822 source for a message (pippin-fwa). Used by `mail verify` for
@@ -663,7 +694,7 @@ enum MailBridge {
         store: SenderBaselineStore? = SenderBaselineStore.shared
     ) -> [MailMessage] {
         guard let cache, !messages.isEmpty else { return messages }
-        let cached = cache.getMany(compoundIds: messages.map(\.id))
+        let cached = cache.getMany(expectedDates: rowDates(messages))
         return messages.map { msg in
             guard let hit = cached[msg.id], let headers = hit.headers, !headers.isEmpty else { return msg }
             // Use the cached row's from/to — scan rows emit to: [] on some paths,
@@ -833,7 +864,7 @@ enum MailBridge {
         summaries: [String: String] = [:],
         fetchMisses: (_ ids: [String]) throws -> (messages: [MailMessage], timedOut: Bool)
     ) rethrows -> (messages: [MailMessage], fetchTimedOut: Bool) {
-        let cached = cache?.getMany(compoundIds: metadata.map(\.id)) ?? [:]
+        let cached = cache?.getMany(expectedDates: rowDates(metadata)) ?? [:]
         var bodyByID: [String: String] = [:]
         var missIDs: [String] = []
         for msg in metadata {
@@ -856,6 +887,12 @@ enum MailBridge {
             msg.withBodyPreview(bodyByID[msg.id].map { bodyPreview($0, chars: previewChars) })
         }
         return (messages: assembled, fetchTimedOut: fetched.timedOut)
+    }
+
+    /// Each row's own `date`, keyed by id: the identity a cached body must
+    /// match before it may stand in for that row (pippin-pvak).
+    static func rowDates(_ rows: [MailMessage]) -> [String: String] {
+        Dictionary(rows.map { ($0.id, $0.date) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Truncate a body to a preview string, matching the JXA semantics in

@@ -21,7 +21,15 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   `show`/`mark`/`move` and MailBodyCache keys work unchanged across paths.
   Caveat: an index REBUILD (observed across a June→July macOS beta update)
   renumbers BOTH spaces together; ids cached across a rebuild (e.g. old
-  MailBodyCache compound ids) go stale on both paths equally. Fallback key if
+  MailBodyCache compound ids) go stale on both paths equally.
+  **🛑 This happened (pippin-pvak, 2026-10-18):** ROWIDs ~29.5k cached in
+  June/July named different messages by October, and the body cache served
+  the old body, headers and anomalies under the new ids (`mail show`,
+  previews, digest; iCloud and Yahoo). Every `MailBodyCache` read now passes
+  an expected `date`: list/search/activity rows supply their own, and
+  `mail show` / reply / forward ask the index (`sentDatesByCompoundId`).
+  A mismatch is a miss and the stale row is evicted. No index (no FDA) means
+  no identity, so `show` reads live rather than trusting a bare id. Fallback key if
   the invariant ever breaks: `message_global_data.message_id_header` (RFC
   Message-ID, stored WITH `<>` brackets, 99.8% populated) ↔ JXA
   `msg.messageId()` (returns it WITHOUT brackets; `whose({messageId: bare})`
