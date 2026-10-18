@@ -647,8 +647,8 @@ enum MailBridge {
     /// ONE osascript (`buildBatchBodiesScript` resolves each mailbox once —
     /// batch rows are as complete as a single-show fetch), then assemble per id
     /// from the cache. Ids the batch's soft timeout skipped (or whose identity
-    /// the index can't vouch for) fall back to an individual live fetch —
-    /// correct, just slower. With `cache: nil` (`--no-cache`) there is nothing
+    /// the index can't vouch for) fall back to an individual live fetch,
+    /// which is correct but slower. With `cache: nil` (`--no-cache`) there is nothing
     /// to warm; every id is a live single fetch.
     static func readMessages(compoundIds: [String], cache: MailBodyCache? = MailBodyCache.shared) throws -> [MailMessage] {
         let identities = cache == nil ? [:] : cacheIdentities(for: compoundIds)
