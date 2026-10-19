@@ -24,16 +24,82 @@ public enum BrowserBridge {
         return process.terminationStatus == 0
     }
 
-    /// Returns true if playwright package is available via npx.
-    public static func isPlaywrightAvailable() -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["npx", "playwright", "--version"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try? process.run()
-        process.waitUntilExit()
-        return process.terminationStatus == 0
+    /// What `pippin browser` needs from Playwright, as seen by the runtime.
+    public enum PlaywrightReadiness: Equatable, Sendable {
+        /// The module resolves and the WebKit executable exists.
+        case ready
+        /// `require('playwright')` would fail in the browser runtime.
+        case moduleMissing
+        /// The module resolves, but its WebKit browser is not installed.
+        case browserMissing
+        /// A probe timed out or failed for another reason.
+        case probeFailed(String)
+    }
+
+    /// Upper bound for each readiness probe, so `pippin doctor` cannot hang.
+    static let playwrightProbeTimeoutSeconds = 5
+
+    /// Resolves `playwright` the way browser operations do: a temporary Node
+    /// script run with the runtime's environment. Prints `resolved` or `missing`.
+    static let playwrightModuleProbeScript = """
+    try {
+        require.resolve('playwright');
+        console.log('resolved');
+    } catch (e) {
+        if (e && e.code === 'MODULE_NOT_FOUND') { console.log('missing'); } else { throw e; }
+    }
+    """
+
+    /// Checks that the WebKit browser Playwright launches is on disk. Prints
+    /// `present` or `absent`.
+    static let playwrightBrowserProbeScript = """
+    const fs = require('fs');
+    let executable = '';
+    try { executable = require('playwright').webkit.executablePath(); } catch (e) {}
+    console.log(executable && fs.existsSync(executable) ? 'present' : 'absent');
+    """
+
+    /// Probes Playwright readiness with the same environment the browser runtime
+    /// uses (pippin-eru6). Never invokes npx, so it cannot download packages or
+    /// prompt, and each probe is bounded by `playwrightProbeTimeoutSeconds`.
+    public static func playwrightReadiness() -> PlaywrightReadiness {
+        let module = Result { try runNodeScript(playwrightModuleProbeScript, timeoutSeconds: playwrightProbeTimeoutSeconds) }
+        // The browser probe needs `require('playwright')`, so it only runs once
+        // the module resolves.
+        let browser: Result<String, Error>? = (try? module.get()) == "resolved"
+            ? Result { try runNodeScript(playwrightBrowserProbeScript, timeoutSeconds: playwrightProbeTimeoutSeconds) }
+            : nil
+        return classifyPlaywrightProbe(module: module, browser: browser)
+    }
+
+    /// Pure classification of the two probe outputs. `browser` is nil when the
+    /// browser probe did not run.
+    static func classifyPlaywrightProbe(
+        module: Result<String, Error>,
+        browser: Result<String, Error>?
+    ) -> PlaywrightReadiness {
+        switch module {
+        case let .failure(error):
+            return .probeFailed("module probe: \(error.localizedDescription)")
+        case .success("missing"):
+            return .moduleMissing
+        case .success("resolved"):
+            break
+        case let .success(output):
+            return .probeFailed("module probe: unexpected output '\(output)'")
+        }
+        switch browser {
+        case nil:
+            return .probeFailed("browser probe did not run")
+        case let .failure(error)?:
+            return .probeFailed("browser probe: \(error.localizedDescription)")
+        case .success("present")?:
+            return .ready
+        case .success("absent")?:
+            return .browserMissing
+        case let .success(output)?:
+            return .probeFailed("browser probe: unexpected output '\(output)'")
+        }
     }
 
     // MARK: - Browser Operations
@@ -378,6 +444,31 @@ public enum BrowserBridge {
         }
     }
 
+    /// The environment every Node script runs with: the current environment plus
+    /// a NODE_PATH covering common global npm module directories when none is
+    /// set. Shared by browser operations and the readiness probe so the probe
+    /// resolves `playwright` exactly as the runtime does.
+    static func nodeEnvironment(
+        base: [String: String] = ProcessInfo.processInfo.environment,
+        home: String = FileManager.default.homeDirectoryForCurrentUser.path,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> [String: String] {
+        var env = base
+        if env["NODE_PATH"] == nil {
+            // Try common global npm module paths
+            let npmGlobalPaths = [
+                "/opt/homebrew/lib/node_modules",
+                "/usr/local/lib/node_modules",
+                "\(home)/.npm-global/lib/node_modules",
+            ]
+            let existingPaths = npmGlobalPaths.filter(fileExists)
+            if !existingPaths.isEmpty {
+                env["NODE_PATH"] = existingPaths.joined(separator: ":")
+            }
+        }
+        return env
+    }
+
     /// Runs an already-written Node script file and returns stdout. Split out so
     /// `runNodeScript` owns the temp-file lifetime via `withTemporaryFile`.
     private static func runNodeScriptFile(_ tmpFile: URL, timeoutSeconds: Int) throws -> String {
@@ -386,21 +477,7 @@ public enum BrowserBridge {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["node", tmpFile.path]
 
-        // Inherit current environment and add NODE_PATH for globally-installed npm packages
-        var env = ProcessInfo.processInfo.environment
-        if env["NODE_PATH"] == nil {
-            // Try common global npm module paths
-            let npmGlobalPaths = [
-                "/opt/homebrew/lib/node_modules",
-                "/usr/local/lib/node_modules",
-                "\(FileManager.default.homeDirectoryForCurrentUser.path)/.npm-global/lib/node_modules",
-            ]
-            let existingPaths = npmGlobalPaths.filter { FileManager.default.fileExists(atPath: $0) }
-            if !existingPaths.isEmpty {
-                env["NODE_PATH"] = existingPaths.joined(separator: ":")
-            }
-        }
-        process.environment = env
+        process.environment = nodeEnvironment()
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

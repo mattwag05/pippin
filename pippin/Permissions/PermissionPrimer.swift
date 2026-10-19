@@ -91,7 +91,7 @@ public enum PermissionPrimer {
                 from: checkMailAutomation(),
                 integration: "Mail",
                 mechanism: .automation,
-                listCommand: "pippin mail list"
+                listCommand: mailAutomationVerifyCommand
             ),
             report(
                 from: checkNotesAccess(),

@@ -180,3 +180,130 @@ final class BrowserTests: XCTestCase {
         XCTAssertTrue(decoded[1].isActive)
     }
 }
+
+/// pippin-eru6: the Playwright readiness probe must resolve the module the way
+/// the browser runtime does, check the WebKit browser separately, never use npx,
+/// and give advice naming the missing part. Pure parts only, no real node.
+final class PlaywrightReadinessTests: XCTestCase {
+    private struct ProbeError: LocalizedError {
+        var errorDescription: String? {
+            "boom"
+        }
+    }
+
+    // MARK: - classifyPlaywrightProbe
+
+    func testModuleMissingSkipsBrowserVerdict() {
+        XCTAssertEqual(
+            BrowserBridge.classifyPlaywrightProbe(module: .success("missing"), browser: nil),
+            .moduleMissing
+        )
+    }
+
+    func testResolvedModuleWithBrowserIsReady() {
+        XCTAssertEqual(
+            BrowserBridge.classifyPlaywrightProbe(module: .success("resolved"), browser: .success("present")),
+            .ready
+        )
+    }
+
+    func testResolvedModuleWithoutBrowserIsBrowserMissing() {
+        XCTAssertEqual(
+            BrowserBridge.classifyPlaywrightProbe(module: .success("resolved"), browser: .success("absent")),
+            .browserMissing
+        )
+    }
+
+    func testProbeErrorsAreProbeFailed() {
+        // A timeout or nonzero exit must never read as ready.
+        XCTAssertEqual(
+            BrowserBridge.classifyPlaywrightProbe(module: .failure(BrowserBridgeError.timeout), browser: nil),
+            .probeFailed("module probe: Browser operation timed out")
+        )
+        XCTAssertEqual(
+            BrowserBridge.classifyPlaywrightProbe(module: .success("resolved"), browser: .failure(ProbeError())),
+            .probeFailed("browser probe: boom")
+        )
+        XCTAssertEqual(
+            BrowserBridge.classifyPlaywrightProbe(module: .success("resolved"), browser: nil),
+            .probeFailed("browser probe did not run")
+        )
+    }
+
+    func testUnexpectedOutputIsProbeFailed() {
+        XCTAssertEqual(
+            BrowserBridge.classifyPlaywrightProbe(module: .success("1.50.0"), browser: nil),
+            .probeFailed("module probe: unexpected output '1.50.0'")
+        )
+        XCTAssertEqual(
+            BrowserBridge.classifyPlaywrightProbe(module: .success("resolved"), browser: .success("")),
+            .probeFailed("browser probe: unexpected output ''")
+        )
+    }
+
+    // MARK: - Probe scripts and environment
+
+    func testProbeScriptsNeverUseNpx() {
+        for script in [BrowserBridge.playwrightModuleProbeScript, BrowserBridge.playwrightBrowserProbeScript] {
+            XCTAssertFalse(script.contains("npx"), script)
+        }
+        XCTAssertTrue(BrowserBridge.playwrightModuleProbeScript.contains("require.resolve('playwright')"))
+        XCTAssertTrue(BrowserBridge.playwrightBrowserProbeScript.contains("webkit.executablePath()"))
+        XCTAssertTrue(BrowserBridge.playwrightBrowserProbeScript.contains("existsSync"))
+        XCTAssertLessThanOrEqual(BrowserBridge.playwrightProbeTimeoutSeconds, 10)
+    }
+
+    func testNodeEnvironmentAddsExistingGlobalModulePaths() {
+        let env = BrowserBridge.nodeEnvironment(
+            base: ["PATH": "/usr/bin"],
+            home: "/Users/test",
+            fileExists: { $0 == "/opt/homebrew/lib/node_modules" || $0 == "/Users/test/.npm-global/lib/node_modules" }
+        )
+        XCTAssertEqual(env["NODE_PATH"], "/opt/homebrew/lib/node_modules:/Users/test/.npm-global/lib/node_modules")
+        XCTAssertEqual(env["PATH"], "/usr/bin")
+    }
+
+    func testNodeEnvironmentKeepsExplicitNodePath() {
+        let env = BrowserBridge.nodeEnvironment(base: ["NODE_PATH": "/custom"], home: "/Users/test", fileExists: { _ in true })
+        XCTAssertEqual(env["NODE_PATH"], "/custom")
+    }
+
+    func testNodeEnvironmentLeavesNodePathUnsetWhenNoGlobalDirExists() {
+        let env = BrowserBridge.nodeEnvironment(base: [:], home: "/Users/test", fileExists: { _ in false })
+        XCTAssertNil(env["NODE_PATH"])
+    }
+
+    // MARK: - Doctor advice
+
+    func testDoctorReadyIsOK() {
+        let check = classifyPlaywright(.ready)
+        XCTAssertEqual(check.status, .ok)
+        XCTAssertNil(check.remediation)
+    }
+
+    func testDoctorModuleMissingAdvisesGlobalInstallAndBrowser() throws {
+        let check = classifyPlaywright(.moduleMissing)
+        XCTAssertEqual(check.status, .skip)
+        XCTAssertTrue(check.detail.contains("module"), check.detail)
+        let cmd = try XCTUnwrap(check.remediation?.shellCommand)
+        XCTAssertTrue(cmd.contains("npm install -g playwright"), cmd)
+        XCTAssertTrue(cmd.contains("npx playwright install webkit"), cmd)
+    }
+
+    func testDoctorBrowserMissingAdvisesBrowserOnly() throws {
+        let check = classifyPlaywright(.browserMissing)
+        XCTAssertEqual(check.status, .skip)
+        XCTAssertTrue(check.detail.contains("WebKit"), check.detail)
+        let cmd = try XCTUnwrap(check.remediation?.shellCommand)
+        XCTAssertEqual(cmd, "npx playwright install webkit")
+    }
+
+    func testDoctorProbeFailedReportsReasonAndBothSteps() throws {
+        let check = classifyPlaywright(.probeFailed("module probe: Browser operation timed out"))
+        XCTAssertEqual(check.status, .skip)
+        XCTAssertTrue(check.detail.contains("timed out"), check.detail)
+        let cmd = try XCTUnwrap(check.remediation?.shellCommand)
+        XCTAssertTrue(cmd.contains("npm install -g playwright"), cmd)
+        XCTAssertTrue(cmd.contains("npx playwright install webkit"), cmd)
+    }
+}
