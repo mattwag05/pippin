@@ -284,6 +284,11 @@ fi
 # --unread`, an independent query path, for each account's inbox.
 UNREAD_BAD=()
 UNREAD_OK=0
+# Without the fast path, `mail mailboxes` falls back to JXA's unreadCount,
+# which is known to under-count and says so in its warnings. Only the
+# Envelope Index count is held to the read flags (pippin-ipmm).
+ACCTS_UNREAD="$ACCTS"
+[[ "$FASTPATH_OK" == "yes" ]] || ACCTS_UNREAD=""
 while IFS= read -r acct; do
   [[ -z "$acct" ]] && continue
   MB="$("$BIN" mail mailboxes --account "$acct" --format agent 2>/dev/null | python3 -c "
@@ -310,12 +315,12 @@ print(len(d.get('data') or []) if d.get('status') == 'ok' and not d.get('partial
   else
     UNREAD_BAD+=("$acct(mailboxes=$MB vs list=$LS)")
   fi
-done <<< "$ACCTS"
+done <<< "$ACCTS_UNREAD"
 if [[ ${#UNREAD_BAD[@]} -gt 0 ]]; then
   FAIL=$((FAIL+1)); fails+=("mailboxes unreadCount disagrees with read flags: ${UNREAD_BAD[*]}")
   echo "  FAIL  mailboxes unreadCount vs read flags (${UNREAD_BAD[*]})"
 elif [[ "$UNREAD_OK" -eq 0 ]]; then
-  SKIP=$((SKIP+1)); echo "  SKIP  mailboxes unreadCount vs read flags (no comparable inbox)"
+  SKIP=$((SKIP+1)); echo "  SKIP  mailboxes unreadCount vs read flags (no comparable inbox, or fast path unavailable)"
 else
   PASS=$((PASS+1)); echo "  ok    mailboxes unreadCount matches per-message read flags ($UNREAD_OK accounts) (pippin-zxsq)"
 fi
@@ -520,7 +525,16 @@ try:
     ntools = len(((tl or {}).get("result") or {}).get("tools") or [])
     send({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"calendar_today","arguments":{}}})
     call = recv()
-    ok = not ((call or {}).get("result") or {}).get("isError", True)
+    res = (call or {}).get("result") or {}
+    ok = not res.get("isError", True)
+    if not ok:
+        # An access_denied envelope still proves the stdio round trip; the
+        # Calendar grant is a separate, already-reported SKIP.
+        try:
+            env = json.loads(((res.get("content") or [{}])[0]).get("text") or "{}")
+            ok = (env.get("error") or {}).get("code") == "access_denied"
+        except Exception:
+            pass
     send({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"no_such_tool","arguments":{}}})
     unk = recv()
     err_code = ((unk or {}).get("error") or {}).get("code")
