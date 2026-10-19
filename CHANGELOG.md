@@ -12,7 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - [feat] `mail index` and `mail search --semantic` can use embeddings from any OpenAI-compatible `/v1/embeddings` endpoint, selected with `ai.embeddings` or `--provider`. Ollama remains the default. Closes pippin-edjh.
-- [feat] Memo transcription can use Apple's on-device SpeechAnalyzer (macOS 26+, nothing to install) or any OpenAI-compatible `/v1/audio/transcriptions` endpoint, selected with `ai.transcription`. mlx-audio remains the default. Closes pippin-edjh.
+- [feat] Memo transcription can use Apple's on-device SpeechAnalyzer, which needs macOS 26 or later and nothing installed, or any OpenAI-compatible `/v1/audio/transcriptions` endpoint, selected with `ai.transcription`. mlx-audio remains the default. Closes pippin-edjh.
 - [feat] `PIPPIN_CONFIG` points pippin at a different config file.
 
 ### Fixed
@@ -20,7 +20,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] Semantic search no longer ranks messages embedded by a different model than the active one, and `mail index` re-embeds them after a backend change. Indexes built with Ollama stay current. Closes pippin-edjh.
 - [bug] Ollama embeddings now use `ai.ollama.url` instead of always calling localhost. Closes pippin-edjh.
 - [bug] `pippin doctor` reports the backend configured for AI features, embeddings, and transcription. It no longer says `mail triage` and `mail extract` need Ollama when another provider is configured. Closes pippin-edjh.
-- [bug] When a remote Ollama endpoint is unreachable, `pippin doctor` names that endpoint (credentials removed) and no longer suggests installing Ollama on localhost. Closes pippin-c2zy.
+- [bug] When a remote Ollama endpoint is unreachable, `pippin doctor` names that endpoint without its credentials and no longer suggests installing Ollama on localhost. Closes pippin-c2zy.
 
 ## [0.40.0] - 2026-10-18
 

@@ -464,9 +464,9 @@ Semantic mail search and memo transcription have their own backends, chosen inde
 
 For `openai`, an omitted `baseURL` or `apiKey` falls back to the `ai.openai` values. `mail index` and `mail search` also accept `--provider`, `--model` (`--embedding-model` on search), and `--ollama-url`.
 
-Vectors from different embedding models cannot be compared. The index records the model behind each message: after switching backends, run `pippin mail index` again. Semantic search ranks only messages indexed with the active model and reports an error when there are none.
+Vectors from different embedding models cannot be compared. The index records which model embedded each message, so run `pippin mail index` again after switching backends. Semantic search ranks only messages indexed with the active model and reports an error when there are none.
 
-`pippin doctor` reports the backend configured for each feature (AI provider, Embeddings, Transcription) and whether it is reachable. Set `PIPPIN_CONFIG` to read a different config file.
+`pippin doctor` has an AI provider, Embeddings, and Transcription check. Each names the configured backend and says whether it is reachable. Set `PIPPIN_CONFIG` to read a different config file.
 
 AI callers can opt into a request temperature. The planner is the only built-in
 caller that sets it, using `0` for deterministic plans; other callers continue
@@ -539,8 +539,8 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 
 - **macOS 15+** (Sequoia) or later
 - **Swift 6.0+** for source builds (matches `swift-tools-version: 6.0` in `Package.swift`); pre-built binaries are arm64
-- **mlx-audio** — the default memo transcription backend (not needed with `ai.transcription.provider` set to `apple` or `openai`), and required for the experimental `audio` command when re-enabled via `PIPPIN_EXPERIMENTAL=1`
-- **Ollama** — the default AI and embeddings backend (optional; Claude and OpenAI-compatible endpoints work without it)
+- **mlx-audio** — the default memo transcription backend, not needed when `ai.transcription.provider` is `apple` or `openai`. Also required for the experimental `audio` command when re-enabled via `PIPPIN_EXPERIMENTAL=1`
+- **Ollama** — the default AI and embeddings backend. Optional, since Claude and OpenAI-compatible endpoints work without it.
 
 > **Experimental commands:** `audio` (TTS/STT via mlx-audio) and `browser`
 > (Playwright WebKit) are hidden by default. Set `PIPPIN_EXPERIMENTAL=1`
