@@ -16,6 +16,7 @@ User says: "release pippin", "ship vX.Y.Z", "cut a release", "bump pippin to X.Y
 - Working tree is clean on `main` (`git status` shows nothing).
 - All beads issues for the release are closed (`bd ready` shows no in-progress release work).
 - `swift test` passed locally.
+- A signing identity is in the keychain: `security find-identity -v -p codesigning` lists a `Developer ID Application` identity. `scripts/sign.sh` falls back to an ad-hoc signature with only a warning, and the formula's `test do` rejects an ad-hoc asset, so check before tagging.
 - You are in the main checkout, not a worktree (the Homebrew tap is at `/opt/homebrew/...`, accessible from anywhere, but releases should land on `main`).
 
 ## Steps
@@ -74,9 +75,13 @@ gh release create vX.Y.Z --title "vX.Y.Z — pippin" --notes-file /tmp/notes.md 
   .build/release-artifacts/pippin-X.Y.Z-arm64-macos.tar.gz
 ```
 
+Before `gh release create`, confirm the asset is Developer ID signed: `codesign -dvv .build/release-artifacts/pippin-X.Y.Z-arm64-macos 2>&1 | grep Authority` must print `Authority=Developer ID Application: …`. If it doesn't, stop; do not upload an ad-hoc asset.
+
 This reproduces exactly what the old `release.yml` produced (title, changelog body, arm64 asset, not a pre-release). Verify with `gh release view vX.Y.Z`.
 
 ### 7. Update the Homebrew tap formula
+
+If `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap` does not exist (fresh machine, or after a Mac reset), run `brew tap mattwag05/tap` first. It clones the GitHub-primary tap repo.
 
 The formula installs the **pre-signed release tarball** (not a from-source build) so brew binaries carry a stable Developer ID signature. **Step 6 must have run first** — the asset has to exist on the GitHub release before the formula points at it. Edit `/opt/homebrew/Library/Taps/mattwag05/homebrew-tap/Formula/pippin.rb` and update:
 
@@ -86,7 +91,7 @@ The formula installs the **pre-signed release tarball** (not a from-source build
 - `sha256` → `shasum -a 256 .build/release-artifacts/pippin-X.Y.Z-arm64-macos.tar.gz` (must match the uploaded asset)
 - `assert_match` version string → the new version
 
-Then lint: `brew style mattwag05/tap/pippin` (must be clean). The `test do` block asserts both the version and a `Developer ID Application` signature — if the asset is ad-hoc, the formula test fails by design.
+Then lint: `brew style mattwag05/tap/pippin` (must be clean, apart from the known `FormulaAudit/InstallSteps` offense tracked in pippin-s8d4). The `test do` block asserts both the version and a `Developer ID Application` signature, so an ad-hoc asset fails the formula test by design.
 
 ### 8. Commit and push the tap
 
@@ -125,6 +130,8 @@ launchctl kickstart -k gui/$(id -u)/<agent-gateway-label>
 for p in $(pgrep -f "pippin mcp-server"); do lsof -p "$p" | awk '/txt.*pippin/{print $(NF-1)}'; done | sort -u
 stat -f %i ~/.local/bin/pippin   # each inode above should equal this
 ```
+
+`kickstart -k` restarts only the Hermes gateway. Other hosts keep their own `pippin mcp-server` children on the old inode until they restart: Hermes Desktop (its `hermes serve` backend), the Claude desktop app, and every Claude Code session it hosts. Quit and reopen those apps, then rerun the inode loop above (2026-10-18: six servers across these four hosts, all moved only after the restarts).
 
 The claude-plugins `pippin` plugin's `.mcp.json` uses bare `pippin`, so the shadowed version is what Claude Code actually spawns as the MCP server — both must be current. If more than one launchd-managed service spawns `pippin mcp-server` children, restart all of them or the stragglers stay on the stale binary inode.
 

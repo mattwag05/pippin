@@ -63,6 +63,15 @@ across both install paths. `scripts/sign.sh` does this; `make install` /
   `PIPPIN_SIGN_IDENTITY`). If none is present it warns and exits 0, leaving the
   ad-hoc signature — so CI / the ci-vm / other machines still build. The formula
   also `File.exist?`-guards the call for tags predating the script.
+- **The ad-hoc fallback is silent at exit-code level.** After the 2026-09-27 Mac
+  reset the login keychain had no signing identity, so every `make install` and
+  `make tarball` on 2026-10-18 produced ad-hoc binaries with only a warning line
+  (`sign.sh: no 'Developer ID Application' or 'Apple Development' identity
+  found`). `security find-identity -v -p codesigning` reporting `0 valid
+  identities` means the identity is missing from the keychain itself, not hidden
+  by a Claude session sandbox (the same result appeared in Terminal.app).
+  Reissue it in Xcode > Settings > Accounts > Manage Certificates, then rebuild
+  and re-grant once with `pippin permissions`.
 - **Apple Development is a usable fallback for LOCAL TCC persistence** (pippin-ink):
   on a machine with only the everyday Xcode "Apple Development" cert (no paid
   Developer ID), `make install` still yields a content-independent DR
