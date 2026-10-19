@@ -66,4 +66,20 @@ final class MailBridgeHardTimeoutTests: XCTestCase {
         let timeout = MailBridge.listScanTimeout(crossAccount: false, fetchesBodies: false)
         XCTAssertEqual(MailBridge.clampHardTimeout(timeout, underMCP: true), timeout)
     }
+
+    func testScriptThatStopsAtItsSoftCapReturnsBeforeTheHardTimeout() throws {
+        // A real osascript run, no Mail involved. The script works until its
+        // soft cap and then returns partial output, the way the list script
+        // does. The soft cap is past the old 10s single-account hard timeout,
+        // so a hard timeout below the soft cap kills it and this throws.
+        let softMs = 11000
+        let script = """
+        var start = Date.now();
+        while (Date.now() - start <= \(softMs)) { delay(0.25); }
+        JSON.stringify({timedOut: true});
+        """
+        let hard = MailBridge.listScanTimeout(crossAccount: false, fetchesBodies: false, softTimeoutMs: softMs)
+        let output = try ScriptRunner.run(script, timeoutSeconds: hard)
+        XCTAssertEqual(output, #"{"timedOut":true}"#)
+    }
 }

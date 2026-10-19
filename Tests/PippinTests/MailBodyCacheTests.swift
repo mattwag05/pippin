@@ -102,4 +102,28 @@ final class MailBodyCacheTests: XCTestCase {
         XCTAssertEqual(hits.mapValues(\.body), ["fresh": "right"])
         XCTAssertEqual(cache.count(), 2, "only the mismatched row is evicted; an id with no expected identity is left alone")
     }
+
+    // MARK: - Identity predicate (pippin-pvak, pippin-log5)
+
+    func testSameInstantMatchesFractionalAndWholeSecondForms() {
+        // Envelope Index rows carry whole seconds; JXA's toISOString() adds
+        // milliseconds. Both name the same message.
+        XCTAssertTrue(MailBodyCache.sameInstant("2026-03-04T05:06:07Z", "2026-03-04T05:06:07.000Z"))
+    }
+
+    func testSameInstantMatchesOneInstantWrittenWithDifferentOffsets() {
+        XCTAssertTrue(MailBodyCache.sameInstant("2026-03-04T05:06:07Z", "2026-03-04T00:06:07-05:00"))
+    }
+
+    func testSameInstantRejectsADifferentMessageOneSecondApart() {
+        XCTAssertFalse(MailBodyCache.sameInstant("2026-03-04T05:06:07Z", "2026-03-04T05:06:08Z"))
+        XCTAssertFalse(MailBodyCache.sameInstant("2026-03-04T05:06:07.000Z", "2026-03-04T05:06:07.500Z"))
+    }
+
+    func testSameInstantNeverMatchesUnparseableDatesUnlessIdentical() {
+        XCTAssertFalse(MailBodyCache.sameInstant("not a date", "2026-03-04T05:06:07Z"))
+        XCTAssertFalse(MailBodyCache.sameInstant("", "2026-03-04T05:06:07Z"))
+        XCTAssertFalse(MailBodyCache.sameInstant("garbage", "other garbage"))
+        XCTAssertTrue(MailBodyCache.sameInstant("garbage", "garbage"))
+    }
 }

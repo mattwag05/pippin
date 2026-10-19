@@ -39,15 +39,19 @@ public enum BrowserBridge {
     /// Upper bound for each readiness probe, so `pippin doctor` cannot hang.
     static let playwrightProbeTimeoutSeconds = 5
 
-    /// Resolves `playwright` the way browser operations do: a temporary Node
-    /// script run with the runtime's environment. Prints `resolved` or `missing`.
+    /// Loads `playwright` the way browser operations do: a temporary Node
+    /// script run with the runtime's environment. Prints `resolved` or
+    /// `missing`. It loads rather than only resolving the module, so an install
+    /// that resolves but throws on load fails the probe instead of passing it.
     static let playwrightModuleProbeScript = """
     try {
         require.resolve('playwright');
-        console.log('resolved');
     } catch (e) {
-        if (e && e.code === 'MODULE_NOT_FOUND') { console.log('missing'); } else { throw e; }
+        if (e && e.code === 'MODULE_NOT_FOUND') { console.log('missing'); process.exit(0); }
+        throw e;
     }
+    require('playwright');
+    console.log('resolved');
     """
 
     /// Checks that the WebKit browser Playwright launches is on disk. Prints
