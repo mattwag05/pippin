@@ -313,6 +313,16 @@ that any action occurred. OpenAI-compatible blank, reasoning-only, truncated,
 or filtered responses fail as the non-retryable `incomplete_completion` error;
 reasoning content is never returned or logged by pippin.
 
+Before planning, a short model call reads which personal data the intent forbids
+("don't touch my email"). Pass `--exclude-data mail,notes` to state exclusions
+directly; both sources are merged and reported as `excluded_data`. Every tool
+that accesses an excluded kind is removed from the planner's tool list and from
+the executor's allowlist, so a plan naming one fails validation. Cross-cutting
+tools count as accessing every app they open: `status` and `doctor` open Mail,
+Notes, Calendar, and the rest, and the `job_*` and `batch` tools count as
+accessing everything. Reading exclusions from the intent is best effort, while
+`--exclude-data` is enforced.
+
 ### Action Extraction
 
 Scan recent Sent mail and recently-modified Notes for commitments you made and surface them as draft reminders.

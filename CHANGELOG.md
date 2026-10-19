@@ -12,6 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - [feat] `pippin do` output now includes `dry_run` and `executed`, so callers can distinguish a plan from completed tool execution; `final_answer` remains a planning note rather than proof of action.
+- [feat] `pippin do` now honors data exclusions. Exclusions stated in the intent ("do not access my mail") or passed with the new `--exclude-data` option remove every tool that accesses that data, including `status` and `doctor`, before planning and execution. The output reports them as `excluded_data`. Closes pippin-jhb3.
 - [feat] Mail JSON now optionally includes `receivedAt` while retaining `date` as the sender-declared sent timestamp for compatibility.
 
 ### Changed
@@ -20,6 +21,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- [bug] `pippin do` plans now describe what the steps will do instead of claiming that work already happened, and an empty plan caused by an exclusion names the withheld tool. Closes pippin-jhb3.
 - [ci] Headless Forgejo tests now skip the live Apple-app pagination sweep with a visible XCTest skip. A synthetic fixture checks its array and cursor output, while CLI subprocesses time out instead of hanging. TCC-granted runs retain the live sweep.
 - [bug] OpenAI-compatible blank, reasoning-only, truncated, and filtered responses now fail as the typed non-retryable `incomplete_completion` error without exposing reasoning content.
 - [bug] Mail newest-first ordering, date filters, CLI display, and rule age guards now use receipt time with a sent-time fallback across both JXA and Envelope Index paths. Closes pippin-wrdm and pippin-23bi.

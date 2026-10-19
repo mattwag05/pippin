@@ -128,6 +128,7 @@ final class DoCommandTests: XCTestCase {
             DryRunResult(
                 steps: [IntentPlanner.PlannedStep(tool: "status")],
                 finalAnswer: "planning note",
+                excludedData: ["mail"],
                 dryRun: true,
                 executed: false
             )
@@ -137,15 +138,55 @@ final class DoCommandTests: XCTestCase {
         )
         XCTAssertEqual(dryObject["dry_run"] as? Bool, true)
         XCTAssertEqual(dryObject["executed"] as? Bool, false)
+        XCTAssertEqual(dryObject["excluded_data"] as? [String], ["mail"])
 
         let realData = try JSONEncoder().encode(
-            ExecutedResult(steps: [], finalAnswer: "planning note", dryRun: false, executed: false)
+            ExecutedResult(
+                steps: [], finalAnswer: "planning note", excludedData: [], dryRun: false, executed: false
+            )
         )
         let realObject = try XCTUnwrap(
             try JSONSerialization.jsonObject(with: realData) as? [String: Any]
         )
         XCTAssertEqual(realObject["dry_run"] as? Bool, false)
         XCTAssertEqual(realObject["executed"] as? Bool, false)
+    }
+
+    // MARK: - Data exclusions (pippin-jhb3)
+
+    func testExecutorRejectsExcludedToolBeforeRunningAnything() async {
+        let counter = CallCounter()
+        let allowed = ToolDataAccess.allowedTools(MCPToolRegistry.tools, excluding: [.mail])
+        let plan = IntentPlanner.Plan(
+            steps: [
+                IntentPlanner.PlannedStep(tool: "reminders_lists", args: nil),
+                IntentPlanner.PlannedStep(tool: "doctor", args: nil),
+            ],
+            finalAnswer: "Will check."
+        )
+        do {
+            _ = try await DoExecutor.execute(
+                plan: plan, tools: allowed, maxSteps: 5, dryRun: false,
+                runTool: { _, _ in counter.count += 1; return .null }
+            )
+            XCTFail("expected the excluded doctor step to be rejected")
+        } catch IntentPlannerError.unknownTool("doctor") {
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
+        XCTAssertEqual(counter.count, 0)
+    }
+
+    func testParseExcludeDataAcceptsKnownKinds() throws {
+        XCTAssertEqual(try DoCommand.parseExcludeData(nil), [])
+        XCTAssertEqual(try DoCommand.parseExcludeData(" Mail, notes "), [.mail, .notes])
+        XCTAssertThrowsError(try DoCommand.parseExcludeData("mail,photos"))
+    }
+
+    func testDoParsesExcludeDataFlag() throws {
+        let cmd = try DoCommand.parse(["check status", "--exclude-data", "mail,calendar"])
+        XCTAssertEqual(cmd.excludeData, "mail,calendar")
+        XCTAssertThrowsError(try DoCommand.parse(["check status", "--exclude-data", "photos"]))
     }
 }
 

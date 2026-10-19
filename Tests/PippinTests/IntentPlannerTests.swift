@@ -239,4 +239,72 @@ final class IntentPlannerTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Data exclusions and plan wording (pippin-jhb3)
+
+    func testExtractExclusionsParsesKinds() throws {
+        let provider = ScriptedAIProvider([#"{"excluded":["mail","Notes"]}"#])
+        let kinds = try IntentPlanner.extractExclusions(intent: "no mail or notes", provider: provider)
+        XCTAssertEqual(kinds, [.mail, .notes])
+        XCTAssertEqual(provider.optionCalls.first?.temperature, 0)
+        XCTAssertEqual(provider.optionCalls.first?.jsonMode, true)
+    }
+
+    func testExtractExclusionsRepairsOnceThenFailsClosed() {
+        let repaired = ScriptedAIProvider(["not json", #"{"excluded":[]}"#])
+        XCTAssertEqual(try IntentPlanner.extractExclusions(intent: "x", provider: repaired), [])
+        XCTAssertTrue(repaired.calls[1].prompt.contains("Original request:\nx"))
+
+        let broken = ScriptedAIProvider(["not json", #"{"excluded":["photos"]}"#, "{}"])
+        XCTAssertThrowsError(try IntentPlanner.extractExclusions(intent: "x", provider: broken))
+        XCTAssertEqual(broken.calls.count, 2)
+    }
+
+    func testParseExclusionsRejectsExtraFieldsAndNonStrings() {
+        XCTAssertThrowsError(try IntentPlanner.parseExclusions(#"{"excluded":[],"why":"x"}"#))
+        XCTAssertThrowsError(try IntentPlanner.parseExclusions(#"{"excluded":[1]}"#))
+        XCTAssertThrowsError(try IntentPlanner.parseExclusions(#"["mail"]"#))
+    }
+
+    func testSystemPromptListsDataAccessPerTool() throws {
+        let tools = try [XCTUnwrap(MCPToolRegistry.tool(named: "doctor"))]
+        let prompt = IntentPlanner.buildSystemPrompt(tools: tools, maxSteps: 1)
+        XCTAssertTrue(prompt.contains("Accesses: calendar, contacts, mail, memos, messages, notes, reminders"))
+    }
+
+    func testSystemPromptRequiresFutureTenseFinalAnswer() {
+        let prompt = IntentPlanner.buildSystemPrompt(tools: [], maxSteps: 1)
+        XCTAssertTrue(prompt.contains("Nothing has run when you write the plan."))
+    }
+
+    func testSystemPromptNamesExclusionsOnlyWhenPresent() {
+        XCTAssertFalse(IntentPlanner.buildSystemPrompt(tools: [], maxSteps: 1).contains("The user excluded"))
+        let prompt = IntentPlanner.buildSystemPrompt(tools: [], maxSteps: 1, excludedData: [.notes, .mail])
+        XCTAssertTrue(prompt.contains("The user excluded these kinds of data: mail, notes."))
+        XCTAssertTrue(prompt.contains("every mail_* and notes_* tool, plus "))
+        XCTAssertTrue(prompt.contains("doctor"))
+    }
+
+    func testWithheldSummaryListsPartlyWithheldFamiliesByName() {
+        let prompt = IntentPlanner.buildSystemPrompt(tools: [], maxSteps: 1, excludedData: [.reminders])
+        XCTAssertTrue(prompt.contains("every reminders_* tool, plus "))
+        XCTAssertTrue(prompt.contains("memos_capture_to_reminders"))
+        XCTAssertFalse(prompt.contains("memos_*"))
+    }
+
+    func testPlanNamingAToolOutsideTheAllowedSurfaceIsRepairedThenRejected() {
+        let allowed = ToolDataAccess.allowedTools(MCPToolRegistry.tools, excluding: [.mail])
+        let provider = ScriptedAIProvider([
+            #"{"steps":[{"tool":"doctor","args":{}}],"final_answer":"Will run doctor."}"#,
+            #"{"steps":[{"tool":"status","args":{}}],"final_answer":"Will run status."}"#,
+        ])
+        XCTAssertThrowsError(try IntentPlanner.plan(
+            intent: "no mail", tools: allowed, provider: provider, maxSteps: 1, excludedData: [.mail]
+        )) { error in
+            guard case IntentPlannerError.unknownTool("status") = error else {
+                return XCTFail("expected unknown excluded tool, got \(error)")
+            }
+        }
+        XCTAssertEqual(provider.calls.count, 2)
+    }
 }

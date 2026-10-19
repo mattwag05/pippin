@@ -39,6 +39,16 @@ public struct DoCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Plan only — do not execute steps. Prints the plan as .data.")
     public var dryRun: Bool = false
 
+    @Option(
+        name: .long,
+        help: """
+        Comma-separated personal data the plan must not access \
+        (mail, messages, notes, contacts, calendar, reminders, memos). \
+        Merged with any exclusions stated in the intent.
+        """
+    )
+    public var excludeData: String?
+
     @OptionGroup public var output: OutputOptions
 
     public init() {}
@@ -50,6 +60,21 @@ public struct DoCommand: AsyncParsableCommand {
         guard !intent.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw ValidationError("intent must not be empty.")
         }
+        _ = try Self.parseExcludeData(excludeData)
+    }
+
+    static func parseExcludeData(_ value: String?) throws -> Set<PersonalDataKind> {
+        guard let value else { return [] }
+        var kinds: Set<PersonalDataKind> = []
+        for name in value.split(separator: ",") {
+            let trimmed = name.trimmingCharacters(in: .whitespaces).lowercased()
+            guard let kind = PersonalDataKind(rawValue: trimmed) else {
+                let valid = PersonalDataKind.allCases.map(\.rawValue).joined(separator: ", ")
+                throw ValidationError("Unknown --exclude-data kind '\(trimmed)'. Valid kinds: \(valid).")
+            }
+            kinds.insert(kind)
+        }
+        return kinds
     }
 
     public mutating func run() async throws {
@@ -61,18 +86,26 @@ public struct DoCommand: AsyncParsableCommand {
         // loop below already does for runChild (pippin-77t).
         let intent = self.intent
         let maxSteps = self.maxSteps
+        let flagExclusions = try Self.parseExcludeData(excludeData)
+        let excluded = try await detachBlocking {
+            try IntentPlanner.extractExclusions(intent: intent, provider: ai)
+        }.union(flagExclusions)
+        // Excluded tools are removed from both the planner's surface and the
+        // executor's allowlist, so a plan naming one fails validation.
+        let tools = ToolDataAccess.allowedTools(MCPToolRegistry.tools, excluding: excluded)
         let plan = try await detachBlocking {
             try IntentPlanner.plan(
-                intent: intent, tools: MCPToolRegistry.tools, provider: ai, maxSteps: maxSteps
+                intent: intent, tools: tools, provider: ai, maxSteps: maxSteps, excludedData: excluded
             )
         }
+        let excludedNames = excluded.sorted().map(\.rawValue)
 
         if dryRun {
             // The executor validates even in dry-run mode, but its runner is
             // never called. This keeps the output useful without claiming work ran.
             _ = try await DoExecutor.execute(
                 plan: plan,
-                tools: MCPToolRegistry.tools,
+                tools: tools,
                 maxSteps: maxSteps,
                 dryRun: true,
                 runTool: { _, _ in .null }
@@ -80,6 +113,7 @@ public struct DoCommand: AsyncParsableCommand {
             let dry = DryRunResult(
                 steps: plan.steps,
                 finalAnswer: plan.finalAnswer,
+                excludedData: excludedNames,
                 dryRun: true,
                 executed: false
             )
@@ -90,7 +124,7 @@ public struct DoCommand: AsyncParsableCommand {
         let pippinPath = MCPServerRuntime.resolvePippinPath()
         let execution = try await DoExecutor.execute(
             plan: plan,
-            tools: MCPToolRegistry.tools,
+            tools: tools,
             maxSteps: maxSteps,
             dryRun: false,
             runTool: { tool, args in
@@ -111,6 +145,7 @@ public struct DoCommand: AsyncParsableCommand {
         let result = ExecutedResult(
             steps: execution.executedSteps,
             finalAnswer: plan.finalAnswer,
+            excludedData: excludedNames,
             dryRun: false,
             executed: execution.executed
         )
@@ -151,12 +186,14 @@ public struct DoCommand: AsyncParsableCommand {
 struct DryRunResult: Encodable {
     let steps: [IntentPlanner.PlannedStep]
     let finalAnswer: String?
+    let excludedData: [String]
     let dryRun: Bool
     let executed: Bool
 
     enum CodingKeys: String, CodingKey {
         case steps
         case finalAnswer = "final_answer"
+        case excludedData = "excluded_data"
         case dryRun = "dry_run"
         case executed
     }
@@ -171,12 +208,14 @@ struct ExecutedStep: Encodable, Sendable {
 struct ExecutedResult: Encodable {
     let steps: [ExecutedStep]
     let finalAnswer: String?
+    let excludedData: [String]
     let dryRun: Bool
     let executed: Bool
 
     enum CodingKeys: String, CodingKey {
         case steps
         case finalAnswer = "final_answer"
+        case excludedData = "excluded_data"
         case dryRun = "dry_run"
         case executed
     }
