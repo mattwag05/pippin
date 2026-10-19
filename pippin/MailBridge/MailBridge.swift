@@ -226,7 +226,9 @@ enum MailBridge {
         // Cross-account scans iterate multiple accounts' INBOXes, each with
         // 1000–2700 messages — 10s is far too short.  Use a 6× multiplier for
         // cross-account to avoid hard-timeout crashes (measured ~20s).
-        let timeout = listScanTimeout(crossAccount: crossAccount, fetchesBodies: (preview ?? 0) > 0)
+        let timeout = listScanTimeout(
+            crossAccount: crossAccount, fetchesBodies: (preview ?? 0) > 0, softTimeoutMs: softTimeoutMs
+        )
         let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
         let wrapper = try decode(ListResponse.self, from: json)
         return ListOutcome(
@@ -284,10 +286,27 @@ enum MailBridge {
     /// the `listMessagesCached` batch-body pass so the two list paths' timeout
     /// scaling can't drift. (Activity uses a different, larger base — see
     /// `listActivity`.)
-    static func listScanTimeout(crossAccount: Bool, fetchesBodies: Bool) -> Int {
+    ///
+    /// The hard timeout never drops below the script's own soft cap plus
+    /// `softCapHeadroomSeconds`, so a slow scan stops itself and returns its
+    /// rows with `partial: true` instead of being killed. A fixed 10s
+    /// single-account base sat below the 22s soft cap, so a slow JXA scan
+    /// (`--unread`, `--limit 500`) never reached it: ScriptRunner killed the
+    /// script at 10s, relaunched Mail, retried, and failed again at ~20.6s
+    /// (pippin-zzdd, pippin-9rf0).
+    static func listScanTimeout(
+        crossAccount: Bool,
+        fetchesBodies: Bool,
+        softTimeoutMs: Int = SoftTimeout.defaultMs
+    ) -> Int {
         let base = crossAccount ? 60 : 10
-        return fetchesBodies ? base + 40 : base
+        let scaled = fetchesBodies ? base + 40 : base
+        return max(scaled, SoftTimeout.clamp(softTimeoutMs) / 1000 + softCapHeadroomSeconds)
     }
+
+    /// Time after the soft cap for the script to sort, slice and serialize the
+    /// rows it already gathered.
+    static let softCapHeadroomSeconds = 15
 
     static func listActivity(
         account: String? = nil,
@@ -804,7 +823,9 @@ enum MailBridge {
     ) throws -> (messages: [MailMessage], timedOut: Bool) {
         guard !ids.isEmpty else { return (messages: [], timedOut: false) }
         let script = buildBatchBodiesScript(compoundIds: ids, softTimeoutMs: softTimeoutMs)
-        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(listScanTimeout(crossAccount: crossAccount, fetchesBodies: true)))
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(listScanTimeout(
+            crossAccount: crossAccount, fetchesBodies: true, softTimeoutMs: softTimeoutMs
+        )))
         let wrapper = try decode(ScanResponse.self, from: json)
         return (messages: wrapper.results, timedOut: wrapper.meta.timedOut)
     }

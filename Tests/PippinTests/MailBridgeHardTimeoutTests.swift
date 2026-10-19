@@ -37,4 +37,33 @@ final class MailBridgeHardTimeoutTests: XCTestCase {
         let clamped = MailBridge.clampHardTimeout(999, underMCP: true)
         XCTAssertLessThan(clamped, MCPServerRuntime.defaultChildTimeoutSeconds)
     }
+
+    // MARK: - listScanTimeout soft-cap floor (pippin-zzdd, pippin-9rf0)
+
+    func testSingleAccountListOutlastsTheSoftCap() {
+        // A 10s hard timeout killed slow JXA scans before the 22s soft cap
+        // could return partial rows.
+        let softSeconds = SoftTimeout.defaultMs / 1000
+        let timeout = MailBridge.listScanTimeout(crossAccount: false, fetchesBodies: false)
+        XCTAssertGreaterThan(timeout, softSeconds)
+        XCTAssertEqual(timeout, softSeconds + MailBridge.softCapHeadroomSeconds)
+    }
+
+    func testListTimeoutTracksTheCallersSoftCap() {
+        XCTAssertEqual(
+            MailBridge.listScanTimeout(crossAccount: false, fetchesBodies: false, softTimeoutMs: 40000),
+            40 + MailBridge.softCapHeadroomSeconds
+        )
+        // Larger fixed budgets are kept when they already exceed the floor.
+        XCTAssertEqual(MailBridge.listScanTimeout(crossAccount: true, fetchesBodies: false), 60)
+        XCTAssertEqual(MailBridge.listScanTimeout(crossAccount: true, fetchesBodies: true), 100)
+        XCTAssertEqual(MailBridge.listScanTimeout(crossAccount: false, fetchesBodies: true), 50)
+    }
+
+    func testListTimeoutStaysUnderTheMcpCeilingByDefault() {
+        // Under MCP the default single-account budget must still let the soft
+        // cap fire before the 55s clamp.
+        let timeout = MailBridge.listScanTimeout(crossAccount: false, fetchesBodies: false)
+        XCTAssertEqual(MailBridge.clampHardTimeout(timeout, underMCP: true), timeout)
+    }
 }

@@ -106,10 +106,36 @@ run "mail search --from filters sender (#21)" "isinstance(d['data'], (list, dict
   -- mail search "the" --from "no-reply" --limit 3
 run "mail search date-bounded body scan returns (#23)" "isinstance(d['data'], (list, dict))" \
   -- mail search "the" --body --after 2026-07-01 --limit 3
+# Shared by the mail checks below. The fast-path probe and the account list
+# must exist on every path: an unset ACCTS aborted the whole run under
+# `set -u` when Full Disk Access was missing (pippin-ipmm).
+FASTPATH_OK="$("$BIN" doctor --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('no'); sys.exit()
+checks = d.get('data') or []
+print('yes' if any(c.get('name') == 'Mail fast path (Envelope Index)' and c.get('status') == 'ok' for c in checks) else 'no')")"
+ACCTS="$("$BIN" mail accounts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit()
+for r in (d.get('data') or []):
+    if r.get('name'): print(r['name'])")"
+
 # pippin-1son: a clean (non-timed-out) result must NOT carry the partial marker,
 # and --preview must inline bodyPreview snippets on the hits.
-run "mail search clean result has no partial flag (pippin-1son)" "d.get('partial') is None" \
-  -- mail search "the" --limit 3
+# Without Full Disk Access the JXA scan of every account soft-times out and
+# correctly reports partial, so the check needs the fast path (pippin-ipmm).
+if [[ "$FASTPATH_OK" == "yes" ]]; then
+  run "mail search clean result has no partial flag (pippin-1son)" "d.get('partial') is None" \
+    -- mail search "the" --limit 3
+else
+  SKIP=$((SKIP+1)); echo "  SKIP  mail search clean result has no partial flag (fast path unavailable)"
+fi
 run "mail search --preview fills bodyPreview (pippin-1son)" "
 len(d['data']) == 0 or any(isinstance(m.get('bodyPreview'), str) and m['bodyPreview'] for m in d['data'])" \
   -- mail search "the" --limit 3 --preview 120
@@ -178,14 +204,6 @@ len(d['data']) > 0 or any('scan window did not reach' in w for w in (d.get('warn
 # the same bounded single-account query, the JXA ids must be a subset of the
 # fast-path ids (identical in practice; JXA's newest-N window can only lose
 # rows, never gain them, because ROWID == the JXA message id).
-FASTPATH_OK="$("$BIN" doctor --format agent 2>/dev/null | python3 -c "
-import json, sys
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print('no'); sys.exit()
-checks = d.get('data') or []
-print('yes' if any(c.get('name') == 'Mail fast path (Envelope Index)' and c.get('status') == 'ok' for c in checks) else 'no')")"
 if [[ "$FASTPATH_OK" == "yes" ]]; then
   ACCT="$("$BIN" mail accounts --format agent 2>/dev/null | python3 -c "
 import json, sys
@@ -228,14 +246,6 @@ fi
 # months. Fast-path [] + JXA non-empty is the failure; both empty is a real
 # empty inbox and passes.
 if [[ "$FASTPATH_OK" == "yes" ]]; then
-  ACCTS="$("$BIN" mail accounts --format agent 2>/dev/null | python3 -c "
-import json, sys
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    sys.exit()
-for r in (d.get('data') or []):
-    if r.get('name'): print(r['name'])")"
   EMPTY_ACCTS=()
   while IFS= read -r acct; do
     [[ -z "$acct" ]] && continue
@@ -308,6 +318,52 @@ elif [[ "$UNREAD_OK" -eq 0 ]]; then
   SKIP=$((SKIP+1)); echo "  SKIP  mailboxes unreadCount vs read flags (no comparable inbox)"
 else
   PASS=$((PASS+1)); echo "  ok    mailboxes unreadCount matches per-message read flags ($UNREAD_OK accounts) (pippin-zxsq)"
+fi
+
+# --- pippin-zzdd / pippin-9rf0: the JXA list path must answer, not time out.
+# A 10s hard limit sat under the 22s soft cap, so slow scans (--unread on
+# large inboxes, --limit 500) were killed twice and returned error timeout at
+# ~20.6s. Forced JXA: a slow scan must now come back ok, partial if needed.
+JXA_TIMEOUTS=()
+JXA_OK=0
+FIRST_ACCT=""
+while IFS= read -r acct; do
+  [[ -z "$acct" ]] && continue
+  [[ -z "$FIRST_ACCT" ]] && FIRST_ACCT="$acct"
+  ST="$(PIPPIN_MAIL_FASTPATH=0 "$BIN" mail list --account "$acct" --unread --limit 3 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('bad-json'); sys.exit()
+print('ok' if d.get('status') == 'ok' else (d.get('error') or {}).get('code', '?'))")"
+  case "$ST" in
+    ok) JXA_OK=$((JXA_OK+1)) ;;
+    access_denied) ;;
+    *) JXA_TIMEOUTS+=("$acct --unread: $ST") ;;
+  esac
+done <<< "$ACCTS"
+if [[ -n "$FIRST_ACCT" ]]; then
+  ST="$(PIPPIN_MAIL_FASTPATH=0 "$BIN" mail list --account "$FIRST_ACCT" --limit 500 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('bad-json'); sys.exit()
+print('ok' if d.get('status') == 'ok' and d.get('data') else (d.get('error') or {}).get('code', 'empty'))")"
+  case "$ST" in
+    ok) JXA_OK=$((JXA_OK+1)) ;;
+    access_denied) ;;
+    *) JXA_TIMEOUTS+=("$FIRST_ACCT --limit 500: $ST") ;;
+  esac
+fi
+if [[ ${#JXA_TIMEOUTS[@]} -gt 0 ]]; then
+  FAIL=$((FAIL+1)); fails+=("JXA mail list did not answer: ${JXA_TIMEOUTS[*]}")
+  echo "  FAIL  JXA mail list did not answer (${JXA_TIMEOUTS[*]})"
+elif [[ "$JXA_OK" -eq 0 ]]; then
+  SKIP=$((SKIP+1)); echo "  SKIP  JXA mail list answers (no account reachable)"
+else
+  PASS=$((PASS+1)); echo "  ok    JXA mail list answers --unread and --limit 500 ($JXA_OK scans) (pippin-zzdd, pippin-9rf0)"
 fi
 
 # --- pippin-37az: paginated agent output keeps `data` an array (envelope v3).
