@@ -20,8 +20,9 @@ final class MailAICommandTests: XCTestCase {
     }
 
     func testIndexDefaultProvider() throws {
+        // Nil defers to ai.embeddings.provider, then Ollama (pippin-edjh).
         let cmd = try MailCommand.Index.parse([])
-        XCTAssertEqual(cmd.provider, "ollama")
+        XCTAssertNil(cmd.provider)
     }
 
     func testIndexDefaultMailbox() throws {
@@ -146,8 +147,9 @@ final class MailAICommandTests: XCTestCase {
         XCTAssertEqual(cmd.provider, "ollama")
     }
 
-    func testSearchProviderDefaultsToOllama() throws {
+    func testSearchProviderDefersToConfig() throws {
+        // Nil defers to ai.embeddings.provider, then Ollama (pippin-edjh).
         let cmd = try MailCommand.Search.parse(["somequery"])
-        XCTAssertEqual(cmd.provider, "ollama")
+        XCTAssertNil(cmd.provider)
     }
 }

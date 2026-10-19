@@ -7,7 +7,7 @@ final class DoctorTests: XCTestCase {
     /// auth probes + a 3s Ollama HTTP request + Python/Node/Playwright
     /// subprocess waits — running it 7+ times per test process added ~30s
     /// to the suite. Lazy + Sendable means it computes once on first use.
-    nonisolated(unsafe) static let cachedChecks: [DiagnosticCheck] = runAllChecks()
+    nonisolated(unsafe) static let cachedChecks: [DiagnosticCheck] = runAllChecks(config: nil)
 
     // MARK: - classifyMailError
 

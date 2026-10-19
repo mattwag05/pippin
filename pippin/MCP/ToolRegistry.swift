@@ -1538,7 +1538,7 @@ enum MCPToolRegistry {
                 "memo": Schema.string("Memo UUID or prefix (default: most recent recording)."),
                 "list": Schema.string("Reminder list name (default: Inbox)."),
                 "dryRun": Schema.boolean("Preview items without creating reminders.", default: false),
-                "provider": Schema.string("AI provider: ollama or claude (default: ollama)."),
+                "provider": Schema.string("AI provider: ollama, claude, or openai (default: ai.provider, else ollama)."),
                 "model": Schema.string("Model name (provider-specific default)."),
             ]),
             buildArgs: { args in
@@ -1553,13 +1553,13 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "memos_summarize",
-            description: "Summarize a Voice Memos recording using an AI provider (ollama or claude).",
+            description: "Summarize a Voice Memos recording using the configured AI provider.",
             inputSchema: Schema.object(properties: [
                 "id": Schema.string("Memo UUID (omit with all=true)."),
                 "all": Schema.boolean("Summarize every recording.", default: false),
                 "template": Schema.string("Template name (e.g. meeting-notes, summary, action-items)."),
                 "prompt": Schema.string("Free-form prompt (overrides template)."),
-                "provider": Schema.string("AI provider: ollama or claude (default: ollama)."),
+                "provider": Schema.string("AI provider: ollama, claude, or openai (default: ai.provider, else ollama)."),
                 "model": Schema.string("Model name (provider-specific default)."),
                 "since": Schema.string("With all=true, only memos on or after YYYY-MM-DD."),
                 "output": Schema.string("Write output to a directory instead of inline JSON."),

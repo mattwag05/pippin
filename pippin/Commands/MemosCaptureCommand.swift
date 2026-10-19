@@ -151,9 +151,9 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
         if let cached = try cache.get(memoId: memo.id) {
             return cached.transcript
         }
-        let transcriber = MLXAudioTranscriber()
+        let transcriber = try AIProviderFactory.makeTranscriber()
         let result = try db.transcribeMemo(id: memo.id, transcriber: transcriber)
-        try cache.set(memoId: memo.id, transcript: result.transcription, provider: "mlx-audio")
+        try cache.set(memoId: memo.id, transcript: result.transcription, provider: transcriber.cacheProvider)
         return result.transcription
     }
 

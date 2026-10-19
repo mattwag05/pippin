@@ -278,7 +278,7 @@ public final class VoiceMemosDB: Sendable {
             } else {
                 let result = try transcriber.transcribe(audioPath: sourcePath)
                 text = result.text
-                try cache?.set(memoId: memo.id, transcript: text, provider: "mlx-audio")
+                try cache?.set(memoId: memo.id, transcript: text, provider: transcriber.cacheProvider)
             }
             transcriptionText = text
 

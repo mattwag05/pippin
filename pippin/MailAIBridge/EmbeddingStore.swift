@@ -87,11 +87,14 @@ public final class EmbeddingStore: Sendable {
     /// True when `compoundId` already has an embedding of the message dated
     /// `messageDate`. A row for a different message (the id was reassigned) or
     /// a legacy row with no date is not current, so `mail index` re-embeds it.
-    public func isCurrent(compoundId: String, messageDate: String) -> Bool {
+    /// When `model` is given, a row embedded by another model is not current
+    /// either: switching embedding backends re-indexes (pippin-edjh).
+    public func isCurrent(compoundId: String, messageDate: String, model: String? = nil) -> Bool {
         let record = try? dbQueue.read { db in
             try EmbeddingRecord.fetchOne(db, key: compoundId)
         }
-        return record?.matches(date: messageDate) ?? false
+        guard let record, record.matches(date: messageDate) else { return false }
+        return model.map { record.model == $0 } ?? true
     }
 
     public func upsert(_ record: EmbeddingRecord) throws {

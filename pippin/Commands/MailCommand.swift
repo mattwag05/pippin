@@ -183,14 +183,14 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Use semantic (embedding-based) search. Requires running `mail index` first.")
         public var semantic: Bool = false
 
-        @Option(name: .customLong("embedding-model"), help: "Embedding model for semantic search (default: nomic-embed-text).")
+        @Option(name: .customLong("embedding-model"), help: "Embedding model for semantic search (default: ai.embeddings.model, else nomic-embed-text for ollama).")
         public var embeddingModel: String?
 
         @Option(name: .customLong("ollama-url"), help: "Ollama base URL for semantic search.")
         public var ollamaUrl: String?
 
-        @Option(name: .long, help: "Embedding provider for semantic search (only 'ollama' supported).")
-        public var provider: String = "ollama"
+        @Option(name: .long, help: "Embedding provider for semantic search: ollama or openai (default: ai.embeddings.provider, else ollama).")
+        public var provider: String?
 
         @OptionGroup public var pagination: PaginationOptions
 
@@ -226,12 +226,9 @@ public struct MailCommand: AsyncParsableCommand {
                 return
             }
             if semantic {
-                guard provider == "ollama" else {
-                    throw MailAIError.unsupportedEmbeddingProvider(provider)
-                }
-                let baseURL = ollamaUrl ?? "http://localhost:11434"
-                let model = embeddingModel ?? "nomic-embed-text"
-                let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: model)
+                let embedProvider = try AIProviderFactory.makeEmbeddingProvider(
+                    providerFlag: provider, modelFlag: embeddingModel, urlFlag: ollamaUrl
+                )
                 let store = try EmbeddingStore()
 
                 let messages = try await detachBlocking { [query, limit] in
@@ -344,12 +341,9 @@ public struct MailCommand: AsyncParsableCommand {
             var paginatedTimedOut = false
             var paginatedFastPathNote: String?
             if semantic {
-                guard provider == "ollama" else {
-                    throw MailAIError.unsupportedEmbeddingProvider(provider)
-                }
-                let baseURL = ollamaUrl ?? "http://localhost:11434"
-                let model = embeddingModel ?? "nomic-embed-text"
-                let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: model)
+                let embedProvider = try AIProviderFactory.makeEmbeddingProvider(
+                    providerFlag: provider, modelFlag: embeddingModel, urlFlag: ollamaUrl
+                )
                 let store = try EmbeddingStore()
                 let searchLimit = offset + pageSize + 1
                 let all = try await detachBlocking { [query] in

@@ -4,12 +4,19 @@ public protocol EmbeddingProvider: Sendable {
     func embed(text: String) throws -> [Float]
     /// Embed multiple texts in a single API call. Default implementation falls back to sequential calls.
     func embedBatch(texts: [String]) throws -> [[Float]]
+    /// The vector space this provider produces, stored in each index row's
+    /// `model` column. Vectors from different models cannot be compared, so
+    /// `mail index` re-embeds rows written under another key and semantic
+    /// search ranks only rows with this key. Nil disables the filter.
+    var storeKey: String? { get }
 }
 
 public extension EmbeddingProvider {
     func embedBatch(texts: [String]) throws -> [[Float]] {
         try texts.map { try embed(text: $0) }
     }
+
+    var storeKey: String? { nil }
 }
 
 public struct OllamaEmbeddingProvider: EmbeddingProvider {
@@ -20,6 +27,10 @@ public struct OllamaEmbeddingProvider: EmbeddingProvider {
         self.baseURL = baseURL
         self.model = model
     }
+
+    /// The bare model name, which is what indexes written before pippin-edjh
+    /// stored, so existing Ollama indexes stay current.
+    public var storeKey: String? { model }
 
     /// Request timeout policy for embedding calls. Single source of truth so
     /// both `embed` and `embedBatch` stay MCP-safe (see callers for rationale):
@@ -127,5 +138,75 @@ public struct OllamaEmbeddingProvider: EmbeddingProvider {
         }
 
         return embeddings.map { $0.map { Float($0) } }
+    }
+}
+
+/// Embeddings from any OpenAI-compatible `POST {baseURL}/embeddings`
+/// endpoint (OpenAI, oMLX, LM Studio, vLLM, Ollama's `/v1`).
+public struct OpenAIEmbeddingProvider: EmbeddingProvider {
+    public let baseURL: String
+    public let model: String
+    private let apiKey: String?
+
+    public init(baseURL: String, model: String, apiKey: String? = nil) {
+        self.baseURL = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
+        self.model = model
+        self.apiKey = (apiKey?.isEmpty == false) ? apiKey : nil
+    }
+
+    public var storeKey: String? { "openai:\(model)" }
+
+    public func embed(text: String) throws -> [Float] {
+        guard let first = try embedBatch(texts: [text]).first else {
+            throw MailAIError.embeddingFailed("Endpoint returned no embedding")
+        }
+        return first
+    }
+
+    public func embedBatch(texts: [String]) throws -> [[Float]] {
+        guard !texts.isEmpty else { return [] }
+        let timeout = OllamaEmbeddingProvider.requestTimeout(batch: texts.count > 1)
+        let request = try buildRequest(texts: texts, timeout: timeout)
+        let (data, httpResponse) = try sendSynchronousRequest(request, waitTimeoutSeconds: Int(timeout) + 5)
+        guard httpResponse.statusCode == 200 else {
+            throw OpenAIProvider.errorForHTTPStatus(
+                httpResponse.statusCode, data: data, model: model, baseURL: baseURL
+            )
+        }
+        return try Self.parseEmbeddings(data, expected: texts.count)
+    }
+
+    /// Pure request builder, for unit tests.
+    func buildRequest(texts: [String], timeout: TimeInterval) throws -> URLRequest {
+        guard let url = URL(string: "\(baseURL)/embeddings") else {
+            throw MailAIError.embeddingFailed("Invalid OpenAI-compatible base URL: \(baseURL)")
+        }
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let apiKey {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "input": texts])
+        return request
+    }
+
+    /// Read `data[].embedding`, ordered by each item's `index` (the spec does
+    /// not promise response order).
+    static func parseEmbeddings(_ data: Data, expected: Int) throws -> [[Float]] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let items = json["data"] as? [[String: Any]]
+        else {
+            throw MailAIError.embeddingFailed("Missing data[] in OpenAI-compatible embeddings response")
+        }
+        let ordered = items.enumerated().map { position, item in
+            ((item["index"] as? Int) ?? position, item["embedding"] as? [Double])
+        }
+        .sorted { $0.0 < $1.0 }
+        let vectors = ordered.compactMap(\.1)
+        guard vectors.count == ordered.count, vectors.count == expected else {
+            throw MailAIError.embeddingFailed("Batch count mismatch: sent \(expected), got \(vectors.count)")
+        }
+        return vectors.map { $0.map { Float($0) } }
     }
 }

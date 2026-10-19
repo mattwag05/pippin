@@ -838,7 +838,7 @@ extension VoiceMemosDBTests {
         XCTAssertTrue(spy.wasCalled, "Transcriber must be called on cache miss")
         let stored = try cache.get(memoId: "cache-memo")
         XCTAssertEqual(stored?.transcript, "live text", "Cache must store transcription result")
-        XCTAssertEqual(stored?.provider, "mlx-audio")
+        XCTAssertEqual(stored?.provider, spy.cacheProvider, "Cache must record the transcriber that produced the text")
     }
 
     func testExportMemoForceTranscribeBypassesCache() throws {
@@ -934,5 +934,37 @@ private final class SpyTranscriber: Transcriber, @unchecked Sendable {
     func transcribe(audioPath _: String) throws -> TranscriptionResult {
         wasCalled = true
         return TranscriptionResult(text: text)
+    }
+}
+
+// MARK: - Apple on-device transcription through the memo pipeline (pippin-edjh)
+
+extension VoiceMemosDBTests {
+    /// Runs the real `transcribeMemo` path (16 kHz WAV conversion, then the
+    /// transcriber) on speech synthesized by `say`. Live Voice Memos access
+    /// needs Full Disk Access, so a fixture database stands in for it.
+    func testTranscribeMemoWithAppleSpeech() throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("SpeechAnalyzer needs macOS 26") }
+        let tmpDir = NSTemporaryDirectory() + "pippin-apple-stt-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: tmpDir) }
+        let recordingsDir = tmpDir + "/recordings"
+        try FileManager.default.createDirectory(atPath: recordingsDir, withIntermediateDirectories: true)
+        let say = Process()
+        say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+        say.arguments = ["-o", recordingsDir + "/memo.m4a", "--file-format=m4af", "Pick up the dry cleaning before six."]
+        try say.run()
+        say.waitUntilExit()
+        guard say.terminationStatus == 0 else { throw XCTSkip("say could not synthesize audio") }
+
+        let dbQueue = try makeTestDB()
+        try insertMemo(db: dbQueue, id: "apple-memo", title: "Errand", path: "memo.m4a")
+        let db = try VoiceMemosDB(dbQueue: dbQueue, recordingsDir: recordingsDir)
+        let result: TranscribeResult
+        do {
+            result = try db.transcribeMemo(id: "apple-memo", transcriber: AppleSpeechTranscriber(locale: "en-US"))
+        } catch let TranscriberError.failed(message) {
+            throw XCTSkip("on-device speech unavailable: \(message)")
+        }
+        XCTAssertTrue(result.transcription.lowercased().contains("dry cleaning"), "got: \(result.transcription)")
     }
 }

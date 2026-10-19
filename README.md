@@ -408,7 +408,7 @@ Ships with 76 tools at curated parity with the CLI, covering mail (including mar
 
 ## AI Configuration
 
-`memos summarize` and `calendar smart-create` use an LLM for natural language processing. pippin supports local inference via Ollama, cloud inference via Claude, and any OpenAI-compatible Chat Completions endpoint (OpenAI, OpenRouter, vLLM, LM Studio, llama.cpp server, a local gateway, …).
+`memos summarize`, `calendar smart-create`, `mail triage`, `mail extract`, `actions extract`, and `do` use an LLM. pippin supports local inference via Ollama, cloud inference via Claude, and any OpenAI-compatible Chat Completions endpoint (OpenAI, OpenRouter, vLLM, LM Studio, llama.cpp server, a local gateway, …).
 
 ```json
 {
@@ -442,7 +442,31 @@ pippin memos summarize <id> --provider claude
 | `claude` | Set `ANTHROPIC_API_KEY` env var | ~2-3s/summary |
 | `openai` | Set `ai.openai.baseURL` (+ `apiKey` / `$OPENAI_API_KEY` if the endpoint authenticates) | endpoint-dependent |
 
-The `openai` provider is the escape hatch for any OpenAI-compatible server — `apiKey` is optional for local endpoints that don't authenticate. Mail semantic-search embeddings remain Ollama-only.
+The `openai` provider is the escape hatch for any OpenAI-compatible server — `apiKey` is optional for local endpoints that don't authenticate.
+
+### Embeddings and transcription backends
+
+Semantic mail search and memo transcription have their own backends, chosen independently of `ai.provider`:
+
+```json
+{
+  "ai": {
+    "embeddings":    { "provider": "openai", "model": "text-embedding-3-small" },
+    "transcription": { "provider": "apple", "locale": "en-US" }
+  }
+}
+```
+
+| Setting | Providers | Default |
+|---------|-----------|---------|
+| `ai.embeddings` (`mail index`, `mail search --semantic`) | `ollama`, `openai` (any `/v1/embeddings` endpoint; `model` required) | `ollama` with `nomic-embed-text` |
+| `ai.transcription` (`memos transcribe`, `export --transcribe`, `summarize`, `capture`) | `mlx-audio`, `apple` (on-device SpeechAnalyzer, macOS 26+), `openai` (any `/v1/audio/transcriptions` endpoint) | `mlx-audio` |
+
+For `openai`, an omitted `baseURL` or `apiKey` falls back to the `ai.openai` values. `mail index` and `mail search` also accept `--provider`, `--model` (`--embedding-model` on search), and `--ollama-url`.
+
+Vectors from different embedding models cannot be compared. The index records the model behind each message: after switching backends, run `pippin mail index` again. Semantic search ranks only messages indexed with the active model and reports an error when there are none.
+
+`pippin doctor` reports the backend configured for each feature (AI provider, Embeddings, Transcription) and whether it is reachable. Set `PIPPIN_CONFIG` to read a different config file.
 
 AI callers can opt into a request temperature. The planner is the only built-in
 caller that sets it, using `0` for deterministic plans; other callers continue
@@ -502,7 +526,7 @@ pippin mail list --unread --format json \
 | `pippin/NotesBridge/` | JXA subprocess bridge for Notes.app |
 | `pippin/ContactsBridge/` | CNContactStore wrapper (read + write) |
 | `pippin/MessagesBridge/` | GRDB SQLite access to Apple Messages (read + gated send) |
-| `pippin/AIProvider/` | Ollama + Claude + OpenAI-compatible backends for summarization |
+| `pippin/AIProvider/` | Ollama, Claude, and OpenAI-compatible backends; per-feature embedding and transcription factories |
 | `pippin/Jobs/` | Filesystem-backed registry for detached `pippin job` subprocesses |
 | `pippin/Planner/` | LLM-driven plan-and-execute over the MCP tool registry (`pippin do`) |
 | `pippin/Pagination/` | Opaque-cursor tokens + filter-hash guards for list commands |
@@ -515,8 +539,8 @@ Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shel
 
 - **macOS 15+** (Sequoia) or later
 - **Swift 6.0+** for source builds (matches `swift-tools-version: 6.0` in `Package.swift`); pre-built binaries are arm64
-- **mlx-audio** — required for `pippin memos transcribe`, and for the experimental `audio` command when re-enabled via `PIPPIN_EXPERIMENTAL=1`
-- **Ollama** — `pippin memos summarize` with local AI (optional; Claude works without it)
+- **mlx-audio** — the default memo transcription backend (not needed with `ai.transcription.provider` set to `apple` or `openai`), and required for the experimental `audio` command when re-enabled via `PIPPIN_EXPERIMENTAL=1`
+- **Ollama** — the default AI and embeddings backend (optional; Claude and OpenAI-compatible endpoints work without it)
 
 > **Experimental commands:** `audio` (TTS/STT via mlx-audio) and `browser`
 > (Playwright WebKit) are hidden by default. Set `PIPPIN_EXPERIMENTAL=1`

@@ -176,7 +176,7 @@ func classifyPython3Output(exitCode: Int32, output: String) -> DiagnosticCheck {
 // MARK: - Diagnostic checks (shared with InitCommand)
 
 /// Run all diagnostic checks and return results.
-public func runAllChecks() -> [DiagnosticCheck] {
+public func runAllChecks(config: PippinConfig? = AIProviderFactory.loadConfig()) -> [DiagnosticCheck] {
     var checks: [DiagnosticCheck] = []
 
     checks.append(checkMacOSVersion())
@@ -190,8 +190,7 @@ public func runAllChecks() -> [DiagnosticCheck] {
     checks.append(checkNotesAccess())
     checks.append(checkCodeSigning())
     checks.append(checkPython3())
-    checks.append(checkMLXAudio())
-    checks.append(checkOllama())
+    checks.append(contentsOf: backendChecks(config: config))
     checks.append(checkNodeJS())
     checks.append(checkPlaywright())
     checks.append(checkPippinVersion())
@@ -618,7 +617,7 @@ func checkPython3() -> DiagnosticCheck {
     return classifyPython3Output(exitCode: process.terminationStatus, output: output)
 }
 
-private func checkMLXAudio() -> DiagnosticCheck {
+func checkMLXAudio() -> DiagnosticCheck {
     let pinned = AudioBridge.pinnedMLXAudioVersion
     guard let entry = AudioBridge.resolveSTTEntry() else {
         // mlx_audio itself might still be importable (version skew) — prefer
@@ -638,7 +637,7 @@ private func checkMLXAudio() -> DiagnosticCheck {
         return DiagnosticCheck(
             name: "mlx-audio",
             status: .fail,
-            detail: "not found (required for `pippin memos transcribe`)",
+            detail: "not found (the configured transcription backend; set ai.transcription.provider to apple or openai to use another)",
             remediation: RemediationCatalog.forCategory(.notAvailable)
         )
     }
@@ -741,45 +740,11 @@ func sttFlagsMissing(fromHelp help: String, expected: [String]) -> [String] {
     }
 }
 
-private func checkOllama() -> DiagnosticCheck {
-    let baseURL = AIProviderFactory.loadConfig()?.ai?.ollama?.url ?? "http://localhost:11434"
-    guard let versionURL = URL(string: "\(baseURL)/api/version") else {
-        return DiagnosticCheck(name: "Ollama", status: .skip, detail: "invalid URL")
-    }
-    var request = URLRequest(url: versionURL, timeoutInterval: 3)
-    request.httpMethod = "GET"
-    guard
-        let (_, httpResponse) = try? sendSynchronousRequest(request, waitTimeoutSeconds: 5),
-        httpResponse.statusCode == 200
-    else {
-        return DiagnosticCheck(
-            name: "Ollama",
-            status: .skip,
-            detail: "not reachable — optional, required for `mail index`, `mail triage`, `mail extract`",
-            remediation: Remediation(
-                humanHint: "Ollama is not reachable on localhost:11434. It is optional — only `mail index`, `mail triage`, and `mail extract` need it.",
-                doctorCheck: "Ollama",
-                shellCommand: "brew install ollama && ollama serve"
-            )
-        )
-    }
-
-    // Reachable — also verify the configured model is actually pulled, so
-    // `pippin calendar agenda` / `memos summarize` / `actions` don't fail
-    // tens of seconds in with HTTP 404 "model X not found." Default mirrors
-    // OllamaProvider.init.
-    let configuredModel = AIProviderFactory.loadConfig()?.ai?.ollama?.model ?? "llama3.2"
-    if let modelStatus = checkOllamaModel(baseURL: baseURL, configuredModel: configuredModel) {
-        return modelStatus
-    }
-    return DiagnosticCheck(name: "Ollama", status: .ok, detail: "reachable at \(baseURL); model \(configuredModel) pulled")
-}
-
 /// Returns a non-nil DiagnosticCheck when the configured model is not
 /// available; nil means the model is present (caller emits the green check).
 /// Tags probe + model-name matching are shared with `OllamaProvider`'s
 /// model-not-found path (issue #22) — see `OllamaProvider.modelIsAvailable`.
-private func checkOllamaModel(baseURL: String, configuredModel: String) -> DiagnosticCheck? {
+func checkOllamaModel(baseURL: String, configuredModel: String) -> DiagnosticCheck? {
     guard let availableNames = OllamaProvider.fetchAvailableModels(baseURL: baseURL) else {
         // Couldn't probe tags — Ollama is up so don't flag a hard failure.
         return DiagnosticCheck(

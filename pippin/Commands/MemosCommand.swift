@@ -164,7 +164,7 @@ public struct MemosCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
             let sidecarFmt = ExportSidecarFormat(rawValue: sidecarFormat) ?? .txt
-            let transcriber: (any Transcriber)? = transcribe ? MLXAudioTranscriber() : nil
+            let transcriber: (any Transcriber)? = transcribe ? try AIProviderFactory.makeTranscriber() : nil
             let cache: TranscriptCache? = transcribe ? try TranscriptCache() : nil
 
             var results: [ExportResult] = []
@@ -199,14 +199,18 @@ public struct MemosCommand: AsyncParsableCommand {
                             let memoId = memo.id
                             group.addTask {
                                 do {
-                                    let r = try db.exportMemo(
-                                        id: memoId,
-                                        outputDir: outputDir,
-                                        transcriber: transcriber,
-                                        sidecarFormat: sidecarFmtCapture,
-                                        cache: cache,
-                                        forceTranscribe: forceT
-                                    )
+                                    // Off the cooperative pool: concurrent Apple
+                                    // transcriptions would otherwise exhaust it.
+                                    let r = try await runOffPool {
+                                        try db.exportMemo(
+                                            id: memoId,
+                                            outputDir: outputDir,
+                                            transcriber: transcriber,
+                                            sidecarFormat: sidecarFmtCapture,
+                                            cache: cache,
+                                            forceTranscribe: forceT
+                                        )
+                                    }
                                     return (i, .success(r))
                                 } catch {
                                     return (i, .failure(error))
@@ -352,7 +356,7 @@ public struct MemosCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
-            let transcriber = MLXAudioTranscriber()
+            let transcriber = try AIProviderFactory.makeTranscriber()
             let cache = try TranscriptCache()
             var results: [TranscribeResult] = []
             let keep = keepConverted
@@ -398,14 +402,18 @@ public struct MemosCommand: AsyncParsableCommand {
                                             transcription: cached.transcript, outputFile: nil
                                         )))
                                     }
-                                    let r = try db.transcribeMemo(
-                                        id: memoId,
-                                        transcriber: transcriber,
-                                        outputDir: outputDir,
-                                        keepConverted: keep,
-                                        onConvertedPath: convertedPathLogger
-                                    )
-                                    try cache.set(memoId: memoId, transcript: r.transcription, provider: "mlx-audio")
+                                    // Off the cooperative pool: concurrent Apple
+                                    // transcriptions would otherwise exhaust it.
+                                    let r = try await runOffPool {
+                                        try db.transcribeMemo(
+                                            id: memoId,
+                                            transcriber: transcriber,
+                                            outputDir: outputDir,
+                                            keepConverted: keep,
+                                            onConvertedPath: convertedPathLogger
+                                        )
+                                    }
+                                    try cache.set(memoId: memoId, transcript: r.transcription, provider: transcriber.cacheProvider)
                                     return (i, .success(r))
                                 } catch {
                                     return (i, .failure(error))
@@ -445,7 +453,7 @@ public struct MemosCommand: AsyncParsableCommand {
                         keepConverted: keepConverted,
                         onConvertedPath: convertedPathLogger
                     )
-                    try cache.set(memoId: memo.id, transcript: result.transcription, provider: "mlx-audio")
+                    try cache.set(memoId: memo.id, transcript: result.transcription, provider: transcriber.cacheProvider)
                     results.append(result)
                 }
             }

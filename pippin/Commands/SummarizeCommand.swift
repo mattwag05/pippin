@@ -94,11 +94,15 @@ public struct SummarizeCommand: AsyncParsableCommand {
                     for (i, memo) in chunk.enumerated() {
                         group.addTask {
                             do {
-                                let r = try SummarizeCommand.summarizeMemoStatic(
-                                    memo: memo, db: db, cache: cache,
-                                    aiProvider: aiProvider, systemPrompt: systemPrompt,
-                                    template: tmpl, prompt: prmt, provider: prvdr
-                                )
+                                // Off the cooperative pool: concurrent Apple
+                                // transcriptions would otherwise exhaust it.
+                                let r = try await runOffPool {
+                                    try SummarizeCommand.summarizeMemoStatic(
+                                        memo: memo, db: db, cache: cache,
+                                        aiProvider: aiProvider, systemPrompt: systemPrompt,
+                                        template: tmpl, prompt: prmt, provider: prvdr
+                                    )
+                                }
                                 return (i, .success(r))
                             } catch {
                                 return (i, .failure(error))
@@ -213,10 +217,10 @@ public struct SummarizeCommand: AsyncParsableCommand {
         if let cached = try cache.get(memoId: memo.id) {
             transcriptText = cached.transcript
         } else {
-            let transcriber = MLXAudioTranscriber()
+            let transcriber = try AIProviderFactory.makeTranscriber()
             let result = try db.transcribeMemo(id: memo.id, transcriber: transcriber)
             transcriptText = result.transcription
-            try cache.set(memoId: memo.id, transcript: transcriptText, provider: "mlx-audio")
+            try cache.set(memoId: memo.id, transcript: transcriptText, provider: transcriber.cacheProvider)
         }
 
         // 2. Build user prompt

@@ -19,14 +19,20 @@ public enum SemanticSearch {
             throw MailAIError.emptyEmbeddingIndex
         }
 
+        // Vectors from another embedding model live in a different space;
+        // cosine scores across models are meaningless (pippin-edjh).
+        var records = try store.allEmbeddings()
+        if let key = provider.storeKey {
+            records = records.filter { $0.model == key }
+            guard !records.isEmpty else { throw MailAIError.noEmbeddingsForModel(key) }
+        }
+
         let queryFloats: [Float]
         do {
             queryFloats = try provider.embed(text: query)
         } catch {
             throw MailAIError.embeddingFailed(error.localizedDescription)
         }
-
-        let records = try store.allEmbeddings()
 
         // Legacy rows carry no message date, so nothing can vouch for them.
         let ranked: [(result: SemanticSearchResult, date: String)] = records.compactMap { record in

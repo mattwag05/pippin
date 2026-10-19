@@ -49,6 +49,34 @@ public struct PippinConfig: Codable, Sendable {
             /// Enable only against a server you've verified accepts it. (pippin-us2)
             public var structuredOutputs: Bool?
         }
+
+        /// Backend for `mail index` and `mail search --semantic` embeddings
+        /// (pippin-edjh). Absent = Ollama with `nomic-embed-text`.
+        /// `provider`: `ollama` or `openai` (any `/v1/embeddings` endpoint).
+        /// For `openai`, an absent `baseURL`/`apiKey` falls back to `ai.openai`.
+        public var embeddings: EmbeddingsConfig?
+
+        /// Backend for memo transcription (pippin-edjh). Absent = mlx-audio.
+        /// `provider`: `mlx-audio`, `apple` (on-device SpeechAnalyzer, macOS
+        /// 26+), or `openai` (any `/v1/audio/transcriptions` endpoint). For
+        /// `openai`, an absent `baseURL`/`apiKey` falls back to `ai.openai`.
+        public var transcription: TranscriptionConfig?
+
+        public struct EmbeddingsConfig: Codable, Sendable {
+            public var provider: String?
+            public var model: String?
+            public var baseURL: String?
+            public var apiKey: String?
+        }
+
+        public struct TranscriptionConfig: Codable, Sendable {
+            public var provider: String?
+            public var model: String?
+            public var baseURL: String?
+            public var apiKey: String?
+            /// BCP 47 locale for `apple` (default: the system locale).
+            public var locale: String?
+        }
     }
 
     public struct MessagesConfig: Codable, Sendable {
@@ -79,8 +107,12 @@ public struct PippinConfig: Codable, Sendable {
 // MARK: - Factory
 
 public enum AIProviderFactory {
-    /// Default config file path.
+    /// Default config file path. `PIPPIN_CONFIG` overrides it, so tests and
+    /// e2e checks can select backends without editing the user's config.
     public static func defaultConfigPath() -> String {
+        if let override = ProcessInfo.processInfo.environment["PIPPIN_CONFIG"], !override.isEmpty {
+            return override
+        }
         let home = NSHomeDirectory()
         return "\(home)/.config/pippin/config.json"
     }
@@ -147,6 +179,61 @@ public enum AIProviderFactory {
 
         default:
             throw AIProviderError.invalidProvider(providerName)
+        }
+    }
+
+    /// Embedding backend names accepted by `ai.embeddings.provider` and `--provider`.
+    public static let embeddingProviders = ["ollama", "openai"]
+
+    /// Create the embedding backend for `mail index` / `mail search --semantic`.
+    /// Precedence: CLI flags, then `ai.embeddings`, then Ollama defaults.
+    /// `urlFlag` is the legacy `--ollama-url`; it applies only to Ollama.
+    public static func makeEmbeddingProvider(
+        providerFlag: String? = nil,
+        modelFlag: String? = nil,
+        urlFlag: String? = nil,
+        config: PippinConfig? = loadConfig()
+    ) throws -> any EmbeddingProvider {
+        let section = config?.ai?.embeddings
+        let name = (providerFlag ?? section?.provider ?? "ollama").lowercased()
+        switch name {
+        case "ollama":
+            let url = urlFlag ?? section?.baseURL ?? config?.ai?.ollama?.url ?? "http://localhost:11434"
+            return OllamaEmbeddingProvider(baseURL: url, model: modelFlag ?? section?.model ?? "nomic-embed-text")
+        case "openai", "openai-compatible":
+            guard let model = modelFlag ?? section?.model else {
+                throw MailAIError.embeddingModelRequired(name)
+            }
+            let base = section?.baseURL ?? config?.ai?.openai?.baseURL ?? "http://localhost:11434/v1"
+            let key = resolveOpenAIAPIKey(
+                flagValue: nil, configKey: section?.apiKey ?? config?.ai?.openai?.apiKey
+            )
+            return OpenAIEmbeddingProvider(baseURL: base, model: model, apiKey: key)
+        default:
+            throw MailAIError.unsupportedEmbeddingProvider(name)
+        }
+    }
+
+    /// Transcription backend names accepted by `ai.transcription.provider`.
+    public static let transcriptionProviders = ["mlx-audio", "apple", "openai"]
+
+    /// Create the memo transcription backend from `ai.transcription`, defaulting to mlx-audio.
+    public static func makeTranscriber(config: PippinConfig? = loadConfig()) throws -> any Transcriber {
+        let section = config?.ai?.transcription
+        let name = (section?.provider ?? "mlx-audio").lowercased()
+        switch name {
+        case "mlx-audio", "mlx":
+            return section?.model.map { MLXAudioTranscriber(model: $0) } ?? MLXAudioTranscriber()
+        case "apple":
+            return AppleSpeechTranscriber(locale: section?.locale)
+        case "openai", "openai-compatible":
+            let base = section?.baseURL ?? config?.ai?.openai?.baseURL ?? "http://localhost:11434/v1"
+            let key = resolveOpenAIAPIKey(
+                flagValue: nil, configKey: section?.apiKey ?? config?.ai?.openai?.apiKey
+            )
+            return OpenAITranscriber(baseURL: base, model: section?.model ?? "whisper-1", apiKey: key)
+        default:
+            throw TranscriberError.unsupportedProvider(name)
         }
     }
 

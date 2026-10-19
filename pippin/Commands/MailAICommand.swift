@@ -19,13 +19,13 @@ public struct MailIndex: AsyncParsableCommand {
     @Option(name: .long, help: "Maximum messages to index per run (default: 500).")
     public var limit: Int = 500
 
-    @Option(name: .long, help: "Embedding provider (only 'ollama' supported).")
-    public var provider: String = "ollama"
+    @Option(name: .long, help: "Embedding provider: ollama or openai (default: ai.embeddings.provider, else ollama).")
+    public var provider: String?
 
-    @Option(name: .long, help: "Ollama base URL (default: http://localhost:11434).")
+    @Option(name: .long, help: "Ollama base URL (default: ai.ollama.url, else http://localhost:11434).")
     public var ollamaUrl: String?
 
-    @Option(name: .long, help: "Embedding model (default: nomic-embed-text).")
+    @Option(name: .long, help: "Embedding model (default: ai.embeddings.model, else nomic-embed-text for ollama).")
     public var model: String?
 
     @OptionGroup public var output: OutputOptions
@@ -33,13 +33,10 @@ public struct MailIndex: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
-        guard provider == "ollama" else {
-            throw MailAIError.unsupportedEmbeddingProvider(provider)
-        }
-
-        let baseURL = ollamaUrl ?? "http://localhost:11434"
-        let embeddingModel = model ?? "nomic-embed-text"
-        let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: embeddingModel)
+        let embedProvider = try AIProviderFactory.makeEmbeddingProvider(
+            providerFlag: provider, modelFlag: model, urlFlag: ollamaUrl
+        )
+        let storeKey = embedProvider.storeKey
         let store = try EmbeddingStore()
 
         // Phase 1: Identify messages needing indexing. Skip ids that already
@@ -72,7 +69,7 @@ public struct MailIndex: AsyncParsableCommand {
             var toIndex: [PendingItem] = []
             var skipped = 0
             for message in indexOutcome.messages {
-                if store.isCurrent(compoundId: message.id, messageDate: message.date) {
+                if store.isCurrent(compoundId: message.id, messageDate: message.date, model: storeKey) {
                     skipped += 1
                     if !isStructured {
                         fputs("  skip \(message.id)\n", stderr)
@@ -124,7 +121,7 @@ public struct MailIndex: AsyncParsableCommand {
                 compoundId: embedding.id,
                 embedding: serializeEmbedding(embedding.floats),
                 bodyHash: embedding.hash,
-                model: embeddingModel,
+                model: storeKey ?? "unknown",
                 indexedAt: isoFormatter.string(from: Date()),
                 messageDate: embedding.date
             )

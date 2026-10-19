@@ -611,6 +611,17 @@ if [[ $RW -eq 1 ]]; then
   fi
 fi
 
+# Per-feature AI backends (pippin-edjh): doctor reports the configured backend
+# for each feature, read from PIPPIN_CONFIG so the user's config is untouched.
+BACKEND_CFG="$(mktemp -t pippin-e2e-backends)"
+printf '%s' '{"ai":{"provider":"openai","openai":{"baseURL":"http://127.0.0.1:9/v1","model":"m"},"embeddings":{"provider":"openai","model":"e"},"transcription":{"provider":"apple"}}}' > "$BACKEND_CFG"
+PIPPIN_CONFIG="$BACKEND_CFG" run "doctor reports each configured AI backend" \
+  "(lambda c: c.get('Ollama', {}).get('detail') == 'not used by the current configuration' and c.get('AI provider', {}).get('status') == 'skip' and c.get('Embeddings', {}).get('status') == 'skip' and 'Transcription' in c and 'mlx-audio' not in c)({x['name']: x for x in d['data']})" \
+  -- doctor
+rm -f "$BACKEND_CFG"
+run_err "mail index rejects an unknown embedding provider" unsupported_embedding_provider 5 \
+  -- mail index --provider bogus
+
 echo
 echo "passed=$PASS failed=$FAIL skipped=$SKIP"
 if [[ $SKIP -gt 0 && $PASS -eq 0 && $FAIL -eq 0 ]]; then
