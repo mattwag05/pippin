@@ -28,19 +28,31 @@ public enum SemanticSearch {
 
         let records = try store.allEmbeddings()
 
-        let ranked: [SemanticSearchResult] = records.compactMap { record in
+        // Legacy rows carry no message date, so nothing can vouch for them.
+        let ranked: [(result: SemanticSearchResult, date: String)] = records.compactMap { record in
+            guard let date = record.messageDate else { return nil }
             let storedFloats = deserializeEmbedding(record.embedding)
             guard !storedFloats.isEmpty else { return nil }
             let score = cosineSimilarity(queryFloats, storedFloats)
-            return SemanticSearchResult(compoundId: record.compoundId, score: score)
+            return (SemanticSearchResult(compoundId: record.compoundId, score: score), date)
         }
-        .sorted { $0.score > $1.score }
-        .prefix(limit)
-        .map { $0 }
+        .sorted { $0.result.score > $1.result.score }
 
-        // Load full messages concurrently, silently dropping any that fail to load
-        return try runConcurrently(ranked) { result in
-            try loader(result.compoundId)
+        // Load in ranked windows, silently dropping messages that fail to load
+        // and hits whose id Mail has since given to a different message
+        // (pippin-log5): the embedding describes the old message, not the one
+        // now at that id. Later windows backfill the dropped slots.
+        var messages: [MailMessage] = []
+        var start = 0
+        while messages.count < limit, start < ranked.count {
+            let window = Array(ranked[start ..< min(start + limit - messages.count, ranked.count)])
+            start += window.count
+            let loaded = try runConcurrently(window) { candidate -> MailMessage? in
+                let message = try loader(candidate.result.compoundId)
+                return MailBodyCache.sameInstant(message.date, candidate.date) ? message : nil
+            }
+            messages += loaded.compactMap { $0 }
         }
+        return messages
     }
 }

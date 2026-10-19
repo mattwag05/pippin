@@ -10,13 +10,31 @@ public struct EmbeddingRecord: Codable, FetchableRecord, PersistableRecord, Send
     public let bodyHash: String
     public let model: String
     public let indexedAt: String
+    /// The indexed message's date: its identity check, because Mail can hand
+    /// a compound id to a different message (pippin-log5). Nil on rows written
+    /// before the column existed; those never count as current.
+    public let messageDate: String?
 
-    public init(compoundId: String, embedding: Data, bodyHash: String, model: String, indexedAt: String) {
+    public init(
+        compoundId: String,
+        embedding: Data,
+        bodyHash: String,
+        model: String,
+        indexedAt: String,
+        messageDate: String?
+    ) {
         self.compoundId = compoundId
         self.embedding = embedding
         self.bodyHash = bodyHash
         self.model = model
         self.indexedAt = indexedAt
+        self.messageDate = messageDate
+    }
+
+    /// True when this row embeds the message whose date is `date`.
+    public func matches(date: String) -> Bool {
+        guard let messageDate else { return false }
+        return MailBodyCache.sameInstant(messageDate, date)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -25,6 +43,7 @@ public struct EmbeddingRecord: Codable, FetchableRecord, PersistableRecord, Send
         case bodyHash = "body_hash"
         case model
         case indexedAt = "indexed_at"
+        case messageDate = "message_date"
     }
 }
 
@@ -57,15 +76,22 @@ public final class EmbeddingStore: Sendable {
             try db.execute(sql: """
             CREATE INDEX IF NOT EXISTS idx_embeddings_indexed_at ON email_embeddings(indexed_at)
             """)
+            if try !db.columns(in: "email_embeddings").contains(where: { $0.name == "message_date" }) {
+                try db.execute(sql: "ALTER TABLE email_embeddings ADD COLUMN message_date TEXT")
+            }
         }
     }
 
     // MARK: - Public API
 
-    public func exists(compoundId: String) -> Bool {
-        (try? dbQueue.read { db in
+    /// True when `compoundId` already has an embedding of the message dated
+    /// `messageDate`. A row for a different message (the id was reassigned) or
+    /// a legacy row with no date is not current, so `mail index` re-embeds it.
+    public func isCurrent(compoundId: String, messageDate: String) -> Bool {
+        let record = try? dbQueue.read { db in
             try EmbeddingRecord.fetchOne(db, key: compoundId)
-        }) != nil
+        }
+        return record?.matches(date: messageDate) ?? false
     }
 
     public func upsert(_ record: EmbeddingRecord) throws {

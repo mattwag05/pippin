@@ -19,13 +19,19 @@ private func makeStore() throws -> EmbeddingStore {
     return try EmbeddingStore(dbPath: tmpPath)
 }
 
-private func insertRecord(store: EmbeddingStore, compoundId: String, embedding: [Float]) throws {
+private func insertRecord(
+    store: EmbeddingStore,
+    compoundId: String,
+    embedding: [Float],
+    messageDate: String? = "2026-01-01T00:00:00Z"
+) throws {
     let record = EmbeddingRecord(
         compoundId: compoundId,
         embedding: serializeEmbedding(embedding),
         bodyHash: "hash-\(compoundId)",
         model: "nomic-embed-text",
-        indexedAt: "2026-01-01T00:00:00Z"
+        indexedAt: "2026-01-01T00:00:00Z",
+        messageDate: messageDate
     )
     try store.upsert(record)
 }
@@ -197,5 +203,54 @@ final class SemanticSearchTests: XCTestCase {
         // "bad" load fails silently; only "good" returned
         XCTAssertEqual(results.count, 1)
         XCTAssertEqual(results.first?.id, "good")
+    }
+
+    // MARK: - 10. Reassigned compound ids are not returned (pippin-log5)
+
+    /// Mail can hand a compound id to a different message. The stored
+    /// embedding still describes the old message, so the message now at that
+    /// id must not be returned as a hit for the old content.
+    func testSearchDropsHitWhoseIdNowNamesADifferentMessage() throws {
+        let store = try makeStore()
+        try insertRecord(store: store, compoundId: "reassigned", embedding: [1, 0, 0], messageDate: "2026-01-01T00:00:00Z")
+        try insertRecord(store: store, compoundId: "same", embedding: [0.9, 0.1, 0], messageDate: "2026-01-01T00:00:00Z")
+        let loader: (String) throws -> MailMessage = { compoundId in
+            MailMessage(
+                id: compoundId, account: "test", mailbox: "INBOX", subject: "S",
+                from: "sender@example.com", to: [],
+                date: compoundId == "reassigned" ? "2026-05-05T09:00:00Z" : "2026-01-01T00:00:00.000Z",
+                read: false
+            )
+        }
+        let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
+        let results = try SemanticSearch.search(query: "q", store: store, provider: provider, messageLoader: loader)
+        XCTAssertEqual(results.map(\.id), ["same"])
+    }
+
+    /// Rows written before message dates were stored cannot be validated, so
+    /// they are not served; `mail index` re-embeds them.
+    func testSearchDropsLegacyRowWithoutDate() throws {
+        let store = try makeStore()
+        try insertRecord(store: store, compoundId: "legacy", embedding: [1, 0, 0], messageDate: nil)
+        try insertRecord(store: store, compoundId: "dated", embedding: [0.5, 0.5, 0])
+        let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
+        let results = try SemanticSearch.search(query: "q", store: store, provider: provider, messageLoader: fakeLoader())
+        XCTAssertEqual(results.map(\.id), ["dated"])
+    }
+
+    /// Dropped stale hits must not shrink the result below `limit` while
+    /// valid lower-ranked candidates remain.
+    func testSearchBackfillsLimitPastStaleHits() throws {
+        let store = try makeStore()
+        try insertRecord(store: store, compoundId: "stale1", embedding: [1, 0, 0], messageDate: nil)
+        try insertRecord(store: store, compoundId: "stale2", embedding: [0.95, 0.05, 0], messageDate: nil)
+        try insertRecord(store: store, compoundId: "ok1", embedding: [0.8, 0.2, 0])
+        try insertRecord(store: store, compoundId: "ok2", embedding: [0.6, 0.4, 0])
+        try insertRecord(store: store, compoundId: "ok3", embedding: [0.4, 0.6, 0])
+        let provider = FakeSemanticEmbeddingProvider(fixedEmbedding: [1, 0, 0])
+        let results = try SemanticSearch.search(
+            query: "q", store: store, provider: provider, limit: 2, messageLoader: fakeLoader()
+        )
+        XCTAssertEqual(results.map(\.id), ["ok1", "ok2"])
     }
 }

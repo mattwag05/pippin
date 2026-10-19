@@ -1,3 +1,4 @@
+import GRDB
 @testable import PippinLib
 import XCTest
 
@@ -7,14 +8,19 @@ final class EmbeddingStoreTests: XCTestCase {
         return try EmbeddingStore(dbPath: tmpPath)
     }
 
-    private func makeRecord(id: String = "a||INBOX||1", hash: String = "abc123") -> EmbeddingRecord {
+    private func makeRecord(
+        id: String = "a||INBOX||1",
+        hash: String = "abc123",
+        messageDate: String? = "2026-03-24T12:00:00Z"
+    ) -> EmbeddingRecord {
         let floats: [Float] = [1.0, 2.0, 3.0]
         return EmbeddingRecord(
             compoundId: id,
             embedding: serializeEmbedding(floats),
             bodyHash: hash,
             model: "nomic-embed-text",
-            indexedAt: "2026-03-25T00:00:00Z"
+            indexedAt: "2026-03-25T00:00:00Z",
+            messageDate: messageDate
         )
     }
 
@@ -22,14 +28,52 @@ final class EmbeddingStoreTests: XCTestCase {
         let store = try makeStore()
         let record = makeRecord()
         try store.upsert(record)
-        XCTAssertTrue(store.exists(compoundId: record.compoundId))
-        XCTAssertFalse(store.exists(compoundId: "nonexistent||INBOX||0"))
+        XCTAssertTrue(store.isCurrent(compoundId: record.compoundId, messageDate: "2026-03-24T12:00:00Z"))
+        XCTAssertFalse(store.isCurrent(compoundId: "nonexistent||INBOX||0", messageDate: "2026-03-24T12:00:00Z"))
         let fetched = try store.allEmbeddings().first
         XCTAssertEqual(fetched?.compoundId, record.compoundId)
         XCTAssertEqual(fetched?.bodyHash, record.bodyHash)
         XCTAssertEqual(fetched?.model, record.model)
         XCTAssertEqual(fetched?.indexedAt, record.indexedAt)
         XCTAssertEqual(fetched?.embedding, record.embedding)
+        XCTAssertEqual(fetched?.messageDate, record.messageDate)
+    }
+
+    /// pippin-log5: an id Mail reassigned to another message, or a legacy row
+    /// with no date, is not current, so `mail index` re-embeds it.
+    func testIsCurrentRequiresSameMessageDate() throws {
+        let store = try makeStore()
+        try store.upsert(makeRecord(id: "a||INBOX||1"))
+        try store.upsert(makeRecord(id: "a||INBOX||2", messageDate: nil))
+        XCTAssertTrue(store.isCurrent(compoundId: "a||INBOX||1", messageDate: "2026-03-24T12:00:00.000Z"))
+        XCTAssertFalse(store.isCurrent(compoundId: "a||INBOX||1", messageDate: "2026-04-01T08:00:00Z"))
+        XCTAssertFalse(store.isCurrent(compoundId: "a||INBOX||2", messageDate: "2026-03-24T12:00:00Z"))
+    }
+
+    /// A store created before message dates existed gains the column on open,
+    /// and its rows read back with no date.
+    func testMigratesLegacyStoreWithoutMessageDate() throws {
+        let path = NSTemporaryDirectory() + UUID().uuidString + ".db"
+        let legacy = try DatabaseQueue(path: path)
+        try legacy.write { db in
+            try db.execute(sql: """
+            CREATE TABLE email_embeddings (
+                compound_id TEXT PRIMARY KEY, embedding BLOB NOT NULL,
+                body_hash TEXT NOT NULL, model TEXT NOT NULL, indexed_at TEXT NOT NULL
+            )
+            """)
+            try db.execute(
+                sql: "INSERT INTO email_embeddings VALUES ('a||INBOX||1', ?, 'h', 'm', '2026-01-01T00:00:00Z')",
+                arguments: [serializeEmbedding([1, 0])]
+            )
+        }
+        try legacy.close()
+        let store = try EmbeddingStore(dbPath: path)
+        XCTAssertEqual(try store.allEmbeddings().map(\.compoundId), ["a||INBOX||1"])
+        XCTAssertNil(try store.allEmbeddings().first?.messageDate)
+        XCTAssertFalse(store.isCurrent(compoundId: "a||INBOX||1", messageDate: "2026-01-01T00:00:00Z"))
+        try store.upsert(makeRecord(id: "a||INBOX||1"))
+        XCTAssertTrue(store.isCurrent(compoundId: "a||INBOX||1", messageDate: "2026-03-24T12:00:00Z"))
     }
 
     func testCount() throws {

@@ -42,9 +42,12 @@ public struct MailIndex: AsyncParsableCommand {
         let embedProvider = OllamaEmbeddingProvider(baseURL: baseURL, model: embeddingModel)
         let store = try EmbeddingStore()
 
-        // Phase 1: Identify messages needing indexing (skip already-indexed — email bodies are immutable)
+        // Phase 1: Identify messages needing indexing. Skip ids that already
+        // embed this same message (email bodies are immutable); an id Mail
+        // reassigned to another message is re-embedded (pippin-log5).
         struct PendingItem: Sendable {
             let id: String
+            let date: String
             let subject: String
             let embedText: String
             let bodyHash: String
@@ -69,7 +72,7 @@ public struct MailIndex: AsyncParsableCommand {
             var toIndex: [PendingItem] = []
             var skipped = 0
             for message in indexOutcome.messages {
-                if store.exists(compoundId: message.id) {
+                if store.isCurrent(compoundId: message.id, messageDate: message.date) {
                     skipped += 1
                     if !isStructured {
                         fputs("  skip \(message.id)\n", stderr)
@@ -80,7 +83,7 @@ public struct MailIndex: AsyncParsableCommand {
                 let body = (full.body ?? "") + full.subject
                 let hash = sha256Hex(body)
                 let embedText = "Subject: \(message.subject)\nFrom: \(message.from)\nDate: \(message.date)"
-                toIndex.append(PendingItem(id: message.id, subject: message.subject, embedText: embedText, bodyHash: hash))
+                toIndex.append(PendingItem(id: message.id, date: message.date, subject: message.subject, embedText: embedText, bodyHash: hash))
             }
             return (indexOutcome, toIndex, skipped)
         }
@@ -94,7 +97,7 @@ public struct MailIndex: AsyncParsableCommand {
 
         // Phase 2: Embed in batches (reduces HTTP round-trips vs one-at-a-time)
         let batchSize = 32
-        var embeddings: [(id: String, hash: String, floats: [Float])] = []
+        var embeddings: [(id: String, date: String, hash: String, floats: [Float])] = []
         let batches = stride(from: 0, to: toIndex.count, by: batchSize).map {
             Array(toIndex[$0 ..< min($0 + batchSize, toIndex.count)])
         }
@@ -111,7 +114,7 @@ public struct MailIndex: AsyncParsableCommand {
                 }
             }
             for (item, floats) in zip(batch, batchFloats) {
-                embeddings.append((id: item.id, hash: item.bodyHash, floats: floats))
+                embeddings.append((id: item.id, date: item.date, hash: item.bodyHash, floats: floats))
             }
         }
 
@@ -122,7 +125,8 @@ public struct MailIndex: AsyncParsableCommand {
                 embedding: serializeEmbedding(embedding.floats),
                 bodyHash: embedding.hash,
                 model: embeddingModel,
-                indexedAt: isoFormatter.string(from: Date())
+                indexedAt: isoFormatter.string(from: Date()),
+                messageDate: embedding.date
             )
             try store.upsert(record)
             indexed += 1
