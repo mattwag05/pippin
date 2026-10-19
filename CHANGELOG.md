@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-18
+
 ### Added
 
 - [feat] `pippin do` output now includes `dry_run` and `executed`, so callers can distinguish a plan from completed tool execution; `final_answer` remains a planning note rather than proof of action.
@@ -956,7 +958,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
      so this is a stable end state, not a backlog item. Don't "fix" it by
      inventing links: check `git tag -l` for both endpoints first. -->
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.39.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.40.0...HEAD
+[0.40.0]: https://github.com/mattwag05/pippin/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/mattwag05/pippin/compare/v0.38.1...v0.39.0
 [0.38.1]: https://github.com/mattwag05/pippin/compare/v0.38.0...v0.38.1
 [0.38.0]: https://github.com/mattwag05/pippin/compare/v0.37.0...v0.38.0
