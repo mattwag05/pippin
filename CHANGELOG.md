@@ -14,6 +14,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [feat] `pippin do` output now includes `dry_run` and `executed`, so callers can distinguish a plan from completed tool execution; `final_answer` remains a planning note rather than proof of action.
 - [feat] `pippin do` now honors data exclusions. Exclusions stated in the intent ("do not access my mail") or passed with the new `--exclude-data` option remove every tool that accesses that data, including `status` and `doctor`, before planning and execution. The output reports them as `excluded_data`. Closes pippin-jhb3.
 - [feat] Mail JSON now optionally includes `receivedAt` while retaining `date` as the sender-declared sent timestamp for compatibility.
+- [feat] The `mail_search` MCP tool now accepts `fields`, the same comma-separated projection as `mail_list`, so agents can trim search results to fewer tokens. Closes pippin-ytt4.
 
 ### Changed
 
@@ -22,6 +23,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - [bug] `pippin do` plans now describe what the steps will do instead of claiming that work already happened, and an empty plan caused by an exclusion names the withheld tool. Closes pippin-jhb3.
+- [ci] `make e2e` no longer aborts partway through when Full Disk Access is missing, and its search partial-flag check skips when the Envelope Index is unreadable. Closes pippin-ipmm.
 - [ci] Headless Forgejo tests now skip the live Apple-app pagination sweep with a visible XCTest skip. A synthetic fixture checks its array and cursor output, while CLI subprocesses time out instead of hanging. TCC-granted runs retain the live sweep.
 - [bug] OpenAI-compatible blank, reasoning-only, truncated, and filtered responses now fail as the typed non-retryable `incomplete_completion` error without exposing reasoning content.
 - [bug] Mail newest-first ordering, date filters, CLI display, and rule age guards now use receipt time with a sent-time fallback across both JXA and Envelope Index paths. Closes pippin-wrdm and pippin-23bi.
@@ -29,6 +31,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] `mail show`, reply/forward quoting, `mail list`/`search`/`activity` previews, `digest`, and cached header anomalies no longer return a different, older message when Mail has reused a message id. Each cached body is checked against the message's current date before use, and a mismatched entry is evicted and refetched. Without Full Disk Access, `mail show` cannot check the date, so it reads live instead of serving from the cache. Closes pippin-pvak.
 - [bug] `mail search --semantic` no longer returns a message as a match for a different message's content after Mail reuses its message id. Each embedding now records the message's date: search skips hits whose current message has a different date and backfills from lower-ranked matches, and `mail index` re-embeds those ids instead of skipping them. Embeddings indexed by earlier versions carry no date and stop appearing in results until you run `pippin mail index` again. Closes pippin-log5.
 - [bug] Generic Mail `Application can't be found. (-2700)` failures are now diagnosed as automation-context or app-lookup failures rather than proof that Mail is not installed, while Envelope Index metadata access is reported separately. Closes pippin-v1ia.
+- [bug] Without the Envelope Index fast path (for example, without Full Disk Access), `mail list --unread` and large `mail list --limit` requests on one account no longer fail with `timeout` after about 20 seconds. A slow scan now stops at its soft time limit and returns the rows it found, marked `partial` when incomplete. Closes pippin-zzdd and pippin-9rf0.
+- [bug] `pippin doctor` now suggests `pippin mail accounts` to confirm Mail Automation. Unlike `pippin mail list`, which can succeed from the Envelope Index while Automation is broken, it always talks to Mail. Closes pippin-tu07.
+- [bug] Calendar, Reminders and Contacts permission errors now say the grant belongs to pippin itself at its installed path (grant it with `pippin permissions`). The launching app owns the grant only with `PIPPIN_NO_DISCLAIM=1` or when pippin cannot relaunch as its own process. Closes pippin-ds6c.
+- [bug] `pippin doctor`'s Playwright check no longer runs npx. Within a time limit, it checks that the browser runtime can load `playwright` and that the WebKit browser is installed, then says which one is missing and how to install it. Closes pippin-eru6.
 
 ### Documentation
 
