@@ -116,6 +116,8 @@ In Swift the bridge returns `Outcome<T> { results, timedOut }` (mail uses a doma
 
 Defaults: the 22s soft cap (`SoftTimeout.defaultMs`) fires well before the caller-supplied ScriptRunner hard cap and the 60s MCP `runChild` failsafe (under MCP, `MailBridge.clampHardTimeout` pins hard caps to 55s). ScriptRunner's `timeoutSeconds` is caller-supplied, not a fixed constant — see `MailBridge.swift` for the per-method values. Don't raise a hard cap above the runChild failsafe without lowering it to match.
 
+A hard cap must also sit above the soft cap it guards, with room for the script to sort and serialize afterward. Otherwise the soft cap never fires. `mail list` on one account used a 10s hard cap under the 22s soft cap. ScriptRunner treats a timeout as "Mail not running", so it relaunched Mail and retried, and every slow JXA scan (`--unread`, `--limit 500`) failed at about 20.6s instead of returning partial rows (pippin-zzdd, pippin-9rf0). `MailBridge.listScanTimeout` now floors the hard cap at the soft cap plus `softCapHeadroomSeconds`. A `timeout` that arrives at almost exactly twice a hard cap is this retry.
+
 ## Bulk property access — soft timeout alone doesn't save you (pippin-mo7)
 
 A soft timeout self-bounds a JXA loop, but if the per-iteration body does **one Apple Event per item** (`notes[j].modificationDate()`, `msgs[j].dateSent()`), a large collection can spend the *entire* budget before the loop emits anything — the caller gets `timedOut=true` with **empty** results, which reads as "zero items" not "partial". `notes list`/`search` returned nothing on big vaults for exactly this reason.
