@@ -411,6 +411,7 @@ enum MCPToolRegistry {
                     "to": Schema.string("Filter by recipient email."),
                     "from": Schema.string("Filter by sender email/name substring."),
                     "limit": Schema.integer("Maximum results (default: 10; capped at 500).", default: 10),
+                    "fields": Schema.string("Comma-separated JSON field names to include (e.g. id,subject,from). Trims the payload to fewer tokens."),
                     "semantic": Schema.boolean(
                         "Use embedding-based semantic search (requires prior `mail index`).",
                         default: false
@@ -431,6 +432,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
                 argv += ArgHelpers.flagIfTrue(args, "semantic", flagName: "--semantic")
+                argv += ArgHelpers.optionIfString(args, "fields", flagName: "--fields")
                 ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
             }

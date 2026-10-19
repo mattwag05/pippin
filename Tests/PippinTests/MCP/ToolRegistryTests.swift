@@ -128,7 +128,7 @@ final class ToolRegistryTests: XCTestCase {
               case let .object(properties)? = schema["properties"] else {
             return XCTFail("mail_search schema must expose object properties")
         }
-        let expected = Set(["query", "account", "mailbox", "body", "preview", "after", "before", "to", "from", "limit", "semantic"])
+        let expected = Set(["query", "account", "mailbox", "body", "preview", "after", "before", "to", "from", "limit", "semantic", "fields"])
         XCTAssertEqual(Set(properties.keys), expected)
 
         let argv = try tool.buildArgs(.object([
@@ -143,8 +143,9 @@ final class ToolRegistryTests: XCTestCase {
             "from": .string("sender@example.com"),
             "limit": .int(25),
             "semantic": .bool(true),
+            "fields": .string("id,subject"),
         ]))
-        for flag in ["--account=account", "--mailbox=INBOX", "--body", "--preview=120", "--after=2026-01-01", "--before=2026-01-31", "--to=recipient@example.com", "--from=sender@example.com", "--limit=25", "--semantic"] {
+        for flag in ["--account=account", "--mailbox=INBOX", "--body", "--preview=120", "--after=2026-01-01", "--before=2026-01-31", "--to=recipient@example.com", "--from=sender@example.com", "--limit=25", "--semantic", "--fields=id,subject"] {
             XCTAssertTrue(argv.contains(flag), "Missing \(flag) in \(argv)")
         }
     }

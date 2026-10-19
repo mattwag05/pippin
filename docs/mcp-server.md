@@ -21,7 +21,7 @@
 | Batch | `batch` — fan out N pippin commands concurrently in one tool call (see below) |
 
 `mail_search` accepts exactly `query`, `account`, `mailbox`, `body`, `preview`,
-`after`, `before`, `to`, `from`, `limit`, and `semantic`. For sender searches,
+`after`, `before`, `to`, `from`, `limit`, `fields`, and `semantic`. For sender searches,
 use `from` without `body`; body scanning is the intentionally slower path.
 
 Deliberately **not** exposed: `mail watch` (a long-running NDJSON stream, wrong shape for
