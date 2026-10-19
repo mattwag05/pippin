@@ -43,6 +43,29 @@ final class DoctorTests: XCTestCase {
         )
     }
 
+    /// pippin-tu07: every Mail automation remediation must point at a command
+    /// that runs JXA. A bare `pippin mail list` is answered from the Envelope
+    /// Index fast path and can succeed while Automation is broken.
+    func testClassifyMailErrorVerifiesWithJXACommand() throws {
+        XCTAssertEqual(mailAutomationVerifyCommand, "pippin mail accounts")
+        let details = [
+            "Application can't be found. (-2700)",
+            "not authorized to send Apple events",
+            "socket timeout",
+        ]
+        for detail in details {
+            let hint = try XCTUnwrap(classifyMailError(detail).remediation?.humanHint, detail)
+            XCTAssertTrue(
+                hint.contains("pippin mail accounts"),
+                "Remediation for '\(detail)' must name the JXA check, got: \(hint)"
+            )
+            XCTAssertFalse(
+                hint.contains("pippin mail list"),
+                "Remediation for '\(detail)' must not suggest the fast-path list, got: \(hint)"
+            )
+        }
+    }
+
     // Model-name matching tests (formerly `ollamaModelIsAvailable`, pippin-n5p)
     // moved to AIProviderTests — the helper now lives on OllamaProvider, shared
     // between `doctor` and the provider's 404 model-not-found path (issue #22).

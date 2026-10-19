@@ -48,14 +48,18 @@ public extension Remediation {
     ) -> Remediation {
         Remediation(
             humanHint: """
-            \(permission) access is not granted. Open System Settings > Privacy \
-            & Security > \(permission) and enable the app that launches pippin \
-            (your terminal, or the agent/MCP client that spawns it) — macOS TCC \
-            attaches the grant to the launching app, not the pippin binary. A \
-            background agent (LaunchAgent) cannot show the first-use prompt, so \
-            run `\(listCommand)` once from an interactive terminal to trigger it, \
-            then re-run. Tip: `pippin permissions` resolves all promptable \
-            permissions in one interactive pass.
+            \(permission) access is not granted. By default pippin relaunches \
+            itself as its own responsible process, so macOS TCC attaches the \
+            grant to pippin itself at its installed path (for example \
+            ~/.local/bin/pippin), not to the terminal or agent that launches it. \
+            Run `pippin permissions` once from an interactive terminal to approve \
+            it, or enable pippin under System Settings > Privacy & Security > \
+            \(permission). A background agent (LaunchAgent) cannot show the \
+            first-use prompt, so grant it interactively (or run `\(listCommand)` \
+            once in a terminal), then re-run. Exception: with \
+            PIPPIN_NO_DISCLAIM=1, or when the disclaimed relaunch is unavailable, \
+            the grant attaches to the launching app (your terminal, or the \
+            agent/MCP client) instead.
             """,
             doctorCheck: doctorCheck
         )

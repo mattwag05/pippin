@@ -112,11 +112,15 @@ public enum ContactsBridgeError: LocalizedError, Sendable {
         case .accessDenied:
             return """
             Contacts access denied.
-            → Open System Settings > Privacy & Security > Contacts and enable the
-              app that launches pippin (your terminal, or the MCP/agent client).
-              The grant attaches to the launching app, not the pippin binary; a
-              background agent that can't show the prompt needs `pippin contacts
-              list` run once in a terminal first. Then retry.
+            → Run `pippin permissions` once in a terminal, or enable pippin under
+              System Settings > Privacy & Security > Contacts. The grant belongs
+              to pippin itself at its installed path (e.g. ~/.local/bin/pippin),
+              not to the launching app, because pippin relaunches as its own
+              responsible process; a background agent that can't show the prompt
+              needs `pippin contacts list` run once in a terminal first. With
+              PIPPIN_NO_DISCLAIM=1, or when that relaunch is unavailable, the
+              grant attaches to the launching app (your terminal, or the MCP/agent
+              client) instead. Then retry.
             """
         case let .contactNotFound(id):
             return "Contact not found: \(id)"

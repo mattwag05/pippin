@@ -84,6 +84,13 @@ public struct DoctorCommand: AsyncParsableCommand {
 
 // MARK: - Testable helpers
 
+/// A Mail command that always runs JXA. `mail accounts` calls
+/// `MailBridge.listAccounts()`, the same script this doctor check runs, and has
+/// no Envelope Index fast path. `mail list` is not a valid check here: it is
+/// answered from the index without JXA, so it can succeed while Automation is
+/// broken (pippin-tu07).
+let mailAutomationVerifyCommand = "pippin mail accounts"
+
 /// Classify a Mail automation error by its description string.
 func classifyMailError(_ detail: String) -> DiagnosticCheck {
     if detail.contains("Application can't be found. (-2700)") {
@@ -94,7 +101,7 @@ func classifyMailError(_ detail: String) -> DiagnosticCheck {
             remediation: Remediation(
                 humanHint: """
                 This does not prove Mail is absent. Envelope Index metadata can remain available while JXA body automation cannot resolve Mail in this launch context.
-                Open Mail once in this user session, verify Automation access for the calling app, then run: pippin mail list
+                Open Mail once in this user session, verify Automation access for pippin, then run: \(mailAutomationVerifyCommand)
                 """,
                 doctorCheck: "Mail automation"
             )
@@ -109,8 +116,9 @@ func classifyMailError(_ detail: String) -> DiagnosticCheck {
             remediation: Remediation(
                 humanHint: """
                 Open System Settings > Privacy & Security > Automation
-                Grant Terminal.app (or pippin binary) access to Mail.
-                Then run: pippin mail list
+                Grant pippin access to Mail. pippin is its own responsible process by default, so
+                the grant belongs to pippin; with PIPPIN_NO_DISCLAIM=1 it belongs to the launching app.
+                Then run: \(mailAutomationVerifyCommand)
                 """,
                 doctorCheck: "Mail automation"
             )
@@ -135,7 +143,7 @@ func classifyMailError(_ detail: String) -> DiagnosticCheck {
         remediation: Remediation(
             humanHint: """
             Ensure Mail.app is installed and has at least one account configured.
-            Then run: pippin mail list
+            Then run: \(mailAutomationVerifyCommand)
             """,
             doctorCheck: "Mail automation"
         )
@@ -824,19 +832,53 @@ private func checkPlaywright() -> DiagnosticCheck {
     guard BrowserBridge.isNodeAvailable() else {
         return DiagnosticCheck(name: "Playwright", status: .skip, detail: "skipped (Node.js not found)")
     }
-    if BrowserBridge.isPlaywrightAvailable() {
-        return DiagnosticCheck(name: "Playwright", status: .ok, detail: "found")
-    }
-    return DiagnosticCheck(
-        name: "Playwright",
-        status: .skip,
-        detail: "not found (optional — required for `pippin browser`)",
-        remediation: Remediation(
-            humanHint: "Playwright is optional — install it only if you plan to use `pippin browser`.",
-            doctorCheck: "Playwright",
-            shellCommand: "npx playwright install webkit"
+    return classifyPlaywright(BrowserBridge.playwrightReadiness())
+}
+
+/// Map a Playwright readiness probe to a doctor row (pippin-eru6). Browser is
+/// optional, so every not-ready state is a `.skip` whose advice names the
+/// missing part: the global module the runtime `require`s, the WebKit browser,
+/// or both.
+func classifyPlaywright(_ readiness: BrowserBridge.PlaywrightReadiness) -> DiagnosticCheck {
+    let name = "Playwright"
+    let optional = "Playwright is optional. Install it only if you plan to use `pippin browser`."
+    switch readiness {
+    case .ready:
+        return DiagnosticCheck(name: name, status: .ok, detail: "module resolves, WebKit installed")
+    case .moduleMissing:
+        return DiagnosticCheck(
+            name: name,
+            status: .skip,
+            detail: "playwright module not resolvable by the browser runtime (optional, required for `pippin browser`)",
+            remediation: Remediation(
+                humanHint: "\(optional) Install the module globally so pippin's Node runtime can require it, then install its WebKit browser.",
+                doctorCheck: name,
+                shellCommand: "npm install -g playwright && npx playwright install webkit"
+            )
         )
-    )
+    case .browserMissing:
+        return DiagnosticCheck(
+            name: name,
+            status: .skip,
+            detail: "playwright module resolves, but the WebKit browser is not installed (optional, required for `pippin browser`)",
+            remediation: Remediation(
+                humanHint: "\(optional) The module is installed; install its WebKit browser.",
+                doctorCheck: name,
+                shellCommand: "npx playwright install webkit"
+            )
+        )
+    case let .probeFailed(reason):
+        return DiagnosticCheck(
+            name: name,
+            status: .skip,
+            detail: "readiness probe failed: \(reason) (optional, required for `pippin browser`)",
+            remediation: Remediation(
+                humanHint: "\(optional) Make sure the module is installed globally and its WebKit browser is installed.",
+                doctorCheck: name,
+                shellCommand: "npm install -g playwright && npx playwright install webkit"
+            )
+        )
+    }
 }
 
 private func checkPippinVersion() -> DiagnosticCheck {

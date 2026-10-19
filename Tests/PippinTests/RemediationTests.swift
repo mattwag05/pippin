@@ -149,6 +149,46 @@ final class RemediationTests: XCTestCase {
         XCTAssertEqual(remediation.doctorCheck, "Contacts access")
     }
 
+    // MARK: - Permission owner advice (pippin-ds6c)
+
+    //
+    // pippin re-execs disclaimed by default (pippin-0vr), so the grant keys on
+    // pippin's own identity. The advice must say so, and name the opt-out and
+    // unavailable-SPI cases where the launching app owns the grant instead.
+
+    func testPrivacyAccessNamesPippinAsDefaultGrantOwner() {
+        let hint = Remediation.privacyAccess(
+            permission: "Calendar",
+            listCommand: "synthetic",
+            doctorCheck: "Calendar access"
+        ).humanHint
+        XCTAssertTrue(hint.contains("attaches the grant to pippin itself"), hint)
+        XCTAssertTrue(hint.contains("~/.local/bin/pippin"), hint)
+        XCTAssertTrue(hint.contains("pippin permissions"), hint)
+        XCTAssertTrue(hint.contains("PIPPIN_NO_DISCLAIM=1"), hint)
+        XCTAssertTrue(hint.contains("attaches to the launching app"), hint)
+        XCTAssertFalse(
+            hint.contains("not the pippin binary"),
+            "The unconditional launcher-owns-the-grant claim must be gone, got: \(hint)"
+        )
+    }
+
+    func testBridgeAccessDeniedDescriptionsNamePippinAsDefaultGrantOwner() throws {
+        let descriptions: [String] = try [
+            XCTUnwrap(CalendarBridgeError.accessDenied.errorDescription),
+            XCTUnwrap(RemindersBridgeError.accessDenied.errorDescription),
+            XCTUnwrap(ContactsBridgeError.accessDenied.errorDescription),
+        ]
+        for raw in descriptions {
+            // The descriptions wrap mid-sentence; compare on single-spaced text.
+            let desc = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            XCTAssertTrue(desc.contains("The grant belongs to pippin itself at its installed path"), desc)
+            XCTAssertTrue(desc.contains("pippin permissions"), desc)
+            XCTAssertTrue(desc.contains("PIPPIN_NO_DISCLAIM=1"), desc)
+            XCTAssertFalse(desc.contains("not the pippin binary"), desc)
+        }
+    }
+
     /// Voice Memos must still resolve to the Full Disk Access remediation (it
     /// genuinely needs FDA) — the fix must not regress the one error whose
     /// `access_denied` remediation was always correct.
