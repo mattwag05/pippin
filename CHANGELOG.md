@@ -21,6 +21,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] Ollama embeddings now use `ai.ollama.url` instead of always calling localhost. Closes pippin-edjh.
 - [bug] `pippin doctor` reports the backend configured for AI features, embeddings, and transcription. It no longer says `mail triage` and `mail extract` need Ollama when another provider is configured. Closes pippin-edjh.
 - [bug] When a remote Ollama endpoint is unreachable, `pippin doctor` names that endpoint without its credentials and no longer suggests installing Ollama on localhost. Closes pippin-c2zy.
+- [bug] Blocking work (subprocess waits, synchronous network calls) now runs on its own threads instead of the Swift concurrency pool, so many concurrent `pippin mcp-server` or `batch` calls can no longer stall each other. Closes pippin-vb4a.
 
 ## [0.40.0] - 2026-10-18
 

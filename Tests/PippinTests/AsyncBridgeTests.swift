@@ -3,7 +3,7 @@ import XCTest
 
 final class AsyncBridgeTests: XCTestCase {
     /// More concurrent callers than cooperative threads. Each hops with
-    /// `runOffPool` before blocking in `waitForAsync`; without the hop every
+    /// `detachBlocking` before blocking in `waitForAsync`; without the hop every
     /// pool thread blocks and no async body can run (0 of 36 completed on an
     /// M5 before the hop was added, pippin-edjh).
     func testWaitForAsyncSurvivesMoreCallersThanPoolThreads() async {
@@ -11,7 +11,7 @@ final class AsyncBridgeTests: XCTestCase {
         let results = await withTaskGroup(of: Bool.self) { group in
             for _ in 0 ..< callers {
                 group.addTask {
-                    let value = try? await runOffPool {
+                    let value = try? await detachBlocking {
                         try waitForAsync(timeoutSeconds: 5) {
                             try await Task.sleep(nanoseconds: 50_000_000)
                             return 1

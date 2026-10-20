@@ -201,7 +201,7 @@ public struct MemosCommand: AsyncParsableCommand {
                                 do {
                                     // Off the cooperative pool: concurrent Apple
                                     // transcriptions would otherwise exhaust it.
-                                    let r = try await runOffPool {
+                                    let r = try await detachBlocking {
                                         try db.exportMemo(
                                             id: memoId,
                                             outputDir: outputDir,
@@ -404,7 +404,7 @@ public struct MemosCommand: AsyncParsableCommand {
                                     }
                                     // Off the cooperative pool: concurrent Apple
                                     // transcriptions would otherwise exhaust it.
-                                    let r = try await runOffPool {
+                                    let r = try await detachBlocking {
                                         try db.transcribeMemo(
                                             id: memoId,
                                             transcriber: transcriber,

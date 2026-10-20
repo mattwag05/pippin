@@ -96,7 +96,7 @@ public struct SummarizeCommand: AsyncParsableCommand {
                             do {
                                 // Off the cooperative pool: concurrent Apple
                                 // transcriptions would otherwise exhaust it.
-                                let r = try await runOffPool {
+                                let r = try await detachBlocking {
                                     try SummarizeCommand.summarizeMemoStatic(
                                         memo: memo, db: db, cache: cache,
                                         aiProvider: aiProvider, systemPrompt: systemPrompt,
