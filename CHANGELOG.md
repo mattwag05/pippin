@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.41.0] - 2026-11-08
+
 ### Changed
 
 - [breaking] Output is agent-only. The `text` and `json` formats were removed; every command, and every error including argument parsing, writes the compact JSON agent envelope. `--format agent` is still accepted as a no-op; `--format text` or `--format json` fails with a usage error (exit 2) naming the replacement. Scripts that read bare JSON now read `.data`; `pippin shell --format` is gone; exit code 64 no longer occurs. Closes pippin-xg3z.
@@ -985,7 +989,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
      so this is a stable end state, not a backlog item. Don't "fix" it by
      inventing links: check `git tag -l` for both endpoints first. -->
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.40.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.41.0...HEAD
+[0.41.0]: https://github.com/mattwag05/pippin/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/mattwag05/pippin/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/mattwag05/pippin/compare/v0.38.1...v0.39.0
 [0.38.1]: https://github.com/mattwag05/pippin/compare/v0.38.0...v0.38.1
