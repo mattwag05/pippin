@@ -6,7 +6,11 @@
 
 <p align="center">
   <strong>Your Apple apps, one CLI away.</strong><br/>
-  Headless automation for Mail, Calendar, Reminders, Notes, Contacts, Voice Memos, and more — built for AI agents and power users.
+  Headless automation for Mail, Calendar, Reminders, Notes, Contacts, Voice Memos, and more, built for AI agents.
+</p>
+
+<p align="center">
+  <img src="docs/demo.gif" alt="pippin answering a health check, a send preview and an error, each as a JSON envelope" width="720" />
 </p>
 
 <p align="center">
@@ -21,7 +25,7 @@
 pippin gives AI agents and scripts structured access to sandboxed Apple apps that are normally locked behind GUI-only automation. Every command answers with token-efficient compact JSON in a versioned envelope, ready to feed to an LLM, pipe into `jq`, or wire into a cron job.
 
 ```
-pippin mail list --unread --format agent
+pippin mail list --unread
 pippin calendar today
 pippin reminders list "Work"
 pippin notes search "meeting"

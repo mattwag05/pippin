@@ -55,8 +55,12 @@ public struct AppleSpeechTranscriber: Transcriber {
                 throw TranscriberError.failed("Apple on-device transcription does not support locale \(requested.identifier).")
             }
             let module = SpeechTranscriber(locale: supported, preset: .transcription)
-            if let install = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
-                try await install.downloadAndInstall()
+            do {
+                if let install = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
+                    try await install.downloadAndInstall()
+                }
+            } catch {
+                throw TranscriberError.failed("Apple on-device speech assets are unavailable: \(error.localizedDescription)")
             }
             let file = try AVAudioFile(forReading: URL(fileURLWithPath: audioPath))
             let analyzer = SpeechAnalyzer(modules: [module])
