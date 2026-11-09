@@ -1,6 +1,10 @@
 import Foundation
 import GRDB
 
+extension VoiceMemo: EssentialRow {
+    public static let essentialFields = ["id", "title", "durationSeconds", "createdAt", "hasTranscript"]
+}
+
 public struct VoiceMemo: Codable, FetchableRecord, Sendable {
     public let id: String
     public let title: String

@@ -92,6 +92,10 @@ extension MailBridgeError: RemediableError {
 
 // MARK: - MailMessage
 
+extension MailMessage: EssentialRow {
+    public static let essentialFields = ["id", "from", "fromContact", "subject", "date", "read", "hasAttachment", "bodyPreview"]
+}
+
 public struct MailMessage: Codable, Sendable {
     public let id: String // compound: "account||mailbox||messageId"
     public let account: String

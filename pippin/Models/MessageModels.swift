@@ -18,6 +18,10 @@ public struct MessageParticipant: Codable, Sendable, Equatable {
     }
 }
 
+extension MessageConversation: EssentialRow {
+    public static let essentialFields = ["id", "display_name", "is_group", "last_message_at", "last_message_preview", "unread_count"]
+}
+
 public struct MessageConversation: Codable, Sendable, Equatable {
     public let id: String
     public let service: String

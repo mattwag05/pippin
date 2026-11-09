@@ -91,6 +91,10 @@ public struct ReminderList: Codable, Sendable {
     }
 }
 
+extension ReminderItem: EssentialRow {
+    public static let essentialFields = ["id", "title", "dueDate", "isCompleted", "priority", "listTitle"]
+}
+
 public struct ReminderItem: Codable, Sendable {
     public let id: String
     public let listId: String

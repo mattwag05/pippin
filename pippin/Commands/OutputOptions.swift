@@ -21,7 +21,7 @@ public struct OutputOptions: ParsableArguments {
     @Option(name: .long, help: "Output format. Only `agent` (compact JSON envelope) exists; accepted for compatibility.", transform: OutputFormat.parse)
     public var format: OutputFormat = .agent
 
-    @Option(name: .long, help: "Comma-separated JSON field names to include in each row (e.g. id,title).")
+    @Option(name: .long, help: "Comma-separated JSON field names to include in each row (e.g. id,title), or `all`. List commands default to essential fields.")
     public var fields: String?
 
     /// Wall-clock time when this option group was constructed (during
@@ -40,13 +40,23 @@ public struct OutputOptions: ParsableArguments {
 
     /// The envelope for `result`. Field projection defaults to the parsed
     /// `--fields`, so every command honors it without threading it; an explicit
-    /// `result.fields` overrides. `duration_ms` runs from `startedAt`.
+    /// `result.fields` overrides. With neither, array rows trim to their
+    /// essential fields, and `--fields all` turns that off. `duration_ms` runs
+    /// from `startedAt`.
     public func render(_ result: AgentResult) throws -> String {
-        let effectiveFields = result.fields ?? FieldProjection.parse(fields)
+        let requested = result.fields ?? FieldProjection.parse(fields)
+        let effectiveFields = requested == [FieldProjection.all] ? nil : requested ?? result.defaultFields
         if let effectiveFields, !effectiveFields.isEmpty {
+            var warnings = result.warnings ?? []
+            if requested != nil {
+                let missing = try FieldProjection.fieldsInNoRow(result.payload, fields: effectiveFields)
+                if !missing.isEmpty {
+                    warnings.append("No row has field(s): \(missing.joined(separator: ", ")).")
+                }
+            }
             return try projectedAgentJSON(
                 result.payload, fields: effectiveFields, startedAt: startedAt,
-                warnings: result.warnings, partial: result.partial, nextCursor: result.nextCursor
+                warnings: warnings.isEmpty ? nil : warnings, partial: result.partial, nextCursor: result.nextCursor
             )
         }
         return try agentJSON(

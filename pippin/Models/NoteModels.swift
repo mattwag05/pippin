@@ -64,6 +64,10 @@ extension NotesBridgeError: RemediableError {
     }
 }
 
+extension NoteInfo: EssentialRow {
+    public static let essentialFields = ["id", "title", "folder", "modifiedAt"]
+}
+
 public struct NoteInfo: Codable, Sendable {
     public let id: String
     public let title: String

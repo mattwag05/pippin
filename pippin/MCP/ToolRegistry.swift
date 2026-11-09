@@ -139,12 +139,10 @@ enum ArgHelpers {
         ].flatMap { optionIfString(args, $0.0, flagName: $0.1) }
     }
 
-    /// Outbound-send gate: emit `--dry-run` unless the caller passed `confirm: true`.
-    /// The MCP default deliberately diverges from the CLI's (which sends) and mirrors
-    /// `messages_send`'s always-`--draft` posture — an agent must see a preview and
-    /// re-call with confirm to actually deliver mail.
+    /// Outbound-send gate: an agent must see a preview and re-call with
+    /// `confirm: true` to actually deliver mail.
     static func dryRunUnlessConfirmed(_ args: JSONValue?) -> [String] {
-        bool(args, "confirm") == true ? [] : ["--dry-run"]
+        bool(args, "confirm") == true ? ["--confirm"] : ["--dry-run"]
     }
 
     /// Destructive-delete gate: resolve `--force` from an explicit `confirm: true`,
@@ -272,7 +270,66 @@ enum Schema {
 
 /// Source of truth for the MCP tool surface. Adding a new tool is one entry.
 enum MCPToolRegistry {
-    static let tools: [MCPTool] = [
+    static let tools: [MCPTool] = baseTools.map(addingListOptions)
+
+    /// List and search tools accept `--fields` at the CLI through the shared
+    /// output options; these expose it, plus cursor paging where it exists.
+    private static let projectableTools: Set = [
+        "mail_list", "mail_search", "mail_activity", "calendar_events", "calendar_today",
+        "calendar_remaining", "calendar_upcoming", "calendar_search", "reminders_list",
+        "reminders_search", "contacts_search", "contacts_list", "notes_list", "notes_search",
+        "messages_list", "messages_search", "memos_list",
+    ]
+    private static let pagedTools: Set = [
+        "mail_list", "mail_search", "calendar_events", "calendar_upcoming", "reminders_list",
+        "contacts_search", "notes_list", "memos_list",
+    ]
+
+    private static func addingListOptions(_ tool: MCPTool) -> MCPTool {
+        guard projectableTools.contains(tool.name),
+              case var .object(root) = tool.inputSchema,
+              case var .object(properties)? = root["properties"]
+        else { return tool }
+
+        var extra: [(key: String, flag: String, isInt: Bool, schema: JSONValue)] = [
+            ("fields", "--fields", false, Schema.string("Comma-separated row keys, or `all`. Default: essential fields.")),
+        ]
+        if pagedTools.contains(tool.name) {
+            extra += [
+                ("cursor", "--cursor", false, Schema.string("Opaque next_cursor from a previous response.")),
+                ("pageSize", "--page-size", true, Schema.integer("Rows per page when paginating.")),
+                ("page", "--page", true, Schema.integer("1-based page number. Ignored when cursor is set.")),
+            ]
+        }
+        extra.removeAll { properties[$0.key] != nil }
+        for option in extra {
+            properties[option.key] = option.schema
+        }
+        root["properties"] = .object(properties)
+
+        let build = tool.buildArgs
+        let added = extra.map { (key: $0.key, flag: $0.flag, isInt: $0.isInt) }
+        return MCPTool(
+            name: tool.name,
+            description: tool.description,
+            inputSchema: .object(root),
+            buildArgs: { args in
+                var argv = try build(args)
+                // Before `--format`, so a trailing `-- <positional>` stays last.
+                let insertAt = argv.firstIndex(of: "--format") ?? argv.endIndex
+                let options = added.flatMap { option in
+                    option.isInt
+                        ? ArgHelpers.optionIfInt(args, option.key, flagName: option.flag)
+                        : ArgHelpers.optionIfString(args, option.key, flagName: option.flag)
+                }
+                argv.insert(contentsOf: options, at: insertAt)
+                return argv
+            },
+            inProcess: tool.inProcess
+        )
+    }
+
+    private static let baseTools: [MCPTool] = [
         // MARK: Mail
 
         MCPTool(

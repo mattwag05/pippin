@@ -56,9 +56,9 @@ pippin mail accounts                          # list configured accounts
 pippin mail list --account Work --limit 10    # recent messages
 pippin mail show <compound-id>                # full message content
 pippin mail search "invoice" --account Work   # search by subject/sender
-pippin mail send --to user@example.com --subject "Hi" --body "Hello"
-pippin mail reply <compound-id> --body "Thanks"
-pippin mail forward <compound-id> --to other@example.com
+pippin mail send --to user@example.com --subject "Hi" --body "Hello" --confirm  # previews without --confirm
+pippin mail reply <compound-id> --body "Thanks" --confirm
+pippin mail forward <compound-id> --to other@example.com --confirm
 pippin mail activity --account Work           # recent send/receive activity
 pippin mail triage --account Work --limit 20  # AI-powered priority triage
 pippin mail extract <compound-id>             # extract dates, amounts, contacts
@@ -339,7 +339,7 @@ Cursor tokens are bound to the query by a filter-hash — changing a filter mid-
 
 ### Field projection (`--fields`)
 
-`--fields id,subject,from` trims the envelope's `.data` to just those top-level keys, leaving `v`/`status`/`duration_ms` intact and cutting tokens for scan workflows. Supported on `mail list`, `notes list`/`search`, `calendar events`/`today`/`remaining`/`upcoming`, and `reminders list`/`search`. For paginated output it projects each element of `.data` and preserves the top-level `next_cursor`.
+List and search rows default to essential fields (for mail: `id`, `from`, `fromContact`, `subject`, `date`, `read`, `hasAttachment`, `bodyPreview`). `--fields id,subject,from` selects keys instead, `--fields all` returns whole rows, and a requested field no row has produces a warning. For paginated output it projects each element of `.data` and preserves the top-level `next_cursor`.
 
 ```bash
 pippin mail list --limit 20 --fields id,subject,from --format agent   # → [{id,subject,from}, ...] under .data

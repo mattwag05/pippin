@@ -13,6 +13,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - [breaking] Output is agent-only. The `text` and `json` formats were removed; every command, and every error including argument parsing, writes the compact JSON agent envelope. `--format agent` is still accepted as a no-op; `--format text` or `--format json` fails with a usage error (exit 2) naming the replacement. Scripts that read bare JSON now read `.data`; `pippin shell --format` is gone; exit code 64 no longer occurs. Closes pippin-xg3z.
 - [breaking] Envelope v4: every error carries `error.next_step` with `retryable`, `retry_after_seconds`, `next_call` and `human_action`, authored per source. Codes no longer depend on Swift case names. `missing_api_key`, `malformed_ai_response` and `invalid_entries_json` replace their garbled forms. HTTP 429 is `rate_limited`, HTTP 5xx is `server_error`. MCP argument errors, child timeouts and crashes return error envelopes; a crash is `child_crashed` rather than a timeout. Closes pippin-pxz9.
+- [breaking] List and search rows default to essential fields. `--fields all` returns whole rows, and a requested field that no row has produces a warning. MCP list and search tools gain `fields`, and paginated ones gain `cursor`, `pageSize` and `page`. Closes pippin-w5j3.
+- [breaking] `mail send`, `reply` and `forward` preview unless `--confirm` is passed. Scripts that send must add it.
 - [refactor] Commands return results instead of printing, so the CLI and in-process MCP tools share one implementation. An in-process tool that exceeds 25s moves to a child process for the session. Closes pippin-ql27.
 
 ### Added

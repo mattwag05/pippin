@@ -17,6 +17,13 @@ public struct ContactsCommand: AsyncParsableCommand {
 
     public init() {}
 
+    /// The bridge fetches only named keys, so `--fields all` must name them all.
+    static func bridgeFields(_ raw: String?) -> [String]? {
+        let parsed = FieldProjection.parse(raw)
+        guard parsed == [FieldProjection.all] else { return parsed }
+        return ["emails", "phones", "organization", "jobtitle", "birthday", "postaladdresses", "socialprofiles"]
+    }
+
     // MARK: - List
 
     public struct ListContacts: AgentCommand {
@@ -37,7 +44,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             // CNContact keys are fetched (avoids reading email/phone bodies
             // across the whole store), unlike the client-side jsonData/emit
             // projection other commands use. Semantics intentionally differ.
-            let fieldList = FieldProjection.parse(output.fields)
+            let fieldList = ContactsCommand.bridgeFields(output.fields)
             let group = self.group
             // listContacts enumerates the full contact store (sync, can be slow
             // on large address books); hop off the cooperative pool.
@@ -92,7 +99,7 @@ public struct ContactsCommand: AsyncParsableCommand {
         }
 
         public mutating func execute() async throws -> AgentResult {
-            let fieldList = FieldProjection.parse(output.fields)
+            let fieldList = ContactsCommand.bridgeFields(output.fields)
             let query = self.query ?? ""
             let contacts: [ContactInfo]
             let timedOut: Bool

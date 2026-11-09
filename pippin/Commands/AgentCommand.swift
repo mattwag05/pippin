@@ -17,6 +17,8 @@ public struct AgentResult {
     /// Process exit status after the envelope is written (`doctor` reports
     /// failed checks in a successful envelope but still exits 1).
     let exitCode: Int32
+    /// Row keys kept when the caller did not ask for fields (pippin-w5j3).
+    let defaultFields: [String]?
 
     public init(
         _ payload: some Encodable,
@@ -24,7 +26,8 @@ public struct AgentResult {
         fields: [String]? = nil,
         partial: Bool = false,
         nextCursor: String? = nil,
-        exitCode: Int32 = 0
+        exitCode: Int32 = 0,
+        untrimmed: Bool = false
     ) {
         self.payload = payload
         self.warnings = warnings
@@ -32,6 +35,7 @@ public struct AgentResult {
         self.partial = partial
         self.nextCursor = nextCursor
         self.exitCode = exitCode
+        defaultFields = untrimmed ? nil : (payload as? EssentialRows)?.essentialFields
     }
 
     /// A paginated answer (envelope v3, pippin-37az): `data` stays the items
@@ -73,6 +77,20 @@ public struct AgentResult {
         let warnings = (timedOut ? [timedOutHint] : []) + extraWarnings
         return .page(page, warnings: warnings.isEmpty ? nil : warnings, fields: fields, partial: timedOut)
     }
+}
+
+/// A row type with a token-saving default projection, applied when a command
+/// answers with an array of them. Single-object answers (`show`) stay whole.
+public protocol EssentialRow {
+    static var essentialFields: [String] { get }
+}
+
+protocol EssentialRows {
+    var essentialFields: [String] { get }
+}
+
+extension Array: EssentialRows where Element: EssentialRow {
+    var essentialFields: [String] { Element.essentialFields }
 }
 
 /// A command whose behavior is one call returning an `AgentResult`. `run()` is

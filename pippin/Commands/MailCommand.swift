@@ -668,7 +668,7 @@ public struct MailCommand: AsyncParsableCommand {
             let useCache = noCache ? nil : MailBodyCache.shared
             let fetched = try await detachBlocking { try MailBridge.readMessages(compoundIds: compoundIds, cache: useCache) }
             let messages = await MailCommand.enrichContacts(fetched, options: contactResolution)
-            return AgentResult(messages)
+            return AgentResult(messages, untrimmed: true) // `show` asks for whole messages.
         }
     }
 
@@ -893,8 +893,11 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("attach"), parsing: .unconditionalSingleValue, help: "Path to file to attach (repeatable).")
         public var attach: [String] = []
 
-        @Flag(name: .long, help: "Print what would happen without sending.")
+        @Flag(name: .long, help: "Preview without sending (the default unless --confirm is passed).")
         public var dryRun: Bool = false
+
+        @Flag(name: .long, help: "Actually send. Without this the command only previews.")
+        public var confirm: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
@@ -919,7 +922,7 @@ public struct MailCommand: AsyncParsableCommand {
                 bcc: bcc,
                 from: from,
                 attachmentPaths: attach,
-                dryRun: dryRun
+                dryRun: dryRun || !confirm
             )
             return AgentResult(result)
         }
@@ -1024,8 +1027,11 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("attach"), parsing: .unconditionalSingleValue, help: "Path to file to attach (repeatable).")
         public var attach: [String] = []
 
-        @Flag(name: .long, help: "Print what would happen without sending.")
+        @Flag(name: .long, help: "Preview without sending (the default unless --confirm is passed).")
         public var dryRun: Bool = false
+
+        @Flag(name: .long, help: "Actually send. Without this the command only previews.")
+        public var confirm: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
@@ -1047,7 +1053,7 @@ public struct MailCommand: AsyncParsableCommand {
                 bcc: bcc,
                 from: from,
                 attachmentPaths: attach,
-                dryRun: dryRun
+                dryRun: dryRun || !confirm
             )
             return AgentResult(result)
         }
@@ -1082,8 +1088,11 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("attach"), parsing: .unconditionalSingleValue, help: "Path to file to attach (repeatable).")
         public var attach: [String] = []
 
-        @Flag(name: .long, help: "Print what would happen without sending.")
+        @Flag(name: .long, help: "Preview without sending (the default unless --confirm is passed).")
         public var dryRun: Bool = false
+
+        @Flag(name: .long, help: "Actually send. Without this the command only previews.")
+        public var confirm: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
@@ -1108,7 +1117,7 @@ public struct MailCommand: AsyncParsableCommand {
                 bcc: bcc,
                 from: from,
                 attachmentPaths: attach,
-                dryRun: dryRun
+                dryRun: dryRun || !confirm
             )
             return AgentResult(result)
         }

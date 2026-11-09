@@ -10,6 +10,9 @@ import Foundation
 /// - **plain object** (e.g. a single `show` result) → projected to `fields`
 /// - **scalars / non-object elements** → returned unchanged
 public enum FieldProjection {
+    /// `--fields all`: no projection, including no default trimming.
+    public static let all = "all"
+
     /// Parse a comma-separated `--fields` string into a trimmed, de-blanked
     /// list. Returns `nil` for nil/empty input so callers can treat "no
     /// projection" uniformly.
@@ -47,6 +50,21 @@ public enum FieldProjection {
         let data = try encoder.encode(value)
         let json = try JSONSerialization.jsonObject(with: data)
         return project(json, fields: fields)
+    }
+
+    /// Requested fields present on no row, so a typo is visible rather than
+    /// silently producing empty objects. An empty result names nothing.
+    static func fieldsInNoRow(_ value: some Encodable, fields: [String]) throws -> [String] {
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
+        let rows: [[String: Any]]
+        if let dict = json as? [String: Any] {
+            rows = (dict["items"] as? [[String: Any]]) ?? [dict]
+        } else {
+            rows = (json as? [[String: Any]]) ?? []
+        }
+        guard !rows.isEmpty else { return [] }
+        let present = Set(rows.flatMap(\.keys))
+        return fields.filter { !present.contains($0) }
     }
 
     private static func projectElement(_ element: Any, fields: [String]) -> Any {

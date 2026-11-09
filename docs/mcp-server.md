@@ -166,6 +166,7 @@ Fields:
 - `duration_ms` — wall-clock milliseconds from command construction to JSON serialization.
 - `data` — the previous raw payload, shape unchanged.
 - `error` — the `AgentError.ErrorPayload` (`code`, `message`, `next_step`, optional `remediation`), previously emitted at the top level.
+- Rows from list and search tools default to essential fields. Pass `fields` to select keys or `fields: "all"` for whole rows; paginated tools also take `cursor`, `pageSize` and `page`.
 - `partial` (*optional, additive since 2026-07-30*): `true` when a result set is incomplete (scan soft-timed-out or under-reached). **Omitted entirely on complete results.** For `mail_search` specifically, a timed-out scan with no matches returns an error envelope with code `search_incomplete` and narrowing guidance instead of partial success with an empty array. Empty timed-out `mail_list` and `mail_activity` results may still carry `partial:true`. Emitted by the mail scan tools (`mail_list`, `mail_search`, `mail_activity`).
 - `next_cursor` — *optional, v3*: opaque pagination token for the next page, present only when a pagination flag was passed AND more results remain. **Omitted, not null, on the last page** — its absence is the end-of-results signal. Bound to the query by a filter-hash, so reusing a token after changing a filter fails as `cursor_mismatch` rather than returning mixed pages.
 - `warnings` — *optional*: non-fatal advisories (soft-timeout hints — which list the configured account names — and Envelope-Index fast-path fallback reasons). Omitted when empty.

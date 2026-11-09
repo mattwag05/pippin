@@ -16,6 +16,10 @@ public struct CalendarInfo: Codable, Sendable {
     }
 }
 
+extension CalendarEvent: EssentialRow {
+    public static let essentialFields = ["id", "title", "startDate", "endDate", "isAllDay", "location", "calendarTitle"]
+}
+
 public struct CalendarEvent: Codable, Sendable {
     public let id: String
     public let calendarId: String
