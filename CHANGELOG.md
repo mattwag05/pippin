@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [fix] Missing Apple on-device speech assets now report a typed transcription failure instead of a raw framework error.
+
 ---
 
 ## [0.41.0] - 2026-11-08
