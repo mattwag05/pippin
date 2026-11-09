@@ -22,12 +22,12 @@
 
 ---
 
-pippin gives AI agents and scripts structured access to sandboxed Apple apps that are normally locked behind GUI-only automation. Every command answers with token-efficient compact JSON in a versioned envelope, ready to feed to an LLM, pipe into `jq`, or wire into a cron job.
+pippin lets AI agents read and change data in Apple apps that otherwise need GUI automation. Every command returns compact JSON in a versioned envelope, from the CLI or over MCP.
 
 ```
 pippin mail list --unread
 pippin calendar today
-pippin reminders list "Work"
+pippin reminders list --limit 5
 pippin notes search "meeting"
 pippin memos summarize <id> --provider ollama
 pippin contacts search "Alice"
@@ -43,10 +43,7 @@ pippin do "what's on my calendar today?"  # let an LLM plan the tool calls
 brew install mattwag05/tap/pippin
 ```
 
-Transcription deps: the formula runs `pipx install mlx-audio==<pinned>` as a
-`post_install` step when `pipx` is on PATH. If it isn't, the formula prints a
-one-line install hint — run `brew install pipx && pipx install mlx-audio` and
-verify with `pippin doctor`.
+The formula also installs the default transcription backend (`pipx install mlx-audio==<pinned>`) when `pipx` is on PATH. Otherwise it prints a one-line hint. Run `brew install pipx && pipx install mlx-audio`, then check it with `pippin doctor`.
 
 **Pre-built binary** (arm64, macOS 15+):
 
@@ -65,40 +62,27 @@ make install
 
 ## Setup
 
-pippin accesses sandboxed Apple apps — macOS needs explicit permission grants.
+macOS asks for a separate permission for each Apple app.
 
 ```bash
-pippin permissions  # Grant every promptable permission in one interactive pass
-pippin init         # Guided setup — also primes permissions, plus dependency checks
-pippin doctor       # Verify everything works (incl. code-signing status)
-pippin status       # Dashboard: accounts, events, reminders, permissions
+pippin permissions  # grant every promptable permission in one interactive pass
+pippin init         # guided setup: permissions plus dependency checks
+pippin doctor       # verify everything works, including code signing
+pippin status       # accounts, events, reminders and permissions
 ```
 
-`pippin permissions` (or `pippin init`), run interactively, triggers each macOS
-prompt up front so it's answered once — the reliable way to avoid an unexpected
-or silently-denied prompt later (e.g. when an agent invokes pippin in the
-background). Run it again any time TCC resets (e.g. after a macOS upgrade).
+Run `pippin permissions` or `pippin init` from a terminal so each macOS prompt gets answered once. A prompt that appears later, while an agent runs pippin in the background, can get denied without anyone seeing it. Run it again whenever macOS resets permissions, such as after an upgrade.
 
-| Permission | For | Promptable |
+| Permission | Used by | How to grant |
 |---|---|---|
-| Reminders | Reminders | ✅ `pippin permissions` |
-| Calendars | Calendar | ✅ `pippin permissions` |
-| Contacts | Contacts | ✅ `pippin permissions` |
-| Automation > Mail | Mail | ✅ `pippin permissions` |
-| Automation > Notes | Notes | ✅ `pippin permissions` |
-| Full Disk Access | Voice Memos, Messages; Mail fast path (optional, ~1000x list/search; `mail cache fill` is the alternative without it) | ❌ grant manually (no prompt exists) |
+| Reminders | Reminders | `pippin permissions` |
+| Calendars | Calendar | `pippin permissions` |
+| Contacts | Contacts | `pippin permissions` |
+| Automation > Mail | Mail | `pippin permissions` |
+| Automation > Notes | Notes | `pippin permissions` |
+| Full Disk Access | Voice Memos, Messages, and Mail's fast path (optional) | System Settings, by hand. macOS has no prompt for it |
 
-> **Persistence:** grants stick across rebuilds/upgrades only if the binary is
-> signed with a stable identity. `make install` / the Homebrew formula sign with
-> your **Developer ID Application** cert when available (its team-based
-> requirement survives even cert renewal), falling back to an **Apple
-> Development** cert (persists across rebuilds too, but its leaf-pinned
-> requirement resets grants when that cert is renewed/expires ~yearly). Either
-> beats the ad-hoc default, which re-prompts on every build. `pippin doctor`'s
-> **Code signing** row reports whether grants will persist. Note: changing the
-> signing identity (e.g. ad-hoc → signed, or Apple Development → Developer ID) is
-> a one-time re-grant — rerun `pippin permissions` once after the switch. Full
-> Disk Access is always a manual toggle.
+Grants survive rebuilds and upgrades only if the binary has a stable signature. `make install` and the Homebrew formula use a **Developer ID Application** certificate when one is available, which keeps grants even through certificate renewal. An **Apple Development** certificate also works, but grants reset when it renews, about once a year. An ad-hoc build asks again after every build. The **Code signing** row in `pippin doctor` tells you which one you have. If the signing identity changes, run `pippin permissions` once more.
 
 ## Try it
 
@@ -116,56 +100,48 @@ pippin mail send --to you@example.com --subject Hello --body "Hi" --dry-run  # a
 
 ```bash
 pippin mail list --unread --limit 5
-pippin mail list --unread --after 2026-06-01 --before 2026-07-01  # date-bounded listing
+pippin mail list --unread --after 2026-06-01 --before 2026-07-01
 pippin mail search "quarterly report" --after 2026-01-01
-pippin mail search "invoice" --from billing@vendor.com           # fast sender filter, no --body needed
-pippin mail search "invoice" --preview 200                       # inline a body snippet per hit
-# --body widens the match to body text; body-matched hits return a bodyPreview
-# snippet for free (the body was already fetched for the match test). Use --from
-# without --body for sender searches; body scanning is intentionally slower.
-# A timed-out scan with matches returns them with `partial: true`. A timed-out scan
-# with no matches returns `search_incomplete` plus guidance to narrow the search,
-# so incomplete coverage is never reported as a clean empty result.
-# Without Full Disk Access, build Pippin's own index for faster list and search:
-pippin job run -- mail cache fill
-
-# With Full Disk Access granted, list/search/activity metadata reads Mail's on-disk
-# Envelope Index directly (~ms, full-history search — `pippin doctor` shows availability).
-# Without it, the JXA path applies; on large multi-account mailboxes pair --from/--body
-# with --account (or --after/--before): an unscoped cross-account JXA scan can hit the
-# soft timeout and return partial results or `search_incomplete` with narrowing
-# guidance. Scoping keeps the scan within its budget.
+pippin mail search "invoice" --from billing@vendor.com    # sender filter, no body scan
+pippin mail search "invoice" --preview 200                # add a body snippet to each hit
 pippin mail show "acct||INBOX||12345"
-pippin mail show "acct||INBOX||12345" "acct||INBOX||12346"   # 2+ ids: one batched fetch, array out
-# `show` flags structural phishing signals in `headerAnomalies` (agent/JSON) and a
-# `⚠ Anomalies` line (text): Reply-To on a different domain than the sender, hidden
-# recipients, explicit SPF/DKIM/DMARC failures, plus deviations from the sender's own
-# history. Passing auth checks never suppress a warning — a compromised account signs
-# its phish with valid DKIM. list/search/activity surface the same warnings for
-# messages whose headers are already cached from a prior show/preview fetch (⚠ on
-# the subject in text tables); rows never fetched stay unflagged — absence of a
-# warning there is not a clean bill.
-pippin mail verify "acct||INBOX||12345"           # full per-dimension baseline comparison
-# `verify` also parses the raw RFC822 source into the full auth chain (`authChain`):
-# every Received hop, every Authentication-Results instance, the ARC set, and DKIM
-# signatures — auth failures hidden in older chain instances and a broken ARC chain
-# (cv=fail) count toward the verdict.
-pippin mail reply "acct||INBOX||12345" --body "Thanks!" --confirm  # previews without --confirm
-pippin mail forward "acct||INBOX||12345" --to other@example.com --confirm
-pippin mail send --to user@example.com --subject "Hello" --body "Hi there" --confirm
+pippin mail show "acct||INBOX||12345" "acct||INBOX||12346"   # 2+ ids, one batched fetch
+pippin mail show "acct||INBOX||12345" --no-cache          # force a live fetch
+pippin mail verify "acct||INBOX||12345"                   # compare against the sender's history
 pippin mail attachments "acct||INBOX||12345" --save-dir ~/Downloads
 pippin mail mark "acct||INBOX||12345" --read
 pippin mail move "acct||INBOX||12345" --to Archive
-pippin mail list --fields id,subject,from        # project to fewer JSON keys (token-light)
-pippin mail cache warm --limit 50                # pre-fetch bodies; show/index hits are ~75× faster
-pippin mail show "acct||INBOX||12345" --no-cache  # force a live fetch
+pippin mail list --fields id,subject,from                 # only these JSON keys
+pippin mail cache warm --limit 50                         # pre-fetch bodies so later reads are faster
 ```
 
-**Rule-driven archiving (`mail apply-rules`).** `~/.config/pippin/triage-rules.json` already drives `mail triage`'s pre-pass; a rule's action can also carry `moveTo` (destination mailbox) and `markRead`, which `mail apply-rules` executes. `mail triage` stays read-only and ignores both fields, so adding actuation to a rules file never makes triage mutate.
+**Sending.** `send`, `reply` and `forward` only preview unless you pass `--confirm`.
 
 ```bash
-pippin mail apply-rules                          # preview only — prints the plan, changes nothing
-pippin mail apply-rules --live                   # actually move/mark
+pippin mail send --to user@example.com --subject "Hello" --body "Hi there" --confirm
+pippin mail reply "acct||INBOX||12345" --body "Thanks!" --confirm
+pippin mail forward "acct||INBOX||12345" --to other@example.com --confirm
+```
+
+**Speed without Full Disk Access.** With Full Disk Access, list, search and activity read Mail's on-disk index in milliseconds, and `pippin doctor` shows whether that's available. Without it, pippin can build its own metadata index. Read state still comes from Mail on every call.
+
+```bash
+pippin job run -- mail cache fill
+```
+
+A mailbox the index hasn't finished falls back to reading Mail directly. Those direct scans can hit a time limit on large multi-account mailboxes, so add `--account` or a date range. A scan that times out with matches returns them with `partial: true`. One that times out with no matches returns `search_incomplete`, so an unfinished search never looks like an empty result.
+
+**Body search.** `--body` adds message bodies to the match and is slower. Hits it finds in the body include a `bodyPreview`. Use `--from` on its own for sender searches.
+
+**Phishing checks.** `mail show` reports structural warning signs in `headerAnomalies`, such as a Reply-To on a different domain, hidden recipients, SPF, DKIM or DMARC failures, and changes from the sender's own history. A passing auth check never suppresses a warning, because a compromised account signs its phishing with valid DKIM. List, search and activity show the same warnings only for messages whose headers are already cached, so a row with no warning hasn't necessarily been checked.
+
+`mail verify` also parses the raw message into `authChain`, with every Received hop, Authentication-Results instance, ARC set and DKIM signature. Failures in older instances and a broken ARC chain (`cv=fail`) count toward the verdict.
+
+**Rule-driven archiving.** `~/.config/pippin/triage-rules.json` drives the first pass of `mail triage`. A rule can also set `moveTo` and `markRead`, which `mail apply-rules` carries out. `mail triage` ignores both fields and stays read-only.
+
+```bash
+pippin mail apply-rules                          # prints the plan and changes nothing
+pippin mail apply-rules --live                   # moves and marks
 pippin mail apply-rules --account Work --min-age-days 30 --max-actions 50
 ```
 
@@ -177,11 +153,11 @@ pippin mail apply-rules --account Work --min-age-days 30 --max-actions 50
 ]
 ```
 
-Four guardrails, all on by default: **dry run unless `--live`**; `--min-age-days` (default 14) never touches anything newer, and a message whose date won't parse is held rather than moved; `--max-actions` (default 200) caps each run, acting **oldest-first** so a capped run drains the oldest backlog instead of skimming; and the plan is **grouped by sender** rather than summarized as a count — that is what makes an over-broad rule visible, e.g. a `@example.org` domain rule quietly sweeping up two individual humans alongside the intended bulk addresses. `--skip-unread` additionally spares unread mail. A rule with `skip: true` never actuates. One unreachable message is recorded as a failure and the rest of the run continues.
+Nothing changes without `--live`. `--min-age-days` (default 14) protects newer mail, and a message with an unreadable date stays put. `--max-actions` (default 200) caps each run and works oldest first, so repeated runs clear the backlog. The plan groups messages by sender, which is how you spot a rule that reaches too far, such as a domain rule that also catches two real people. `--skip-unread` spares unread mail, and a rule with `skip: true` never acts. If one message can't be reached, pippin records the failure and continues.
 
-Mail JSON keeps `date` as the sender-declared sent timestamp and may also include `receivedAt`. Listing, search date filters, newest-first ordering, and the `apply-rules` age guard use `receivedAt` when present, then fall back to `date`. This avoids a stale or future-dated sender header changing operational order or bypassing age protection.
+`date` is the sent time the sender declared, and a row may also include `receivedAt`. Date filters, newest-first ordering and the `apply-rules` age check use `receivedAt` when it exists, so a wrong sender date can't change the order or get around the age check.
 
-**Faster previews from the Envelope Index (opt-in).** With Full Disk Access, `mail list --preview` / `mail activity` can fill snippets from Mail's own `summaries` table instead of fetching bodies over JXA — messages with a summary row skip the body fetch entirely (the rest still batch-fetch). Enable with `"mail": { "previewFromIndex": true }` in `~/.config/pippin/config.json`. Off by default for two reasons: the summary is Mail's semantic snippet, **not** the first N characters of the body (consumers that diff preview text will see drift), and summary-served previews bypass the body cache, so a later `mail show` of that message pays a cold fetch.
+**Previews from Mail's index (opt-in).** With Full Disk Access, `mail list --preview` and `mail activity` can use Mail's own `summaries` table instead of fetching bodies. Turn it on with `"mail": { "previewFromIndex": true }` in `~/.config/pippin/config.json`. It's off by default because Mail's summary isn't the first N characters of the body, and these previews skip the body cache, so a later `mail show` fetches from scratch.
 
 ### Voice Memos
 
@@ -190,7 +166,7 @@ pippin memos list --since 2026-01-01
 pippin memos export <uuid> --output ~/Desktop/memos --transcribe
 pippin memos summarize <uuid> --template meeting-notes
 pippin memos summarize <uuid> --provider ollama --model gemma4:latest
-pippin memos capture --to-reminders                 # most recent memo → Reminders
+pippin memos capture --to-reminders                 # most recent memo to Reminders
 pippin memos capture --to-reminders --list Work --dry-run
 pippin memos templates list                          # also `pippin templates list`
 ```
@@ -229,15 +205,14 @@ pippin notes create "Raw" --body "<div>already <b>HTML</b></div>" --html  # pass
 ### Contacts
 
 ```bash
-pippin contacts search "Alice" --fields "name,email"
+pippin contacts search "Alice" --fields fullName,emails
 pippin contacts show <id>
 pippin contacts groups
 ```
 
 ### Messages
 
-Read-only access and gated-autonomous send for `~/Library/Messages/chat.db`. Requires
-Full Disk Access for your terminal (System Settings → Privacy & Security → Full Disk Access).
+Reads `~/Library/Messages/chat.db`, and can send only behind explicit gates. Your terminal needs Full Disk Access (System Settings > Privacy & Security > Full Disk Access).
 
 ```bash
 pippin messages list --since-hours 48
@@ -246,19 +221,17 @@ pippin messages show "iMessage;-;+15551234567"
 pippin messages exclude add "iMessage;-;groupA"   # hide thread from every read
 pippin messages exclude list
 
-# Send — defaults to --draft (log only, no delivery)
+# Send defaults to --draft, which logs it and delivers nothing
 pippin messages send --to "+15551234567" --body "Running 10 min late" --draft
 
-# Autonomous send requires all three gates:
+# A real send requires all three:
 #   1. PIPPIN_AUTONOMOUS_MESSAGES=1 env var
 #   2. Recipient in config.messages.autonomousAllowlist
 #   3. Explicit --autonomous flag
 PIPPIN_AUTONOMOUS_MESSAGES=1 pippin messages send --to "+15551234567" --body "On my way" --autonomous
 ```
 
-Every read and send attempt is appended to
-`~/.local/share/pippin/messages-audit.jsonl` (operation, params, SHA-256(body) —
-message bodies are never stored).
+Each read and send attempt is added to `~/.local/share/pippin/messages-audit.jsonl` with the operation, its parameters and a SHA-256 of the body. Message bodies are never stored.
 
 ### Audio (experimental)
 
@@ -284,35 +257,28 @@ PIPPIN_EXPERIMENTAL=1 pippin browser fetch "https://example.com"
 
 ### Background Jobs
 
-`pippin job` detaches long-running work (`mail index`, `memos summarize`,
-`actions extract`) so the caller's process doesn't block. Each job writes
-state to `~/.cache/pippin/jobs/<id>/` with `status.json`, `stdout.log`, and
-`stderr.log`. IDs are 16-char hex and accept unambiguous prefix matches.
+`pippin job` runs slow work (`mail index`, `mail cache fill`, `memos summarize`, `actions extract`) in the background so the caller doesn't wait. Each job keeps `status.json`, `stdout.log` and `stderr.log` in `~/.cache/pippin/jobs/<id>/`. IDs are 16 hex characters, and any unambiguous prefix works.
 
 ```bash
-pippin job run -- mail index                     # fork; prints {job_id, pid, "running"}
-pippin job show <id>                             # status + stdout/stderr tails
+pippin job run -- mail index                     # returns the job id and pid
+pippin job show <id>                             # status and the end of each log
 pippin job list                                  # recent jobs (--status running|done|error|killed)
-pippin job wait <id> --timeout 600               # block until terminal state
-pippin job logs <id> --stream                    # tail -f stdout (or --stderr)
-pippin job gc --older-than 7d                    # prune terminal jobs
+pippin job wait <id> --timeout 600               # wait until it finishes
+pippin job logs <id> --stream                    # follow stdout (or --stderr)
+pippin job gc --older-than 7d                    # delete finished jobs
 ```
 
 Terminal statuses: `done` (exit 0), `error` (non-zero exit), `killed` (signal).
 
-Over MCP, the same surface is exposed as `job_run`, `job_show`, `job_list`,
-`job_wait` — agents can fire-and-forget a slow index build and poll without
-blocking their MCP session.
+MCP exposes the same commands as `job_run`, `job_show`, `job_list` and `job_wait`, so an agent can start a slow index build and check on it later.
 
 ### Plan-and-Execute (`pippin do`)
 
-Hand a natural-language intent to an LLM; it plans a short sequence of tool
-calls over the MCP tool registry, validates each step's arguments against
-the tool's schema, and executes them as child `pippin` processes.
+Give an LLM a request in plain language. It plans a short list of tool calls from the MCP registry, pippin checks each step against the tool's schema, and child `pippin` processes run them.
 
 ```bash
 pippin do "what's on my calendar today and any overdue reminders?"
-pippin do "list my icloud inbox" --dry-run        # plan only, don't execute
+pippin do "list my icloud inbox" --dry-run        # plan only
 pippin do "summarize yesterday's voice memos" --provider claude --max-steps 3
 ```
 
@@ -342,22 +308,22 @@ accessing everything. Reading exclusions from the intent is best effort, while
 
 ### Action Extraction
 
-Scan recent Sent mail and recently-modified Notes for commitments you made and surface them as draft reminders.
+Finds commitments you made in recent Sent mail and recently modified Notes, and offers them as draft reminders.
 
 ```bash
-pippin actions extract                          # Dry-run: list extracted commitments
-pippin actions extract --days 14                # Last 2 weeks
-pippin actions extract --create --list "Work"   # Write reminders directly to Reminders.app
-pippin actions extract --no-notes               # Mail only
-pippin actions extract --provider claude        # Use Claude instead of Ollama
+pippin actions extract                          # list what it found, change nothing
+pippin actions extract --days 14                # last 2 weeks
+pippin actions extract --create --list "Work"   # write them to Reminders
+pippin actions extract --no-notes               # mail only
+pippin actions extract --provider claude        # use Claude instead of Ollama
 ```
 
 ### Interactive Shell (REPL)
 
 ```bash
-pippin shell                        # Start interactive session
-pippin                              # Same — bare pippin defaults to REPL
-echo "calendar agenda" | pippin shell  # Pipe mode for scripting
+pippin shell                           # start a session
+pippin                                 # bare pippin does the same
+echo "calendar agenda" | pippin shell  # pipe commands in
 ```
 
 Inside the REPL, type commands without the `pippin` prefix:
@@ -371,54 +337,46 @@ pippin> quit
 
 ### Output
 
-Every command answers with one contract: the compact JSON agent envelope `{v, status, duration_ms, partial?, warnings?, next_cursor?, data}`. The `text` and `json` formats were removed; `--format agent` is still accepted as a no-op, and `--format text` or `--format json` fails with a usage error. Pipe through `jq '.data'` for a human look.
+Every command and every error writes one compact JSON envelope: `{v, status, duration_ms, partial?, warnings?, next_cursor?, data}`, or `error` in place of `data`. `--format agent` is accepted and changes nothing. `--format text` and `--format json` are usage errors. For a human look, pipe through `jq '.data'`.
 
-`--fields id,subject,...` projects `data` to just the named keys, trimming tokens for scan workflows.
+List and search rows default to essential fields to save tokens. `--fields id,subject` picks keys, and `--fields all` returns whole rows. A field no row has produces a warning.
 
 ### Agent discovery & exit codes
 
 ```bash
-pippin agent-info --format agent     # version, formats, exit-code map, tool count, commands
+pippin agent-info     # version, exit codes, tool count and commands
 ```
 
-On failure pippin sets a typed exit code so a calling shell can branch without parsing JSON: `2` usage, `3` not-found, `4` auth/permission/config, `5` tool/bridge failure, `7` timeout/rate-limit/transient failure. Every error envelope also carries `error.next_step`: whether to retry and when, the next call to make, or what a person has to do.
+Exit codes let a shell branch without parsing JSON: `2` usage, `3` not found, `4` auth, permission or config, `5` tool or bridge failure, `7` timeout, rate limit or other transient failure. Every error envelope also has `error.next_step`, which says whether to retry and when, what to call next, or what a person has to do.
 
 ### Pagination
 
-List commands (`mail list`, `mail search`, `memos list`, `reminders list`,
-`notes list`, `calendar events`, `calendar upcoming`, `contacts search`)
-accept opaque `--cursor` tokens so agents can walk large result sets without
-re-fetching earlier pages.
+`mail list`, `mail search`, `memos list`, `reminders list`, `notes list`, `calendar events`, `calendar upcoming` and `contacts search` take `--cursor` tokens, so an agent can walk a long result without fetching earlier pages again.
 
 ```bash
-pippin mail list --account icloud --page-size 20 --format agent
-# top-level .next_cursor carries the token for the next page (.data stays an array):
-pippin mail list --account icloud --cursor <token> --format agent
-# ...or jump to a numbered page (offset = (N-1) * page size):
-pippin mail list --account icloud --page 2 --page-size 20 --format agent
+pippin mail list --account icloud --page-size 20
+# the top-level next_cursor holds the token for the next page, and data stays an array
+pippin mail list --account icloud --cursor <token>
+# or jump to a numbered page
+pippin mail list --account icloud --page 2 --page-size 20
 ```
 
-Cursor tokens are bound to the query via a filter-hash, so changing any
-filter between calls is detected and rejected (`cursor_mismatch`) rather
-than silently returning mixed pages. `--page N` is sugar over the cursor
-offset (a `--cursor`, when both are given, wins). When none of `--cursor`,
-`--page-size`, or `--page` is set, the response shape is the legacy bare
-array — no change for existing callers.
+A token is tied to its query, so changing a filter between calls returns `cursor_mismatch` instead of mixing pages. If you pass both `--cursor` and `--page`, the cursor wins. `next_cursor` is omitted on the last page.
 
 ### MCP Server Mode
 
-Run pippin as a [Model Context Protocol](https://modelcontextprotocol.io) server so Claude Code, Claude Desktop, Cursor, or any MCP-compatible client can call it as a first-class tool instead of shelling out:
+Run pippin as a [Model Context Protocol](https://modelcontextprotocol.io) server so Claude Code, Claude Desktop, Cursor or another MCP client can call it directly:
 
 ```bash
-pippin mcp-server                    # run the server (stdin/stdout JSON-RPC)
-pippin mcp-server --list-tools       # dump the registered tools as JSON
+pippin mcp-server                    # JSON-RPC over stdin and stdout
+pippin mcp-server --list-tools       # print the registered tools as JSON
 ```
 
-Ships with 76 tools at curated parity with the CLI, covering mail (including mark, move/archive, send, reply, forward, triage, apply-rules), calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), `actions_extract` (commitments → reminders), status, doctor, `digest`, `batch` (fan-out parallel dispatch), and `job_*` (background work with poll-or-wait). Outbound sends return a dry-run preview and deletes fail outright unless the call passes `confirm: true`. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions and the full tool list.
+The 76 tools cover mail, calendar, reminders, contacts, notes, voice memos, Messages, `actions_extract`, `status`, `doctor`, `digest`, `batch` for parallel calls, and `job_*` for background work. Outbound mail only previews and deletes fail unless the call passes `confirm: true`. `messages_send` can only draft. Quick Calendar, Reminders and Contacts reads run inside the server, and everything else runs in a child process. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring and the full tool list.
 
 ## AI Configuration
 
-`memos summarize`, `calendar smart-create`, `mail triage`, `mail extract`, `actions extract`, and `do` use an LLM. pippin supports local inference via Ollama, cloud inference via Claude, and any OpenAI-compatible Chat Completions endpoint (OpenAI, OpenRouter, vLLM, LM Studio, llama.cpp server, a local gateway, …).
+`memos summarize`, `calendar smart-create`, `mail triage`, `mail extract`, `actions extract` and `do` use an LLM. pippin works with Ollama locally, Claude, and any OpenAI-compatible Chat Completions endpoint, such as OpenAI, OpenRouter, vLLM, LM Studio or llama.cpp server.
 
 ```json
 {
@@ -452,7 +410,7 @@ pippin memos summarize <id> --provider claude
 | `claude` | Set `ANTHROPIC_API_KEY` env var | ~2-3s/summary |
 | `openai` | Set `ai.openai.baseURL` (+ `apiKey` / `$OPENAI_API_KEY` if the endpoint authenticates) | endpoint-dependent |
 
-The `openai` provider is the escape hatch for any OpenAI-compatible server — `apiKey` is optional for local endpoints that don't authenticate.
+`apiKey` is optional for local endpoints that don't authenticate.
 
 ### Embeddings and transcription backends
 
@@ -478,20 +436,15 @@ Vectors from different embedding models cannot be compared. The index records wh
 
 `pippin doctor` has an AI provider, Embeddings, and Transcription check. Each names the configured backend and says whether it is reachable. Set `PIPPIN_CONFIG` to read a different config file.
 
-AI callers can opt into a request temperature. The planner is the only built-in
-caller that sets it, using `0` for deterministic plans; other callers continue
-to use each provider's existing default. OpenAI-compatible completions must have
-nonblank assistant content and a completed finish reason. Incomplete or filtered
-responses return the typed `incomplete_completion` error without exposing hidden
-reasoning fields.
+The planner sends temperature `0` so plans stay deterministic, and other callers use each provider's default. OpenAI-compatible responses must have assistant text and a completed finish reason. Anything else returns `incomplete_completion`, and pippin never exposes hidden reasoning fields.
 
-> **Model note:** Gemma 4 is recommended over Qwen 3.5 for pippin's summarization tasks — Qwen's chain-of-thought reasoning adds ~2x latency without proportional quality gains on structured extraction.
+For summaries, use Gemma 4 over Qwen 3.5. Qwen's reasoning roughly doubled the time without better structured output.
 
 ## Contact Name Resolution
 
-`mail list`/`search`/`activity`/`show` and `messages list`/`search`/`show` resolve each sender/participant handle (phone number or email) to its Apple Contacts display name. The index is built from a `CNContactStore` enumeration and **cached** (`~/.config/pippin/contact-index.db`, keyed on the store's change token) — it only re-enumerates when your contacts actually change, not once per command. Resolution is best-effort, so when Contacts isn't authorized it silently no-ops rather than failing.
+`mail list`, `search`, `activity` and `show`, and `messages list`, `search` and `show`, turn each phone number or email into its Apple Contacts name. The index lives in `~/.config/pippin/contact-index.db` and rebuilds only when your contacts change. If Contacts isn't authorized, names just stay unresolved and the command still works.
 
-**Disabling resolution.** The index is cached across commands (see above), so fan-out workflows no longer pay a full enumeration per call. You can still turn resolution off entirely with a config default instead of passing `--no-contacts` everywhere:
+To turn it off everywhere instead of passing `--no-contacts` each time:
 
 ```json
 {
@@ -499,21 +452,20 @@ reasoning fields.
 }
 ```
 
-Precedence (highest first): the per-command `--no-contacts` / `--contacts` flag, then the `resolveContacts` config key, then the built-in default (**ON**). So `--contacts` forces resolution on even when the config disables it, and `--no-contacts` forces it off even when the config enables it. Omitting both `resolveContacts` and the flags keeps the historical behavior (resolution on).
+A per-command `--no-contacts` or `--contacts` wins over the config key, and resolution is on by default.
 
-**Phone-matching heuristic — last-10-digits collision.** Phone numbers are matched by digits only: the full digit string first, then, when a number has more than 10 digits, its **last 10** (which drops a leading country code, so `+1 555 123 4567` and `555-123-4567` resolve to the same contact). This means two numbers that differ only in their country code but **share the same last 10 digits** collide. On collision the index is **first-write-wins** (the first contact enumerated keeps the key), and the resolved name is shown as a confident display name with **no fuzzy-match indicator** — there's no signal that a near-match occurred. This is rare in practice but worth knowing: a resolved sender name on a foreign-numbered handle could in principle belong to a domestic contact sharing the trailing 10 digits. Pass `--no-contacts` (or set `resolveContacts: false`) if you need the raw handle with no resolution.
+Phone numbers match on digits, first the full string and then the last 10 digits, so `+1 555 123 4567` and `555-123-4567` resolve to the same person. Two numbers that differ only by country code collide. The first contact enumerated keeps the match, and nothing marks it as a near match, so a name on a foreign number could belong to a domestic contact. Use `--no-contacts` when you need the raw handle.
 
 ## Sample Workflows
 
 ```bash
-# Morning briefing (REPL mode — one process, multiple commands)
-echo -e "calendar today\nreminders list\nmail list --unread --limit 10" \
-  | pippin shell --format agent
+# Morning briefing in one process
+echo -e "calendar today\nreminders list\nmail list --unread --limit 10" | pippin shell
 
-# Same thing, one-shot style
-pippin calendar today --format agent
-pippin reminders list --format agent
-pippin mail list --unread --limit 10 --format agent
+# Or as separate commands
+pippin calendar today
+pippin reminders list
+pippin mail list --unread --limit 10
 
 # Export and transcribe today's voice memos
 pippin memos list --since $(date +%Y-%m-%d) \
@@ -540,33 +492,31 @@ pippin mail list --unread \
 | `pippin/Jobs/` | Filesystem-backed registry for detached `pippin job` subprocesses |
 | `pippin/Planner/` | LLM-driven plan-and-execute over the MCP tool registry (`pippin do`) |
 | `pippin/Pagination/` | Opaque-cursor tokens + filter-hash guards for list commands |
-| `pippin/Commands/ShellCommand.swift` | Interactive REPL with argument parsing and session-wide format |
-| `pippin/Formatting/` | Text tables, JSON output, agent compact output |
+| `pippin/Commands/AgentCommand.swift` | `AgentResult`, the value every command returns to the CLI and to in-process MCP tools |
+| `pippin/Commands/ShellCommand.swift` | Interactive REPL |
+| `pippin/Formatting/` | Agent envelope, field projection, error next steps and exit codes |
 
-Swift 6 strict concurrency enforced across the entire codebase. JXA bridges shell out to `osascript`; EventKit bridges use the framework directly.
+The whole codebase builds under Swift 6 strict concurrency. JXA bridges run `osascript`, and EventKit bridges use the framework directly.
 
 ## Requirements
 
-- **macOS 15+** (Sequoia) or later
-- **Swift 6.0+** for source builds (matches `swift-tools-version: 6.0` in `Package.swift`); pre-built binaries are arm64
-- **mlx-audio** — the default memo transcription backend, not needed when `ai.transcription.provider` is `apple` or `openai`. Also required for the experimental `audio` command when re-enabled via `PIPPIN_EXPERIMENTAL=1`
-- **Ollama** — the default AI and embeddings backend. Optional, since Claude and OpenAI-compatible endpoints work without it.
+- **macOS 15 (Sequoia) or later**, on arm64 for pre-built binaries
+- **Swift 6.0 or later** for source builds
+- **mlx-audio** for the default memo transcription backend. You don't need it when `ai.transcription.provider` is `apple` or `openai`. The experimental `audio` command also uses it
+- **Ollama** for the default AI and embeddings backend. Claude and OpenAI-compatible endpoints work without it
 
-> **Experimental commands:** `audio` (TTS/STT via mlx-audio) and `browser`
-> (Playwright WebKit) are hidden by default. Set `PIPPIN_EXPERIMENTAL=1`
-> to re-enable. They'll be removed in the next major release unless an
-> issue is filed requesting otherwise — see `CHANGELOG.md`.
+`audio` (speech through mlx-audio) and `browser` (Playwright WebKit) are hidden unless you set `PIPPIN_EXPERIMENTAL=1`. They'll be removed in the next major release unless someone files an issue asking to keep them. See `CHANGELOG.md`.
 
 ## Development
 
 ```bash
-make build      # Release build
-make test       # Run tests (~2,100 tests, 0 failures)
+make build      # release build
+make test       # run the tests
 make lint       # swiftformat lint
-make ci         # Full local gate: build + test + swiftformat + detach-lint
-make install    # Build + install to ~/.local/bin
+make ci         # build, tests, swiftformat and the repo lint scripts
+make install    # build and install to ~/.local/bin
 ```
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE).
