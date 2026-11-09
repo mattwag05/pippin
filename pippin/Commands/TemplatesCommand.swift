@@ -12,7 +12,7 @@ public struct TemplatesCommand: AsyncParsableCommand {
 
     // MARK: - List
 
-    public struct List: AsyncParsableCommand {
+    public struct List: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List all available templates."
@@ -22,7 +22,7 @@ public struct TemplatesCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let manager = TemplateManager()
             let templates = manager.allTemplates()
 
@@ -34,13 +34,13 @@ public struct TemplatesCommand: AsyncParsableCommand {
             let items = templates.map { t in
                 TemplateListItem(name: t.name, description: t.description, builtIn: t.isBuiltIn)
             }
-            try output.printAgent(items)
+            return AgentResult(items)
         }
     }
 
     // MARK: - Show
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Print the system prompt for a template."
@@ -53,20 +53,20 @@ public struct TemplatesCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             struct TemplateContent: Encodable {
                 let name: String
                 let content: String
             }
             let manager = TemplateManager()
             let template = try manager.resolve(name: name)
-            try output.printAgent(TemplateContent(name: template.name, content: template.content))
+            return AgentResult(TemplateContent(name: template.name, content: template.content))
         }
     }
 
     // MARK: - Add
 
-    public struct Add: AsyncParsableCommand {
+    public struct Add: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "add",
             abstract: "Copy a .md template file into ~/.config/pippin/templates/."
@@ -88,13 +88,13 @@ public struct TemplatesCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let manager = TemplateManager()
             struct TemplateAdded: Encodable {
                 let path: String
             }
             let dest = try manager.addTemplate(fromPath: path)
-            try output.printAgent(TemplateAdded(path: dest))
+            return AgentResult(TemplateAdded(path: dest))
         }
     }
 }

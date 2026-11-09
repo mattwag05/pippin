@@ -1,7 +1,7 @@
 import ArgumentParser
 import Foundation
 
-public struct DigestCommand: AsyncParsableCommand {
+public struct DigestCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "digest",
         abstract: "Aggregated daily digest: unread mail, today's calendar, due reminders, and recent notes."
@@ -51,7 +51,7 @@ public struct DigestCommand: AsyncParsableCommand {
         calendar.date(byAdding: .day, value: calendarDays, to: endOfToday)
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         var warnings: [String] = []
         let skipSet = Set(skip)
         let cal = Calendar.current
@@ -177,6 +177,6 @@ public struct DigestCommand: AsyncParsableCommand {
             warnings: warnings
         )
 
-        try output.printAgent(payload)
+        return AgentResult(payload)
     }
 }

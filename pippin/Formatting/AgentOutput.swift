@@ -98,22 +98,19 @@ public struct AgentErrorEnvelope: Encodable {
 
 // MARK: - Print helpers
 
-/// Prints compact (non-pretty-printed) JSON for agent consumption, wrapped in
-/// envelope v1.
+/// Compact JSON for agent consumption, wrapped in the envelope.
 ///
 /// - Parameters:
 ///   - value: the original payload (becomes `.data`).
 ///   - startedAt: wall-clock time when the command began; used to compute
-///     `duration_ms`. Defaults to `Date()` (≈0ms) — callers should thread
-///     their own `OutputOptions.startedAt` via `output.printAgent(_:)` for
-///     accurate timing.
-public func printAgentJSON<T: Encodable>(
-    _ value: T,
+///     `duration_ms`.
+public func agentJSON(
+    _ value: some Encodable,
     startedAt: Date = Date(),
     warnings: [String]? = nil,
     partial: Bool = false,
     nextCursor: String? = nil
-) throws {
+) throws -> String {
     let envelope = AgentOkEnvelope(
         v: AGENT_SCHEMA_VERSION,
         status: "ok",
@@ -123,28 +120,7 @@ public func printAgentJSON<T: Encodable>(
         partial: partial,
         nextCursor: nextCursor
     )
-    let encoder = JSONEncoder()
-    let data = try encoder.encode(envelope)
-    print(String(data: data, encoding: .utf8)!)
-}
-
-/// Like `printAgentJSON`, but projects `value` to the requested `fields` before
-/// wrapping it as the envelope's `data`. Used by `--fields` in agent mode,
-/// where the typed generic encoder can't drop keys. The envelope frame
-/// (`v`/`status`/`duration_ms`/`warnings`) is built by hand here because `data`
-/// is now an opaque, already-projected JSON object rather than a typed payload.
-public func printAgentProjectedJSON(
-    _ value: some Encodable,
-    fields: [String],
-    startedAt: Date = Date(),
-    warnings: [String]? = nil,
-    partial: Bool = false,
-    nextCursor: String? = nil
-) throws {
-    try print(projectedAgentJSON(
-        value, fields: fields, startedAt: startedAt,
-        warnings: warnings, partial: partial, nextCursor: nextCursor
-    ))
+    return try String(decoding: JSONEncoder().encode(envelope), as: UTF8.self)
 }
 
 /// String form of the projected ok-envelope. The single definition of the
@@ -152,8 +128,7 @@ public func printAgentProjectedJSON(
 /// (v/status/duration_ms/warnings) — hand-built because `data` here is an
 /// opaque, already-projected JSON object, not a typed `Encodable` the generic
 /// envelope can wrap. `AgentEnvelopeTests.testProjectedFrameMatchesTyped`
-/// fails if the two diverge. Shared by `printAgentProjectedJSON` (CLI stdout)
-/// and `MCPInProcessTools.projectedEnvelope` (in-process tool results).
+/// fails if the two diverge.
 public func projectedAgentJSON(
     _ value: some Encodable,
     fields: [String],

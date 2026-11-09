@@ -24,7 +24,7 @@ public extension MailCommand {
 
         // MARK: - stats
 
-        struct Stats: AsyncParsableCommand {
+        struct Stats: AgentCommand {
             public static let configuration = CommandConfiguration(
                 commandName: "stats",
                 abstract: "Show cached message count and age range."
@@ -34,15 +34,15 @@ public extension MailCommand {
 
             public init() {}
 
-            public mutating func run() async throws {
+            public mutating func execute() async throws -> AgentResult {
                 let stats = MailBodyCache.shared?.stats() ?? MailCacheStats(count: 0, oldest: nil, newest: nil)
-                try output.printAgent(stats)
+                return AgentResult(stats)
             }
         }
 
         // MARK: - clear
 
-        struct Clear: AsyncParsableCommand {
+        struct Clear: AgentCommand {
             public static let configuration = CommandConfiguration(
                 commandName: "clear",
                 abstract: "Delete all cached message bodies (or only those older than --older-than-days)."
@@ -55,7 +55,7 @@ public extension MailCommand {
 
             public init() {}
 
-            public mutating func run() async throws {
+            public mutating func execute() async throws -> AgentResult {
                 let deleted: Int
                 if let days = olderThanDays {
                     let cutoff = Date().addingTimeInterval(-Double(days) * 86400)
@@ -63,13 +63,13 @@ public extension MailCommand {
                 } else {
                     deleted = MailBodyCache.shared?.clear() ?? 0
                 }
-                try output.printAgent(ClearResult(deleted: deleted))
+                return AgentResult(ClearResult(deleted: deleted))
             }
         }
 
         // MARK: - warm
 
-        struct Warm: AsyncParsableCommand {
+        struct Warm: AgentCommand {
             public static let configuration = CommandConfiguration(
                 commandName: "warm",
                 abstract: "Pre-fetch recent message bodies into the cache so later reads are instant."
@@ -92,7 +92,7 @@ public extension MailCommand {
                 guard limit > 0 else { throw ValidationError("--limit must be positive.") }
             }
 
-            public mutating func run() async throws {
+            public mutating func execute() async throws -> AgentResult {
                 let account = self.account
                 let mailbox = self.mailbox
                 let limit = self.limit
@@ -112,7 +112,7 @@ public extension MailCommand {
                     }
                     return (warmed, failed)
                 }
-                try output.printAgent(WarmResult(warmed: warmed, failed: failed))
+                return AgentResult(WarmResult(warmed: warmed, failed: failed))
             }
         }
     }

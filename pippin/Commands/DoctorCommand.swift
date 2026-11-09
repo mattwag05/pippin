@@ -27,7 +27,7 @@ public struct DiagnosticCheck: Codable, Sendable {
     }
 }
 
-public struct DoctorCommand: AsyncParsableCommand {
+public struct DoctorCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "doctor",
         abstract: "Check system requirements and permissions."
@@ -40,7 +40,7 @@ public struct DoctorCommand: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let runLatency = latency
         let checks = await detachBlocking {
             var checks = runAllChecks()
@@ -50,12 +50,8 @@ public struct DoctorCommand: AsyncParsableCommand {
             return checks
         }
 
-        try output.printAgent(checks)
-
         let hasCriticalFailure = checks.contains { $0.status == .fail }
-        if hasCriticalFailure {
-            throw ExitCode(1)
-        }
+        return AgentResult(checks, exitCode: hasCriticalFailure ? 1 : 0)
     }
 }
 

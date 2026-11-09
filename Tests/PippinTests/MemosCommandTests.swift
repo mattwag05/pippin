@@ -226,7 +226,7 @@ final class MemosCommandTests: XCTestCase {
 
     func testTranscribeOutputOptionPasses() throws {
         let cmd = try MemosCommand.Transcribe.parse(["abc123", "--output", "/tmp/transcripts"])
-        XCTAssertEqual(cmd.output, "/tmp/transcripts")
+        XCTAssertEqual(cmd.outputDir, "/tmp/transcripts")
     }
 
     func testTranscribeAgentFormatPasses() {

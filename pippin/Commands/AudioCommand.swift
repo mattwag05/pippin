@@ -12,7 +12,7 @@ public struct AudioCommand: AsyncParsableCommand {
 
     // MARK: - Speak
 
-    public struct Speak: AsyncParsableCommand {
+    public struct Speak: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "speak",
             abstract: "Synthesize speech from text using a TTS model."
@@ -34,7 +34,7 @@ public struct AudioCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
             // subprocesses (Python startup can take ~1-2s); hop off the pool.
             guard await detachBlocking({ AudioBridge.isAvailable() }) else {
@@ -49,13 +49,13 @@ public struct AudioCommand: AsyncParsableCommand {
                     outputPath: outputFile
                 )
             }
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Transcribe
 
-    public struct Transcribe: AsyncParsableCommand {
+    public struct Transcribe: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "transcribe",
             abstract: "Transcribe an audio file to text using a STT model."
@@ -74,7 +74,7 @@ public struct AudioCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
             // subprocesses (Python startup can take ~1-2s); hop off the pool.
             guard await detachBlocking({ AudioBridge.isAvailable() }) else {
@@ -93,13 +93,13 @@ public struct AudioCommand: AsyncParsableCommand {
                     outputFormat: transcriptionFormat
                 )
             }
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Voices
 
-    public struct Voices: AsyncParsableCommand {
+    public struct Voices: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "voices",
             abstract: "List available TTS voices."
@@ -112,7 +112,7 @@ public struct AudioCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
             // subprocesses (Python startup can take ~1-2s); hop off the pool.
             guard await detachBlocking({ AudioBridge.isAvailable() }) else {
@@ -121,13 +121,13 @@ public struct AudioCommand: AsyncParsableCommand {
             let voices = try await detachBlocking { [model] in
                 try AudioBridge.listVoices(model: model)
             }
-            try output.printAgent(voices)
+            return AgentResult(voices)
         }
     }
 
     // MARK: - Models
 
-    public struct Models: AsyncParsableCommand {
+    public struct Models: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "models",
             abstract: "List available STT/TTS models."
@@ -137,14 +137,14 @@ public struct AudioCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
             // subprocesses (Python startup can take ~1-2s); hop off the pool.
             guard await detachBlocking({ AudioBridge.isAvailable() }) else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
             let models = try await detachBlocking { try AudioBridge.listModels() }
-            try output.printAgent(models)
+            return AgentResult(models)
         }
     }
 }

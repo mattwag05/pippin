@@ -12,7 +12,7 @@ public struct MemosCommand: AsyncParsableCommand {
 
     // MARK: - List
 
-    public struct List: AsyncParsableCommand {
+    public struct List: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List voice memo recordings."
@@ -41,7 +41,7 @@ public struct MemosCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
             let sinceDate = since.flatMap { parseDateString($0) }
 
@@ -54,18 +54,17 @@ public struct MemosCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: fetched, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                try output.printAgentPage(page)
-                return
+                return .page(page)
             }
 
             let memos = try markCachedTranscripts(db.listMemos(since: sinceDate, limit: limit))
-            try output.printAgent(memos)
+            return AgentResult(memos)
         }
     }
 
     // MARK: - Info
 
-    public struct Info: AsyncParsableCommand {
+    public struct Info: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "info",
             abstract: "Show full metadata for a single recording."
@@ -78,7 +77,7 @@ public struct MemosCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
             guard var memo = try db.getMemoByPrefix(id: id) else {
                 throw VoiceMemosError.memoNotFound(id)
@@ -90,13 +89,13 @@ public struct MemosCommand: AsyncParsableCommand {
                 memo.hasTranscript = true
             }
 
-            try output.printAgent(memo)
+            return AgentResult(memo)
         }
     }
 
     // MARK: - Export
 
-    public struct Export: AsyncParsableCommand {
+    public struct Export: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "export",
             abstract: "Copy recording(s) to a directory."
@@ -108,8 +107,8 @@ public struct MemosCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Export every recording.")
         public var all: Bool = false
 
-        @Option(name: .long, help: "Destination directory (created if absent).")
-        public var output: String
+        @Option(name: .customLong("output"), help: ArgumentHelp("Destination directory (created if absent).", valueName: "output"))
+        public var outputDir: String
 
         @Flag(name: .long, help: "Transcribe audio and write transcript sidecar.")
         public var transcribe: Bool = false
@@ -123,7 +122,7 @@ public struct MemosCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Parallel transcription jobs (default: 2).")
         public var jobs: Int = 2
 
-        @OptionGroup public var outputOptions: OutputOptions
+        @OptionGroup public var output: OutputOptions
 
         public init() {}
 
@@ -140,7 +139,7 @@ public struct MemosCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
             let sidecarFmt = ExportSidecarFormat(rawValue: sidecarFormat) ?? .txt
             let transcriber: (any Transcriber)? = transcribe ? try AIProviderFactory.makeTranscriber() : nil
@@ -162,7 +161,7 @@ public struct MemosCommand: AsyncParsableCommand {
                         batchTimedOut = true
                         break
                     }
-                    let outputDir = output
+                    let outputDir = self.outputDir
                     let sidecarFmtCapture = sidecarFmt
                     let forceT = forceTranscribe
                     let chunkResults: [(Int, Result<ExportResult, Error>)] = await withTaskGroup(
@@ -224,7 +223,7 @@ public struct MemosCommand: AsyncParsableCommand {
                 }
                 let result = try db.exportMemo(
                     id: memo.id,
-                    outputDir: output,
+                    outputDir: outputDir,
                     transcriber: transcriber,
                     sidecarFormat: sidecarFmt,
                     cache: cache,
@@ -233,7 +232,7 @@ public struct MemosCommand: AsyncParsableCommand {
                 results.append(result)
             }
 
-            try outputOptions.printAgent(results, warnings: exportWarnings.isEmpty ? nil : exportWarnings)
+            return AgentResult(results, warnings: exportWarnings.isEmpty ? nil : exportWarnings)
         }
 
         /// Assemble non-fatal warnings for a batch export. Pure so it can be
@@ -263,7 +262,7 @@ public struct MemosCommand: AsyncParsableCommand {
 
     // MARK: - Transcribe
 
-    public struct Transcribe: AsyncParsableCommand {
+    public struct Transcribe: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "transcribe",
             abstract: "Transcribe voice memo audio to text."
@@ -275,8 +274,8 @@ public struct MemosCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Transcribe every recording.")
         public var all: Bool = false
 
-        @Option(name: .long, help: "Directory to write .txt files (default: transcript only in the envelope).")
-        public var output: String?
+        @Option(name: .customLong("output"), help: ArgumentHelp("Directory to write .txt files (default: transcript only in the envelope).", valueName: "output"))
+        public var outputDir: String?
 
         @Flag(name: .long, help: "Bypass transcript cache.")
         public var force: Bool = false
@@ -290,7 +289,7 @@ public struct MemosCommand: AsyncParsableCommand {
         )
         public var keepConverted: Bool = false
 
-        @OptionGroup public var outputOptions: OutputOptions
+        @OptionGroup public var output: OutputOptions
 
         public init() {}
 
@@ -303,7 +302,7 @@ public struct MemosCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
             let transcriber = try AIProviderFactory.makeTranscriber()
             let cache = try TranscriptCache()
@@ -329,7 +328,7 @@ public struct MemosCommand: AsyncParsableCommand {
                         batchTimedOut = true
                         break
                     }
-                    let outputDir = output
+                    let outputDir = self.outputDir
                     let forceFlag = force
                     let chunkResults: [(Int, Result<TranscribeResult, Error>)] = await withTaskGroup(
                         of: (Int, Result<TranscribeResult, Error>).self
@@ -388,7 +387,7 @@ public struct MemosCommand: AsyncParsableCommand {
                     let result = try db.transcribeMemo(
                         id: memo.id,
                         transcriber: transcriber,
-                        outputDir: output,
+                        outputDir: outputDir,
                         keepConverted: keepConverted,
                         onConvertedPath: convertedPathLogger
                     )
@@ -397,8 +396,6 @@ public struct MemosCommand: AsyncParsableCommand {
                 }
             }
 
-            try outputOptions.printAgent(results)
-
             if batchTimedOut {
                 let budgetSec = BatchBudget.forCurrentContext().softTimeoutMs / 1000
                 fputs(
@@ -406,12 +403,14 @@ public struct MemosCommand: AsyncParsableCommand {
                     stderr
                 )
             }
+
+            return AgentResult(results)
         }
     }
 
     // MARK: - Delete
 
-    public struct Delete: AsyncParsableCommand {
+    public struct Delete: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "delete",
             abstract: "Delete a voice memo (DB row + audio file)."
@@ -433,7 +432,7 @@ public struct MemosCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
 
             guard let memo = try db.getMemoByPrefix(id: id) else {
@@ -456,7 +455,7 @@ public struct MemosCommand: AsyncParsableCommand {
                 success: true, action: "deleted",
                 details: ["title": memo.title, "audioPath": audioPath]
             )
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 }

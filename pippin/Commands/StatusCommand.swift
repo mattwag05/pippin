@@ -91,7 +91,7 @@ public struct StatusReport: Codable, Sendable {
     }
 }
 
-public struct StatusCommand: AsyncParsableCommand {
+public struct StatusCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "status",
         abstract: "Show a system dashboard: accounts, events, reminders, permissions."
@@ -101,14 +101,14 @@ public struct StatusCommand: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         // MCP caps the whole dashboard at 50s (under the 60s runChild cap) so a
         // slow section yields partial results instead of a SIGKILL; CLI is
         // unbounded. See pippin-0nk.
         let budgetMs = BatchBudget.forCurrentContext().softTimeoutMs
         let report = await detachBlocking { buildStatusReport(budgetMs: budgetMs) }
 
-        try output.emit(
+        return .emit(
             report,
             timedOut: report.timedOut,
             timedOutHint: "status exceeded its \(budgetMs)ms budget; some sections were skipped"

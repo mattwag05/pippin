@@ -12,7 +12,7 @@ public struct ActionsCommand: AsyncParsableCommand {
 
     // MARK: - Extract
 
-    public struct Extract: AsyncParsableCommand {
+    public struct Extract: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "extract",
             abstract: "Scan recent Sent mail and recently-modified Notes for commitments you made and emit draft reminders."
@@ -70,7 +70,7 @@ public struct ActionsCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let aiProvider = try AIProviderFactory.make(
                 providerFlag: provider,
                 modelFlag: model,
@@ -121,11 +121,10 @@ public struct ActionsCommand: AsyncParsableCommand {
 
             if create {
                 let results = try await createReminders(from: actions)
-                try emitResults(results, timedOut: timedOut)
-                return
+                return emitResults(results, timedOut: timedOut)
             }
 
-            try emitActions(actions, timedOut: timedOut)
+            return emitActions(actions, timedOut: timedOut)
         }
 
         // MARK: - Source collection
@@ -208,14 +207,14 @@ public struct ActionsCommand: AsyncParsableCommand {
 
         // MARK: - Output
 
-        private func emitActions(_ actions: [ExtractedAction], timedOut: Bool) throws {
+        private func emitActions(_ actions: [ExtractedAction], timedOut: Bool) -> AgentResult {
             let hint = "activity scan timed out — commitment extraction may be incomplete"
-            try output.emit(actions, timedOut: timedOut, timedOutHint: hint)
+            return .emit(actions, timedOut: timedOut, timedOutHint: hint)
         }
 
-        private func emitResults(_ results: [BridgeActionResult], timedOut: Bool) throws {
+        private func emitResults(_ results: [BridgeActionResult], timedOut: Bool) -> AgentResult {
             let hint = "activity scan timed out — some commitments may not have been created"
-            try output.emit(results, timedOut: timedOut, timedOutHint: hint)
+            return .emit(results, timedOut: timedOut, timedOutHint: hint)
         }
     }
 }

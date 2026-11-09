@@ -18,7 +18,7 @@
 
 ---
 
-pippin gives AI agents and scripts structured access to sandboxed Apple apps that are normally locked behind GUI-only automation. Every command outputs clean JSON (`--format json`) or token-efficient compact JSON (`--format agent`) — ready to pipe into `jq`, feed to an LLM, or wire into a cron job.
+pippin gives AI agents and scripts structured access to sandboxed Apple apps that are normally locked behind GUI-only automation. Every command answers with token-efficient compact JSON in a versioned envelope, ready to feed to an LLM, pipe into `jq`, or wire into a cron job.
 
 ```
 pippin mail list --unread --format agent

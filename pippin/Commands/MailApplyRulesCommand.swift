@@ -6,7 +6,7 @@ import Foundation
 /// Deliberately a separate command from `mail triage` rather than a
 /// `triage --apply` flag: triage is safe to run casually and must stay that
 /// way. Nothing here mutates without `--live`.
-public struct MailApplyRules: AsyncParsableCommand {
+public struct MailApplyRules: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "apply-rules",
         abstract: "Apply triage rules' move/mark actions to a mailbox. Previews only unless --live."
@@ -52,7 +52,7 @@ public struct MailApplyRules: AsyncParsableCommand {
         }
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let account = self.account
         let mailbox = self.mailbox
         let scanLimit = self.scanLimit
@@ -151,7 +151,7 @@ public struct MailApplyRules: AsyncParsableCommand {
             return (scanOutcome, result)
         }
 
-        try output.emit(
+        return .emit(
             result,
             timedOut: scanOutcome.timedOut,
             timedOutHint: "mailbox scan timed out — some matching messages were not seen this run",

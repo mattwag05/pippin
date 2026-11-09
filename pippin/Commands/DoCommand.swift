@@ -6,7 +6,7 @@ import Foundation
 /// `pippin do "<intent>"` — hand an LLM the MCP tool registry and let it
 /// plan + execute the minimum sequence of tool calls. Single-turn: one
 /// planning round (plus optional self-repair), then straight execution.
-public struct DoCommand: AsyncParsableCommand {
+public struct DoCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "do",
         abstract: "Plan and execute pippin tool calls for a natural-language intent.",
@@ -77,7 +77,7 @@ public struct DoCommand: AsyncParsableCommand {
         return kinds
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let ai = try AIProviderFactory.make(
             providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
         )
@@ -117,8 +117,7 @@ public struct DoCommand: AsyncParsableCommand {
                 dryRun: true,
                 executed: false
             )
-            try emit(dry)
-            return
+            return AgentResult(dry)
         }
 
         let pippinPath = MCPServerRuntime.resolvePippinPath()
@@ -149,11 +148,7 @@ public struct DoCommand: AsyncParsableCommand {
             dryRun: false,
             executed: execution.executed
         )
-        try emit(result)
-    }
-
-    private func emit(_ value: some Encodable) throws {
-        try output.printAgent(value)
+        return AgentResult(result)
     }
 
     static func decodeChildStdout(_ stdout: Data) -> JSONValue {

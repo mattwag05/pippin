@@ -1,7 +1,7 @@
 import ArgumentParser
 import Foundation
 
-public struct SummarizeCommand: AsyncParsableCommand {
+public struct SummarizeCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "summarize",
         abstract: "Summarize a voice memo using AI."
@@ -31,13 +31,13 @@ public struct SummarizeCommand: AsyncParsableCommand {
     @Option(name: [.customLong("since")], help: "Only summarize memos on or after YYYY-MM-DD (with --all).")
     public var since: String?
 
-    @Option(name: .long, help: "Also write each summary as a markdown file in this directory.")
-    public var output: String?
+    @Option(name: .customLong("output"), help: ArgumentHelp("Also write each summary as a markdown file in this directory.", valueName: "output"))
+    public var outputDir: String?
 
     @Option(name: .long, help: "Parallel summarization jobs (default: 2).")
     public var jobs: Int = 2
 
-    @OptionGroup public var outputOptions: OutputOptions
+    @OptionGroup public var output: OutputOptions
 
     public init() {}
 
@@ -58,7 +58,7 @@ public struct SummarizeCommand: AsyncParsableCommand {
         }
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
         let cache = try TranscriptCache()
         let aiProvider = try AIProviderFactory.make(
@@ -112,38 +112,40 @@ public struct SummarizeCommand: AsyncParsableCommand {
                 for (_, result) in chunkResults {
                     if case let .success(r) = result {
                         results.append(r)
-                        if let outputDir = output {
+                        if let outputDir {
                             try writeResult(r, toDir: outputDir)
                         }
                     }
                 }
             }
 
-            try outputOptions.printAgent(results)
-
-        } else if let id {
-            guard let memo = try db.getMemoByPrefix(id: id) else {
-                throw VoiceMemosError.memoNotFound(id)
-            }
-            let template = self.template
-            let prompt = self.prompt
-            let providerFlag = provider
-            // summarizeMemoStatic spawns a Python subprocess (transcription) and
-            // calls aiProvider.complete() which blocks via DispatchSemaphore —
-            // hop off the cooperative pool.
-            let result = try await detachBlocking {
-                try Self.summarizeMemoStatic(
-                    memo: memo, db: db, cache: cache,
-                    aiProvider: aiProvider, systemPrompt: systemPrompt,
-                    template: template, prompt: prompt, provider: providerFlag
-                )
-            }
-
-            if let outputDir = output {
-                try writeResult(result, toDir: outputDir)
-            }
-            try outputOptions.printAgent(result)
+            return AgentResult(results)
         }
+
+        guard let id else {
+            throw ValidationError("Provide a memo UUID/prefix or --all.")
+        }
+        guard let memo = try db.getMemoByPrefix(id: id) else {
+            throw VoiceMemosError.memoNotFound(id)
+        }
+        let template = self.template
+        let prompt = self.prompt
+        let providerFlag = provider
+        // summarizeMemoStatic spawns a Python subprocess (transcription) and
+        // calls aiProvider.complete() which blocks via DispatchSemaphore, so
+        // hop off the cooperative pool.
+        let result = try await detachBlocking {
+            try Self.summarizeMemoStatic(
+                memo: memo, db: db, cache: cache,
+                aiProvider: aiProvider, systemPrompt: systemPrompt,
+                template: template, prompt: prompt, provider: providerFlag
+            )
+        }
+
+        if let outputDir {
+            try writeResult(result, toDir: outputDir)
+        }
+        return AgentResult(result)
     }
 
     // MARK: - Private

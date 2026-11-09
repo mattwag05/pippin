@@ -3,8 +3,8 @@
 
 Envelope v3 (pippin-37az) requires that a paginated command's agent `data` stay
 the same TYPE as its unpaginated `data` — an array — with the cursor hoisted to
-the envelope's top-level `next_cursor`. `OutputOptions.printAgentPage` /
-`emitPage` do that; handing a `Page` to the plain `printAgent` / `emit` instead
+the envelope's top-level `next_cursor`. `AgentResult.page` / `.emitPage` do
+that; handing a `Page` to the plain `AgentResult(...)` / `.emit` instead
 re-nests `{items, next_cursor}` inside `data`, which is exactly the v2 bug that
 made `for m in payload["data"]` iterate dict KEYS and silently yield the string
 "items".
@@ -18,10 +18,9 @@ Why a lint rather than a type-level guard:
     and every paginated command is permission-gated. Inside `swift test` just
     2 of 6 are reachable, so a regressed call site passed the sweep (verified).
 
-Rule: in command sources, `output.emit(page…)` / `output.printAgent(page…)` is
-a violation — use `output.emitPage(…)` / `output.printAgentPage(…)`. The
-receiver-qualified form is what the lint matches, so `emitPage`'s own internal
-`emit(page, …)` delegation in OutputOptions.swift is not a false positive.
+Rule: in command sources, `.emit(page…)` / `AgentResult(page…)` is a violation:
+use `.emitPage(…)` / `.page(…)`. A property of a page (`AgentResult(page.items…)`)
+is not the page itself, so it passes.
 
 Suppress a specific line with a trailing/preceding comment containing
 `paginated-lint:allow` (document why).
@@ -41,11 +40,10 @@ DEFAULT_PATHS = ["pippin/Commands"]
 
 ALLOW_MARKER = "paginated-lint:allow"
 
-# `output.emit(page` / `output.printAgent(page` — any receiver, any identifier
-# whose name starts with `page` (page, pageOfNotes, page2…), so a renamed local
-# still trips. `emitPage`/`printAgentPage` are excluded by requiring the call
-# paren to follow the bare method name.
-VIOLATION = re.compile(r"\.(emit|printAgent)\(\s*(page\w*)\b")
+# `.emit(page` / `AgentResult(page`: any identifier whose name starts with `page`
+# (page, pageOfNotes, page2…), so a renamed local still trips. `.emitPage` and
+# `.page` are excluded by requiring the call paren to follow the bare name.
+VIOLATION = re.compile(r"(?:\.(emit)|\b(AgentResult))\(\s*(page\w*)\b(?!\.)")
 
 
 def strip_comments(source: str) -> str:
@@ -108,8 +106,8 @@ def check_source(source: str, path: str = "<memory>") -> list[str]:
         window = raw_lines[max(0, idx - 1) : idx + 2]
         if any(ALLOW_MARKER in w for w in window):
             continue
-        method, arg = match.group(1), match.group(2)
-        fixed = "emitPage" if method == "emit" else "printAgentPage"
+        method, arg = match.group(1) or match.group(2), match.group(3)
+        fixed = ".emitPage" if method == "emit" else ".page"
         violations.append(
             f"{path}:{idx + 1}: `{method}({arg}…)` on a Page nests the cursor "
             f"inside `data` (envelope v2 shape) — use `{fixed}({arg}…)`."
@@ -148,16 +146,17 @@ def main(argv: list[str]) -> int:
 
 def _self_test() -> int:
     cases = [
-        ("emitPage is fine", "try output.emitPage(page, timedOut: t) {\n}\n", 0),
-        ("printAgentPage is fine", "try output.printAgentPage(page)\n", 0),
-        ("bare emit on a page -> violation", "try output.emit(page, timedOut: t) {\n}\n", 1),
-        ("bare printAgent on a page -> violation", "try output.printAgent(page)\n", 1),
-        ("renamed page local still trips", "try output.emit(pageOfNotes)\n", 1),
-        ("non-page payload is fine", "try output.emit(messages, timedOut: t) {\n}\n", 0),
-        ("mention in a comment is ignored", "// never call output.emit(page)\ntry output.emitPage(page)\n", 0),
+        ("emitPage is fine", "return .emitPage(page, timedOut: t)\n", 0),
+        ("page is fine", "return .page(page)\n", 0),
+        ("bare emit on a page -> violation", "return .emit(page, timedOut: t)\n", 1),
+        ("bare AgentResult on a page -> violation", "return AgentResult(page)\n", 1),
+        ("renamed page local still trips", "return .emit(pageOfNotes)\n", 1),
+        ("page property is fine", "AgentResult(page.items, nextCursor: c)\n", 0),
+        ("non-page payload is fine", "return .emit(messages, timedOut: t)\n", 0),
+        ("mention in a comment is ignored", "// never call .emit(page)\nreturn .emitPage(page)\n", 0),
         (
             "explicit allow marker suppresses",
-            "// paginated-lint:allow — json-only path\ntry output.emit(page)\n",
+            "// paginated-lint:allow: documented reason\nreturn .emit(page)\n",
             0,
         ),
     ]

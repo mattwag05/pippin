@@ -27,7 +27,7 @@ public struct MessagesCommand: AsyncParsableCommand {
 
     // MARK: - List
 
-    public struct List: AsyncParsableCommand {
+    public struct List: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List recent conversations (most recent first)."
@@ -45,7 +45,7 @@ public struct MessagesCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let config = AIProviderFactory.loadConfig()
             let messagesConfig = config?.messages
             let windowHours = sinceHours ?? messagesConfig?.defaultWindowHours ?? 48
@@ -67,13 +67,13 @@ public struct MessagesCommand: AsyncParsableCommand {
             // other module); the exclude-list signal moves to `warnings`.
             let warnings = excludedCount > 0
                 ? ["\(excludedCount) conversation(s) filtered by exclude list"] : nil
-            try output.printAgent(convs, warnings: warnings)
+            return AgentResult(convs, warnings: warnings)
         }
     }
 
     // MARK: - Search
 
-    public struct Search: AsyncParsableCommand {
+    public struct Search: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
             abstract: "Search message bodies by substring."
@@ -94,7 +94,7 @@ public struct MessagesCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let since = Date().addingTimeInterval(-Double(sinceHours) * 3600)
             let config = AIProviderFactory.loadConfig()
             let excluded = Set(config?.messages?.excludedThreads ?? [])
@@ -118,13 +118,13 @@ public struct MessagesCommand: AsyncParsableCommand {
                 params: ["query": query, "since_hours": "\(sinceHours)", "limit": "\(limit)"],
                 resultCount: matches.count
             )
-            try output.emit(payload, timedOutHint: "")
+            return .emit(payload, timedOutHint: "")
         }
     }
 
     // MARK: - Show
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show messages in a conversation by GUID."
@@ -142,7 +142,7 @@ public struct MessagesCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let db = try MessagesDatabase(dbPath: MessagesDatabase.defaultDBPath())
             let (conv, messages, truncated) = try db.showConversation(
                 conversationId: conversationId,
@@ -155,7 +155,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 params: ["conversation_id": conversationId, "limit": "\(limit)"],
                 resultCount: messages.count
             )
-            try output.emit(payload, timedOutHint: "")
+            return .emit(payload, timedOutHint: "")
         }
     }
 
@@ -166,7 +166,7 @@ public struct MessagesCommand: AsyncParsableCommand {
         case autonomous
     }
 
-    public struct Send: AsyncParsableCommand {
+    public struct Send: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "send",
             abstract: "Send a message. Defaults to --draft; autonomous delivery requires triple gate."
@@ -194,7 +194,7 @@ public struct MessagesCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let mode: SendMode = autonomous ? .autonomous : .draft
             let bodyHash = MessagesAuditLog.hash(body: body)
 
@@ -245,7 +245,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 sent: payload.delivered
             )
 
-            try output.emit(payload, timedOutHint: "")
+            return .emit(payload, timedOutHint: "")
         }
 
         private func gateAutonomous(recipient: String) throws {
@@ -270,7 +270,7 @@ public struct MessagesCommand: AsyncParsableCommand {
         public init() {}
     }
 
-    public struct ExcludeList: AsyncParsableCommand {
+    public struct ExcludeList: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "Show the current exclude list."
@@ -280,13 +280,13 @@ public struct MessagesCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() throws {
+        public mutating func execute() async throws -> AgentResult {
             let threads = AIProviderFactory.loadConfig()?.messages?.excludedThreads ?? []
-            try emitExclude(action: "list", threads: threads, output: output)
+            return emitExclude(action: "list", threads: threads)
         }
     }
 
-    public struct ExcludeAdd: AsyncParsableCommand {
+    public struct ExcludeAdd: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "add",
             abstract: "Add a thread GUID to the exclude list."
@@ -299,15 +299,15 @@ public struct MessagesCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() throws {
+        public mutating func execute() async throws -> AgentResult {
             let threads = try MessagesCommand.mutateExclude { current in
                 current.contains(thread) ? current : current + [thread]
             }
-            try emitExclude(action: "add", threads: threads, output: output)
+            return emitExclude(action: "add", threads: threads)
         }
     }
 
-    public struct ExcludeRemove: AsyncParsableCommand {
+    public struct ExcludeRemove: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "remove",
             abstract: "Remove a thread GUID from the exclude list."
@@ -320,11 +320,11 @@ public struct MessagesCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() throws {
+        public mutating func execute() async throws -> AgentResult {
             let threads = try MessagesCommand.mutateExclude { current in
                 current.filter { $0 != thread }
             }
-            try emitExclude(action: "remove", threads: threads, output: output)
+            return emitExclude(action: "remove", threads: threads)
         }
     }
 
@@ -342,7 +342,7 @@ public struct MessagesCommand: AsyncParsableCommand {
     }
 }
 
-private func emitExclude(action: String, threads: [String], output: OutputOptions) throws {
+private func emitExclude(action: String, threads: [String]) -> AgentResult {
     let payload = MessagesExcludeResult(action: action, threads: threads)
-    try output.emit(payload, timedOutHint: "")
+    return .emit(payload, timedOutHint: "")
 }

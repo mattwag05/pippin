@@ -16,7 +16,7 @@ import Foundation
 /// (under MCP, a non-TTY pipe, or `--status`), in which case the command is a
 /// pure read-only report. Progress cues during priming go to stderr; stdout
 /// carries only the envelope. (pippin-uu3)
-public struct PermissionsCommand: AsyncParsableCommand {
+public struct PermissionsCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "permissions",
         abstract: "Grant (interactively) and report macOS permissions for each app integration."
@@ -29,7 +29,7 @@ public struct PermissionsCommand: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let willPrime = !status && PermissionPriming.shouldPrime(
             interactive: PermissionPriming.isInteractiveTerminal(),
             isMCP: isMCPContext()
@@ -51,14 +51,10 @@ public struct PermissionsCommand: AsyncParsableCommand {
         }
 
         let reports = await detachBlocking { PermissionPrimer.currentReports() }
-        try output.printAgent(reports)
-
         // A `.denied` integration needs an active manual grant in System
         // Settings — signal that to scripts. Not-determined (couldn't prime
         // here) and manual-required (FDA) are informational, not failures.
-        if reports.contains(where: { $0.state == .denied }) {
-            throw ExitCode(1)
-        }
+        return AgentResult(reports, exitCode: reports.contains { $0.state == .denied } ? 1 : 0)
     }
 }
 

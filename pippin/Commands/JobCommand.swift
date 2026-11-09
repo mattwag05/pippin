@@ -25,7 +25,7 @@ public struct JobCommand: AsyncParsableCommand {
 
     // MARK: Run
 
-    public struct Run: AsyncParsableCommand {
+    public struct Run: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "run",
             abstract: "Fork a detached pippin sub-command; returns a job_id immediately.",
@@ -52,7 +52,7 @@ public struct JobCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let store = JobStore()
             try ensureRoot(store)
             let id = JobId.generate()
@@ -78,13 +78,13 @@ public struct JobCommand: AsyncParsableCommand {
             var display = seed
             display.pid = pid
 
-            try output.printAgent(display)
+            return AgentResult(display)
         }
     }
 
     // MARK: Show
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show a job's status + stdout/stderr tails."
@@ -100,19 +100,19 @@ public struct JobCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let store = JobStore()
             let job = try store.read(id)
             let stdoutTail = store.tailStdout(job.id, maxBytes: max(0, tail))
             let stderrTail = store.tailStderr(job.id, maxBytes: max(0, tail))
             let view = JobView(job: job, stdoutTail: stdoutTail, stderrTail: stderrTail)
-            try output.printAgent(view)
+            return AgentResult(view)
         }
     }
 
     // MARK: List
 
-    public struct List: AsyncParsableCommand {
+    public struct List: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List recent jobs (default: 20 most recent)."
@@ -132,20 +132,20 @@ public struct JobCommand: AsyncParsableCommand {
             guard limit > 0 else { throw ValidationError("--limit must be positive.") }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let store = JobStore()
             var jobs = store.all().sorted { $0.startedAt > $1.startedAt }
             if let filter = status {
                 jobs = jobs.filter { $0.status == filter }
             }
             jobs = Array(jobs.prefix(limit))
-            try output.printAgent(jobs)
+            return AgentResult(jobs)
         }
     }
 
     // MARK: Wait
 
-    public struct Wait: AsyncParsableCommand {
+    public struct Wait: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "wait",
             abstract: "Block until a job reaches a terminal state, then print its status."
@@ -164,7 +164,7 @@ public struct JobCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let store = JobStore()
             // Resolve prefix once; subsequent reads use the canonical id
             // so we don't re-scan the job dir on every 200ms tick.
@@ -175,8 +175,7 @@ public struct JobCommand: AsyncParsableCommand {
             while true {
                 let job = try store.readCanonical(canonicalId)
                 if job.status.isTerminal {
-                    try output.printAgent(job)
-                    return
+                    return AgentResult(job)
                 }
                 if let deadline, Date() >= deadline {
                     throw JobCommandError.waitTimedOut(job.id, timeoutSeconds: timeout)
@@ -222,7 +221,7 @@ public struct JobCommand: AsyncParsableCommand {
             if !stream {
                 let text = (try? Data(contentsOf: URL(fileURLWithPath: path)))
                     .flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                try output.printAgent(JobLogs(id: resolved, stream: stderr ? "stderr" : "stdout", text: text))
+                try print(output.render(AgentResult(JobLogs(id: resolved, stream: stderr ? "stderr" : "stdout", text: text))))
                 return
             }
             // Streaming tail: seek to end? Start at beginning for the first
@@ -256,7 +255,7 @@ public struct JobCommand: AsyncParsableCommand {
 
     // MARK: Gc
 
-    public struct Gc: AsyncParsableCommand {
+    public struct Gc: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "gc",
             abstract: "Prune terminal jobs older than --older-than (default: 7d)."
@@ -272,13 +271,13 @@ public struct JobCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let seconds = try parseDuration(olderThan)
             let cutoff = Date().addingTimeInterval(-Double(seconds))
             let store = JobStore()
             let removed = try store.gc(olderThan: cutoff)
             let result = GcResult(removed: removed, cutoff: cutoff)
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 }

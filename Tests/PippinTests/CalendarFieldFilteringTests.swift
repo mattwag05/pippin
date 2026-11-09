@@ -2,7 +2,7 @@
 import XCTest
 
 /// `--fields` projection of calendar events through `FieldProjection`, the
-/// path `OutputOptions.printAgent` uses.
+/// path `OutputOptions.render` uses.
 final class CalendarFieldFilteringTests: XCTestCase {
     // MARK: - Fixture
 

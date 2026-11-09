@@ -20,7 +20,7 @@ public struct CalendarCommand: AsyncParsableCommand {
     /// every event-listing subcommand so the wording stays consistent. (pippin-mgg)
     static let timedOutHint = "calendar fetch did not complete within 15s — returning partial results; narrow the window with --from/--to (or --range) for a complete, faster fetch"
 
-    /// The `warnings` array to thread into a `printAgent` call when a fetch
+    /// The `warnings` array to thread into an `AgentResult` when a fetch
     /// returned partial results; `nil` (omitted) otherwise. The envelope is the
     /// only place the advisory goes: a stderr line would be double-noise for MCP
     /// clients, which capture child stderr.
@@ -30,7 +30,7 @@ public struct CalendarCommand: AsyncParsableCommand {
 
     // MARK: - List (calendars)
 
-    public struct ListCalendars: AsyncParsableCommand {
+    public struct ListCalendars: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List calendars."
@@ -43,20 +43,20 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = CalendarBridge()
             var calendars = try await bridge.listCalendars()
             if let typeFilter = type {
                 let allowedTypes = typeFilter.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
                 calendars = calendars.filter { allowedTypes.contains($0.type.lowercased()) }
             }
-            try output.printAgent(calendars)
+            return AgentResult(calendars)
         }
     }
 
     // MARK: - Events
 
-    public struct Events: AsyncParsableCommand {
+    public struct Events: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "events",
             abstract: "List calendar events. Defaults to today."
@@ -107,7 +107,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let startDate: Date
             let endDate: Date
             if let range, let (rangeStart, rangeEnd) = parseRange(range) {
@@ -159,21 +159,20 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: events, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                try output.printAgentPage(page, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
-                return
+                return .page(page, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
             }
 
             if events.count > limit {
                 events = Array(events.prefix(limit))
             }
 
-            try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
+            return AgentResult(events, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - Show
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show full details for a single event by ID."
@@ -186,16 +185,16 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = CalendarBridge()
             let event = try await bridge.getEvent(id: id)
-            try output.printAgent(event)
+            return AgentResult(event)
         }
     }
 
     // MARK: - Create
 
-    public struct Create: AsyncParsableCommand {
+    public struct Create: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "create",
             abstract: "Create a new calendar event."
@@ -244,7 +243,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             guard let startDate = parseCalendarDate(start) else {
                 throw ValidationError("Invalid --start date.")
             }
@@ -268,13 +267,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 alertOffset: alert.flatMap { parseAlertDuration($0) }
             )
 
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Edit
 
-    public struct Edit: AsyncParsableCommand {
+    public struct Edit: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "edit",
             abstract: "Edit an existing calendar event."
@@ -338,7 +337,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let ekSpan = parseSpan(span) ?? .thisEvent
             let isAllDay: Bool? = allDay ? true : (noAllDay ? false : nil)
             let bridge = CalendarBridge()
@@ -355,13 +354,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 alertOffset: alert.flatMap { parseAlertDuration($0) },
                 span: ekSpan
             )
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Delete
 
-    public struct Delete: AsyncParsableCommand {
+    public struct Delete: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "delete",
             abstract: "Delete a calendar event."
@@ -389,17 +388,17 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let ekSpan = parseSpan(span) ?? .thisEvent
             let bridge = CalendarBridge()
             let result = try await bridge.deleteEvent(id: id, span: ekSpan)
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - SmartCreate
 
-    public struct SmartCreate: AsyncParsableCommand {
+    public struct SmartCreate: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "smart-create",
             abstract: "Create an event from a natural language description using AI."
@@ -430,7 +429,7 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let aiProvider = try AIProviderFactory.make(
                 providerFlag: provider,
                 modelFlag: model,
@@ -492,8 +491,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
 
             if dryRun {
-                try output.printAgent(SmartCreateDryRunResult(spec: parsed, conflicts: existingConflicts))
-                return
+                return AgentResult(SmartCreateDryRunResult(spec: parsed, conflicts: existingConflicts))
             }
 
             if !existingConflicts.isEmpty {
@@ -513,13 +511,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 isAllDay: parsed.isAllDay ?? false
             )
 
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Agenda
 
-    public struct Agenda: AsyncParsableCommand {
+    public struct Agenda: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "agenda",
             abstract: "AI-generated briefing of upcoming events."
@@ -547,7 +545,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = CalendarBridge()
             let start = Calendar.current.startOfDay(for: Date())
             let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
@@ -607,13 +605,13 @@ public struct CalendarCommand: AsyncParsableCommand {
             if let fieldList = FieldProjection.parse(output.fields) {
                 result = result.filter { fieldList.contains($0.key) }
             }
-            try output.printAgent(result, warnings: CalendarCommand.timedOutWarnings(agendaOutcome.timedOut))
+            return AgentResult(result, warnings: CalendarCommand.timedOutWarnings(agendaOutcome.timedOut))
         }
     }
 
     // MARK: - Search
 
-    public struct Search: AsyncParsableCommand {
+    public struct Search: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
             abstract: "Search events by text across a date range."
@@ -661,7 +659,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let now = Date()
             let cal = Calendar.current
             let startDate = from.flatMap { parseCalendarDate($0) }
@@ -687,13 +685,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 events = Array(events.prefix(limit))
             }
 
-            try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(searchOutcome.timedOut), fields: FieldProjection.parse(output.fields))
+            return AgentResult(events, warnings: CalendarCommand.timedOutWarnings(searchOutcome.timedOut), fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - Today
 
-    public struct Today: AsyncParsableCommand {
+    public struct Today: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "today",
             abstract: "List events for today."
@@ -703,17 +701,17 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let (start, end) = parseRange("today")!
             let bridge = CalendarBridge()
             let outcome = try await bridge.listEvents(from: start, to: end, calendarId: nil)
-            try output.printAgent(outcome.results, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: FieldProjection.parse(output.fields))
+            return AgentResult(outcome.results, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - Remaining
 
-    public struct Remaining: AsyncParsableCommand {
+    public struct Remaining: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "remaining",
             abstract: "List events from now until end of today."
@@ -723,18 +721,18 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let now = Date()
             let endOfToday = parseRange("today")!.end
             let bridge = CalendarBridge()
             let outcome = try await bridge.listEvents(from: now, to: endOfToday, calendarId: nil)
-            try output.printAgent(outcome.results, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: FieldProjection.parse(output.fields))
+            return AgentResult(outcome.results, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - Conflicts
 
-    public struct Conflicts: AsyncParsableCommand {
+    public struct Conflicts: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "conflicts",
             abstract: "Find overlapping calendar events in a time window."
@@ -765,7 +763,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let startDate: Date
             let endDate: Date
             if let range, let (rangeStart, rangeEnd) = parseRange(range) {
@@ -812,13 +810,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 }
             }
 
-            try output.printAgent(conflicts, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut))
+            return AgentResult(conflicts, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut))
         }
     }
 
     // MARK: - Upcoming
 
-    public struct Upcoming: AsyncParsableCommand {
+    public struct Upcoming: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "upcoming",
             abstract: "List events for the next 7 days."
@@ -839,7 +837,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let (start, end) = parseRange("today+6")! // today + 6 more days = 7 days total
             let bridge = CalendarBridge()
             let outcome = try await bridge.listEvents(from: start, to: end, calendarId: nil)
@@ -854,11 +852,10 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: events, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                try output.printAgentPage(page, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
-                return
+                return .page(page, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
             }
 
-            try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
+            return AgentResult(events, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
         }
     }
 }

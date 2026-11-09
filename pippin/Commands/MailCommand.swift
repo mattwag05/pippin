@@ -47,7 +47,7 @@ public struct MailCommand: AsyncParsableCommand {
 
     // MARK: - Accounts
 
-    public struct Accounts: AsyncParsableCommand {
+    public struct Accounts: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "accounts",
             abstract: "List configured Mail accounts."
@@ -57,16 +57,16 @@ public struct MailCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // listAccounts spawns a blocking osascript subprocess; hop off the pool.
             let accounts = try await detachBlocking { try MailBridge.listAccounts() }
-            try output.printAgent(accounts)
+            return AgentResult(accounts)
         }
     }
 
     // MARK: - Mailboxes
 
-    public struct Mailboxes: AsyncParsableCommand {
+    public struct Mailboxes: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "mailboxes",
             abstract: "List mailboxes per account."
@@ -79,17 +79,17 @@ public struct MailCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let account = self.account
             // listMailboxes may spawn a blocking osascript subprocess; hop off the pool.
             let outcome = try await detachBlocking { try MailBridge.listMailboxes(account: account) }
-            try output.printAgent(outcome.mailboxes, warnings: outcome.fastPathNote.map { [$0] })
+            return AgentResult(outcome.mailboxes, warnings: outcome.fastPathNote.map { [$0] })
         }
     }
 
     // MARK: - Search
 
-    public struct Search: AsyncParsableCommand {
+    public struct Search: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
             abstract: "Search messages by subject or sender. Use --from for sender-only searches; use --body only for slower body-content scans."
@@ -170,10 +170,9 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             if pagination.isActive {
-                try await runPaginated()
-                return
+                return try await runPaginated()
             }
             if semantic {
                 let embedProvider = try AIProviderFactory.makeEmbeddingProvider(
@@ -190,8 +189,7 @@ public struct MailCommand: AsyncParsableCommand {
                     )
                 }
 
-                try output.printAgent(messages)
-                return
+                return AgentResult(messages)
             }
 
             let query = self.query
@@ -234,32 +232,32 @@ public struct MailCommand: AsyncParsableCommand {
                 timedOut = timedOut || attached.timedOut
             }
             try MailBridge.requireCompleteSearch(resultCount: messages.count, timedOut: timedOut)
-            try await emitMessages(messages, timedOut: timedOut, fastPathNote: outcome.fastPathNote)
+            return try await emitMessages(messages, timedOut: timedOut, fastPathNote: outcome.fastPathNote)
         }
 
         static var timedOutHint: String {
             "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results" + MailCommand.accountNamesSuffix()
         }
 
-        private func emitMessages(_ messages: [MailMessage], timedOut: Bool, fastPathNote: String? = nil) async throws {
+        private func emitMessages(_ messages: [MailMessage], timedOut: Bool, fastPathNote: String? = nil) async throws -> AgentResult {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
-            try output.emit(
+            return .emit(
                 messages, timedOut: timedOut, timedOutHint: Self.timedOutHint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }
             )
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws {
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws -> AgentResult {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
-            try output.emitPage(
+            return .emitPage(
                 page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }
             )
         }
 
-        private func runPaginated() async throws {
+        private func runPaginated() async throws -> AgentResult {
             let hash = Pagination.filterHash([
                 "query": query,
                 "account": account,
@@ -338,13 +336,13 @@ public struct MailCommand: AsyncParsableCommand {
                 )
             }
             try MailBridge.requireCompleteSearch(resultCount: page.items.count, timedOut: paginatedTimedOut)
-            try await emitPage(page, timedOut: paginatedTimedOut, fastPathNote: paginatedFastPathNote)
+            return try await emitPage(page, timedOut: paginatedTimedOut, fastPathNote: paginatedFastPathNote)
         }
     }
 
     // MARK: - List
 
-    public struct List: AsyncParsableCommand {
+    public struct List: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List messages. Defaults to INBOX, all messages, limit 20."
@@ -419,10 +417,9 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             if pagination.isActive {
-                try await runPaginated()
-                return
+                return try await runPaginated()
             }
             let limit = self.limit
             let outcome = try await fetchList(limit: limit, offset: 0)
@@ -450,9 +447,9 @@ public struct MailCommand: AsyncParsableCommand {
                 }
                 let withSummaries = messages.map { MessageWithSummary(message: $0, summary: triageMap[$0.id] ?? "(summary unavailable)") }
 
-                try output.emit(withSummaries, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
+                return .emit(withSummaries, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
             } else {
-                try await emitMessages(
+                return try await emitMessages(
                     messages, timedOut: outcome.timedOut, windowHint: outcome.windowHint,
                     fastPathNote: outcome.fastPathNote
                 )
@@ -473,26 +470,26 @@ public struct MailCommand: AsyncParsableCommand {
 
         private func emitMessages(
             _ messages: [MailMessage], timedOut: Bool, windowHint: String? = nil, fastPathNote: String? = nil
-        ) async throws {
+        ) async throws -> AgentResult {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
             let (warn, hint) = warning(timedOut: timedOut, windowHint: windowHint)
-            try output.emit(
+            return .emit(
                 messages, timedOut: warn, timedOutHint: hint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }
             )
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws {
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws -> AgentResult {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
-            try output.emitPage(
+            return .emitPage(
                 page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }
             )
         }
 
-        private func runPaginated() async throws {
+        private func runPaginated() async throws -> AgentResult {
             let hash = Pagination.filterHash([
                 "account": account,
                 "mailbox": mailbox,
@@ -508,7 +505,7 @@ public struct MailCommand: AsyncParsableCommand {
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
             )
-            try await emitPage(page, timedOut: outcome.timedOut, fastPathNote: outcome.fastPathNote)
+            return try await emitPage(page, timedOut: outcome.timedOut, fastPathNote: outcome.fastPathNote)
         }
 
         /// Fetch a list page, routing `--preview N` through the body cache
@@ -544,7 +541,7 @@ public struct MailCommand: AsyncParsableCommand {
 
     // MARK: - Show (formerly Read)
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show one or more messages by compound id, or one by subject search.",
@@ -605,10 +602,9 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             if messageIds.count > 1 {
-                try await runBatch(compoundIds: messageIds)
-                return
+                return try await runBatch(compoundIds: messageIds)
             }
             let compoundId: String
             if let subject = subject {
@@ -638,7 +634,7 @@ public struct MailCommand: AsyncParsableCommand {
                     let message: MailMessage
                     let summary: String
                 }
-                try output.printAgent(ShowWithSummary(message: message, summary: summary))
+                return AgentResult(ShowWithSummary(message: message, summary: summary))
             } else if sanitize {
                 let body = message.body ?? ""
                 let scanResult: ScanResult
@@ -660,25 +656,25 @@ public struct MailCommand: AsyncParsableCommand {
                     let message: MailMessage
                     let scan: ScanResult
                 }
-                try output.printAgent(ShowWithScan(message: message, scan: scanResult))
+                return AgentResult(ShowWithScan(message: message, scan: scanResult))
             } else {
-                try output.printAgent(message)
+                return AgentResult(message)
             }
         }
 
         /// 2+ ids: one batched Mail pass for cache misses (`readMessages`), then
         /// emit an array. Single-id calls keep the original single-object shape.
-        private func runBatch(compoundIds: [String]) async throws {
+        private func runBatch(compoundIds: [String]) async throws -> AgentResult {
             let useCache = noCache ? nil : MailBodyCache.shared
             let fetched = try await detachBlocking { try MailBridge.readMessages(compoundIds: compoundIds, cache: useCache) }
             let messages = await MailCommand.enrichContacts(fetched, options: contactResolution)
-            try output.printAgent(messages)
+            return AgentResult(messages)
         }
     }
 
     // MARK: - Verify (pippin-ml9)
 
-    public struct Verify: AsyncParsableCommand {
+    public struct Verify: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "verify",
             abstract: "Inspect a message's headers against the sender's historical baseline (phishing check)."
@@ -717,7 +713,7 @@ public struct MailCommand: AsyncParsableCommand {
             let verdict: String
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let id = messageId
             let useCache = noCache ? nil : MailBodyCache.shared
             // readMessage spawns a blocking osascript subprocess; hop off the
@@ -769,13 +765,13 @@ public struct MailCommand: AsyncParsableCommand {
                 anomalies: anomalies.isEmpty ? nil : anomalies, authChain: authChain, verdict: verdict
             )
 
-            try output.printAgent(report)
+            return AgentResult(report)
         }
     }
 
     // MARK: - Read (hidden alias for backward compat)
 
-    public struct Read: AsyncParsableCommand {
+    public struct Read: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "read",
             abstract: "Read a message (use 'show' instead).",
@@ -789,17 +785,17 @@ public struct MailCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             var show = Show()
             show.messageIds = [messageId]
             show.output = output
-            try await show.run()
+            return try await show.execute()
         }
     }
 
     // MARK: - Mark
 
-    public struct Mark: AsyncParsableCommand {
+    public struct Mark: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "mark",
             abstract: "Mark a message as read or unread."
@@ -827,19 +823,19 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.markMessage(
                 compoundId: messageId,
                 read: read,
                 dryRun: dryRun
             )
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Move
 
-    public struct Move: AsyncParsableCommand {
+    public struct Move: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "move",
             abstract: "Move a message to another mailbox."
@@ -858,19 +854,19 @@ public struct MailCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.moveMessage(
                 compoundId: messageId,
                 toMailbox: to,
                 dryRun: dryRun
             )
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Send
 
-    public struct Send: AsyncParsableCommand {
+    public struct Send: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "send",
             abstract: "Send an email message."
@@ -914,7 +910,7 @@ public struct MailCommand: AsyncParsableCommand {
             try validateAttachmentPaths(attach)
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.sendMessage(
                 to: to,
                 subject: subject,
@@ -925,13 +921,13 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPaths: attach,
                 dryRun: dryRun
             )
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Attachments
 
-    public struct Attachments: AsyncParsableCommand {
+    public struct Attachments: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "attachments",
             abstract: "List (and optionally save) attachments from a message."
@@ -965,7 +961,7 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // Resolve here, not in validate(): ArgumentParser may invoke validate() more
             // than once, and mutating saveDir there makes the mutual-exclusion check false-fire.
             let effectiveSaveDir = try saveToCache
@@ -974,7 +970,7 @@ public struct MailCommand: AsyncParsableCommand {
             let msgId = messageId
             // listAttachments spawns a blocking osascript subprocess; hop off the pool.
             let attachments = try await detachBlocking { try MailBridge.listAttachments(compoundId: msgId, saveDir: effectiveSaveDir) }
-            try output.printAgent(attachments)
+            return AgentResult(attachments)
         }
 
         /// Per-message cache dir; sanitizes shell/path-hostile chars so Gmail `[Gmail]`
@@ -1001,7 +997,7 @@ public struct MailCommand: AsyncParsableCommand {
 
     // MARK: - Reply
 
-    public struct Reply: AsyncParsableCommand {
+    public struct Reply: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "reply",
             abstract: "Reply to a message."
@@ -1042,7 +1038,7 @@ public struct MailCommand: AsyncParsableCommand {
             try validateAttachmentPaths(attach)
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.replyToMessage(
                 compoundId: messageId,
                 body: body,
@@ -1053,13 +1049,13 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPaths: attach,
                 dryRun: dryRun
             )
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Forward
 
-    public struct Forward: AsyncParsableCommand {
+    public struct Forward: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "forward",
             abstract: "Forward a message."
@@ -1103,7 +1099,7 @@ public struct MailCommand: AsyncParsableCommand {
             try validateAttachmentPaths(attach)
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.forwardMessage(
                 compoundId: messageId,
                 to: to,
@@ -1114,7 +1110,7 @@ public struct MailCommand: AsyncParsableCommand {
                 attachmentPaths: attach,
                 dryRun: dryRun
             )
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 }

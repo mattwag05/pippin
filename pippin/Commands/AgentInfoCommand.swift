@@ -46,7 +46,7 @@ public struct AgentInfo: Codable, Sendable {
     }
 }
 
-public struct AgentInfoCommand: AsyncParsableCommand {
+public struct AgentInfoCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "agent-info",
         abstract: "Describe pippin's agent contract: version, formats, exit codes, tool count.",
@@ -67,7 +67,7 @@ public struct AgentInfoCommand: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let info = AgentInfo(
             name: "pippin",
             version: PippinVersion.version,
@@ -81,7 +81,7 @@ public struct AgentInfoCommand: AsyncParsableCommand {
             commands: Self.commandNames.sorted()
         )
 
-        try output.printAgent(info)
+        return AgentResult(info)
     }
 
     /// The documented exit-code map, mirroring `PippinExitCode`. Kept here as

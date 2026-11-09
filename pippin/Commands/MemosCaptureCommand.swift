@@ -1,7 +1,7 @@
 import ArgumentParser
 import Foundation
 
-public struct MemosCaptureCommand: AsyncParsableCommand {
+public struct MemosCaptureCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "capture",
         abstract: "Transcribe a voice memo, extract action items, create Reminders."
@@ -28,7 +28,7 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
     @Option(name: .long, help: "API key for Claude provider.")
     public var apiKey: String?
 
-    @OptionGroup public var outputOptions: OutputOptions
+    @OptionGroup public var output: OutputOptions
 
     private static let defaultCaptureList = "Inbox"
 
@@ -40,7 +40,7 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
         }
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let effectiveDryRun = dryRun
 
         let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
@@ -108,7 +108,7 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
             dryRun: effectiveDryRun
         )
 
-        try outputOptions.printAgent(payload)
+        return AgentResult(payload)
     }
 
     // MARK: - Private

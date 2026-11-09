@@ -138,6 +138,8 @@ enum MCPServerRuntime {
 enum MCPServerRuntimeError: LocalizedError {
     case processLaunchFailed(String, underlying: Error)
     case childTimedOut(seconds: Int)
+    case inProcessTimedOut(seconds: Int)
+    case notInProcessCapable(String)
 
     var errorDescription: String? {
         switch self {
@@ -145,6 +147,10 @@ enum MCPServerRuntimeError: LocalizedError {
             return "Failed to launch child pippin at \(path): \(error.localizedDescription)"
         case let .childTimedOut(seconds):
             return "pippin child exceeded \(seconds)s and was terminated. Narrow the request (--account, --mailbox, --limit) or rerun with a more specific query."
+        case let .inProcessTimedOut(seconds):
+            return "The tool did not answer within \(seconds)s. Retry; it now runs in a separate process for this session."
+        case let .notInProcessCapable(command):
+            return "Internal error: '\(command)' is registered as in-process but is not an AgentCommand."
         }
     }
 }
@@ -178,7 +184,8 @@ enum MCPDispatcher {
     static func handle(
         _ request: JSONRPCRequest,
         pippinPath: String,
-        tools: [MCPTool] = MCPToolRegistry.tools
+        tools: [MCPTool] = MCPToolRegistry.tools,
+        inProcessDeadline: Double = Double(MCPInProcessTools.deadlineSeconds)
     ) async -> JSONRPCResponse? {
         // Notifications (no id) never get a response, even on error.
         if request.isNotification {
@@ -197,7 +204,8 @@ enum MCPDispatcher {
                 id: id,
                 params: request.params,
                 pippinPath: pippinPath,
-                tools: tools
+                tools: tools,
+                inProcessDeadline: inProcessDeadline
             )
         case "ping":
             return JSONRPCResponse(id: id, result: .object([:]))
@@ -242,7 +250,8 @@ enum MCPDispatcher {
         id: JSONRPCID,
         params: JSONValue?,
         pippinPath: String,
-        tools: [MCPTool]
+        tools: [MCPTool],
+        inProcessDeadline: Double
     ) async -> JSONRPCResponse {
         guard let toolName = params?["name"]?.stringValue else {
             return JSONRPCResponse(
@@ -275,15 +284,20 @@ enum MCPDispatcher {
             )
         }
 
-        // In-process fast path: no child spawn. The handler returns the same
-        // envelope-v1 JSON the child would print; thrown errors become the same
-        // error envelope `printAgentError` would emit, with isError: true.
-        if let handler = tool.inProcess {
+        // In-process fast path: no child spawn, same command as the child runs.
+        // A tool that wedges past the deadline moves to the child path, where
+        // a hard kill exists, for the rest of the session.
+        if let handler = tool.inProcess, !MCPInProcessTools.isDemoted(tool.name) {
             let startedAt = Date()
             do {
-                let text = try await handler(toolArguments)
+                let text = try await MCPInProcessTools.withDeadline(seconds: inProcessDeadline) {
+                    try await handler(argv)
+                }
                 return wrapToolResult(id: id, payload: MCPToolCallResult(text: text, isError: false))
             } catch {
+                if case MCPServerRuntimeError.inProcessTimedOut = error {
+                    MCPInProcessTools.demote(tool.name)
+                }
                 return wrapToolResult(
                     id: id,
                     payload: MCPToolCallResult(

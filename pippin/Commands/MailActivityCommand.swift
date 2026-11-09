@@ -2,7 +2,7 @@ import ArgumentParser
 import Foundation
 
 public extension MailCommand {
-    struct Activity: AsyncParsableCommand {
+    struct Activity: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "activity",
             abstract: "Combined recent mail activity across multiple mailboxes (e.g. INBOX + Sent). Use this for scan workflows instead of N calls to mail list.",
@@ -49,7 +49,7 @@ public extension MailCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let account = self.account
             let limit = self.limit
             let preview = self.preview
@@ -67,7 +67,7 @@ public extension MailCommand {
                 )
             }
             let messages = await MailCommand.enrichContacts(outcome.messages, options: contactResolution)
-            try output.emit(
+            return .emit(
                 messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint,
                 extraWarnings: [outcome.fastPathNote].compactMap { $0 }
             )

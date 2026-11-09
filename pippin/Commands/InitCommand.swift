@@ -1,7 +1,7 @@
 import ArgumentParser
 import Foundation
 
-public struct InitCommand: AsyncParsableCommand {
+public struct InitCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "init",
         abstract: "Guided first-run setup for permissions and dependencies."
@@ -11,7 +11,7 @@ public struct InitCommand: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         // In an interactive terminal, proactively trigger each promptable TCC
         // prompt up front so onboarding resolves them in one pass, rather than
         // deferring to "first use", which silently fails when first use is a
@@ -33,7 +33,7 @@ public struct InitCommand: AsyncParsableCommand {
         }
 
         let checks = await detachBlocking { runAllChecks() }
-        try output.printAgent(InitReport(checks: checks))
+        return AgentResult(InitReport(checks: checks))
     }
 }
 

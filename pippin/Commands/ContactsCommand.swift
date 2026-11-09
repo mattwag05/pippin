@@ -19,7 +19,7 @@ public struct ContactsCommand: AsyncParsableCommand {
 
     // MARK: - List
 
-    public struct ListContacts: AsyncParsableCommand {
+    public struct ListContacts: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List all contacts (name + primary email/phone)."
@@ -32,7 +32,7 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // Contacts drives --fields server-side: fieldList selects which
             // CNContact keys are fetched (avoids reading email/phone bodies
             // across the whole store), unlike the client-side jsonData/emit
@@ -44,7 +44,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             let outcome = try await detachBlocking {
                 try ContactsBridge.listContacts(group: group, fields: fieldList)
             }
-            try output.emit(
+            return .emit(
                 outcome.results,
                 timedOut: outcome.timedOut,
                 timedOutHint: ContactsCommand.timedOutHint
@@ -54,7 +54,7 @@ public struct ContactsCommand: AsyncParsableCommand {
 
     // MARK: - Search
 
-    public struct SearchContacts: AsyncParsableCommand {
+    public struct SearchContacts: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
             abstract: "Search contacts by name, email, or phone."
@@ -91,7 +91,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let fieldList = FieldProjection.parse(output.fields)
             let query = self.query ?? ""
             let contacts: [ContactInfo]
@@ -126,21 +126,20 @@ public struct ContactsCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: contacts, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                try output.emitPage(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint)
-                return
+                return .emitPage(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint)
             }
 
             // Honor --limit in the non-paginated path too (matches calendar /
             // notes search). Previously the full result set was emitted and
             // --limit only took effect when paginating.
             let limited = Array(contacts.prefix(limit))
-            try output.emit(limited, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint)
+            return .emit(limited, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint)
         }
     }
 
     // MARK: - Show
 
-    public struct ShowContact: AsyncParsableCommand {
+    public struct ShowContact: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show full contact details by identifier."
@@ -153,15 +152,15 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let contact = try ContactsBridge.getContact(identifier)
-            try output.printAgent(contact)
+            return AgentResult(contact)
         }
     }
 
     // MARK: - Groups
 
-    public struct ListGroups: AsyncParsableCommand {
+    public struct ListGroups: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "groups",
             abstract: "List contact groups."
@@ -171,16 +170,16 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // listGroups reads the contact store (sync); hop off the pool.
             let groups = try await detachBlocking { try ContactsBridge.listGroups() }
-            try output.printAgent(groups)
+            return AgentResult(groups)
         }
     }
 
     // MARK: - Create
 
-    public struct CreateContact: AsyncParsableCommand {
+    public struct CreateContact: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "create",
             abstract: "Create a new contact."
@@ -208,7 +207,7 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             guard (first != nil && !(first!.isEmpty)) || (last != nil && !(last!.isEmpty)) else {
                 throw ValidationError("At least one of --first or --last is required.")
             }
@@ -229,13 +228,13 @@ public struct ContactsCommand: AsyncParsableCommand {
                     jobTitle: jobTitle
                 )
             }
-            try printAgentJSON(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Edit
 
-    public struct EditContact: AsyncParsableCommand {
+    public struct EditContact: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "edit",
             abstract: "Edit an existing contact by identifier."
@@ -266,7 +265,7 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let hasChanges = [first, last, email, phone, organization, jobTitle].contains { $0 != nil }
             guard hasChanges else {
                 throw ValidationError("At least one field to update is required.")
@@ -280,13 +279,13 @@ public struct ContactsCommand: AsyncParsableCommand {
                 organization: organization,
                 jobTitle: jobTitle
             )
-            try printAgentJSON(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Delete
 
-    public struct DeleteContact: AsyncParsableCommand {
+    public struct DeleteContact: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "delete",
             abstract: "Delete a contact by identifier."
@@ -309,9 +308,9 @@ public struct ContactsCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try ContactsBridge.deleteContact(identifier: identifier)
-            try printAgentJSON(result)
+            return AgentResult(result)
         }
     }
 }

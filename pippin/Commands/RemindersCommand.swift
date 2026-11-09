@@ -16,7 +16,7 @@ public struct RemindersCommand: AsyncParsableCommand {
 
     // MARK: - Lists (all reminder lists)
 
-    public struct Lists: AsyncParsableCommand {
+    public struct Lists: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "lists",
             abstract: "List all reminder lists."
@@ -26,16 +26,16 @@ public struct RemindersCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
             let lists = try await bridge.listReminderLists()
-            try output.printAgent(lists)
+            return AgentResult(lists)
         }
     }
 
     // MARK: - List (reminders in a list)
 
-    public struct List: AsyncParsableCommand {
+    public struct List: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List reminders. Defaults to incomplete reminders."
@@ -97,7 +97,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
 
             if pagination.isActive {
@@ -126,8 +126,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: fetched.results, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                try output.emitPage(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
-                return
+                return .emitPage(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
             }
 
             let outcome = try await bridge.listReminders(
@@ -140,13 +139,13 @@ public struct RemindersCommand: AsyncParsableCommand {
                 priority: priority.flatMap { parseReminderPriority($0) },
                 limit: limit
             )
-            try output.emit(outcome.results, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
+            return .emit(outcome.results, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - Show
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show full details for a single reminder by ID."
@@ -159,16 +158,16 @@ public struct RemindersCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
             let reminder = try await bridge.showReminder(id: id)
-            try output.printAgent(reminder)
+            return AgentResult(reminder)
         }
     }
 
     // MARK: - Create
 
-    public struct Create: AsyncParsableCommand {
+    public struct Create: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "create",
             abstract: "Create a new reminder."
@@ -205,7 +204,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
             let result = try await bridge.createReminder(
                 title: title,
@@ -215,13 +214,13 @@ public struct RemindersCommand: AsyncParsableCommand {
                 notes: notes,
                 url: url
             )
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Edit
 
-    public struct Edit: AsyncParsableCommand {
+    public struct Edit: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "edit",
             abstract: "Edit an existing reminder."
@@ -261,7 +260,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
             let result = try await bridge.updateReminder(
                 id: id,
@@ -272,13 +271,13 @@ public struct RemindersCommand: AsyncParsableCommand {
                 listId: list,
                 url: url
             )
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Complete
 
-    public struct Complete: AsyncParsableCommand {
+    public struct Complete: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "complete",
             abstract: "Mark a reminder as completed."
@@ -291,16 +290,16 @@ public struct RemindersCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
             let result = try await bridge.completeReminder(id: id)
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Delete
 
-    public struct Delete: AsyncParsableCommand {
+    public struct Delete: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "delete",
             abstract: "Delete a reminder."
@@ -322,16 +321,16 @@ public struct RemindersCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
             let result = try await bridge.deleteReminder(id: id)
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 
     // MARK: - Search
 
-    public struct Search: AsyncParsableCommand {
+    public struct Search: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
             abstract: "Search reminders by text."
@@ -363,7 +362,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
             let outcome = try await bridge.searchReminders(
                 query: query,
@@ -371,13 +370,13 @@ public struct RemindersCommand: AsyncParsableCommand {
                 completed: completed,
                 limit: limit
             )
-            try output.emit(outcome.results, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
+            return .emit(outcome.results, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - SmartCreate
 
-    public struct SmartCreate: AsyncParsableCommand {
+    public struct SmartCreate: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "smart-create",
             abstract: "Create a reminder from a natural language description using AI."
@@ -405,7 +404,7 @@ public struct RemindersCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let aiProvider = try AIProviderFactory.make(
                 providerFlag: provider,
                 modelFlag: model,
@@ -445,8 +444,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             }
 
             if dryRun {
-                try output.printAgent(parsed)
-                return
+                return AgentResult(parsed)
             }
 
             let bridge = RemindersBridge()
@@ -468,7 +466,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 url: nil
             )
 
-            try output.printAgent(result)
+            return AgentResult(result)
         }
     }
 }

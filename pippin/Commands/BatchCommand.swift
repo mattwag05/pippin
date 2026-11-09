@@ -6,7 +6,7 @@ import Foundation
 ///
 /// The MCP companion tool `batch` is the real unlock — MCP serializes tool
 /// calls one at a time, so a single `batch` call is the only way to fan out.
-public struct BatchCommand: AsyncParsableCommand {
+public struct BatchCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "batch",
         abstract: "Execute multiple pippin commands concurrently from a JSON array.",
@@ -40,7 +40,7 @@ public struct BatchCommand: AsyncParsableCommand {
         }
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let parsed = try Self.readEntries(entries: entries, input: input)
         let pippinPath = MCPServerRuntime.resolvePippinPath()
         let results = await Self.dispatch(
@@ -49,7 +49,7 @@ public struct BatchCommand: AsyncParsableCommand {
             pippinPath: pippinPath
         )
 
-        try output.printAgent(results)
+        return AgentResult(results)
     }
 
     // MARK: - Helpers

@@ -4,7 +4,7 @@ import Foundation
 
 // MARK: - Index
 
-public struct MailIndex: AsyncParsableCommand {
+public struct MailIndex: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "index",
         abstract: "Build or update the semantic search index for mail messages."
@@ -32,7 +32,7 @@ public struct MailIndex: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let embedProvider = try AIProviderFactory.makeEmbeddingProvider(
             providerFlag: provider, modelFlag: model, urlFlag: ollamaUrl
         )
@@ -126,13 +126,13 @@ public struct MailIndex: AsyncParsableCommand {
         }
 
         let result = IndexResult(indexed: indexed, skipped: skipped, total: messages.count)
-        try output.emit(result, timedOut: indexOutcome.timedOut, timedOutHint: "mailbox scan timed out — index will be partial")
+        return .emit(result, timedOut: indexOutcome.timedOut, timedOutHint: "mailbox scan timed out — index will be partial")
     }
 }
 
 // MARK: - Sanitize
 
-public struct MailSanitize: AsyncParsableCommand {
+public struct MailSanitize: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "sanitize",
         abstract: "Scan a message for prompt injection patterns."
@@ -157,7 +157,7 @@ public struct MailSanitize: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let messageId = self.messageId
         let aiAssisted = self.aiAssisted
         let provider = self.provider
@@ -178,13 +178,13 @@ public struct MailSanitize: AsyncParsableCommand {
             }
         }
 
-        try output.printAgent(scanResult)
+        return AgentResult(scanResult)
     }
 }
 
 // MARK: - Triage
 
-public struct MailTriage: AsyncParsableCommand {
+public struct MailTriage: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "triage",
         abstract: "AI-powered triage: classify and prioritize messages using metadata only."
@@ -224,7 +224,7 @@ public struct MailTriage: AsyncParsableCommand {
         }
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let account = self.account
         let mailbox = self.mailbox
         let limit = self.limit
@@ -266,13 +266,13 @@ public struct MailTriage: AsyncParsableCommand {
             fputs("warning: mail scan timed out — triage operating on partial results; some unread messages may be missed\n", stderr)
         }
 
-        try output.emit(result, timedOut: triageOutcome.timedOut, timedOutHint: "mailbox scan timed out — triage results will be partial")
+        return .emit(result, timedOut: triageOutcome.timedOut, timedOutHint: "mailbox scan timed out — triage results will be partial")
     }
 }
 
 // MARK: - Extract
 
-public struct MailExtract: AsyncParsableCommand {
+public struct MailExtract: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "extract",
         abstract: "Extract structured data (dates, amounts, contacts, action items) from a message."
@@ -294,7 +294,7 @@ public struct MailExtract: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let messageId = self.messageId
         let provider = self.provider
         let model = self.model
@@ -314,7 +314,7 @@ public struct MailExtract: AsyncParsableCommand {
                 provider: aiProvider
             )
         }
-        try output.printAgent(result)
+        return AgentResult(result)
     }
 }
 
