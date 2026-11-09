@@ -100,6 +100,16 @@ background). Run it again any time TCC resets (e.g. after a macOS upgrade).
 > a one-time re-grant — rerun `pippin permissions` once after the switch. Full
 > Disk Access is always a manual toggle.
 
+## Try it
+
+These commands change nothing, and each answers with the same JSON envelope:
+
+```bash
+pippin doctor --fields name,status     # which integrations are ready
+pippin mail show nope                  # an error, with a machine-readable next_step
+pippin mail send --to you@example.com --subject Hello --body "Hi" --dry-run  # a preview; needs Mail access and an account
+```
+
 ## Commands
 
 ### Mail
