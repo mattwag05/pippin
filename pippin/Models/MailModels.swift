@@ -16,6 +16,8 @@ public enum MailBridgeError: LocalizedError, Sendable {
     case timeout
     /// A send timed out. The message may or may not have gone out.
     case sendOutcomeUnknown
+    /// Another `mail cache fill` holds the lock.
+    case fillInProgress
     case decodingFailed(String)
     case invalidMessageId(String)
     case invalidMailbox(String)
@@ -31,6 +33,8 @@ public enum MailBridgeError: LocalizedError, Sendable {
         case .searchIncomplete:
             return "Mail search timed out before examining a complete result set. Narrow with --account, --mailbox, --after, or --before and retry."
         case .timeout: return "Mail automation timed out. Try narrowing with --account, --mailbox, or --after."
+        case .fillInProgress:
+            return "Another mail cache fill is already running."
         case .sendOutcomeUnknown:
             return "The send timed out and may or may not have been delivered. Check the Sent mailbox before sending again."
         case .decodingFailed: return "Failed to decode Mail response"
@@ -60,6 +64,7 @@ extension MailBridgeError: RemediableError {
         case .searchIncomplete: return "search_incomplete"
         case .timeout: return "timeout"
         case .sendOutcomeUnknown: return "send_outcome_unknown"
+        case .fillInProgress: return "fill_in_progress"
         case .decodingFailed: return "decoding_failed"
         case .invalidMessageId: return "invalid_message_id"
         case .invalidMailbox: return "invalid_mailbox"
@@ -74,6 +79,7 @@ extension MailBridgeError: RemediableError {
         case .accountNotFound: return .call(tool: "mail_accounts", argv: ["mail", "accounts"])
         case .searchIncomplete, .decodingFailed, .invalidMessageId: return .none
         case .timeout: return .retry(after: 5)
+        case .fillInProgress: return .call(tool: "job_list", argv: ["job", "list"])
         case .sendOutcomeUnknown:
             return .call(tool: "mail_list", args: ["mailbox": "Sent"], argv: ["mail", "list", "--mailbox", "Sent"])
         case .invalidMailbox: return .call(tool: "mail_mailboxes", argv: ["mail", "mailboxes"])

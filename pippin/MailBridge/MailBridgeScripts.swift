@@ -42,7 +42,11 @@ extension MailBridge {
                 b.sender = spec.sender();
                 b.size = spec.messageSize();
                 var idsAfter = spec.id();
-            } catch (e) { return null; }
+            } catch (e) {
+                // Plural getters throw -1728 on an empty mailbox rather than returning [].
+                try { if (spec.length === 0) return {ids: [], received: [], sent: [], read: [], subject: [], sender: [], size: []}; } catch (e2) {}
+                return null;
+            }
             var n = b.ids.length;
             if (b.received.length !== n || b.sent.length !== n || b.read.length !== n
                 || b.subject.length !== n || b.sender.length !== n || b.size.length !== n

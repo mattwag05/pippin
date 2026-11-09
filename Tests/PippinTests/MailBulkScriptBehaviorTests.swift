@@ -63,6 +63,7 @@ final class MailBulkScriptBehaviorTests: XCTestCase {
             return rows.map(function(r) { return r.size; });
         };
         for (var key in (opts.overrides || {})) messages[key] = opts.overrides[key];
+        Object.defineProperty(messages, 'length', {get: function() { return rows.length; }});
         return {name: function() { return name; }, messages: messages, mailboxes: function() { return []; }};
     }
     function fakeAccount(name, mailboxes) {
@@ -530,5 +531,13 @@ final class MailBulkScriptBehaviorTests: XCTestCase {
         let run = try execute(listScript(), accounts: oneAccount(rows))
         XCTAssertEqual(run.results.first?["subject"] as? String, "")
         XCTAssertEqual(run.results.first?["from"] as? String, "")
+    }
+
+    func testEmptyMailboxIsNotUnreadable() throws {
+        let empty = "{overrides: {id: function() { throw new Error('-1728'); }}}"
+        let accounts = "[fakeAccount('A', [fakeMailbox('Empty', [], \(empty)), fakeMailbox('Good', __rows)])]"
+        let run = try execute(searchScript(), accounts: accounts)
+        XCTAssertEqual(run.results.count, 2)
+        XCTAssertEqual(run.meta["timedOut"] as? Bool, false)
     }
 }

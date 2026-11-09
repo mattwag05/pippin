@@ -82,7 +82,7 @@ background). Run it again any time TCC resets (e.g. after a macOS upgrade).
 | Contacts | Contacts | ✅ `pippin permissions` |
 | Automation > Mail | Mail | ✅ `pippin permissions` |
 | Automation > Notes | Notes | ✅ `pippin permissions` |
-| Full Disk Access | Voice Memos, Messages; Mail fast path (optional, ~1000x list/search) | ❌ grant manually (no prompt exists) |
+| Full Disk Access | Voice Memos, Messages; Mail fast path (optional, ~1000x list/search; `mail cache fill` is the alternative without it) | ❌ grant manually (no prompt exists) |
 
 > **Persistence:** grants stick across rebuilds/upgrades only if the binary is
 > signed with a stable identity. `make install` / the Homebrew formula sign with
@@ -112,6 +112,9 @@ pippin mail search "invoice" --preview 200                       # inline a body
 # A timed-out scan with matches returns them with `partial: true`. A timed-out scan
 # with no matches returns `search_incomplete` plus guidance to narrow the search,
 # so incomplete coverage is never reported as a clean empty result.
+# Without Full Disk Access, build Pippin's own index for faster list and search:
+pippin job run -- mail cache fill
+
 # With Full Disk Access granted, list/search/activity metadata reads Mail's on-disk
 # Envelope Index directly (~ms, full-history search — `pippin doctor` shows availability).
 # Without it, the JXA path applies; on large multi-account mailboxes pair --from/--body

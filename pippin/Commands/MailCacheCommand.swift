@@ -11,7 +11,7 @@ public extension MailCommand {
         public static let configuration = CommandConfiguration(
             commandName: "cache",
             abstract: "Inspect and manage the local mail body cache.",
-            subcommands: [Stats.self, Clear.self, Warm.self]
+            subcommands: [Stats.self, Clear.self, Warm.self, Fill.self]
         )
 
         public init() {}
@@ -64,6 +64,38 @@ public extension MailCommand {
                     deleted = MailBodyCache.shared?.clear() ?? 0
                 }
                 return AgentResult(ClearResult(deleted: deleted))
+            }
+        }
+
+        // MARK: - fill
+
+        struct Fill: AgentCommand {
+            public static let configuration = CommandConfiguration(
+                commandName: "fill",
+                abstract: "Fill or refresh Pippin's mail metadata index, which needs no Full Disk Access.",
+                discussion: "Can take minutes on large accounts, so run it through `pippin job run -- mail cache fill`. Re-running resumes: mailboxes finished within --max-age-hours are skipped."
+            )
+
+            @Option(name: .long, help: "Limit to a single account (default: all).")
+            public var account: String?
+
+            @Option(name: .long, help: "Skip mailboxes refreshed within this many hours (default: 6).")
+            public var maxAgeHours: Double = 6
+
+            @OptionGroup public var output: OutputOptions
+
+            public init() {}
+
+            public mutating func validate() throws {
+                guard maxAgeHours >= 0 else { throw ValidationError("--max-age-hours must be 0 or greater.") }
+            }
+
+            public mutating func execute() async throws -> AgentResult {
+                let account = self.account
+                let maxAge = maxAgeHours * 3600
+                return try await AgentResult(detachBlocking {
+                    try MailBridge.fillMetaStore(account: account, maxAge: maxAge)
+                })
             }
         }
 

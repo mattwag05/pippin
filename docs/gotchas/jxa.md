@@ -139,6 +139,8 @@ Fix: fetch the property for the whole collection in **one** Apple Event via the 
 
 Alignment held everywhere: every property array had the mailbox's length, `id()` was identical before and after the other reads, and 50 random per-message spot checks matched the bulk arrays on all four mailboxes. Gmail's `[Gmail]/All Mail` is nested, so `acct.mailboxes.byName('All Mail')` fails with -1728; enumerate `acct.mailboxes()` and match `name()`. A ranged AppleScript read (`messages a thru b`) was not measured because whole-mailbox bulk already meets the budget.
 
+Plural getters throw -1728 on an empty mailbox rather than returning `[]`, so check `spec.length === 0` before treating a throw as a failure. Positional specifiers (`mb.messages[i]`) cost about 650 ms a row on a large mailbox; materialize once with `mb.messages()` and index that array.
+
 Spotlight is not an option without Full Disk Access: `mdfind` for `com.apple.mail.emlx` and `kMDItemKind == "Mail Message"` returns 0 from a CLI on an index that is enabled (pippin-pnok).
 
 ## Parallel osascript into Mail.app — Apple Events do NOT serialize (pippin-17rq, measured 2026-07-30)

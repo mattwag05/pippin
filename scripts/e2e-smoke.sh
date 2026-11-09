@@ -193,9 +193,9 @@ fi
 # pippin-xz6: an empty --before result whose newest-N window never reached the
 # cutoff must carry the shortfall advisory (JXA must emit oldestExaminedMs /
 # reachedMailboxEnd). Pass if matches exist (impossible pre-2000) OR the hint fired.
-# PIPPIN_MAIL_FASTPATH=0: the hint is a JXA-window artifact — the Envelope Index
+# PIPPIN_MAIL_FASTPATH=0 PIPPIN_MAIL_STORE=0: the hint is a JXA-window artifact — the Envelope Index
 # fast path scans the full index, so its empty result is complete and hint-free.
-PIPPIN_MAIL_FASTPATH=0 run "mail list --before shortfall hint (pippin-xz6, JXA path)" "
+PIPPIN_MAIL_FASTPATH=0 PIPPIN_MAIL_STORE=0 run "mail list --before shortfall hint (pippin-xz6, JXA path)" "
 len(d['data']) > 0 or any('scan window did not reach' in w for w in (d.get('warnings') or []))" \
   -- mail list --before 2000-01-01 --limit 3
 
@@ -215,7 +215,7 @@ rows = d.get('data') or [{}]
 print(rows[0].get('name', ''))")"
   AFTER="$(date -v-3d +%Y-%m-%d)"
   FAST="$("$BIN" mail list --account "$ACCT" --after "$AFTER" --limit 20 --no-contacts --format agent 2>/dev/null)"
-  SLOW="$(PIPPIN_MAIL_FASTPATH=0 "$BIN" mail list --account "$ACCT" --after "$AFTER" --limit 20 --no-contacts --format agent 2>/dev/null)"
+  SLOW="$(PIPPIN_MAIL_FASTPATH=0 PIPPIN_MAIL_STORE=0 "$BIN" mail list --account "$ACCT" --after "$AFTER" --limit 20 --no-contacts --format agent 2>/dev/null)"
   VERDICT="$(FAST="$FAST" SLOW="$SLOW" python3 -c "
 import json, os
 try:
@@ -257,7 +257,7 @@ except Exception:
     print(-1); sys.exit()
 print(len(d.get('data') or []) if d.get('status') == 'ok' else -1)")"
     [[ "$NFAST" != "0" ]] && continue
-    NSLOW="$(PIPPIN_MAIL_FASTPATH=0 "$BIN" mail list --account "$acct" --mailbox INBOX --limit 5 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
+    NSLOW="$(PIPPIN_MAIL_FASTPATH=0 PIPPIN_MAIL_STORE=0 "$BIN" mail list --account "$acct" --mailbox INBOX --limit 5 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -335,7 +335,7 @@ FIRST_ACCT=""
 while IFS= read -r acct; do
   [[ -z "$acct" ]] && continue
   [[ -z "$FIRST_ACCT" ]] && FIRST_ACCT="$acct"
-  ST="$(PIPPIN_MAIL_FASTPATH=0 "$BIN" mail list --account "$acct" --unread --limit 3 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
+  ST="$(PIPPIN_MAIL_FASTPATH=0 PIPPIN_MAIL_STORE=0 "$BIN" mail list --account "$acct" --unread --limit 3 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -349,7 +349,7 @@ print('ok' if d.get('status') == 'ok' else (d.get('error') or {}).get('code', '?
   esac
 done <<< "$ACCTS"
 if [[ -n "$FIRST_ACCT" ]]; then
-  ST="$(PIPPIN_MAIL_FASTPATH=0 "$BIN" mail list --account "$FIRST_ACCT" --limit 500 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
+  ST="$(PIPPIN_MAIL_FASTPATH=0 PIPPIN_MAIL_STORE=0 "$BIN" mail list --account "$FIRST_ACCT" --limit 500 --fields id --no-contacts --format agent 2>/dev/null | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)
