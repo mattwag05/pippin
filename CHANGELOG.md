@@ -9,8 +9,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.41.1] - 2026-11-08
+
 ### Fixed
 
+- [fix] `LICENSE` is now the canonical Apache 2.0 text.
 - [fix] Missing Apple on-device speech assets now report a typed transcription failure instead of a raw framework error.
 
 ---
@@ -993,7 +998,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
      so this is a stable end state, not a backlog item. Don't "fix" it by
      inventing links: check `git tag -l` for both endpoints first. -->
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.41.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.41.1...HEAD
+[0.41.1]: https://github.com/mattwag05/pippin/compare/v0.41.0...v0.41.1
 [0.41.0]: https://github.com/mattwag05/pippin/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/mattwag05/pippin/compare/v0.39.0...v0.40.0
 [0.39.0]: https://github.com/mattwag05/pippin/compare/v0.38.1...v0.39.0
