@@ -43,7 +43,7 @@ pippin do "what's on my calendar today?"  # let an LLM plan the tool calls
 brew install mattwag05/tap/pippin
 ```
 
-The formula also installs the default transcription backend (`pipx install mlx-audio==<pinned>`) when `pipx` is on PATH. Otherwise it prints a one-line hint. Run `brew install pipx && pipx install mlx-audio`, then check it with `pippin doctor`.
+The formula doesn't install the default transcription backend. Its caveats print the install command with the pinned version. Check the result with `pippin doctor`.
 
 **Pre-built binary** (arm64, macOS 15+):
 

@@ -8,7 +8,7 @@ public enum AudioBridge {
     // MARK: - Version Pinning
 
     /// The mlx-audio version pippin was built and tested against. Bumped together
-    /// with the Homebrew tap's `post_install` pipx pin. Keep in sync.
+    /// with the Homebrew tap's `MLX_AUDIO_PINNED` caveat. Keep in sync.
     public static let pinnedMLXAudioVersion = "0.4.2"
 
     // MARK: - STT Entry Resolution
