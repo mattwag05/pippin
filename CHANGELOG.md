@@ -12,6 +12,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - [breaking] Output is agent-only. The `text` and `json` formats were removed; every command, and every error including argument parsing, writes the compact JSON agent envelope. `--format agent` is still accepted as a no-op; `--format text` or `--format json` fails with a usage error (exit 2) naming the replacement. Scripts that read bare JSON now read `.data`; `pippin shell --format` is gone; exit code 64 no longer occurs. Closes pippin-xg3z.
+- [breaking] Envelope v4: every error carries `error.next_step` with `retryable`, `retry_after_seconds`, `next_call` and `human_action`, authored per source. Codes no longer depend on Swift case names. `missing_api_key`, `malformed_ai_response` and `invalid_entries_json` replace their garbled forms. HTTP 429 is `rate_limited`, HTTP 5xx is `server_error`. MCP argument errors, child timeouts and crashes return error envelopes; a crash is `child_crashed` rather than a timeout. Closes pippin-pxz9.
+- [refactor] Commands return results instead of printing, so the CLI and in-process MCP tools share one implementation. An in-process tool that exceeds 25s moves to a child process for the session. Closes pippin-ql27.
 
 ### Added
 
@@ -21,6 +23,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- [bug] A Mail or Messages send that timed out could be sent twice, because the script runner re-ran it after relaunching the app. Sends no longer auto-retry, and a timed-out send reports `send_outcome_unknown`.
 - [bug] Semantic search no longer ranks messages embedded by a different model than the active one, and `mail index` re-embeds them after a backend change. Indexes built with Ollama stay current. Closes pippin-edjh.
 - [bug] Ollama embeddings now use `ai.ollama.url` instead of always calling localhost. Closes pippin-edjh.
 - [bug] `pippin doctor` reports the backend configured for AI features, embeddings, and transcription. It no longer says `mail triage` and `mail extract` need Ollama when another provider is configured. Closes pippin-edjh.

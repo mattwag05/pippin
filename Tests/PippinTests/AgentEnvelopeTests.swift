@@ -20,7 +20,8 @@ final class AgentEnvelopeTests: XCTestCase {
         // createdAt/modifiedAt, all-day date-only, memos millis.
         // v3 (2026-08-12): `data` keeps its type under pagination; the cursor
         // moved to a top-level `next_cursor` (pippin-37az).
-        XCTAssertEqual(AGENT_SCHEMA_VERSION, 3)
+        // v4 (2026-11-08): `error` always carries `next_step` (pippin-pxz9).
+        XCTAssertEqual(AGENT_SCHEMA_VERSION, 4)
     }
 
     // MARK: - Ok envelope shape

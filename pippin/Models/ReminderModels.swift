@@ -38,6 +38,29 @@ public enum RemindersBridgeError: LocalizedError, Sendable {
 }
 
 extension RemindersBridgeError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .accessDenied: return "access_denied"
+        case .reminderNotFound: return "reminder_not_found"
+        case .listNotFound: return "list_not_found"
+        case .saveFailed: return "save_failed"
+        case .ambiguousId: return "ambiguous_id"
+        case .noDefaultCalendar: return "no_default_calendar"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .accessDenied:
+            return .human("Run `pippin permissions` in a terminal and approve Reminders access.")
+        case .reminderNotFound, .ambiguousId:
+            return .call(tool: "reminders_list", argv: ["reminders", "list"])
+        case .listNotFound, .noDefaultCalendar:
+            return .call(tool: "reminders_lists", argv: ["reminders", "lists"])
+        case .saveFailed: return .none
+        }
+    }
+
     public var remediation: Remediation? {
         switch self {
         case .accessDenied:

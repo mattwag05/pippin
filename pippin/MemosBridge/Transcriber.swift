@@ -100,7 +100,10 @@ public struct OpenAITranscriber: Transcriber {
         let request = try buildRequest(audio: audio, fileName: (audioPath as NSString).lastPathComponent, timeout: timeout)
         let (data, response) = try sendSynchronousRequest(request, waitTimeoutSeconds: Int(timeout) + 5)
         guard response.statusCode == 200 else {
-            throw OpenAIProvider.errorForHTTPStatus(response.statusCode, data: data, model: model, baseURL: baseURL)
+            throw OpenAIProvider.errorForHTTPStatus(
+                response.statusCode, data: data, model: model, baseURL: baseURL,
+                retryAfter: parseRetryAfter(response)
+            )
         }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let text = json["text"] as? String
@@ -156,6 +159,23 @@ public enum TranscriberError: LocalizedError, Sendable {
             return "Unsupported transcription provider '\(name)'. Use 'mlx-audio', 'apple', or 'openai'."
         case let .failed(message):
             return message
+        }
+    }
+}
+
+extension TranscriberError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .notAvailable: return "not_available"
+        case .unsupportedProvider: return "unsupported_provider"
+        case .failed: return "failed"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .notAvailable: return .human("Install mlx-audio with `pipx install mlx-audio`, then retry.")
+        case .unsupportedProvider, .failed: return .none
         }
     }
 }

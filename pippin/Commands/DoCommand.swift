@@ -261,3 +261,18 @@ public enum DoError: LocalizedError {
         }
     }
 }
+
+extension DoError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .stepValidationFailed: return "step_validation_failed"
+        case .buildArgsFailed: return "build_args_failed"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .stepValidationFailed, .buildArgsFailed: return .none
+        }
+    }
+}

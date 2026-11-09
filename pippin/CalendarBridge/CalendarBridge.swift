@@ -42,6 +42,30 @@ public enum CalendarBridgeError: LocalizedError, Sendable {
 }
 
 extension CalendarBridgeError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .accessDenied: return "access_denied"
+        case .eventNotFound: return "event_not_found"
+        case .calendarNotFound: return "calendar_not_found"
+        case .saveFailed: return "save_failed"
+        case .ambiguousId: return "ambiguous_id"
+        case .dateParseError: return "date_parse_error"
+        case .aiParseError: return "ai_parse_error"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .accessDenied:
+            return .human("Run `pippin permissions` in a terminal and approve Calendar access.")
+        case .eventNotFound, .ambiguousId:
+            return .call(tool: "calendar_events", argv: ["calendar", "events"])
+        case .calendarNotFound:
+            return .call(tool: "calendar_list", argv: ["calendar", "list"])
+        case .saveFailed, .dateParseError, .aiParseError: return .none
+        }
+    }
+
     public var remediation: Remediation? {
         switch self {
         case .accessDenied:

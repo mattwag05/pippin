@@ -158,3 +158,13 @@ private struct AudioCommandError: LocalizedError {
         errorDescription: "mlx-audio is not available. Install with: pip install mlx-audio"
     )
 }
+
+extension AudioCommandError: RemediableError {
+    var agentCode: String {
+        "audio_command_error"
+    }
+
+    var nextStep: NextStep {
+        .none
+    }
+}

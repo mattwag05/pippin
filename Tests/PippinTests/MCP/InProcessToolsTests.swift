@@ -92,11 +92,12 @@ final class InProcessToolsTests: XCTestCase {
 
     func testInProcessToolArgErrorMatchesChildPathShape() async throws {
         // buildArgs still validates arguments for in-process tools, so a missing
-        // required arg yields the same "Argument error: …" text as the child path.
+        // required arg yields the same error envelope as the child path.
         let (text, isError) = try await callTool("reminders_show")
         XCTAssertTrue(isError)
-        XCTAssertTrue(text.hasPrefix("Argument error:"), "got: \(text)")
-        XCTAssertTrue(text.contains("id"))
+        let error = try XCTUnwrap(decodeObject(text)["error"] as? [String: Any])
+        XCTAssertEqual(error["code"] as? String, "missing_required")
+        XCTAssertEqual(error["message"] as? String, "Missing required argument: id")
     }
 
     // MARK: - Live-store envelope parity (ok or access_denied, both envelope v1)

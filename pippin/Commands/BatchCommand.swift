@@ -135,10 +135,11 @@ public struct BatchCommand: AgentCommand {
                 message: "Child stdout was not valid JSON: \(String(trimmed.prefix(200)))"
             )
         } catch {
-            return entryEnvelopeError(
-                code: .childLaunchFailed,
-                message: error.localizedDescription
-            )
+            // Encodes the real cause: a timeout must not read as a launch failure.
+            return (try? JSONDecoder().decode(
+                JSONValue.self,
+                from: Data(MCPInProcessTools.errorEnvelope(error, startedAt: Date()).utf8)
+            )) ?? .object(["status": .string("error")])
         }
     }
 
@@ -175,7 +176,6 @@ public struct BatchCommand: AgentCommand {
 public enum BatchEntryErrorCode: String, Sendable {
     case emptyOutput = "empty_output"
     case invalidJSON = "invalid_json"
-    case childLaunchFailed = "child_launch_failed"
 }
 
 // MARK: - Entry decoding
@@ -219,6 +219,21 @@ public enum BatchError: LocalizedError {
             return "pippin batch: no input — provide a JSON array via stdin, --input, or --entries."
         case let .invalidEntriesJSON(detail):
             return "pippin batch: input was not a valid JSON array of {cmd, args} entries: \(detail)"
+        }
+    }
+}
+
+extension BatchError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .emptyInput: return "empty_input"
+        case .invalidEntriesJSON: return "invalid_entries_json"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .emptyInput, .invalidEntriesJSON: return .none
         }
     }
 }

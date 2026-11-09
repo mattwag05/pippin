@@ -50,7 +50,8 @@ public struct OpenAIProvider: AIProvider {
             )
             guard httpResponse.statusCode == 200 else {
                 throw Self.errorForHTTPStatus(
-                    httpResponse.statusCode, data: data, model: model, baseURL: baseURL
+                    httpResponse.statusCode, data: data, model: model, baseURL: baseURL,
+                    retryAfter: parseRetryAfter(httpResponse)
                 )
             }
             return try Self.parseCompletion(data)
@@ -63,7 +64,8 @@ public struct OpenAIProvider: AIProvider {
         _ statusCode: Int,
         data: Data,
         model: String,
-        baseURL: String
+        baseURL: String,
+        retryAfter: Int? = nil
     ) -> AIProviderError {
         let body = String(data: data, encoding: .utf8) ?? ""
         // A 404 whose body names the model is "model not served here", not a
@@ -80,7 +82,9 @@ public struct OpenAIProvider: AIProvider {
         default:
             classification = "endpoint returned an HTTP error"
         }
-        return .apiError(statusCode, "OpenAI-compatible \(classification) (HTTP \(statusCode)).")
+        let detail = "OpenAI-compatible \(classification) (HTTP \(statusCode))."
+        if statusCode == 429 { return .rateLimited(retryAfterSeconds: retryAfter, detail) }
+        return .apiError(statusCode, detail)
     }
 
     /// Build the chat-completions POST request. Pure (no network I/O) so the

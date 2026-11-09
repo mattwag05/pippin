@@ -505,7 +505,7 @@ enum MailBridge {
             dryRun: dryRun
         )
         // Send triggers SMTP handshake — use 45s timeout
-        let json = try runScript(script, timeoutSeconds: 45)
+        let json = try runScript(script, timeoutSeconds: 45, sending: !dryRun)
         return try decode(BridgeActionResult.self, from: json)
     }
 
@@ -543,7 +543,7 @@ enum MailBridge {
             attachmentPaths: attachmentPaths,
             dryRun: dryRun
         )
-        let json = try runScript(script, timeoutSeconds: 45)
+        let json = try runScript(script, timeoutSeconds: 45, sending: !dryRun)
         return try decode(BridgeActionResult.self, from: json)
     }
 
@@ -571,7 +571,7 @@ enum MailBridge {
             attachmentPaths: attachmentPaths,
             dryRun: dryRun
         )
-        let json = try runScript(script, timeoutSeconds: 45)
+        let json = try runScript(script, timeoutSeconds: 45, sending: !dryRun)
         return try decode(BridgeActionResult.self, from: json)
     }
 

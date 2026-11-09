@@ -418,6 +418,23 @@ public enum JobCommandError: LocalizedError {
     }
 }
 
+extension JobCommandError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .launchFailed: return "launch_failed"
+        case .waitTimedOut: return "wait_timed_out"
+        case .invalidDuration: return "invalid_duration"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .launchFailed, .invalidDuration: return .none
+        case .waitTimedOut: return .retry(after: 5)
+        }
+    }
+}
+
 // MARK: - Views
 
 /// Output shape for `pippin job show` — adds log tails to the base Job.

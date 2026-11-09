@@ -3,18 +3,21 @@ import Foundation
 extension MailBridge {
     // MARK: - Process Runner
 
-    static func runScript(_ script: String, timeoutSeconds: Int = 10) throws -> String {
+    /// `sending` marks a script that delivers mail. A timeout there cannot say
+    /// whether delivery happened, so the runner must not re-run it (a nil
+    /// `appName` disables its relaunch-and-retry) and the failure is not retryable.
+    static func runScript(_ script: String, timeoutSeconds: Int = 10, sending: Bool = false) throws -> String {
         do {
             return try ScriptRunner.run(
                 script,
                 timeoutSeconds: timeoutSeconds,
-                appName: "Mail",
+                appName: sending ? nil : "Mail",
                 automationBundleID: "com.apple.mail"
             )
         } catch ScriptRunnerError.automationDenied {
             throw MailBridgeError.accessDenied
         } catch ScriptRunnerError.timeout {
-            throw MailBridgeError.timeout
+            throw sending ? MailBridgeError.sendOutcomeUnknown : MailBridgeError.timeout
         } catch let ScriptRunnerError.nonZeroExit(msg) {
             throw mapScriptFailure(msg)
         } catch let ScriptRunnerError.stderrOnSuccess(msg) {

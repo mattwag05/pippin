@@ -35,7 +35,7 @@ struct MCPTool {
 }
 
 /// Errors raised while translating MCP arguments into a child process argv.
-enum MCPToolArgError: LocalizedError {
+enum MCPToolArgError: LocalizedError, RemediableError {
     case missingRequired(String)
     case wrongType(field: String, expected: String)
 
@@ -45,6 +45,15 @@ enum MCPToolArgError: LocalizedError {
         case let .wrongType(field, expected): return "Argument '\(field)' must be \(expected)"
         }
     }
+
+    var agentCode: String {
+        switch self {
+        case .missingRequired: return "missing_required"
+        case .wrongType: return "invalid_argument"
+        }
+    }
+
+    var nextStep: NextStep { .none }
 }
 
 /// Build the argv prefix `[<parts>..., "--format", "agent"]`. Centralizes the contract

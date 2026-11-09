@@ -326,3 +326,13 @@ private struct BrowserCommandError: LocalizedError {
         message
     }
 }
+
+extension BrowserCommandError: RemediableError {
+    var agentCode: String {
+        "browser_command_error"
+    }
+
+    var nextStep: NextStep {
+        .none
+    }
+}

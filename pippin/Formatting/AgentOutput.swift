@@ -12,7 +12,9 @@ import Foundation
 /// switched `data` from `[...]` to `{items, next_cursor}` with no version
 /// change, so `for m in payload["data"]` iterated dict KEYS and yielded the
 /// string "items" — legal in most languages, hence no error, just wrong data.
-public let AGENT_SCHEMA_VERSION = 3
+/// v4 (2026-11-08): `error` always carries `next_step` {retryable,
+/// retry_after_seconds?, next_call?, human_action?} (pippin-pxz9).
+public let AGENT_SCHEMA_VERSION = 4
 
 // MARK: - Envelope types
 
@@ -75,7 +77,7 @@ public struct AgentOkEnvelope<T: Encodable>: Encodable {
 }
 
 /// Error envelope — wraps the `AgentError.ErrorPayload` under `error`.
-/// Shape: {"v":1,"status":"error","duration_ms":12,"error":{"code":"…","message":"…","remediation":{…}?}}
+/// Shape: {"v":4,"status":"error","duration_ms":12,"error":{"code":"…","message":"…","next_step":{…},"remediation":{…}?}}
 public struct AgentErrorEnvelope: Encodable {
     public let v: Int
     public let status: String
@@ -161,31 +163,37 @@ public func projectedAgentJSON(
 
 /// Structured error payload for agent mode.
 /// Output shape inside envelope:
-///   {"code":"snake_case_code","message":"...","remediation":{...}?}
+///   {"code":"snake_case_code","message":"...","next_step":{...},"remediation":{...}?}
 /// The `remediation` field is omitted (not null) when no catalog entry exists
 /// for the error's code, so unchanged error shapes remain backward-compatible.
 public struct AgentError: Encodable {
     public struct ErrorPayload: Encodable {
         public let code: String
         public let message: String
+        public let nextStep: NextStep
         public let remediation: Remediation?
 
         private enum CodingKeys: String, CodingKey {
             case code, message, remediation
+            case nextStep = "next_step"
         }
 
         public func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(code, forKey: .code)
             try container.encode(message, forKey: .message)
+            try container.encode(nextStep, forKey: .nextStep)
             try container.encodeIfPresent(remediation, forKey: .remediation)
         }
     }
 
     public let error: ErrorPayload
 
-    public init(code: String, message: String, remediation: Remediation? = nil) {
-        error = ErrorPayload(code: code, message: message, remediation: remediation)
+    public init(code: String, message: String, remediation: Remediation? = nil, nextStep: NextStep? = nil) {
+        error = ErrorPayload(
+            code: code, message: message,
+            nextStep: nextStep ?? .derived(fromCode: code), remediation: remediation
+        )
     }
 
     /// Injected by the executable entry point with `ParsableCommand.message(for:)`
@@ -210,7 +218,10 @@ public struct AgentError: Encodable {
         // several permission errors share the `access_denied` code but need
         // different System Settings panes (pippin-ci2, pippin-oxy).
         let remediation = RemediationCatalog.resolve(for: error)
-        return AgentError(code: code, message: message, remediation: remediation)
+        return AgentError(
+            code: code, message: message, remediation: remediation,
+            nextStep: (error as? RemediableError)?.nextStep
+        )
     }
 
     /// Resolve the user-facing message for an error, recovering ArgumentParser's
@@ -261,6 +272,7 @@ private func durationMs(from start: Date) -> Int {
 /// when it's a bare identifier; otherwise we emit a stable, classifiable
 /// `unknown_error`. Typed PippinLib enum codes are unaffected. (pippin-2tg)
 public func agentErrorCode(for error: Error) -> String {
+    if let authored = error as? RemediableError { return authored.agentCode }
     // String(describing:) on an enum case gives "caseName(assoc)" or just "caseName"
     let description = String(describing: error)
     // Strip associated values

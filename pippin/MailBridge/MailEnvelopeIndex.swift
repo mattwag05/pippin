@@ -39,6 +39,32 @@ enum MailEnvelopeIndexError: LocalizedError {
     }
 }
 
+extension MailEnvelopeIndexError: RemediableError {
+    var agentCode: String {
+        switch self {
+        case .databaseNotFound: return "database_not_found"
+        case .unsupportedVersion: return "unsupported_version"
+        case .accessDenied: return "access_denied"
+        case .accountsUnavailable: return "accounts_unavailable"
+        case .mailboxUnresolved: return "mailbox_unresolved"
+        case .accountUnknown: return "account_unknown"
+        }
+    }
+
+    var nextStep: NextStep {
+        switch self {
+        case .databaseNotFound: return .human("Open the Mail app once so it creates its Envelope Index.")
+        case .unsupportedVersion:
+            return .human("Update pippin to a release that supports this Mail Envelope Index schema version.")
+        case .accessDenied:
+            return .human("Enable Full Disk Access for the app that launches pippin in System Settings > Privacy & Security, then relaunch it.")
+        case .accountsUnavailable: return .call(tool: "doctor", argv: ["doctor"])
+        case .mailboxUnresolved: return .call(tool: "mail_mailboxes", argv: ["mail", "mailboxes"])
+        case .accountUnknown: return .call(tool: "mail_accounts", argv: ["mail", "accounts"])
+        }
+    }
+}
+
 // MARK: - Account record
 
 /// One Mail account as the fast path needs it: the JXA-visible display name,

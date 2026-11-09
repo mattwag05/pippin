@@ -487,3 +487,8 @@ private struct SmartReminderError: LocalizedError {
         errorDescription = message
     }
 }
+
+extension SmartReminderError: RemediableError {
+    var agentCode: String { "smart_reminder_error" }
+    var nextStep: NextStep { .none }
+}

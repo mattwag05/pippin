@@ -118,3 +118,19 @@ enum SchemaValidatorError: LocalizedError, Equatable {
         }
     }
 }
+
+extension SchemaValidatorError: RemediableError {
+    var agentCode: String {
+        switch self {
+        case .missingRequired: return "missing_required"
+        case .unexpectedArgument: return "unexpected_argument"
+        case .wrongType: return "wrong_type"
+        }
+    }
+
+    var nextStep: NextStep {
+        switch self {
+        case .missingRequired, .unexpectedArgument, .wrongType: return .none
+        }
+    }
+}

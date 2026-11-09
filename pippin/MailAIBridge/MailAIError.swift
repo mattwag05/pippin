@@ -27,3 +27,29 @@ public enum MailAIError: LocalizedError, Sendable {
         }
     }
 }
+
+extension MailAIError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .malformedAIResponse: return "malformed_ai_response"
+        case .emptyEmbeddingIndex: return "empty_embedding_index"
+        case .embeddingFailed: return "embedding_failed"
+        case .unsupportedEmbeddingProvider: return "unsupported_embedding_provider"
+        case .embeddingModelRequired: return "embedding_model_required"
+        case .noEmbeddingsForModel: return "no_embeddings_for_model"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .malformedAIResponse: return .none
+        case .emptyEmbeddingIndex, .noEmbeddingsForModel:
+            return .human("Run `pippin mail index` to build embeddings for the active model.")
+        case .embeddingFailed: return .call(tool: "doctor", argv: ["doctor"])
+        case .unsupportedEmbeddingProvider:
+            return .human("Set ai.embeddings.provider in ~/.config/pippin/config.json to 'ollama' or 'openai'.")
+        case .embeddingModelRequired:
+            return .human("Set ai.embeddings.model in ~/.config/pippin/config.json or pass --model.")
+        }
+    }
+}

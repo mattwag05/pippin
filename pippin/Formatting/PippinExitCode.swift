@@ -20,7 +20,7 @@ import Foundation
 /// | 3    | resource not found              | no        | `event_not_found`, `memo_not_found`             |
 /// | 4    | auth / permission / config      | no        | `access_denied`, `missing_api_key`, `not_available` |
 /// | 5    | tool / bridge failure (default) | maybe     | `script_failed`, `database_error`               |
-/// | 7    | timeout / rate-limit            | yes       | `timed_out`, `timeout`, `rate_limited`          |
+/// | 7    | timeout / rate-limit / transient | yes      | `timed_out`, `timeout`, `rate_limited`, `network_error`, `server_error` |
 ///
 /// `--help`/`--version` paths are intentionally NOT routed through here;
 /// ArgumentParser keeps exit `0` and its formatted help output.
@@ -36,7 +36,8 @@ public enum PippinExitCode {
         // Check the retryable bucket first so any current or future
         // `*_timed_out` / `*_rate_limited*` code lands on 7 regardless of what
         // other substrings it carries.
-        if code.contains("timed_out") || code == "timeout" || code.contains("rate_limit") {
+        if code.contains("timed_out") || code == "timeout" || code.contains("rate_limit")
+            || code == "network_error" || code == "server_error" {
             return 7
         }
         if code == "access_denied"

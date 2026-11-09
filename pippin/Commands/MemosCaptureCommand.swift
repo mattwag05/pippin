@@ -261,3 +261,22 @@ public enum MemosCaptureError: LocalizedError, Sendable {
         }
     }
 }
+
+extension MemosCaptureError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .noRecordings: return "no_recordings"
+        case .memoTooShort: return "memo_too_short"
+        case .malformedAIResponse: return "malformed_ai_response"
+        case .listNotFound: return "list_not_found"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .noRecordings: return .human("Record a memo in the Voice Memos app, then retry.")
+        case .memoTooShort, .malformedAIResponse: return .none
+        case .listNotFound: return .call(tool: "reminders_lists", argv: ["reminders", "lists"])
+        }
+    }
+}

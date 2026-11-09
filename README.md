@@ -364,7 +364,7 @@ Every command answers with one contract: the compact JSON agent envelope `{v, st
 pippin agent-info --format agent     # version, formats, exit-code map, tool count, commands
 ```
 
-On failure pippin sets a typed exit code so a calling shell can branch without parsing JSON: `2` usage, `3` not-found, `4` auth/permission/config, `5` tool/bridge failure, `7` timeout/rate-limit (`64` for argument-parsing errors).
+On failure pippin sets a typed exit code so a calling shell can branch without parsing JSON: `2` usage, `3` not-found, `4` auth/permission/config, `5` tool/bridge failure, `7` timeout/rate-limit/transient failure. Every error envelope also carries `error.next_step`: whether to retry and when, the next call to make, or what a person has to do.
 
 ### Pagination
 

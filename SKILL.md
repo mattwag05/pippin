@@ -290,14 +290,14 @@ Ships with 44 tools covering mail, calendar, reminders, contacts, notes, voice m
 
 ### Envelope v1
 
-In `--format agent` mode, every response is wrapped in a versioned envelope:
+Every response is wrapped in a versioned envelope:
 
-- **Success:** `{"v":1,"status":"ok","duration_ms":N,"data":<payload>}` — the previous raw payload now lives under `.data`.
-- **Error:** `{"v":1,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","remediation":{…}?}}`
+- **Success:** `{"v":4,"status":"ok","duration_ms":N,"data":<payload>}`
+- **Error:** `{"v":4,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","next_step":{…},"remediation":{…}?}}`. Act on `next_step`: `retryable` with `retry_after_seconds` (same call can work again), `next_call` as `{tool, args, argv}` (make this call instead), `human_action` (only a person can do this; tell them). `send_outcome_unknown` means a send timed out and may have gone out, so check before sending again.
 
 `pippin mail accounts --format agent` →
 ```json
-{"v":1,"status":"ok","duration_ms":34,"data":[{"account":"iCloud","email":"user@icloud.com"},{"account":"Work","email":"user@company.com"}]}
+{"v":4,"status":"ok","duration_ms":34,"data":[{"account":"iCloud","email":"user@icloud.com"},{"account":"Work","email":"user@company.com"}]}
 ```
 
 Extract the payload with `jq '.data'`; check `jq -r '.status'` before consuming. Single-field error reads like `.error.code` still work.
@@ -315,7 +315,7 @@ On failure, `pippin` sets a typed process exit code so a calling shell can branc
 | `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
 | `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
 
-In `--format agent` mode, argument validation and parse failures (bad flags, missing required args) map to `2` (usage) like any other bad input. Outside agent mode they keep ArgumentParser's own codes (`64` usage, `0` for help/version) so its formatted usage text is preserved. Typed codes apply to runtime errors in `--format agent` mode and to errors with a catalogued remediation in text/json mode.
+Argument validation and parse failures (bad flags, missing required args, unknown subcommands) map to `2` (usage) with an error envelope. `--help` and `--version` print plain text and exit `0`.
 
 ### Pagination
 
@@ -330,7 +330,7 @@ pippin mail list --account icloud --cursor <token> --format agent
 **`.data` is always the payload array, paginated or not** (envelope v3). The cursor is envelope metadata and sits next to `status`/`duration_ms`, so `for m in payload["data"]` is correct in every case:
 
 ```json
-{"v":3,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
+{"v":4,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
 ```
 
 `next_cursor` is **omitted, not null**, on the last page — its absence is the end-of-results signal. (Envelope v2 and earlier switched `.data` to `{items, next_cursor}` whenever a pagination flag was passed, so iterating `.data` yielded the dict's keys instead of rows.)

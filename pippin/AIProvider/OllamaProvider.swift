@@ -81,6 +81,9 @@ public struct OllamaProvider: AIProvider {
                     )
                 }
                 let detail = String(data: data, encoding: .utf8) ?? ""
+                if httpResponse.statusCode == 429 {
+                    throw AIProviderError.rateLimited(retryAfterSeconds: parseRetryAfter(httpResponse), detail)
+                }
                 throw AIProviderError.apiError(httpResponse.statusCode, detail)
             }
 

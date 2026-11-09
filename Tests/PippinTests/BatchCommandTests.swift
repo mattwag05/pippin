@@ -138,7 +138,6 @@ final class BatchCommandTests: XCTestCase {
     func testBatchEntryErrorCodesAreSnakeCase() {
         XCTAssertEqual(BatchEntryErrorCode.emptyOutput.rawValue, "empty_output")
         XCTAssertEqual(BatchEntryErrorCode.invalidJSON.rawValue, "invalid_json")
-        XCTAssertEqual(BatchEntryErrorCode.childLaunchFailed.rawValue, "child_launch_failed")
     }
 
     // MARK: - Bad-child runOne path (synthetic envelope on launch failure)

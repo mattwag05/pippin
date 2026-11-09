@@ -34,6 +34,8 @@ public extension AIProvider {
 public enum AIProviderError: LocalizedError, Sendable {
     case networkError(String)
     case apiError(Int, String)
+    /// HTTP 429. `retryAfterSeconds` is the integer `Retry-After` header, if any.
+    case rateLimited(retryAfterSeconds: Int?, String)
     case timeout
     case providerUnreachable(String)
     case decodingFailed(String)
@@ -57,6 +59,7 @@ public enum AIProviderError: LocalizedError, Sendable {
         switch self {
         case let .networkError(msg): return "Network error: \(msg)"
         case let .apiError(code, msg): return "API error \(code): \(msg)"
+        case let .rateLimited(_, msg): return "API error 429: \(msg)"
         case .timeout: return "AI request timed out"
         case let .providerUnreachable(msg): return msg
         case let .decodingFailed(msg): return "Failed to decode AI response: \(msg)"
@@ -79,6 +82,38 @@ public enum AIProviderError: LocalizedError, Sendable {
 /// check, so the hint reaches both the agent envelope and the human CLI path
 /// via `RemediationCatalog.resolve`. Other cases fall through to the catalog.
 extension AIProviderError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .networkError: return "network_error"
+        case let .apiError(code, _): return (500 ... 599).contains(code) ? "server_error" : "api_error"
+        case .rateLimited: return "rate_limited"
+        case .timeout: return "timeout"
+        case .providerUnreachable: return "provider_unreachable"
+        case .decodingFailed: return "decoding_failed"
+        case .missingAPIKey: return "missing_api_key"
+        case .modelNotFound: return "model_not_found"
+        case .remoteModelNotFound: return "remote_model_not_found"
+        case .invalidProvider: return "invalid_provider"
+        case .incompleteCompletion: return "incomplete_completion"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .networkError, .timeout: return .retry(after: 5)
+        case let .apiError(code, _): return (500 ... 599).contains(code) ? .retry(after: 10) : .none
+        case let .rateLimited(retryAfterSeconds, _):
+            return NextStep(retryable: true, retryAfterSeconds: retryAfterSeconds ?? 30)
+        case .providerUnreachable:
+            return .human("Start Ollama with `ollama serve`, or set ai.ollama.url in ~/.config/pippin/config.json to a reachable server.")
+        case .decodingFailed, .invalidProvider, .incompleteCompletion: return .none
+        case .missingAPIKey: return .human("Set the ANTHROPIC_API_KEY environment variable or pass --api-key.")
+        case let .modelNotFound(model, _): return .human("Run `ollama pull \(model)`.")
+        case let .remoteModelNotFound(model, baseURL):
+            return .human("Set ai.openai.model in ~/.config/pippin/config.json to a model served by \(baseURL) instead of \(model).")
+        }
+    }
+
     public var remediation: Remediation? {
         switch self {
         case let .modelNotFound(model, available):
@@ -143,7 +178,7 @@ public func aiRequestTimeoutSeconds() -> TimeInterval {
 func isTransientAIError(_ error: AIProviderError) -> Bool {
     switch error {
     case let .apiError(code, _): return code == 429 || (500 ... 599).contains(code)
-    case .networkError: return true
+    case .networkError, .rateLimited: return true
     case .timeout, .providerUnreachable, .decodingFailed, .missingAPIKey, .modelNotFound,
          .remoteModelNotFound, .invalidProvider, .incompleteCompletion: return false
     }
@@ -186,6 +221,14 @@ func withAIRetry<T>(
         }
     }
     throw lastError
+}
+
+/// The `Retry-After` header as integer seconds; nil when absent or an HTTP-date.
+func parseRetryAfter(_ response: HTTPURLResponse) -> Int? {
+    guard let raw = response.value(forHTTPHeaderField: "Retry-After"),
+          let seconds = Int(raw.trimmingCharacters(in: .whitespaces)), seconds > 0
+    else { return nil }
+    return seconds
 }
 
 // MARK: - Shared synchronous HTTP helper

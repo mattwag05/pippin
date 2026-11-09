@@ -137,6 +137,28 @@ public enum ContactsBridgeError: LocalizedError, Sendable {
 }
 
 extension ContactsBridgeError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .accessDenied: return "access_denied"
+        case .contactNotFound: return "contact_not_found"
+        case .fetchFailed: return "fetch_failed"
+        case .groupNotFound: return "group_not_found"
+        case .saveFailed: return "save_failed"
+        case .deleteFailed: return "delete_failed"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .accessDenied:
+            return .human("Run `pippin permissions` in a terminal and approve Contacts access.")
+        case .contactNotFound: return .call(tool: "contacts_list", argv: ["contacts", "list"])
+        case .fetchFailed: return .call(tool: "doctor", argv: ["doctor"])
+        case .groupNotFound: return .call(tool: "contacts_groups", argv: ["contacts", "groups"])
+        case .saveFailed, .deleteFailed: return .none
+        }
+    }
+
     public var remediation: Remediation? {
         switch self {
         case .accessDenied:

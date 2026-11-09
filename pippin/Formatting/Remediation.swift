@@ -110,16 +110,85 @@ public extension Remediation {
     }
 }
 
-/// An error that supplies its own structured remediation, taking precedence
-/// over the code-based `RemediationCatalog` lookup in `AgentError.from(_:)`.
+/// A call the agent can make next to recover or learn more. `tool` is an MCP
+/// tool name, `args` its arguments, and `argv` the same call for CLI callers.
+public struct NextCall: Codable, Sendable, Equatable {
+    public let tool: String
+    public let args: [String: String]
+    public let argv: [String]
+
+    public init(tool: String, args: [String: String] = [:], argv: [String]) {
+        self.tool = tool
+        self.args = args
+        self.argv = argv
+    }
+}
+
+/// What a caller should do about a failure, as fields it can act on directly
+/// (pippin-pxz9). `humanAction` is set when no agent can fix it.
+public struct NextStep: Codable, Sendable, Equatable {
+    public let retryable: Bool
+    public let retryAfterSeconds: Int?
+    public let nextCall: NextCall?
+    public let humanAction: String?
+
+    public init(
+        retryable: Bool = false,
+        retryAfterSeconds: Int? = nil,
+        nextCall: NextCall? = nil,
+        humanAction: String? = nil
+    ) {
+        self.retryable = retryable
+        self.retryAfterSeconds = retryAfterSeconds
+        self.nextCall = nextCall
+        self.humanAction = humanAction
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case retryable
+        case retryAfterSeconds = "retry_after_seconds"
+        case nextCall = "next_call"
+        case humanAction = "human_action"
+    }
+
+    /// Nothing further to do: the input or the request has to change.
+    public static let none = NextStep()
+
+    public static func retry(after seconds: Int? = nil) -> NextStep {
+        NextStep(retryable: true, retryAfterSeconds: seconds)
+    }
+
+    public static func call(tool: String, args: [String: String] = [:], argv: [String]) -> NextStep {
+        NextStep(nextCall: NextCall(tool: tool, args: args, argv: argv))
+    }
+
+    public static func human(_ action: String) -> NextStep {
+        NextStep(humanAction: action)
+    }
+
+    /// For failures with no authored step (ArgumentParser, foreign errors):
+    /// retryability follows the exit class.
+    static func derived(fromCode code: String) -> NextStep {
+        NextStep(retryable: PippinExitCode.classify(code) == 7)
+    }
+}
+
+/// An error that states its own fixed code and next step, authored by the
+/// module where the raw failure happens, since one code such as `access_denied`
+/// needs a different fix per app. Neither has a default, so a new case cannot
+/// compile without deciding both.
 ///
-/// Needed because several distinct permission errors collapse to the same
-/// snake_case code (`access_denied`): Reminders, Calendar, and Contacts each
-/// require their own System Settings pane, not the Voice Memos Full Disk Access
-/// hint the catalog returns for that shared code. Conformances return `nil` for
-/// cases that should fall through to the catalog. (pippin-ci2)
-public protocol RemediableError {
+/// `remediation` supplies human-facing fix text and takes precedence over the
+/// code-based `RemediationCatalog`; it defaults to `nil` (catalog lookup).
+public protocol RemediableError: Error {
+    /// The stable snake_case code. Renaming a Swift case does not change it.
+    var agentCode: String { get }
+    var nextStep: NextStep { get }
     var remediation: Remediation? { get }
+}
+
+public extension RemediableError {
+    var remediation: Remediation? { nil }
 }
 
 /// Closed set of error codes that have a catalogued remediation. The raw

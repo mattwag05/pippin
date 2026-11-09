@@ -93,6 +93,6 @@ public struct AgentInfoCommand: AgentCommand {
         .init(code: 3, meaning: "resource not found", retryable: false),
         .init(code: 4, meaning: "auth / permission / config", retryable: false),
         .init(code: 5, meaning: "tool / bridge failure", retryable: false),
-        .init(code: 7, meaning: "timeout / rate-limit", retryable: true),
+        .init(code: 7, meaning: "timeout / rate-limit / transient network or server failure", retryable: true),
     ]
 }

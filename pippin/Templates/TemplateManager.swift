@@ -14,6 +14,21 @@ public enum TemplateError: LocalizedError, Sendable {
     }
 }
 
+extension TemplateError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .notFound: return "not_found"
+        case .invalidFrontmatter: return "invalid_frontmatter"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .notFound, .invalidFrontmatter: return .none
+        }
+    }
+}
+
 public struct Template: Sendable {
     public let name: String
     public let description: String

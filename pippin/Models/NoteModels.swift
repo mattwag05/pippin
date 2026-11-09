@@ -35,6 +35,27 @@ public enum NotesBridgeError: LocalizedError, Sendable {
 }
 
 extension NotesBridgeError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .scriptFailed: return "script_failed"
+        case .noteNotFound: return "note_not_found"
+        case .timeout: return "timeout"
+        case .decodingFailed: return "decoding_failed"
+        case .accessDenied: return "access_denied"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .scriptFailed: return .call(tool: "doctor", argv: ["doctor"])
+        case .noteNotFound: return .call(tool: "notes_list", argv: ["notes", "list"])
+        case .timeout: return .retry(after: 5)
+        case .decodingFailed: return .none
+        case .accessDenied:
+            return .human("Run `pippin permissions` in a terminal and approve Automation control of Notes.")
+        }
+    }
+
     public var remediation: Remediation? {
         switch self {
         case .accessDenied: return .automationAccess(app: "Notes", trigger: "pippin notes folders")

@@ -876,6 +876,20 @@ enum CalendarNameResolutionError: LocalizedError {
     }
 }
 
+extension CalendarNameResolutionError: RemediableError {
+    var agentCode: String {
+        switch self {
+        case .invalidCalendarName: return "invalid_calendar_name"
+        }
+    }
+
+    var nextStep: NextStep {
+        switch self {
+        case .invalidCalendarName: return .call(tool: "calendar_list", argv: ["calendar", "list"])
+        }
+    }
+}
+
 /// Match calendars by name. A unique exact (case-insensitive) match wins, so a
 /// calendar literally named "Family" stays reachable when "Family Calendar"
 /// also exists; only when nothing matches exactly does it fall back to
@@ -938,5 +952,19 @@ private enum SmartCalendarError: LocalizedError {
     var errorDescription: String? {
         if case let .calendarConflict(msg) = self { return msg }
         return nil
+    }
+}
+
+extension SmartCalendarError: RemediableError {
+    var agentCode: String {
+        switch self {
+        case .calendarConflict: return "calendar_conflict"
+        }
+    }
+
+    var nextStep: NextStep {
+        switch self {
+        case .calendarConflict: return .none
+        }
     }
 }
