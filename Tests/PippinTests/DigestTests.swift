@@ -73,10 +73,6 @@ final class DigestTests: XCTestCase {
         XCTAssertNoThrow(try DigestCommand.parse(["--format", "agent"]))
     }
 
-    func testDigestJsonFormatPasses() {
-        XCTAssertNoThrow(try DigestCommand.parse(["--format", "json"]))
-    }
-
     // MARK: - DigestPayload model round-trip
 
     func testDigestPayloadRoundTrip() throws {

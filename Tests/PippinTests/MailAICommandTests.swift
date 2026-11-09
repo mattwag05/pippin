@@ -31,7 +31,7 @@ final class MailAICommandTests: XCTestCase {
     }
 
     func testIndexAcceptsFormat() throws {
-        XCTAssertNoThrow(try MailCommand.Index.parse(["--format", "json"]))
+        XCTAssertNoThrow(try MailCommand.Index.parse(["--format", "agent"]))
     }
 
     func testIndexAcceptsAccount() throws {
@@ -57,7 +57,7 @@ final class MailAICommandTests: XCTestCase {
     }
 
     func testSanitizeAcceptsFormat() throws {
-        XCTAssertNoThrow(try MailCommand.Sanitize.parse(["msg123", "--format", "json"]))
+        XCTAssertNoThrow(try MailCommand.Sanitize.parse(["msg123", "--format", "agent"]))
     }
 
     func testShowSanitizeFlagDefault() throws {
@@ -82,7 +82,7 @@ final class MailAICommandTests: XCTestCase {
     }
 
     func testExtractAcceptsFormat() throws {
-        XCTAssertNoThrow(try MailCommand.Extract.parse(["id", "--format", "json"]))
+        XCTAssertNoThrow(try MailCommand.Extract.parse(["id", "--format", "agent"]))
     }
 
     // MARK: - Phase 4: Triage

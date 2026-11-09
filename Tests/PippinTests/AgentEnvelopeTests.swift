@@ -221,7 +221,7 @@ final class AgentEnvelopeTests: XCTestCase {
         let parsed = try OutputOptions.parse(["--format", "agent"])
         let page = Page(items: [Sample(name: "fixture", count: 1)], nextCursor: "next")
         let json = try decodeObject(captureStdout {
-            try parsed.emitPage(page, timedOutHint: "fixture timeout", renderText: {})
+            try parsed.emitPage(page, timedOutHint: "fixture timeout")
         })
 
         let items = try XCTUnwrap(json["data"] as? [[String: Any]])

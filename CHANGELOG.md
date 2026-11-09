@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- [breaking] Output is agent-only. The `text` and `json` formats were removed; every command, and every error including argument parsing, writes the compact JSON agent envelope. `--format agent` is still accepted as a no-op; `--format text` or `--format json` fails with a usage error (exit 2) naming the replacement. Scripts that read bare JSON now read `.data`; `pippin shell --format` is gone; exit code 64 no longer occurs. Closes pippin-xg3z.
+
 ### Added
 
 - [feat] `mail index` and `mail search --semantic` can use embeddings from any OpenAI-compatible `/v1/embeddings` endpoint, selected with `ai.embeddings` or `--provider`. Ollama remains the default. Closes pippin-edjh.

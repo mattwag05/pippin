@@ -104,14 +104,14 @@ final class BatchCommandTests: XCTestCase {
     }
 
     func testResolvedArgvDoesNotDoubleAddFormat() {
-        let entry = BatchEntry(cmd: "mail", args: ["list", "--format", "json"])
-        XCTAssertEqual(entry.resolvedArgv, ["mail", "list", "--format", "json"])
+        let entry = BatchEntry(cmd: "mail", args: ["list", "--format", "agent"])
+        XCTAssertEqual(entry.resolvedArgv, ["mail", "list", "--format", "agent"])
     }
 
     func testResolvedArgvRespectsEqualsFormatForm() {
         // ArgumentParser also accepts --format=value; don't inject a second one.
-        let entry = BatchEntry(cmd: "mail", args: ["list", "--format=json"])
-        XCTAssertEqual(entry.resolvedArgv, ["mail", "list", "--format=json"])
+        let entry = BatchEntry(cmd: "mail", args: ["list", "--format=agent"])
+        XCTAssertEqual(entry.resolvedArgv, ["mail", "list", "--format=agent"])
     }
 
     // MARK: - dispatch (empty input)

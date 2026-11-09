@@ -56,16 +56,11 @@ final class InitCommandTests: XCTestCase {
 
     func testInitCommandParsesNoArgs() throws {
         let command = try InitCommand.parse([])
-        XCTAssertEqual(command.output.format, .text)
+        XCTAssertEqual(command.output.format, .agent)
     }
 
     func testInitCommandParsesAgentFormat() throws {
         let command = try InitCommand.parse(["--format", "agent"])
-        XCTAssertTrue(command.output.isAgent)
-    }
-
-    func testInitCommandParsesJSONFormat() throws {
-        let command = try InitCommand.parse(["--format", "json"])
-        XCTAssertTrue(command.output.isJSON)
+        XCTAssertEqual(command.output.format, .agent)
     }
 }

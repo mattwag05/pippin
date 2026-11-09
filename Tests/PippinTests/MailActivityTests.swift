@@ -62,10 +62,6 @@ final class MailActivityTests: XCTestCase {
         XCTAssertEqual(MailCommand.Activity.parseMailboxList(cmd.mailboxes), ["INBOX", "Drafts", "Sent"])
     }
 
-    func testActivityAcceptsJsonFormat() {
-        XCTAssertNoThrow(try MailCommand.Activity.parse(["--format", "json"]))
-    }
-
     func testActivityAcceptsAgentFormat() {
         XCTAssertNoThrow(try MailCommand.Activity.parse(["--format", "agent"]))
     }

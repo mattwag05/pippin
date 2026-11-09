@@ -153,16 +153,7 @@ public struct DoCommand: AsyncParsableCommand {
     }
 
     private func emit(_ value: some Encodable) throws {
-        if output.isAgent {
-            try output.printAgent(value)
-        } else if output.isJSON {
-            try printJSON(value)
-        } else {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(value)
-            print(String(data: data, encoding: .utf8) ?? "")
-        }
+        try output.printAgent(value)
     }
 
     static func decodeChildStdout(_ stdout: Data) -> JSONValue {

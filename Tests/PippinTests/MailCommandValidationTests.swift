@@ -49,19 +49,9 @@ final class MailCommandValidationTests: XCTestCase {
         XCTAssertNoThrow(try MailCommand.Show.parse(["id-one", "--summarize"]))
     }
 
-    func testShowWithJsonFormat() throws {
-        let cmd = try MailCommand.Show.parse(["some-id", "--format", "json"])
-        XCTAssertTrue(cmd.output.isJSON)
-    }
-
-    func testShowWithTextFormat() throws {
-        let cmd = try MailCommand.Show.parse(["some-id", "--format", "text"])
-        XCTAssertFalse(cmd.output.isJSON)
-    }
-
-    func testShowDefaultsToText() throws {
+    func testShowDefaultsToAgent() throws {
         let cmd = try MailCommand.Show.parse(["some-id"])
-        XCTAssertFalse(cmd.output.isJSON)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
     // MARK: - Read alias (hidden, delegates to Show)
@@ -353,7 +343,7 @@ final class MailCommandValidationTests: XCTestCase {
     }
 
     func testMailboxesAcceptsFormat() {
-        XCTAssertNoThrow(try MailCommand.Mailboxes.parse(["--format", "json"]))
+        XCTAssertNoThrow(try MailCommand.Mailboxes.parse(["--format", "agent"]))
     }
 
     // MARK: - List --page (now the shared PaginationOptions.page — pippin-77t)
@@ -476,29 +466,29 @@ final class MailCommandValidationTests: XCTestCase {
     // MARK: - Output format on all subcommands
 
     func testAccountsAcceptsFormat() {
-        XCTAssertNoThrow(try MailCommand.Accounts.parse(["--format", "json"]))
+        XCTAssertNoThrow(try MailCommand.Accounts.parse(["--format", "agent"]))
     }
 
     func testSearchAcceptsFormat() {
-        XCTAssertNoThrow(try MailCommand.Search.parse(["query", "--format", "json"]))
+        XCTAssertNoThrow(try MailCommand.Search.parse(["query", "--format", "agent"]))
     }
 
     func testListAcceptsFormat() {
-        XCTAssertNoThrow(try MailCommand.List.parse(["--format", "json"]))
+        XCTAssertNoThrow(try MailCommand.List.parse(["--format", "agent"]))
     }
 
     func testMarkAcceptsFormat() {
-        XCTAssertNoThrow(try MailCommand.Mark.parse(["some-id", "--read", "--format", "json"]))
+        XCTAssertNoThrow(try MailCommand.Mark.parse(["some-id", "--read", "--format", "agent"]))
     }
 
     func testMoveAcceptsFormat() {
-        XCTAssertNoThrow(try MailCommand.Move.parse(["some-id", "--to", "Archive", "--format", "json"]))
+        XCTAssertNoThrow(try MailCommand.Move.parse(["some-id", "--to", "Archive", "--format", "agent"]))
     }
 
     func testSendAcceptsFormat() {
         XCTAssertNoThrow(try MailCommand.Send.parse([
             "--to", "user@example.com", "--subject", "Test", "--body", "Body",
-            "--format", "json",
+            "--format", "agent",
         ]))
     }
 

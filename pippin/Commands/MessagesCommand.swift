@@ -65,37 +65,9 @@ public struct MessagesCommand: AsyncParsableCommand {
             )
             // Envelope v2: `data` is the bare conversations array (matching every
             // other module); the exclude-list signal moves to `warnings`.
-            if output.isAgent {
-                let warnings = excludedCount > 0
-                    ? ["\(excludedCount) conversation(s) filtered by exclude list"] : nil
-                try output.printAgent(convs, warnings: warnings)
-            } else {
-                try output.emit(convs, timedOutHint: "") {
-                    printConversationList(convs, excludedCount: excludedCount, windowHours: windowHours)
-                }
-            }
-        }
-
-        private func printConversationList(
-            _ conversations: [MessageConversation], excludedCount: Int, windowHours: Int
-        ) {
-            if conversations.isEmpty {
-                print("No conversations in the last \(windowHours) hours.")
-                return
-            }
-            for conv in conversations {
-                let label = conv.displayName ?? conv.participants.map(\.handle).joined(separator: ", ")
-                let when = conv.lastMessageAt ?? "-"
-                let unread = conv.unreadCount > 0 ? "  (\(conv.unreadCount) unread)" : ""
-                print("• \(when)  \(label)\(unread)")
-                if let preview = conv.lastMessagePreview {
-                    print("    \(preview)")
-                }
-            }
-            if excludedCount > 0 {
-                print("")
-                print("(\(excludedCount) conversation(s) filtered by exclude list.)")
-            }
+            let warnings = excludedCount > 0
+                ? ["\(excludedCount) conversation(s) filtered by exclude list"] : nil
+            try output.printAgent(convs, warnings: warnings)
         }
     }
 
@@ -146,31 +118,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 params: ["query": query, "since_hours": "\(sinceHours)", "limit": "\(limit)"],
                 resultCount: matches.count
             )
-            try output.emit(payload, timedOutHint: "") {
-                printSearchResults(payload)
-            }
-        }
-
-        private func printSearchResults(_ payload: MessagesSearchResult) {
-            if payload.matches.isEmpty {
-                print("No messages matching '\(payload.query)'.")
-                printScanTruncationNote(payload)
-                return
-            }
-            for m in payload.matches {
-                let who = m.isFromMe ? "me" : (m.fromDisplayName ?? m.fromHandle ?? "unknown")
-                let text = m.text ?? "(no text)"
-                print("• \(m.date)  \(who): \(MessagesDatabase.preview(text))")
-            }
-            printScanTruncationNote(payload)
-        }
-
-        private func printScanTruncationNote(_ payload: MessagesSearchResult) {
-            guard payload.scanTruncated else { return }
-            print("""
-            (Scan truncated: only the \(payload.scannedAttributedCap) most-recent rich-text-only \
-            messages were searched — older matches may exist outside this window.)
-            """)
+            try output.emit(payload, timedOutHint: "")
         }
     }
 
@@ -182,7 +130,7 @@ public struct MessagesCommand: AsyncParsableCommand {
             abstract: "Show messages in a conversation by GUID."
         )
 
-        @Argument(help: "Conversation GUID (from `pippin messages list --format json`).")
+        @Argument(help: "Conversation GUID (from `pippin messages list`).")
         public var conversationId: String
 
         @Option(name: .long, help: "Maximum messages (default: 50).")
@@ -207,25 +155,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 params: ["conversation_id": conversationId, "limit": "\(limit)"],
                 resultCount: messages.count
             )
-            try output.emit(payload, timedOutHint: "") {
-                printShow(payload)
-            }
-        }
-
-        private func printShow(_ payload: MessagesShowResult) {
-            let label = payload.conversation.displayName
-                ?? payload.conversation.participants.map(\.handle).joined(separator: ", ")
-            print("Thread: \(label)")
-            print("")
-            for m in payload.messages {
-                let who = m.isFromMe ? "me" : (m.fromDisplayName ?? m.fromHandle ?? "unknown")
-                let text = m.text ?? "(no text)"
-                print("[\(m.date)] \(who): \(text)")
-            }
-            if payload.truncated {
-                print("")
-                print("(older messages truncated — re-run with --limit N)")
-            }
+            try output.emit(payload, timedOutHint: "")
         }
     }
 
@@ -315,14 +245,7 @@ public struct MessagesCommand: AsyncParsableCommand {
                 sent: payload.delivered
             )
 
-            try output.emit(payload, timedOutHint: "") {
-                if payload.delivered {
-                    print("Sent to \(payload.recipient). hash=\(bodyHash.prefix(12))…")
-                } else {
-                    print("Draft (mode=\(mode.rawValue)) for \(payload.recipient). hash=\(bodyHash.prefix(12))…")
-                    print("Not delivered. Re-run with --autonomous to send (requires env + allowlist).")
-                }
-            }
+            try output.emit(payload, timedOutHint: "")
         }
 
         private func gateAutonomous(recipient: String) throws {
@@ -421,14 +344,5 @@ public struct MessagesCommand: AsyncParsableCommand {
 
 private func emitExclude(action: String, threads: [String], output: OutputOptions) throws {
     let payload = MessagesExcludeResult(action: action, threads: threads)
-    try output.emit(payload, timedOutHint: "") {
-        if action == "list", threads.isEmpty {
-            print("Exclude list is empty.")
-        } else if action == "list" {
-            print("Excluded thread(s):")
-            threads.forEach { print("  • \($0)") }
-        } else {
-            print("Exclude list now contains \(threads.count) thread(s).")
-        }
-    }
+    try output.emit(payload, timedOutHint: "")
 }

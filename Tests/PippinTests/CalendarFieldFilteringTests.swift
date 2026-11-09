@@ -1,6 +1,8 @@
 @testable import PippinLib
 import XCTest
 
+/// `--fields` projection of calendar events through `FieldProjection`, the
+/// path `OutputOptions.printAgent` uses.
 final class CalendarFieldFilteringTests: XCTestCase {
     // MARK: - Fixture
 
@@ -18,13 +20,16 @@ final class CalendarFieldFilteringTests: XCTestCase {
         )
     }
 
-    // MARK: - Test 1: nil fields returns all fields
+    private func encodedDict(_ event: CalendarEvent) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(event)
+        return try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
 
-    func testJsonDataNilFieldsReturnsAllFields() throws {
-        let event = makeEvent()
-        let data = try event.jsonData(fields: nil)
-        let dict = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        // CalendarEvent has 14 defined properties; nil optional fields are omitted by JSONEncoder
+    // MARK: - Test 1: unprojected encoding carries every field
+
+    func testEncodingReturnsAllFields() throws {
+        let dict = try encodedDict(makeEvent())
+        // nil optional fields are omitted by JSONEncoder
         XCTAssertEqual(dict["id"] as? String, "event-abc123")
         XCTAssertEqual(dict["title"] as? String, "Team Meeting")
         XCTAssertEqual(dict["calendarId"] as? String, "cal-id")
@@ -39,10 +44,9 @@ final class CalendarFieldFilteringTests: XCTestCase {
 
     // MARK: - Test 2: specific fields returns only those keys
 
-    func testJsonDataSpecificFieldsReturnsOnlyThoseKeys() throws {
-        let event = makeEvent()
-        let data = try event.jsonData(fields: ["title", "startDate"])
-        let dict = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    func testProjectionSpecificFieldsReturnsOnlyThoseKeys() throws {
+        let projected = try FieldProjection.projectedObject(makeEvent(), fields: ["title", "startDate"])
+        let dict = try XCTUnwrap(projected as? [String: Any])
         XCTAssertEqual(dict.count, 2)
         XCTAssertEqual(dict["title"] as? String, "Team Meeting")
         XCTAssertEqual(dict["startDate"] as? String, "2026-03-10T10:00:00Z")
@@ -53,18 +57,17 @@ final class CalendarFieldFilteringTests: XCTestCase {
 
     // MARK: - Test 3: nonexistent field is silently skipped
 
-    func testJsonDataSkipsMissingFields() throws {
-        let event = makeEvent()
-        let data = try event.jsonData(fields: ["title", "nonexistentField"])
-        let dict = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    func testProjectionSkipsMissingFields() throws {
+        let projected = try FieldProjection.projectedObject(makeEvent(), fields: ["title", "nonexistentField"])
+        let dict = try XCTUnwrap(projected as? [String: Any])
         XCTAssertEqual(dict.count, 1)
         XCTAssertEqual(dict["title"] as? String, "Team Meeting")
         XCTAssertNil(dict["nonexistentField"])
     }
 
-    // MARK: - Test 4: array filtering returns array of filtered dicts
+    // MARK: - Test 4: array projection filters each event
 
-    func testArrayJsonDataFiltersEachEvent() throws {
+    func testArrayProjectionFiltersEachEvent() throws {
         let event1 = CalendarEvent(
             id: "e1",
             calendarId: "cal",
@@ -83,9 +86,8 @@ final class CalendarFieldFilteringTests: XCTestCase {
             endDate: "2026-03-10T09:15:00Z",
             isAllDay: false
         )
-        let events = [event1, event2]
-        let data = try events.jsonData(fields: ["title"])
-        let arr = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        let projected = try FieldProjection.projectedObject([event1, event2], fields: ["title"])
+        let arr = try XCTUnwrap(projected as? [[String: Any]])
         XCTAssertEqual(arr.count, 2)
         XCTAssertEqual(arr[0]["title"] as? String, "Lunch")
         XCTAssertEqual(arr[1]["title"] as? String, "Standup")
@@ -96,9 +98,7 @@ final class CalendarFieldFilteringTests: XCTestCase {
     // MARK: - Test 5: field names are camelCase (not snake_case)
 
     func testFieldNamesAreCamelCase() throws {
-        let event = makeEvent()
-        let data = try event.jsonData(fields: nil)
-        let dict = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let dict = try encodedDict(makeEvent())
         // camelCase keys must exist
         XCTAssertNotNil(dict["startDate"], "Expected camelCase key 'startDate'")
         XCTAssertNotNil(dict["calendarId"], "Expected camelCase key 'calendarId'")

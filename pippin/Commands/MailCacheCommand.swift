@@ -16,10 +16,6 @@ public extension MailCommand {
 
         public init() {}
 
-        /// No-timeout hint placeholder — cache ops never set `timedOut`, so the
-        /// hint string is never surfaced; `emit` just needs a value.
-        static let noTimeoutHint = ""
-
         struct ClearResult: Codable { let deleted: Int }
         struct WarmResult: Codable {
             let warmed: Int
@@ -40,11 +36,7 @@ public extension MailCommand {
 
             public mutating func run() async throws {
                 let stats = MailBodyCache.shared?.stats() ?? MailCacheStats(count: 0, oldest: nil, newest: nil)
-                try output.emit(stats, timedOutHint: Cache.noTimeoutHint) {
-                    print("cached messages: \(stats.count)")
-                    if let oldest = stats.oldest { print("oldest: \(oldest)") }
-                    if let newest = stats.newest { print("newest: \(newest)") }
-                }
+                try output.printAgent(stats)
             }
         }
 
@@ -71,9 +63,7 @@ public extension MailCommand {
                 } else {
                     deleted = MailBodyCache.shared?.clear() ?? 0
                 }
-                try output.emit(ClearResult(deleted: deleted), timedOutHint: Cache.noTimeoutHint) {
-                    print("deleted \(deleted) cached message(s)")
-                }
+                try output.printAgent(ClearResult(deleted: deleted))
             }
         }
 
@@ -122,9 +112,7 @@ public extension MailCommand {
                     }
                     return (warmed, failed)
                 }
-                try output.emit(WarmResult(warmed: warmed, failed: failed), timedOutHint: Cache.noTimeoutHint) {
-                    print("warmed \(warmed) message(s)" + (failed > 0 ? ", \(failed) failed" : ""))
-                }
+                try output.printAgent(WarmResult(warmed: warmed, failed: failed))
             }
         }
     }

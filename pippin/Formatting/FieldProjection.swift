@@ -1,8 +1,6 @@
 import Foundation
 
-/// Shared JSON field-projection used by `--fields`. One implementation so the
-/// json-mode helpers on the models (`jsonData(fields:)`, `filteredNoteDicts`)
-/// and the agent-mode envelope path can't drift apart.
+/// Shared JSON field-projection used by `--fields` on the agent envelope path.
 ///
 /// Projection keeps only the requested top-level keys. The rules cover every
 /// payload shape pippin emits:

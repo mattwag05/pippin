@@ -60,8 +60,8 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertNoThrow(try RemindersCommand.Lists.parse([]))
     }
 
-    func testListsJsonFormatPasses() {
-        XCTAssertNoThrow(try RemindersCommand.Lists.parse(["--format", "json"]))
+    func testListsAgentFormatPasses() {
+        XCTAssertNoThrow(try RemindersCommand.Lists.parse(["--format", "agent"]))
     }
 
     // MARK: - List subcommand
@@ -140,8 +140,8 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertThrowsError(try RemindersCommand.List.parse(["--priority", "urgent"]))
     }
 
-    func testListJsonFormatPasses() {
-        XCTAssertNoThrow(try RemindersCommand.List.parse(["--format", "json"]))
+    func testListAgentFormatPasses() {
+        XCTAssertNoThrow(try RemindersCommand.List.parse(["--format", "agent"]))
     }
 
     func testListFieldsOptionPasses() throws {
@@ -178,8 +178,8 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertNoThrow(try RemindersCommand.Show.parse(["reminder-id"]))
     }
 
-    func testShowJsonFormatPasses() {
-        XCTAssertNoThrow(try RemindersCommand.Show.parse(["reminder-id", "--format", "json"]))
+    func testShowAgentFormatPasses() {
+        XCTAssertNoThrow(try RemindersCommand.Show.parse(["reminder-id", "--format", "agent"]))
     }
 
     // MARK: - Create subcommand
@@ -215,7 +215,7 @@ final class RemindersCommandTests: XCTestCase {
             "--priority", "medium",
             "--notes", "Milk and eggs",
             "--url", "https://example.com",
-            "--format", "json",
+            "--format", "agent",
         ]))
     }
 
@@ -256,8 +256,8 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertNoThrow(try RemindersCommand.Complete.parse(["reminder-id"]))
     }
 
-    func testCompleteJsonFormatPasses() {
-        XCTAssertNoThrow(try RemindersCommand.Complete.parse(["reminder-id", "--format", "json"]))
+    func testCompleteAgentFormatPasses() {
+        XCTAssertNoThrow(try RemindersCommand.Complete.parse(["reminder-id", "--format", "agent"]))
     }
 
     // MARK: - Delete subcommand
@@ -274,8 +274,8 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertNoThrow(try RemindersCommand.Delete.parse(["reminder-id", "--force"]))
     }
 
-    func testDeleteWithForceAndJsonFormatPasses() {
-        XCTAssertNoThrow(try RemindersCommand.Delete.parse(["reminder-id", "--force", "--format", "json"]))
+    func testDeleteWithForceAndAgentFormatPasses() {
+        XCTAssertNoThrow(try RemindersCommand.Delete.parse(["reminder-id", "--force", "--format", "agent"]))
     }
 
     // MARK: - Search subcommand
@@ -311,8 +311,8 @@ final class RemindersCommandTests: XCTestCase {
         XCTAssertFalse(cmd.completed)
     }
 
-    func testSearchJsonFormatPasses() {
-        XCTAssertNoThrow(try RemindersCommand.Search.parse(["query", "--format", "json"]))
+    func testSearchAgentFormatPasses() {
+        XCTAssertNoThrow(try RemindersCommand.Search.parse(["query", "--format", "agent"]))
     }
 
     func testSearchWithListPasses() {
@@ -372,7 +372,7 @@ final class RemindersCommandTests: XCTestCase {
             "--model", "claude-sonnet-4-6",
             "--list", "Work",
             "--dry-run",
-            "--format", "json",
+            "--format", "agent",
         ]))
     }
 

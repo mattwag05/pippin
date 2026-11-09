@@ -31,7 +31,7 @@ public struct SummarizeCommand: AsyncParsableCommand {
     @Option(name: [.customLong("since")], help: "Only summarize memos on or after YYYY-MM-DD (with --all).")
     public var since: String?
 
-    @Option(name: .long, help: "Write output to a directory instead of stdout.")
+    @Option(name: .long, help: "Also write each summary as a markdown file in this directory.")
     public var output: String?
 
     @Option(name: .long, help: "Parallel summarization jobs (default: 2).")
@@ -78,12 +78,6 @@ public struct SummarizeCommand: AsyncParsableCommand {
                 Array(memos[i ..< min(i + jobs, memos.count)])
             }
             for chunk in chunks {
-                if !outputOptions.isStructured {
-                    for memo in chunk {
-                        print("Summarizing: \(memo.title)...", terminator: " ")
-                        fflush(stdout)
-                    }
-                }
                 // Extract self properties before task group (can't capture mutating self)
                 let tmpl = template
                 let prmt = prompt
@@ -116,31 +110,16 @@ public struct SummarizeCommand: AsyncParsableCommand {
                     return out.sorted { $0.0 < $1.0 }
                 }
                 for (_, result) in chunkResults {
-                    switch result {
-                    case let .success(r):
+                    if case let .success(r) = result {
                         results.append(r)
                         if let outputDir = output {
                             try writeResult(r, toDir: outputDir)
                         }
-                        if !outputOptions.isStructured { print("done") }
-                    case let .failure(e):
-                        if !outputOptions.isStructured { print("FAILED: \(e.localizedDescription)") }
                     }
                 }
             }
 
-            if outputOptions.isJSON {
-                try printJSON(results)
-            } else if outputOptions.isAgent {
-                try outputOptions.printAgent(results)
-            } else if output == nil {
-                for result in results {
-                    printSummaryText(result)
-                    print("")
-                }
-            } else {
-                print("\nSummarized \(results.count) recording(s) → \(output!)")
-            }
+            try outputOptions.printAgent(results)
 
         } else if let id {
             guard let memo = try db.getMemoByPrefix(id: id) else {
@@ -161,21 +140,9 @@ public struct SummarizeCommand: AsyncParsableCommand {
             }
 
             if let outputDir = output {
-                let path = try writeResult(result, toDir: outputDir)
-                if !outputOptions.isStructured {
-                    print("Summary written to: \(path)")
-                } else if outputOptions.isAgent {
-                    try outputOptions.printAgent(result)
-                } else {
-                    try printJSON(result)
-                }
-            } else if outputOptions.isJSON {
-                try printJSON(result)
-            } else if outputOptions.isAgent {
-                try outputOptions.printAgent(result)
-            } else {
-                printSummaryText(result)
+                try writeResult(result, toDir: outputDir)
             }
+            try outputOptions.printAgent(result)
         }
     }
 
@@ -254,34 +221,18 @@ public struct SummarizeCommand: AsyncParsableCommand {
         )
     }
 
+    /// Write the summary as a markdown file; the structured result still goes
+    /// to stdout in the envelope.
     @discardableResult
     private func writeResult(_ result: SummarizeResult, toDir dir: String) throws -> String {
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let dateStr = VoiceMemosDB.exportDatePrefix(result.createdAt)
         let sanitized = VoiceMemosDB.sanitizeFilename(result.title)
-        let ext = outputOptions.isStructured ? "json" : "md"
         let baseName = "\(dateStr)_\(sanitized)"
-        let path = VoiceMemosDB.resolveCollision(dir: dir, baseName: baseName, ext: ext)
-
-        if outputOptions.isJSON {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(result)
-            try data.write(to: URL(fileURLWithPath: path))
-        } else {
-            let markdown = "# \(result.title)\n\n\(result.summary)\n"
-            try markdown.write(toFile: path, atomically: true, encoding: .utf8)
-        }
+        let path = VoiceMemosDB.resolveCollision(dir: dir, baseName: baseName, ext: "md")
+        let markdown = "# \(result.title)\n\n\(result.summary)\n"
+        try markdown.write(toFile: path, atomically: true, encoding: .utf8)
         return path
-    }
-
-    private func printSummaryText(_ result: SummarizeResult) {
-        let card = TextFormatter.card(fields: [
-            ("Title", result.title),
-            ("ID", String(result.id.prefix(8))),
-        ])
-        print(card)
-        print(result.summary)
     }
 }
 

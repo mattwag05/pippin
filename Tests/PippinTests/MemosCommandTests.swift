@@ -66,10 +66,6 @@ final class MemosCommandTests: XCTestCase {
         XCTAssertEqual(cmd.since, "2024-03-01")
     }
 
-    func testListJsonFormatPasses() {
-        XCTAssertNoThrow(try MemosCommand.List.parse(["--format", "json"]))
-    }
-
     func testListAgentFormatPasses() {
         XCTAssertNoThrow(try MemosCommand.List.parse(["--format", "agent"]))
     }
@@ -115,10 +111,6 @@ final class MemosCommandTests: XCTestCase {
         XCTAssertEqual(cmd.id, "abc123def")
     }
 
-    func testInfoJsonFormatPasses() {
-        XCTAssertNoThrow(try MemosCommand.Info.parse(["some-id", "--format", "json"]))
-    }
-
     func testInfoAgentFormatPasses() {
         XCTAssertNoThrow(try MemosCommand.Info.parse(["some-id", "--format", "agent"]))
     }
@@ -161,10 +153,6 @@ final class MemosCommandTests: XCTestCase {
 
     func testExportAgentFormatPasses() {
         XCTAssertNoThrow(try MemosCommand.Export.parse(["abc123", "--output", "/tmp", "--format", "agent"]))
-    }
-
-    func testExportJsonFormatPasses() {
-        XCTAssertNoThrow(try MemosCommand.Export.parse(["abc123", "--output", "/tmp", "--format", "json"]))
     }
 
     func testExportTranscribeFlagPasses() {
@@ -241,10 +229,6 @@ final class MemosCommandTests: XCTestCase {
         XCTAssertEqual(cmd.output, "/tmp/transcripts")
     }
 
-    func testTranscribeJsonFormatPasses() {
-        XCTAssertNoThrow(try MemosCommand.Transcribe.parse(["abc123", "--format", "json"]))
-    }
-
     func testTranscribeAgentFormatPasses() {
         XCTAssertNoThrow(try MemosCommand.Transcribe.parse(["abc123", "--format", "agent"]))
     }
@@ -275,10 +259,6 @@ final class MemosCommandTests: XCTestCase {
     func testDeleteForceDefaultFalse() throws {
         // Without --force, validate() should throw
         XCTAssertThrowsError(try MemosCommand.Delete.parse(["abc123"]))
-    }
-
-    func testDeleteJsonFormatPasses() {
-        XCTAssertNoThrow(try MemosCommand.Delete.parse(["abc123", "--force", "--format", "json"]))
     }
 
     func testDeleteAgentFormatPasses() {

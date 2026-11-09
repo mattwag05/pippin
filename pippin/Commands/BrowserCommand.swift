@@ -51,20 +51,10 @@ public struct BrowserCommand: AsyncParsableCommand {
             ) {
                 try BrowserBridge.open(url: url, sessionDir: sessionDir)
             }
-            if output.isJSON {
-                try printJSON(info)
-            } else if output.isAgent {
-                if retry > 0 {
-                    try output.printAgent(WithAttempts(payload: info, attempts: attempts))
-                } else {
-                    try output.printAgent(info)
-                }
+            if retry > 0 {
+                try output.printAgent(WithAttempts(payload: info, attempts: attempts))
             } else {
-                print("URL:   \(info.url)")
-                print("Title: \(info.title)")
-                if let status = info.status {
-                    print("Status: \(status)")
-                }
+                try output.printAgent(info)
             }
         }
     }
@@ -102,32 +92,10 @@ public struct BrowserCommand: AsyncParsableCommand {
             ) {
                 try BrowserBridge.snapshot(sessionDir: sessionDir)
             }
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                if retry > 0 {
-                    try output.printAgent(WithAttempts(payload: result, attempts: attempts))
-                } else {
-                    try output.printAgent(result)
-                }
+            if retry > 0 {
+                try output.printAgent(WithAttempts(payload: result, attempts: attempts))
             } else {
-                print("URL:   \(result.url)")
-                print("Title: \(result.title)")
-                print("")
-                printTree(result.snapshot, indent: 0)
-            }
-        }
-
-        private func printTree(_ elements: [ElementRef], indent: Int) {
-            let prefix = String(repeating: "  ", count: indent)
-            for element in elements {
-                let refPart = element.ref.isEmpty ? "" : " \(element.ref)"
-                let namePart = element.name.map { " \"\($0)\"" } ?? ""
-                let valuePart = element.value.map { " = \($0)" } ?? ""
-                print("\(prefix)[\(element.role)]\(refPart)\(namePart)\(valuePart)")
-                if !element.children.isEmpty {
-                    printTree(element.children, indent: indent + 1)
-                }
+                try output.printAgent(result)
             }
         }
     }
@@ -157,13 +125,7 @@ public struct BrowserCommand: AsyncParsableCommand {
                 try BrowserBridge.screenshot(outputPath: file, sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "screenshot", details: ["path": savedPath])
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Screenshot saved to: \(savedPath)")
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -192,13 +154,7 @@ public struct BrowserCommand: AsyncParsableCommand {
                 try BrowserBridge.click(ref: ref, sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "click", details: ["ref": ref])
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Clicked \(ref)")
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -231,13 +187,7 @@ public struct BrowserCommand: AsyncParsableCommand {
                 try BrowserBridge.fill(ref: ref, value: value, sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "fill", details: ["ref": ref])
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Filled \(ref)")
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -272,13 +222,7 @@ public struct BrowserCommand: AsyncParsableCommand {
                 try BrowserBridge.scroll(direction: lowered, sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "scroll", details: ["direction": lowered])
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Scrolled \(direction)")
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -302,22 +246,7 @@ public struct BrowserCommand: AsyncParsableCommand {
             let tabs = try await detachBlocking {
                 try BrowserBridge.tabs(sessionDir: sessionDir)
             }
-            if output.isJSON {
-                try printJSON(tabs)
-            } else if output.isAgent {
-                try output.printAgent(tabs)
-            } else {
-                if tabs.isEmpty {
-                    print("No open tabs.")
-                    return
-                }
-                let activeMarker = "*"
-                let inactiveMarker = " "
-                for tab in tabs {
-                    let marker = tab.isActive ? activeMarker : inactiveMarker
-                    print("\(marker) [\(tab.index)] \(tab.title)  \(tab.url)")
-                }
-            }
+            try output.printAgent(tabs)
         }
     }
 
@@ -342,13 +271,7 @@ public struct BrowserCommand: AsyncParsableCommand {
                 try BrowserBridge.close(sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "close")
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Browser session closed.")
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -386,16 +309,10 @@ public struct BrowserCommand: AsyncParsableCommand {
                 let content = try BrowserBridge.fetch(url: url)
                 return FetchResult(url: url, content: content)
             }
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                if retry > 0 {
-                    try output.printAgent(WithAttempts(payload: result, attempts: attempts))
-                } else {
-                    try output.printAgent(result)
-                }
+            if retry > 0 {
+                try output.printAgent(WithAttempts(payload: result, attempts: attempts))
             } else {
-                print(result.content)
+                try output.printAgent(result)
             }
         }
     }

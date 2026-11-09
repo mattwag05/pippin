@@ -14,10 +14,9 @@ public struct DiagnosticCheck: Codable, Sendable {
     public let name: String
     public let status: Status
     public let detail: String
-    /// Structured remediation — `nil` when status is `.ok` or there is
-    /// nothing useful to say. JSON mode emits the `Remediation` shape
-    /// (`human_hint`, `doctor_check`, optional `shell_command`); text
-    /// mode renders the hint prose plus a `$ <cmd>` line when present.
+    /// Structured remediation: `nil` when status is `.ok` or there is
+    /// nothing useful to say. Emitted as the `Remediation` shape
+    /// (`human_hint`, `doctor_check`, optional `shell_command`).
     public let remediation: Remediation?
 
     public init(name: String, status: Status, detail: String, remediation: Remediation? = nil) {
@@ -51,29 +50,7 @@ public struct DoctorCommand: AsyncParsableCommand {
             return checks
         }
 
-        if output.isAgent {
-            try output.printAgent(checks)
-        } else if output.isJSON {
-            try printJSON(checks)
-        } else {
-            for check in checks {
-                let icon: String
-                switch check.status {
-                case .ok: icon = "ok"
-                case .fail: icon = "FAIL"
-                case .skip: icon = "--"
-                }
-                print("[\(icon)]  \(check.name): \(check.detail)")
-                if let remediation = check.remediation {
-                    for line in remediation.humanHint.components(separatedBy: .newlines) {
-                        print("       \(line)")
-                    }
-                    if let cmd = remediation.shellCommand {
-                        print("       $ \(cmd)")
-                    }
-                }
-            }
-        }
+        try output.printAgent(checks)
 
         let hasCriticalFailure = checks.contains { $0.status == .fail }
         if hasCriticalFailure {

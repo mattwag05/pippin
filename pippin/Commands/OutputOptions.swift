@@ -1,17 +1,27 @@
 import ArgumentParser
 import Foundation
 
+/// The only output contract: the versioned agent envelope. `text` and `json`
+/// were removed (pippin-xg3z); `--format agent` is still accepted so existing
+/// callers keep working.
 public enum OutputFormat: String, ExpressibleByArgument, CaseIterable {
-    case text
-    case json
     case agent
+
+    /// `--format` parser that names the replacement instead of ArgumentParser's
+    /// generic "invalid value" when a removed format is passed.
+    static func parse(_ raw: String) throws -> OutputFormat {
+        if let format = OutputFormat(rawValue: raw) { return format }
+        throw ValidationError(
+            "--format \(raw) was removed; pippin only emits the compact JSON agent envelope. Drop the flag or pass --format agent."
+        )
+    }
 }
 
 public struct OutputOptions: ParsableArguments {
-    @Option(name: .long, help: "Output format: text (default), json, or agent (compact JSON for AI agents).")
-    public var format: OutputFormat = .text
+    @Option(name: .long, help: "Output format. Only `agent` (compact JSON envelope) exists; accepted for compatibility.", transform: OutputFormat.parse)
+    public var format: OutputFormat = .agent
 
-    @Option(name: .long, help: "Comma-separated JSON field names to include (e.g. id,title). JSON/agent output only.")
+    @Option(name: .long, help: "Comma-separated JSON field names to include in each row (e.g. id,title).")
     public var fields: String?
 
     /// Wall-clock time when this option group was constructed (during
@@ -27,18 +37,6 @@ public struct OutputOptions: ParsableArguments {
     }
 
     public init() {}
-
-    public var isJSON: Bool {
-        format == .json
-    }
-
-    public var isAgent: Bool {
-        format == .agent
-    }
-
-    public var isStructured: Bool {
-        isJSON || isAgent
-    }
 
     /// Print `payload` as a compact agent-mode envelope, computing
     /// `duration_ms` from `startedAt`. Pass non-empty `warnings` to surface
@@ -90,80 +88,41 @@ public struct OutputOptions: ParsableArguments {
         )
     }
 
-    /// Render `payload` in the configured format, surfacing a soft-timeout
-    /// advisory when `timedOut == true`:
-    /// - JSON: writes `payload` unchanged + a stderr `Warning:` line.
-    /// - Agent: passes `[hint]` as `warnings` in the envelope and marks it
-    ///   `partial: true` so callers can tell an unfinished scan from a clean
-    ///   empty result. Stderr stays silent — the MCP server captures child
-    ///   stderr and a duplicate line would be double-noise alongside the
-    ///   structured warning.
-    /// - Text: stderr `Warning:` line + caller's `renderText` closure +
-    ///   trailing `(partial results — <hint>)` trailer.
+    /// Render `payload`, surfacing a soft-timeout advisory when
+    /// `timedOut == true`: `[hint]` joins `warnings` and the envelope is marked
+    /// `partial: true` so callers can tell an unfinished scan from a clean
+    /// empty result. Stderr stays silent — the MCP server captures child
+    /// stderr and a duplicate line would be double-noise alongside the
+    /// structured warning.
     ///
     /// `extraWarnings` are advisories independent of the soft timeout (e.g.
-    /// "fast path unavailable, fell back to JXA") — merged into the agent
-    /// `warnings` array, printed as stderr `Warning:` lines in json/text.
+    /// "fast path unavailable, fell back to JXA").
     ///
     /// Field projection defaults to the parsed `--fields` (`self.fields`) — an
-    /// explicit `fields:` argument overrides it. Projection applies in both json
-    /// and agent modes; text rendering is unaffected.
+    /// explicit `fields:` argument overrides it.
     public func emit<T: Encodable>(
         _ payload: T,
         timedOut: Bool = false,
         timedOutHint: String,
         fields: [String]? = nil,
-        extraWarnings: [String] = [],
-        renderText: () -> Void
+        extraWarnings: [String] = []
     ) throws {
-        let effectiveFields = fields ?? FieldProjection.parse(self.fields)
-        if !isAgent {
-            if timedOut {
-                FileHandle.standardError.write(Data("Warning: \(timedOutHint)\n".utf8))
-            }
-            for warning in extraWarnings {
-                FileHandle.standardError.write(Data("Warning: \(warning)\n".utf8))
-            }
-        }
-        if isJSON {
-            if let effectiveFields, !effectiveFields.isEmpty {
-                let projected = try FieldProjection.projectedObject(payload, fields: effectiveFields)
-                let data = try JSONSerialization.data(withJSONObject: projected, options: [.prettyPrinted, .sortedKeys])
-                print(String(data: data, encoding: .utf8)!)
-            } else {
-                try printJSON(payload)
-            }
-        } else if isAgent {
-            let warnings = (timedOut ? [timedOutHint] : []) + extraWarnings
-            try printAgent(payload, warnings: warnings.isEmpty ? nil : warnings, fields: effectiveFields, partial: timedOut)
-        } else {
-            renderText()
-            if timedOut {
-                print("(partial results — \(timedOutHint))")
-            }
-        }
+        let warnings = (timedOut ? [timedOutHint] : []) + extraWarnings
+        try printAgent(
+            payload, warnings: warnings.isEmpty ? nil : warnings,
+            fields: fields ?? FieldProjection.parse(self.fields), partial: timedOut
+        )
     }
 
-    /// `emit` for a paginated payload (envelope v3, pippin-37az).
-    ///
-    /// Agent mode unwraps the page (array `data` + top-level `next_cursor`);
-    /// json and text keep rendering the `Page` itself, since neither has an
-    /// envelope to hoist the cursor into — `--format json` writes the whole
-    /// `{items, next_cursor}` document, which is where a cursor belongs there.
+    /// `emit` for a paginated payload (envelope v3, pippin-37az): array `data`
+    /// plus top-level `next_cursor`.
     public func emitPage<T: Encodable>(
         _ page: Page<T>,
         timedOut: Bool = false,
         timedOutHint: String,
         fields: [String]? = nil,
-        extraWarnings: [String] = [],
-        renderText: () -> Void
+        extraWarnings: [String] = []
     ) throws {
-        guard isAgent else {
-            return try emit(
-                page, timedOut: timedOut, timedOutHint: timedOutHint,
-                fields: fields, extraWarnings: extraWarnings, renderText: renderText
-            )
-        }
         let warnings = (timedOut ? [timedOutHint] : []) + extraWarnings
         try printAgentPage(
             page,

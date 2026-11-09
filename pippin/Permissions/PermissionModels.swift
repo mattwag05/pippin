@@ -77,16 +77,12 @@ public struct PermissionReport: Codable, Sendable, Equatable {
 /// TCC prompts. Pure and total so it can be unit-tested without a GUI.
 public enum PermissionPriming {
     /// Prime (trigger prompts) ONLY when there is an interactive user at a TTY
-    /// who can answer the dialog. Never under MCP, and never when emitting
-    /// structured output (`--format agent|json`): triggering a prompt that
+    /// who can answer the dialog, and never under MCP: triggering a prompt that
     /// can't be answered is precisely the silent-denial trap this feature
-    /// exists to prevent. (pippin-dkf)
-    public static func shouldPrime(
-        interactive: Bool,
-        isMCP: Bool,
-        isStructuredOutput: Bool
-    ) -> Bool {
-        interactive && !isMCP && !isStructuredOutput
+    /// exists to prevent. Output format no longer matters (the envelope is the
+    /// only format), so a TTY plus no MCP is the whole rule (D2). (pippin-dkf)
+    public static func shouldPrime(interactive: Bool, isMCP: Bool) -> Bool {
+        interactive && !isMCP
     }
 
     /// True when both stdin and stdout are a terminal — i.e. there's a user who

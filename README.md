@@ -329,7 +329,7 @@ Scan recent Sent mail and recently-modified Notes for commitments you made and s
 
 ```bash
 pippin actions extract                          # Dry-run: list extracted commitments
-pippin actions extract --days 14 --format json  # Last 2 weeks, structured output
+pippin actions extract --days 14                # Last 2 weeks
 pippin actions extract --create --list "Work"   # Write reminders directly to Reminders.app
 pippin actions extract --no-notes               # Mail only
 pippin actions extract --provider claude        # Use Claude instead of Ollama
@@ -340,8 +340,7 @@ pippin actions extract --provider claude        # Use Claude instead of Ollama
 ```bash
 pippin shell                        # Start interactive session
 pippin                              # Same — bare pippin defaults to REPL
-pippin shell --format json          # All commands in session output JSON
-echo "calendar agenda" | pippin shell --format agent  # Pipe mode for scripting
+echo "calendar agenda" | pippin shell  # Pipe mode for scripting
 ```
 
 Inside the REPL, type commands without the `pippin` prefix:
@@ -353,17 +352,11 @@ pippin> calendar agenda
 pippin> quit
 ```
 
-### Output Formats
+### Output
 
-Every command supports three modes:
+Every command answers with one contract: the compact JSON agent envelope `{v, status, duration_ms, partial?, warnings?, next_cursor?, data}`. The `text` and `json` formats were removed; `--format agent` is still accepted as a no-op, and `--format text` or `--format json` fails with a usage error. Pipe through `jq '.data'` for a human look.
 
-| Flag | Description |
-|---|---|
-| `--format text` | Human-readable tables and cards (default) |
-| `--format json` | Pretty-printed JSON for scripting |
-| `--format agent` | Compact JSON, minimal tokens — built for LLM pipelines |
-
-`--fields id,subject,...` projects structured output (json + agent) to just the named keys, trimming tokens for scan workflows.
+`--fields id,subject,...` projects `data` to just the named keys, trimming tokens for scan workflows.
 
 ### Agent discovery & exit codes
 
@@ -506,13 +499,13 @@ pippin reminders list --format agent
 pippin mail list --unread --limit 10 --format agent
 
 # Export and transcribe today's voice memos
-pippin memos list --since $(date +%Y-%m-%d) --format json \
-  | jq -r '.[].id' \
+pippin memos list --since $(date +%Y-%m-%d) \
+  | jq -r '.data[].id' \
   | xargs -I{} pippin memos export {} --output ~/memos --transcribe
 
 # Find unread emails from a specific sender
-pippin mail list --unread --format json \
-  | jq '.[] | select(.from | contains("boss@company.com"))'
+pippin mail list --unread \
+  | jq '.data[] | select(.from | contains("boss@company.com"))'
 ```
 
 ## Architecture

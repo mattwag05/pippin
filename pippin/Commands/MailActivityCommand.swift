@@ -70,9 +70,7 @@ public extension MailCommand {
             try output.emit(
                 messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint,
                 extraWarnings: [outcome.fastPathNote].compactMap { $0 }
-            ) {
-                printMessageTable(messages)
-            }
+            )
         }
 
         static var timedOutHint: String {

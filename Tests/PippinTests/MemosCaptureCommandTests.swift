@@ -59,10 +59,6 @@ final class MemosCaptureCommandTests: XCTestCase {
         XCTAssertEqual(cmd.apiKey, "sk-ant-xxx")
     }
 
-    func testJsonFormatPasses() {
-        XCTAssertNoThrow(try MemosCaptureCommand.parse(["--to-reminders", "--format", "json"]))
-    }
-
     func testAgentFormatPasses() {
         XCTAssertNoThrow(try MemosCaptureCommand.parse(["--to-reminders", "--format", "agent"]))
     }

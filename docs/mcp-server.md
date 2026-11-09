@@ -156,8 +156,6 @@ Every `--format agent` stdout is wrapped in a versioned envelope. The MCP tool-r
 {"v":3,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
 ```
 
-`--format json` is unchanged — it has no envelope to hoist a cursor into, so it still writes the whole `{items, next_cursor}` document.
-
 **v2 payload changes (2026-07-15):** the envelope frame is identical to v1; the bump marks four payload-shape changes — `messages list` returns a bare `data:[…]` array (previously `data:{excluded_count, conversations:[…]}`; the excluded count moved to `warnings` when non-zero); notes `creationDate`/`modificationDate` were renamed `createdAt`/`modifiedAt`; all-day calendar events serialize `startDate`/`endDate` as date-only `YYYY-MM-DD` (previously a misleading UTC instant); memos dates gained `.000Z` fractional seconds. Everything else is unchanged from v1.
 
 Fields:

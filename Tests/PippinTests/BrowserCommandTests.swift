@@ -287,57 +287,47 @@ final class BrowserCommandTests: XCTestCase {
 
     func testScreenshotParsesFormatAgent() throws {
         let cmd = try BrowserCommand.Screenshot.parse(["--format", "agent"])
-        XCTAssertTrue(cmd.output.isAgent)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
-    func testScreenshotParsesFormatJSON() throws {
-        let cmd = try BrowserCommand.Screenshot.parse(["--format", "json"])
-        XCTAssertTrue(cmd.output.isJSON)
-    }
-
-    func testScreenshotDefaultFormatIsText() throws {
+    func testScreenshotDefaultFormatIsAgent() throws {
         let cmd = try BrowserCommand.Screenshot.parse([])
-        XCTAssertFalse(cmd.output.isStructured)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
     func testClickParsesFormatAgent() throws {
         let cmd = try BrowserCommand.Click.parse(["@ref1", "--format", "agent"])
-        XCTAssertTrue(cmd.output.isAgent)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
-    func testClickParsesFormatJSON() throws {
-        let cmd = try BrowserCommand.Click.parse(["@ref1", "--format", "json"])
-        XCTAssertTrue(cmd.output.isJSON)
-    }
-
-    func testClickDefaultFormatIsText() throws {
+    func testClickDefaultFormatIsAgent() throws {
         let cmd = try BrowserCommand.Click.parse(["@ref1"])
-        XCTAssertFalse(cmd.output.isStructured)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
     func testFillParsesFormatAgent() throws {
         let cmd = try BrowserCommand.Fill.parse(["@ref2", "hello", "--format", "agent"])
-        XCTAssertTrue(cmd.output.isAgent)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
     func testScrollParsesFormatAgent() throws {
         let cmd = try BrowserCommand.Scroll.parse(["down", "--format", "agent"])
-        XCTAssertTrue(cmd.output.isAgent)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
-    func testScrollDefaultFormatIsText() throws {
+    func testScrollDefaultFormatIsAgent() throws {
         let cmd = try BrowserCommand.Scroll.parse(["down"])
-        XCTAssertFalse(cmd.output.isStructured)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
     func testCloseParsesFormatAgent() throws {
         let cmd = try BrowserCommand.Close.parse(["--format", "agent"])
-        XCTAssertTrue(cmd.output.isAgent)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
-    func testCloseDefaultFormatIsText() throws {
+    func testCloseDefaultFormatIsAgent() throws {
         let cmd = try BrowserCommand.Close.parse([])
-        XCTAssertFalse(cmd.output.isStructured)
+        XCTAssertEqual(cmd.output.format, .agent)
     }
 
     // MARK: - BrowserActionResult encoding

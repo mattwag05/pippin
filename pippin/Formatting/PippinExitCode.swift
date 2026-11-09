@@ -10,8 +10,8 @@ import Foundation
 /// there is no parallel taxonomy to keep in sync: a new `fooNotFound` case
 /// automatically lands in the `notFound` bucket.
 ///
-/// Scheme (small integers, deliberately distinct from ArgumentParser's
-/// `EX_USAGE` = 64 which still governs argument-parsing failures):
+/// Scheme (small integers; argument-parsing failures land on 2, since every
+/// failure is an error envelope):
 ///
 /// | Code | Meaning                         | Retryable | Example codes                                   |
 /// |------|---------------------------------|-----------|-------------------------------------------------|
@@ -22,9 +22,8 @@ import Foundation
 /// | 5    | tool / bridge failure (default) | maybe     | `script_failed`, `database_error`               |
 /// | 7    | timeout / rate-limit            | yes       | `timed_out`, `timeout`, `rate_limited`          |
 ///
-/// Argument-parsing and `--help`/`--version` paths are intentionally NOT routed
-/// through here — ArgumentParser keeps its own exit codes (`64` usage, `0`
-/// help) so its formatted usage output is preserved.
+/// `--help`/`--version` paths are intentionally NOT routed through here;
+/// ArgumentParser keeps exit `0` and its formatted help output.
 public enum PippinExitCode {
     /// Generic catch-all for a tool/bridge failure or an unclassified runtime
     /// error.
@@ -64,9 +63,9 @@ public enum PippinExitCode {
         // derived codes (`validation_error`/`command_error`) would otherwise
         // fall to the default tool-failure bucket. These are bad-input/usage
         // errors → exit 2, matching ArgumentParser's own EX_USAGE intent and the
-        // agent-mode message recovery in `AgentError`. `CleanExit`/`ExitCode`
-        // (--help/--version) never reach here — `Pippin.main` intercepts them
-        // first. (pippin-3sy)
+        // agent-mode message recovery in `AgentError`. Help and version requests
+        // never reach here: `Pippin.main` intercepts anything ArgumentParser
+        // reports as success. (pippin-3sy)
         if String(reflecting: type(of: error)).hasPrefix("ArgumentParser.") {
             return 2
         }

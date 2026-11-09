@@ -49,15 +49,7 @@ public struct BatchCommand: AsyncParsableCommand {
             pippinPath: pippinPath
         )
 
-        if output.isAgent {
-            try output.printAgent(results)
-        } else if output.isJSON {
-            try printJSON(results)
-        } else {
-            let okCount = results.filter { Self.statusString($0) == "ok" }.count
-            let errCount = results.count - okCount
-            print("Batch: \(results.count) entries (\(okCount) ok, \(errCount) error)")
-        }
+        try output.printAgent(results)
     }
 
     // MARK: - Helpers

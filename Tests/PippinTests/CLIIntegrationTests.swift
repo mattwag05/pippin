@@ -240,16 +240,46 @@ final class CLIIntegrationTests: XCTestCase {
 
     // MARK: - Invalid input
 
-    func testUnknownSubcommandExitsNonZero() {
-        guard requireBinary() else { return }
-        let result = run(["totally-invalid-subcommand"])
-        XCTAssertNotEqual(result.exitCode, 0)
+    /// Argument failures are error envelopes on stdout, like every other
+    /// failure, and exit 2.
+    private func assertArgumentErrorEnvelope(
+        _ result: (stdout: String, stderr: String, exitCode: Int32),
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> String {
+        XCTAssertEqual(result.exitCode, 2, "stdout=\(result.stdout)", file: file, line: line)
+        XCTAssertEqual(result.stderr, "", file: file, line: line)
+        let data = try XCTUnwrap(result.stdout.data(using: .utf8), file: file, line: line)
+        let env = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any], file: file, line: line
+        )
+        XCTAssertEqual(env["v"] as? Int, AGENT_SCHEMA_VERSION, file: file, line: line)
+        XCTAssertEqual(env["status"] as? String, "error", file: file, line: line)
+        XCTAssertNotNil(env["duration_ms"], file: file, line: line)
+        let error = try XCTUnwrap(env["error"] as? [String: Any], file: file, line: line)
+        XCTAssertNotNil(error["code"], file: file, line: line)
+        return try XCTUnwrap(error["message"] as? String, file: file, line: line)
     }
 
-    func testMailListInvalidFormatExitsNonZero() {
+    func testUnknownSubcommandIsAnErrorEnvelope() throws {
         guard requireBinary() else { return }
-        let result = run(["mail", "list", "--format", "xml"])
-        XCTAssertNotEqual(result.exitCode, 0)
+        let message = try assertArgumentErrorEnvelope(run(["totally-invalid-subcommand"]))
+        XCTAssertTrue(message.contains("totally-invalid-subcommand"), message)
+    }
+
+    func testMailListInvalidFormatIsAnErrorEnvelope() throws {
+        guard requireBinary() else { return }
+        let message = try assertArgumentErrorEnvelope(run(["mail", "list", "--format", "xml"]))
+        XCTAssertTrue(message.contains("--format agent"), message)
+    }
+
+    func testRemovedFormatsAreErrorEnvelopesNamingTheReplacement() throws {
+        guard requireBinary() else { return }
+        for removed in ["text", "json"] {
+            let message = try assertArgumentErrorEnvelope(run(["mail", "list", "--format", removed]))
+            XCTAssertTrue(message.contains("--format \(removed) was removed"), message)
+            XCTAssertTrue(message.contains("--format agent"), message)
+        }
     }
 
     // MARK: - Typed exit codes
@@ -364,24 +394,12 @@ final class CLIIntegrationTests: XCTestCase {
 
     // MARK: - Agent error output
 
-    func testInvalidCommandAgentError() {
+    func testInvalidCommandAgentError() throws {
         guard requireBinary() else { return }
-        let result = run(["mail", "mark", "--format", "agent", "invalid-id"])
-        // Envelope v1: {"v":1,"status":"error","duration_ms":N,"error":{code,message,...}}
-        let combined = result.stdout + result.stderr
-        if let data = result.stdout.data(using: .utf8),
-           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let errorDict = dict["error"] as? [String: Any] {
-            XCTAssertEqual(dict["v"] as? Int, AGENT_SCHEMA_VERSION, "Envelope must have current schema version")
-            XCTAssertEqual(dict["status"] as? String, "error", "Envelope status must be 'error'")
-            XCTAssertNotNil(dict["duration_ms"], "Envelope must include duration_ms")
-            XCTAssertNotNil(errorDict["code"], "Agent error must have 'code' field")
-            XCTAssertNotNil(errorDict["message"], "Agent error must have 'message' field")
-        } else if result.exitCode != 0 {
-            // Binary not reachable or command exited without agent error — acceptable
-            // in environments without Mail.app access
-            XCTAssertTrue(combined.count >= 0) // trivially pass
-        }
+        // Fails validation (no --read/--unread) before touching Mail, so this
+        // is deterministic without Apple app access.
+        let message = try assertArgumentErrorEnvelope(run(["mail", "mark", "--format", "agent", "invalid-id"]))
+        XCTAssertTrue(message.contains("--read"), message)
     }
 
     // MARK: - Doctor agent format

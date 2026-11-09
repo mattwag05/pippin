@@ -29,22 +29,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let bridge = RemindersBridge()
             let lists = try await bridge.listReminderLists()
-            if output.isJSON {
-                try printJSON(lists)
-            } else if output.isAgent {
-                try output.printAgent(lists)
-            } else {
-                if lists.isEmpty {
-                    print("No reminder lists found.")
-                    return
-                }
-                let rows = lists.map { [$0.title, $0.account, $0.isDefault ? "yes" : "no"] }
-                print(TextFormatter.table(
-                    headers: ["NAME", "ACCOUNT", "DEFAULT"],
-                    rows: rows,
-                    columnWidths: [30, 30, 8]
-                ))
-            }
+            try output.printAgent(lists)
         }
     }
 
@@ -90,10 +75,6 @@ public struct RemindersCommand: AsyncParsableCommand {
         /// (store hang / permission edge). `--list` scopes the underlying
         /// predicate, so it's the one flag that actually shrinks the fetch.
         static let timedOutHint = "reminders fetch did not complete within 15s — returning partial results; scope to a single list with --list for a complete, faster fetch"
-
-        private func warnTimedOut() {
-            FileHandle.standardError.write(Data("Warning: \(Self.timedOutHint)\n".utf8))
-        }
 
         public mutating func validate() throws {
             if let dueBefore, parseCalendarDate(dueBefore) == nil {
@@ -145,26 +126,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: fetched.results, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                if output.isJSON {
-                    // --fields projects at encode time via jsonData(fields:), which
-                    // OutputOptions.emit (plain printJSON) can't preserve, so this
-                    // branch stays custom and surfaces the timeout warning itself.
-                    if fetched.timedOut { warnTimedOut() }
-                    let fieldList = FieldProjection.parse(output.fields)
-                    let itemsData = try page.items.jsonData(fields: fieldList)
-                    let itemsJSON = try JSONSerialization.jsonObject(with: itemsData)
-                    var dict: [String: Any] = ["items": itemsJSON]
-                    if let cursor = page.nextCursor { dict["next_cursor"] = cursor }
-                    let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
-                    print(String(data: out, encoding: .utf8)!)
-                } else {
-                    try output.emitPage(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
-                        printRemindersTable(page.items)
-                        if let cursor = page.nextCursor {
-                            print("(more — re-run with --cursor \(cursor))")
-                        }
-                    }
-                }
+                try output.emitPage(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
                 return
             }
 
@@ -178,18 +140,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 priority: priority.flatMap { parseReminderPriority($0) },
                 limit: limit
             )
-            let reminders = outcome.results
-            if output.isJSON {
-                // --fields projection can't flow through emit's plain printJSON.
-                if outcome.timedOut { warnTimedOut() }
-                let fieldList = FieldProjection.parse(output.fields)
-                let data = try reminders.jsonData(fields: fieldList)
-                print(String(data: data, encoding: .utf8)!)
-            } else {
-                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
-                    printRemindersTable(reminders)
-                }
-            }
+            try output.emit(outcome.results, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
         }
     }
 
@@ -211,13 +162,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let bridge = RemindersBridge()
             let reminder = try await bridge.showReminder(id: id)
-            if output.isJSON {
-                try printJSON(reminder)
-            } else if output.isAgent {
-                try output.printAgent(reminder)
-            } else {
-                printReminderCard(reminder)
-            }
+            try output.printAgent(reminder)
         }
     }
 
@@ -270,13 +215,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 notes: notes,
                 url: url
             )
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -333,13 +272,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 listId: list,
                 url: url
             )
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -361,13 +294,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let bridge = RemindersBridge()
             let result = try await bridge.completeReminder(id: id)
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -398,13 +325,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             let bridge = RemindersBridge()
             let result = try await bridge.deleteReminder(id: id)
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -436,10 +357,6 @@ public struct RemindersCommand: AsyncParsableCommand {
         /// only flag that narrows the underlying predicate.
         static let timedOutHint = List.timedOutHint
 
-        private func warnTimedOut() {
-            FileHandle.standardError.write(Data("Warning: \(Self.timedOutHint)\n".utf8))
-        }
-
         public mutating func validate() throws {
             guard limit > 0 else {
                 throw ValidationError("--limit must be positive.")
@@ -454,18 +371,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 completed: completed,
                 limit: limit
             )
-            let reminders = outcome.results
-            if output.isJSON {
-                // --fields projection can't flow through emit's plain printJSON.
-                if outcome.timedOut { warnTimedOut() }
-                let fieldList = FieldProjection.parse(output.fields)
-                let data = try reminders.jsonData(fields: fieldList)
-                print(String(data: data, encoding: .utf8)!)
-            } else {
-                try output.emit(reminders, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
-                    printRemindersTable(reminders)
-                }
-            }
+            try output.emit(outcome.results, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
         }
     }
 
@@ -539,25 +445,18 @@ public struct RemindersCommand: AsyncParsableCommand {
             }
 
             if dryRun {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                if let data = try? encoder.encode(parsed) {
-                    print(String(data: data, encoding: .utf8)!)
-                }
+                try output.printAgent(parsed)
                 return
             }
 
             let bridge = RemindersBridge()
 
-            // Resolve list name to ID (CLI flag takes precedence over AI-parsed name)
+            // Resolve list name to ID (CLI flag takes precedence over AI-parsed
+            // name); an unmatched name falls through to the default list.
             var resolvedListId: String? = nil
             if let name = list ?? parsed.listTitle {
                 let lists = try await bridge.listReminderLists()
-                if let match = lists.first(where: { $0.title.lowercased() == name.lowercased() }) {
-                    resolvedListId = match.id
-                } else if !output.isAgent {
-                    fputs("Warning: list '\(name)' not found — using default list.\n", stderr)
-                }
+                resolvedListId = lists.first(where: { $0.title.lowercased() == name.lowercased() })?.id
             }
 
             let result = try await bridge.createReminder(
@@ -569,13 +468,7 @@ public struct RemindersCommand: AsyncParsableCommand {
                 url: nil
             )
 
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try output.printAgent(result)
         }
     }
 }
@@ -595,41 +488,4 @@ private struct SmartReminderError: LocalizedError {
     init(_ message: String) {
         errorDescription = message
     }
-}
-
-// MARK: - Text output helpers
-
-private func printRemindersTable(_ reminders: [ReminderItem]) {
-    if reminders.isEmpty {
-        print("No reminders found.")
-        return
-    }
-    let rows = reminders.map { reminder -> [String] in
-        let shortId = String(reminder.id.prefix(8))
-        let due = reminder.dueDate.map { TextFormatter.compactDate($0) } ?? "-"
-        let priorityStr = reminder.priority == 0 ? "-" : formatReminderPriority(reminder.priority)
-        return [shortId, due, priorityStr, TextFormatter.truncate(reminder.title, to: 35)]
-    }
-    print(TextFormatter.table(
-        headers: ["ID", "DUE", "PRIORITY", "TITLE"],
-        rows: rows,
-        columnWidths: [10, 18, 10, 37]
-    ))
-}
-
-private func printReminderCard(_ reminder: ReminderItem) {
-    var fields: [(String, String)] = [
-        ("ID", reminder.id),
-        ("Title", reminder.title),
-        ("List", reminder.listTitle),
-        ("Completed", reminder.isCompleted ? "yes" : "no"),
-        ("Priority", formatReminderPriority(reminder.priority)),
-    ]
-    if let due = reminder.dueDate { fields.append(("Due", due)) }
-    if let comp = reminder.completionDate { fields.append(("Completed On", comp)) }
-    if let url = reminder.url { fields.append(("URL", url)) }
-    if let notes = reminder.notes { fields.append(("Notes", notes)) }
-    if let created = reminder.creationDate { fields.append(("Created", created)) }
-    if let modified = reminder.lastModifiedDate { fields.append(("Modified", modified)) }
-    print(TextFormatter.card(fields: fields))
 }

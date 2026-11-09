@@ -51,9 +51,8 @@ public struct AgentInfoCommand: AsyncParsableCommand {
         commandName: "agent-info",
         abstract: "Describe pippin's agent contract: version, formats, exit codes, tool count.",
         discussion: """
-        A single discovery handshake for orchestrating agents. Use \
-        `--format agent` (or `json`) for the structured contract; the text view \
-        is a human-readable summary. Complements `pippin mcp-server --list-tools`.
+        A single discovery handshake for orchestrating agents: the structured \
+        contract as an agent envelope. Complements `pippin mcp-server --list-tools`.
         """
     )
 
@@ -82,13 +81,7 @@ public struct AgentInfoCommand: AsyncParsableCommand {
             commands: Self.commandNames.sorted()
         )
 
-        if output.isAgent {
-            try output.printAgent(info)
-        } else if output.isJSON {
-            try printJSON(info)
-        } else {
-            printText(info)
-        }
+        try output.printAgent(info)
     }
 
     /// The documented exit-code map, mirroring `PippinExitCode`. Kept here as
@@ -101,23 +94,5 @@ public struct AgentInfoCommand: AsyncParsableCommand {
         .init(code: 4, meaning: "auth / permission / config", retryable: false),
         .init(code: 5, meaning: "tool / bridge failure", retryable: false),
         .init(code: 7, meaning: "timeout / rate-limit", retryable: true),
-        .init(code: 64, meaning: "argument-parse failure (unknown subcommand/flag; ArgumentParser EX_USAGE)", retryable: false),
     ]
-
-    private func printText(_ info: AgentInfo) {
-        print("\(info.name) \(info.version) — \(info.tagline)")
-        print("schema version: \(info.schemaVersion)")
-        print("formats: \(info.formats.joined(separator: ", "))")
-        print("global flags: \(info.globalFlags.joined(separator: ", "))")
-        print("experimental: \(info.experimentalEnabled ? "enabled" : "disabled")")
-        print("mcp tools: \(info.mcp.toolCount)")
-        if !info.commands.isEmpty {
-            print("commands: \(info.commands.joined(separator: ", "))")
-        }
-        print("exit codes:")
-        for entry in info.exitCodes {
-            let retry = entry.retryable ? " (retryable)" : ""
-            print("  \(entry.code)  \(entry.meaning)\(retry)")
-        }
-    }
 }

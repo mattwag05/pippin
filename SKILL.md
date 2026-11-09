@@ -43,11 +43,7 @@ pippin                 # start interactive REPL
 
 ## Output Formats
 
-All commands support `--format <text|json|agent>`:
-
-- **text** (default) — human-readable table/prose output
-- **json** — pretty-printed JSON for scripting
-- **agent** — compact JSON optimized for LLM token efficiency, wrapped in the **envelope v1** (see [Agent Integration](#agent-integration))
+Every command emits compact JSON wrapped in the agent **envelope** (see [Agent Integration](#agent-integration)). There is no other format: `--format agent` is accepted as a no-op and `--format text` or `--format json` fails with a usage error.
 
 ## Command Groups
 
@@ -191,7 +187,7 @@ Scan recent Sent mail and recently-modified Notes for commitments you made, and 
 
 ```bash
 pippin actions extract                          # dry-run: list extracted commitments
-pippin actions extract --days 14 --format json  # last 2 weeks, structured output
+pippin actions extract --days 14                # last 2 weeks
 pippin actions extract --create --list "Work"   # write reminders into Reminders.app
 pippin actions extract --no-notes               # mail only
 pippin actions extract --provider claude        # use Claude instead of Ollama
@@ -343,7 +339,7 @@ Cursor tokens are bound to the query by a filter-hash — changing a filter mid-
 
 ### Field projection (`--fields`)
 
-`--fields id,subject,from` trims structured output to just those top-level keys, cutting tokens for scan workflows. Supported on `mail list`, `notes list`/`search`, `calendar events`/`today`/`remaining`/`upcoming`, and `reminders list`/`search`. Works in **both `--format json` and `--format agent`** (in agent mode it projects the envelope's `.data`, leaving `v`/`status`/`duration_ms` intact). For paginated output it projects each element of `.data` and preserves the top-level `next_cursor`.
+`--fields id,subject,from` trims the envelope's `.data` to just those top-level keys, leaving `v`/`status`/`duration_ms` intact and cutting tokens for scan workflows. Supported on `mail list`, `notes list`/`search`, `calendar events`/`today`/`remaining`/`upcoming`, and `reminders list`/`search`. For paginated output it projects each element of `.data` and preserves the top-level `next_cursor`.
 
 ```bash
 pippin mail list --limit 20 --fields id,subject,from --format agent   # → [{id,subject,from}, ...] under .data

@@ -78,16 +78,7 @@ public struct JobCommand: AsyncParsableCommand {
             var display = seed
             display.pid = pid
 
-            if output.isAgent {
-                try output.printAgent(display)
-            } else if output.isJSON {
-                try printJSON(display)
-            } else {
-                print("job_id: \(id)")
-                print("pid:    \(pid)")
-                print("status: running")
-                print("tail logs: pippin job logs \(id) --stream")
-            }
+            try output.printAgent(display)
         }
     }
 
@@ -115,21 +106,7 @@ public struct JobCommand: AsyncParsableCommand {
             let stdoutTail = store.tailStdout(job.id, maxBytes: max(0, tail))
             let stderrTail = store.tailStderr(job.id, maxBytes: max(0, tail))
             let view = JobView(job: job, stdoutTail: stdoutTail, stderrTail: stderrTail)
-            if output.isAgent {
-                try output.printAgent(view)
-            } else if output.isJSON {
-                try printJSON(view)
-            } else {
-                printJobHeader(job)
-                if !stdoutTail.isEmpty {
-                    print("— stdout (tail \(stdoutTail.count)B) —")
-                    print(stdoutTail)
-                }
-                if !stderrTail.isEmpty {
-                    print("— stderr (tail \(stderrTail.count)B) —")
-                    print(stderrTail)
-                }
-            }
+            try output.printAgent(view)
         }
     }
 
@@ -162,19 +139,7 @@ public struct JobCommand: AsyncParsableCommand {
                 jobs = jobs.filter { $0.status == filter }
             }
             jobs = Array(jobs.prefix(limit))
-            if output.isAgent {
-                try output.printAgent(jobs)
-            } else if output.isJSON {
-                try printJSON(jobs)
-            } else {
-                if jobs.isEmpty {
-                    print("No jobs.")
-                } else {
-                    for job in jobs {
-                        printJobLine(job)
-                    }
-                }
-            }
+            try output.printAgent(jobs)
         }
     }
 
@@ -210,13 +175,7 @@ public struct JobCommand: AsyncParsableCommand {
             while true {
                 let job = try store.readCanonical(canonicalId)
                 if job.status.isTerminal {
-                    if output.isAgent {
-                        try output.printAgent(job)
-                    } else if output.isJSON {
-                        try printJSON(job)
-                    } else {
-                        printJobHeader(job)
-                    }
+                    try output.printAgent(job)
                     return
                 }
                 if let deadline, Date() >= deadline {
@@ -247,17 +206,23 @@ public struct JobCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Read stderr instead of stdout.")
         public var stderr: Bool = false
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
+            struct JobLogs: Encodable {
+                let id: String
+                let stream: String
+                let text: String
+            }
             let store = JobStore()
             let resolved = try store.resolve(id)
             let path = stderr ? store.stderrPath(resolved) : store.stdoutPath(resolved)
             if !stream {
-                if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-                   let text = String(data: data, encoding: .utf8) {
-                    print(text, terminator: "")
-                }
+                let text = (try? Data(contentsOf: URL(fileURLWithPath: path)))
+                    .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                try output.printAgent(JobLogs(id: resolved, stream: stderr ? "stderr" : "stdout", text: text))
                 return
             }
             // Streaming tail: seek to end? Start at beginning for the first
@@ -313,19 +278,7 @@ public struct JobCommand: AsyncParsableCommand {
             let store = JobStore()
             let removed = try store.gc(olderThan: cutoff)
             let result = GcResult(removed: removed, cutoff: cutoff)
-            if output.isAgent {
-                try output.printAgent(result)
-            } else if output.isJSON {
-                try printJSON(result)
-            } else {
-                if removed.isEmpty {
-                    print("No jobs older than \(olderThan).")
-                } else {
-                    for id in removed {
-                        print("removed \(id)")
-                    }
-                }
-            }
+            try output.printAgent(result)
         }
     }
 }
@@ -536,25 +489,4 @@ func parseDuration(_ input: String) throws -> Int {
     case "w", "W": return value * 86400 * 7
     default: throw JobCommandError.invalidDuration(input)
     }
-}
-
-private func printJobHeader(_ job: Job) {
-    print("job_id:     \(job.id)")
-    print("status:     \(job.status.rawValue)")
-    print("argv:       \(job.argv.joined(separator: " "))")
-    if let pid = job.pid { print("pid:        \(pid)") }
-    print("started:    \(TextFormatter.compactDate(job.startedAt))")
-    if let endedAt = job.endedAt {
-        print("ended:      \(TextFormatter.compactDate(endedAt))")
-    }
-    if let exitCode = job.exitCode { print("exit_code:  \(exitCode)") }
-    if let durationMs = job.durationMs { print("duration:   \(durationMs)ms") }
-}
-
-private func printJobLine(_ job: Job) {
-    let shortId = String(job.id.prefix(12))
-    let statusStr = job.status.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0)
-    let argvStr = job.argv.joined(separator: " ")
-    let when = TextFormatter.compactDate(job.startedAt)
-    print("\(shortId)  \(statusStr)  \(when)  \(argvStr)")
 }

@@ -90,23 +90,3 @@ public struct CalendarConflict: Codable, Sendable {
         self.overlapMinutes = overlapMinutes
     }
 }
-
-// MARK: - Field filtering
-
-public extension CalendarEvent {
-    /// Encode only the specified fields to JSON. Pass nil to get all fields (standard encoding).
-    func jsonData(fields: [String]?) throws -> Data {
-        guard let fields else { return try JSONEncoder().encode(self) }
-        let projected = try FieldProjection.projectedObject(self, fields: fields)
-        return try JSONSerialization.data(withJSONObject: projected, options: .sortedKeys)
-    }
-}
-
-public extension Array where Element == CalendarEvent {
-    /// Encode each event with only the specified fields. Pass nil to get all fields.
-    func jsonData(fields: [String]?) throws -> Data {
-        guard let fields else { return try JSONEncoder().encode(self) }
-        let projected = try FieldProjection.projectedObject(self, fields: fields)
-        return try JSONSerialization.data(withJSONObject: projected, options: .sortedKeys)
-    }
-}

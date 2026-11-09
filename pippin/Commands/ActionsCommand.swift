@@ -187,8 +187,6 @@ public struct ActionsCommand: AsyncParsableCommand {
                 let lists = try await bridge.listReminderLists()
                 if let match = lists.first(where: { $0.title.lowercased() == name.lowercased() }) {
                     resolvedListId = match.id
-                } else if !output.isAgent {
-                    fputs("Warning: list '\(name)' not found — using default list.\n", stderr)
                 }
             }
             var results: [BridgeActionResult] = []
@@ -212,38 +210,12 @@ public struct ActionsCommand: AsyncParsableCommand {
 
         private func emitActions(_ actions: [ExtractedAction], timedOut: Bool) throws {
             let hint = "activity scan timed out — commitment extraction may be incomplete"
-            try output.emit(actions, timedOut: timedOut, timedOutHint: hint) {
-                if actions.isEmpty {
-                    print("No commitments found in the last \(days) day(s).")
-                    return
-                }
-                let headers = ["Source", "Title", "Due", "Conf"]
-                let widths = [6, 42, 18, 5]
-                let rows = actions.map { action -> [String] in
-                    let due = action.proposedDueDate.map { TextFormatter.compactDate($0) } ?? "-"
-                    let conf = String(format: "%.2f", action.confidence)
-                    return [
-                        action.source.rawValue,
-                        TextFormatter.truncate(action.proposedTitle, to: widths[1]),
-                        due,
-                        conf,
-                    ]
-                }
-                print(TextFormatter.table(headers: headers, rows: rows, columnWidths: widths))
-            }
+            try output.emit(actions, timedOut: timedOut, timedOutHint: hint)
         }
 
         private func emitResults(_ results: [BridgeActionResult], timedOut: Bool) throws {
             let hint = "activity scan timed out — some commitments may not have been created"
-            try output.emit(results, timedOut: timedOut, timedOutHint: hint) {
-                if results.isEmpty {
-                    print("No commitments found — nothing created.")
-                    return
-                }
-                for result in results {
-                    print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-                }
-            }
+            try output.emit(results, timedOut: timedOut, timedOutHint: hint)
         }
     }
 }

@@ -54,27 +54,12 @@ public struct MemosCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: fetched, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                if output.isJSON {
-                    try printJSON(page)
-                } else if output.isAgent {
-                    try output.printAgentPage(page)
-                } else {
-                    printMemosTable(page.items)
-                    if let cursor = page.nextCursor {
-                        print("(more — re-run with --cursor \(cursor))")
-                    }
-                }
+                try output.printAgentPage(page)
                 return
             }
 
             let memos = try markCachedTranscripts(db.listMemos(since: sinceDate, limit: limit))
-            if output.isJSON {
-                try printJSON(memos)
-            } else if output.isAgent {
-                try output.printAgent(memos)
-            } else {
-                printMemosTable(memos)
-            }
+            try output.printAgent(memos)
         }
     }
 
@@ -105,13 +90,7 @@ public struct MemosCommand: AsyncParsableCommand {
                 memo.hasTranscript = true
             }
 
-            if output.isJSON {
-                try printJSON(memo)
-            } else if output.isAgent {
-                try output.printAgent(memo)
-            } else {
-                printMemoCard(memo)
-            }
+            try output.printAgent(memo)
         }
     }
 
@@ -183,12 +162,6 @@ public struct MemosCommand: AsyncParsableCommand {
                         batchTimedOut = true
                         break
                     }
-                    if !outputOptions.isStructured {
-                        for memo in chunk {
-                            print("Exporting: \(memo.title)...", terminator: " ")
-                            fflush(stdout)
-                        }
-                    }
                     let outputDir = output
                     let sidecarFmtCapture = sidecarFmt
                     let forceT = forceTranscribe
@@ -227,20 +200,17 @@ public struct MemosCommand: AsyncParsableCommand {
                         switch result {
                         case let .success(r):
                             results.append(r)
-                            if !outputOptions.isStructured { print("done") }
                         case let .failure(e):
                             let title = i < chunk.count ? chunk[i].title : "(unknown)"
                             failures.append("\(title): \(e.localizedDescription)")
-                            if !outputOptions.isStructured { print("FAILED: \(e.localizedDescription)") }
                         }
                     }
                 }
-                // Surface per-item failures and budget exhaustion as warnings.
-                // In --format agent these are the ONLY signal a caller gets: the
-                // per-item "FAILED" prints above only fire in non-structured mode,
-                // so without this a batch where every memo failed would return an
-                // empty result set with status "ok" and exit 0 — indistinguishable
-                // from "nothing to export".
+                // Surface per-item failures and budget exhaustion as envelope
+                // warnings: they are the ONLY signal a caller gets. Without them
+                // a batch where every memo failed would return an empty result
+                // set with status "ok" and exit 0, indistinguishable from
+                // "nothing to export".
                 exportWarnings = Self.exportWarnings(
                     failures: failures,
                     totalMemos: memos.count,
@@ -249,10 +219,6 @@ public struct MemosCommand: AsyncParsableCommand {
                     budgetSeconds: budget.softTimeoutMs / 1000
                 )
             } else if let id {
-                if !outputOptions.isStructured {
-                    print("Exporting...", terminator: " ")
-                    fflush(stdout)
-                }
                 guard let memo = try db.getMemoByPrefix(id: id) else {
                     throw VoiceMemosError.memoNotFound(id)
                 }
@@ -265,26 +231,9 @@ public struct MemosCommand: AsyncParsableCommand {
                     forceTranscribe: forceTranscribe
                 )
                 results.append(result)
-                if !outputOptions.isStructured {
-                    print("done")
-                }
             }
 
-            if outputOptions.isAgent {
-                try outputOptions.printAgent(results, warnings: exportWarnings.isEmpty ? nil : exportWarnings)
-            } else {
-                // Agent mode carries warnings in the envelope; JSON/plain modes
-                // surface them on stderr so they don't pollute machine output.
-                for warning in exportWarnings {
-                    fputs("warning: \(warning)\n", stderr)
-                }
-                if outputOptions.isJSON {
-                    try printJSON(results)
-                } else {
-                    let noun = results.count == 1 ? "recording" : "recordings"
-                    print("\nExported \(results.count) \(noun) to \(output)")
-                }
-            }
+            try outputOptions.printAgent(results, warnings: exportWarnings.isEmpty ? nil : exportWarnings)
         }
 
         /// Assemble non-fatal warnings for a batch export. Pure so it can be
@@ -326,7 +275,7 @@ public struct MemosCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Transcribe every recording.")
         public var all: Bool = false
 
-        @Option(name: .long, help: "Directory to write .txt files (default: print to stdout).")
+        @Option(name: .long, help: "Directory to write .txt files (default: transcript only in the envelope).")
         public var output: String?
 
         @Flag(name: .long, help: "Bypass transcript cache.")
@@ -337,7 +286,7 @@ public struct MemosCommand: AsyncParsableCommand {
 
         @Flag(
             name: .customLong("keep-converted"),
-            help: "Preserve any temp WAV produced by AudioConverter and print its path (debug)."
+            help: "Preserve any temp WAV produced by AudioConverter and log its path to stderr (debug)."
         )
         public var keepConverted: Bool = false
 
@@ -363,8 +312,8 @@ public struct MemosCommand: AsyncParsableCommand {
             let logConverted: @Sendable (String) -> Void = { path in
                 FileHandle.standardError.write(Data("[converted] \(path)\n".utf8))
             }
-            let convertedPathLogger: (@Sendable (String) -> Void)? =
-                (keep && !outputOptions.isStructured) ? logConverted : nil
+            // stderr only: stdout carries the envelope.
+            let convertedPathLogger: (@Sendable (String) -> Void)? = keep ? logConverted : nil
 
             var batchTimedOut = false
             var totalMemoCount = 0
@@ -379,12 +328,6 @@ public struct MemosCommand: AsyncParsableCommand {
                     if budget.exceeded {
                         batchTimedOut = true
                         break
-                    }
-                    if !outputOptions.isStructured {
-                        for memo in chunk {
-                            print("Transcribing: \(memo.title)...", terminator: " ")
-                            fflush(stdout)
-                        }
                     }
                     let outputDir = output
                     let forceFlag = force
@@ -427,12 +370,8 @@ public struct MemosCommand: AsyncParsableCommand {
                         return out.sorted { $0.0 < $1.0 }
                     }
                     for (_, result) in chunkResults {
-                        switch result {
-                        case let .success(r):
+                        if case let .success(r) = result {
                             results.append(r)
-                            if !outputOptions.isStructured { print("done") }
-                        case let .failure(e):
-                            if !outputOptions.isStructured { print("FAILED: \(e.localizedDescription)") }
                         }
                     }
                 }
@@ -458,17 +397,7 @@ public struct MemosCommand: AsyncParsableCommand {
                 }
             }
 
-            if outputOptions.isJSON {
-                try printJSON(results)
-            } else if outputOptions.isAgent {
-                try outputOptions.printAgent(results)
-            } else if !all {
-                if let result = results.first {
-                    print(result.transcription)
-                }
-            } else {
-                print("\nTranscribed \(results.count) recording(s)")
-            }
+            try outputOptions.printAgent(results)
 
             if batchTimedOut {
                 let budgetSec = BatchBudget.forCurrentContext().softTimeoutMs / 1000
@@ -527,53 +456,9 @@ public struct MemosCommand: AsyncParsableCommand {
                 success: true, action: "deleted",
                 details: ["title": memo.title, "audioPath": audioPath]
             )
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Deleted: \(memo.title)")
-                print("  Audio: \(audioPath)")
-            }
+            try output.printAgent(result)
         }
     }
-}
-
-// MARK: - Text output helpers
-
-private func printMemosTable(_ memos: [VoiceMemo]) {
-    if memos.isEmpty {
-        print("No recordings found.")
-        return
-    }
-    // Column widths: ID(10), DATE(18), DURATION(10), TITLE(remaining)
-    let rows = memos.map { memo -> [String] in
-        let shortId = String(memo.id.prefix(8))
-        let date = TextFormatter.compactDate(memo.createdAt)
-        let dur = TextFormatter.duration(memo.durationSeconds)
-        return [shortId, date, dur, memo.title]
-    }
-    let table = TextFormatter.table(
-        headers: ["ID", "DATE", "DURATION", "TITLE"],
-        rows: rows,
-        columnWidths: [10, 18, 10, 42]
-    )
-    print(table)
-}
-
-private func printMemoCard(_ memo: VoiceMemo) {
-    var fields: [(String, String)] = [
-        ("ID", memo.id),
-        ("Title", memo.title),
-        ("Duration", TextFormatter.duration(memo.durationSeconds)),
-        ("Created", TextFormatter.compactDate(memo.createdAt)),
-        ("File", memo.filePath),
-        ("Transcript", memo.hasTranscript ? "cached" : "none"),
-    ]
-    if memo.isEvicted {
-        fields.append(("Evicted", "yes (audio in iCloud, not local)"))
-    }
-    print(TextFormatter.card(fields: fields))
 }
 
 /// Mark `hasTranscript` on each memo from a single transcript-cache query.

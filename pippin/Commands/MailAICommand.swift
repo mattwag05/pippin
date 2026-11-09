@@ -53,7 +53,6 @@ public struct MailIndex: AsyncParsableCommand {
         let account = self.account
         let mailbox = self.mailbox
         let limit = self.limit
-        let isStructured = output.isStructured
         // listMessages and the per-message readMessage loop both spawn blocking
         // osascript subprocesses, and store.exists hits SQLite — hop the whole
         // scan+read phase off the cooperative pool.
@@ -71,9 +70,6 @@ public struct MailIndex: AsyncParsableCommand {
             for message in indexOutcome.messages {
                 if store.isCurrent(compoundId: message.id, messageDate: message.date, model: storeKey) {
                     skipped += 1
-                    if !isStructured {
-                        fputs("  skip \(message.id)\n", stderr)
-                    }
                     continue
                 }
                 let full = try MailBridge.readMessage(row: message)
@@ -127,15 +123,10 @@ public struct MailIndex: AsyncParsableCommand {
             )
             try store.upsert(record)
             indexed += 1
-            if !output.isStructured {
-                fputs("  index (\(indexed)/\(toIndex.count)) \(embedding.id)\n", stderr)
-            }
         }
 
         let result = IndexResult(indexed: indexed, skipped: skipped, total: messages.count)
-        try output.emit(result, timedOut: indexOutcome.timedOut, timedOutHint: "mailbox scan timed out — index will be partial") {
-            print("Indexed \(indexed) messages, skipped \(skipped) (total \(messages.count))")
-        }
+        try output.emit(result, timedOut: indexOutcome.timedOut, timedOutHint: "mailbox scan timed out — index will be partial")
     }
 }
 
@@ -187,19 +178,7 @@ public struct MailSanitize: AsyncParsableCommand {
             }
         }
 
-        if output.isJSON {
-            try printJSON(scanResult)
-        } else if output.isAgent {
-            try output.printAgent(scanResult)
-        } else {
-            print("Risk level: \(scanResult.riskLevel.rawValue.uppercased())")
-            print("Threats found: \(scanResult.threats.count)")
-            if !scanResult.threats.isEmpty {
-                for threat in scanResult.threats {
-                    print("  [\(threat.category.rawValue)] confidence=\(String(format: "%.2f", threat.confidence)): \(threat.matchedText)")
-                }
-            }
-        }
+        try output.printAgent(scanResult)
     }
 }
 
@@ -256,8 +235,8 @@ public struct MailTriage: AsyncParsableCommand {
         let apiKey = self.apiKey
         // listMessages spawns osascript and TriageEngine.triage blocks via
         // DispatchSemaphore (AI provider); hop off the cooperative pool.
-        let (triageOutcome, ruleTriaged, result) = try await detachBlocking {
-            () -> (MailBridge.ListOutcome, [TriagedMessage], TriageResult) in
+        let (triageOutcome, result) = try await detachBlocking {
+            () -> (MailBridge.ListOutcome, TriageResult) in
             let triageOutcome = try MailBridge.listMessages(
                 account: account,
                 mailbox: mailbox,
@@ -281,32 +260,13 @@ public struct MailTriage: AsyncParsableCommand {
                 summary: aiResult.summary,
                 actionItems: aiResult.actionItems
             )
-            return (triageOutcome, ruleTriaged, result)
+            return (triageOutcome, result)
         }
         if triageOutcome.timedOut {
             fputs("warning: mail scan timed out — triage operating on partial results; some unread messages may be missed\n", stderr)
         }
 
-        try output.emit(result, timedOut: triageOutcome.timedOut, timedOutHint: "mailbox scan timed out — triage results will be partial") {
-            let rows = result.messages.map { m in
-                [m.category.rawValue, "\(m.urgency)", TextFormatter.truncate(m.subject, to: 35), m.oneLiner]
-            }
-            print(TextFormatter.table(
-                headers: ["CATEGORY", "PRI", "SUBJECT", "SUMMARY"],
-                rows: rows,
-                columnWidths: [15, 4, 36, 40]
-            ))
-            if !ruleTriaged.isEmpty {
-                print("\n\(ruleTriaged.count) message(s) classified by rules (skipped AI)")
-            }
-            if !result.summary.isEmpty {
-                print("\nSummary: \(result.summary)")
-            }
-            if !result.actionItems.isEmpty {
-                print("\nAction items:")
-                result.actionItems.forEach { print("  \u{2022} \($0)") }
-            }
-        }
+        try output.emit(result, timedOut: triageOutcome.timedOut, timedOutHint: "mailbox scan timed out — triage results will be partial")
     }
 }
 
@@ -354,43 +314,7 @@ public struct MailExtract: AsyncParsableCommand {
                 provider: aiProvider
             )
         }
-        if output.isJSON {
-            try printJSON(result)
-        } else if output.isAgent {
-            try output.printAgent(result)
-        } else {
-            if !result.dates.isEmpty {
-                print("Dates:")
-                result.dates.forEach { print("  \($0.text)" + ($0.isoDate.map { " [\($0)]" } ?? "")) }
-            }
-            if !result.amounts.isEmpty {
-                print("Amounts:")
-                result.amounts.forEach { print("  \($0.text)") }
-            }
-            if !result.trackingNumbers.isEmpty {
-                print("Tracking: \(result.trackingNumbers.joined(separator: ", "))")
-            }
-            if !result.actionItems.isEmpty {
-                print("Action items:")
-                result.actionItems.forEach { print("  \u{2022} \($0)") }
-            }
-            if !result.contacts.isEmpty {
-                print("Contacts:")
-                for c in result.contacts {
-                    let parts = [c.name, c.email, c.phone].compactMap { $0 }
-                    guard !parts.isEmpty else { continue }
-                    print("  \(parts.joined(separator: " | "))")
-                }
-            }
-            if !result.urls.isEmpty {
-                print("URLs:")
-                result.urls.forEach { print("  \($0)") }
-            }
-            if result.dates.isEmpty, result.amounts.isEmpty, result.trackingNumbers.isEmpty,
-               result.actionItems.isEmpty, result.contacts.isEmpty, result.urls.isEmpty {
-                print("No structured data found.")
-            }
-        }
+        try output.printAgent(result)
     }
 }
 

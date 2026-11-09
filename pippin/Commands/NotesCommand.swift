@@ -50,16 +50,9 @@ public struct NotesCommand: ParsableCommand {
             }
             let outcome = try NotesBridge.listNotes(folder: folder, limit: limit)
             let notes = outcome.results
-            // One emit for all three formats: json/agent get --fields projection
-            // and the structured timedOut advisory (stderr warning / envelope
-            // warnings) from the shared helper instead of a hand-rolled branch.
-            try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
-                if notes.isEmpty {
-                    print("No notes found.")
-                } else {
-                    print(printNotesTable(notes))
-                }
-            }
+            // The shared helper applies --fields projection and the structured
+            // timedOut advisory (envelope warnings) instead of a hand-rolled branch.
+            try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint)
         }
 
         private func runPaginated() throws {
@@ -79,16 +72,7 @@ public struct NotesCommand: ParsableCommand {
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
             )
-            try output.emitPage(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
-                if page.items.isEmpty {
-                    print("No notes found.")
-                } else {
-                    print(printNotesTable(page.items))
-                }
-                if let cursor = page.nextCursor {
-                    print("(more — re-run with --cursor \(cursor))")
-                }
-            }
+            try output.emitPage(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint)
         }
     }
 
@@ -109,14 +93,8 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let note = try NotesBridge.showNote(id: id)
-            if output.isJSON {
-                try printJSON(note)
-            } else if output.isAgent {
-                // Agent mode: exclude large HTML body, include plainText instead
-                try output.printAgent(NoteAgentView(note: note))
-            } else {
-                print(printNoteCard(note))
-            }
+            // Exclude the large HTML body, include plainText instead.
+            try output.printAgent(NoteAgentView(note: note))
         }
     }
 
@@ -150,13 +128,7 @@ public struct NotesCommand: ParsableCommand {
         public mutating func run() throws {
             let outcome = try NotesBridge.searchNotes(query: query, folder: folder, limit: limit)
             let notes = outcome.results
-            try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
-                if notes.isEmpty {
-                    print("No notes matching \"\(query)\".")
-                } else {
-                    print(printNotesTable(notes))
-                }
-            }
+            try output.emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint)
         }
     }
 
@@ -175,13 +147,7 @@ public struct NotesCommand: ParsableCommand {
         public mutating func run() throws {
             let outcome = try NotesBridge.listFolders()
             let folders = outcome.results
-            try output.emit(folders, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint) {
-                if folders.isEmpty {
-                    print("No folders found.")
-                } else {
-                    print(printFoldersTable(folders))
-                }
-            }
+            try output.emit(folders, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint)
         }
     }
 
@@ -211,13 +177,7 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let result = try NotesBridge.createNote(title: title, body: body, folder: folder, html: html)
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -256,13 +216,7 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let result = try NotesBridge.editNote(id: id, title: title, body: body, append: append, html: html)
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try output.printAgent(result)
         }
     }
 
@@ -292,20 +246,14 @@ public struct NotesCommand: ParsableCommand {
 
         public mutating func run() throws {
             let result = try NotesBridge.deleteNote(id: id)
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try output.printAgent(result)
         }
     }
 }
 
 // MARK: - Agent view helpers
 
-/// Compact note view for `notes show` agent mode — excludes large HTML body.
+/// Compact note view for `notes show`: excludes the large HTML body.
 /// Internal (not private) so tests can assert the serialized shape.
 struct NoteAgentView: Encodable {
     let id: String
@@ -321,46 +269,4 @@ struct NoteAgentView: Encodable {
         folder = note.folder
         modifiedAt = note.modificationDate
     }
-}
-
-// MARK: - Text output helpers
-
-private func printNotesTable(_ notes: [NoteInfo]) -> String {
-    let rows = notes.map { note -> [String] in
-        let shortId = note.id.components(separatedBy: "/").last ?? String(note.id.suffix(8))
-        let date = TextFormatter.compactDate(note.modificationDate)
-        return [shortId, date, note.folder, note.title]
-    }
-    return TextFormatter.table(
-        headers: ["ID", "DATE", "FOLDER", "TITLE"],
-        rows: rows,
-        columnWidths: [10, 16, 18, 34]
-    )
-}
-
-private func printNoteCard(_ note: NoteInfo) -> String {
-    var fields: [(String, String)] = [
-        ("id", note.id),
-        ("title", note.title),
-        ("folder", note.folder),
-        ("folderId", note.folderId),
-        ("createdAt", note.creationDate),
-        ("modifiedAt", note.modificationDate),
-    ]
-    if let account = note.account {
-        fields.append(("account", account))
-    }
-    fields.append(("body", note.plainText))
-    return TextFormatter.card(fields: fields)
-}
-
-private func printFoldersTable(_ folders: [NoteFolder]) -> String {
-    let rows = folders.map { f -> [String] in
-        [f.name, f.account ?? "", String(f.noteCount)]
-    }
-    return TextFormatter.table(
-        headers: ["NAME", "ACCOUNT", "COUNT"],
-        rows: rows,
-        columnWidths: [30, 30, 8]
-    )
 }

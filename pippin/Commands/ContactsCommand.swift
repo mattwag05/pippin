@@ -44,27 +44,11 @@ public struct ContactsCommand: AsyncParsableCommand {
             let outcome = try await detachBlocking {
                 try ContactsBridge.listContacts(group: group, fields: fieldList)
             }
-            if output.isStructured {
-                try output.emit(
-                    outcome.results,
-                    timedOut: outcome.timedOut,
-                    timedOutHint: ContactsCommand.timedOutHint
-                ) {}
-            } else {
-                try output.emit(
-                    outcome.results,
-                    timedOut: outcome.timedOut,
-                    timedOutHint: ContactsCommand.timedOutHint
-                ) {
-                    if outcome.results.isEmpty {
-                        print("No contacts found.")
-                    } else {
-                        for contact in outcome.results {
-                            print(formatContactLine(contact))
-                        }
-                    }
-                }
-            }
+            try output.emit(
+                outcome.results,
+                timedOut: outcome.timedOut,
+                timedOutHint: ContactsCommand.timedOutHint
+            )
         }
     }
 
@@ -142,18 +126,7 @@ public struct ContactsCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: contacts, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                try output.emitPage(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
-                    if page.items.isEmpty {
-                        print("No contacts found.")
-                    } else {
-                        for contact in page.items {
-                            print(formatContactLine(contact))
-                        }
-                    }
-                    if let cursor = page.nextCursor {
-                        print("(more — re-run with --cursor \(cursor))")
-                    }
-                }
+                try output.emitPage(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint)
                 return
             }
 
@@ -161,15 +134,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             // notes search). Previously the full result set was emitted and
             // --limit only took effect when paginating.
             let limited = Array(contacts.prefix(limit))
-            try output.emit(limited, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
-                if limited.isEmpty {
-                    print("No contacts found.")
-                } else {
-                    for contact in limited {
-                        print(formatContactLine(contact))
-                    }
-                }
-            }
+            try output.emit(limited, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint)
         }
     }
 
@@ -181,7 +146,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             abstract: "Show full contact details by identifier."
         )
 
-        @Argument(help: "Contact identifier (from `pippin contacts list --format json`).")
+        @Argument(help: "Contact identifier (from `pippin contacts list`).")
         public var identifier: String
 
         @OptionGroup public var output: OutputOptions
@@ -190,13 +155,7 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public mutating func run() async throws {
             let contact = try ContactsBridge.getContact(identifier)
-            if output.isJSON {
-                try printJSON(contact)
-            } else if output.isAgent {
-                try output.printAgent(contact)
-            } else {
-                printContactCard(contact)
-            }
+            try output.printAgent(contact)
         }
     }
 
@@ -215,19 +174,7 @@ public struct ContactsCommand: AsyncParsableCommand {
         public mutating func run() async throws {
             // listGroups reads the contact store (sync); hop off the pool.
             let groups = try await detachBlocking { try ContactsBridge.listGroups() }
-            if output.isJSON {
-                try printJSON(groups)
-            } else if output.isAgent {
-                try output.printAgent(groups)
-            } else {
-                if groups.isEmpty {
-                    print("No contact groups found.")
-                    return
-                }
-                for group in groups {
-                    print("\(group.name) (\(group.contactCount) contacts)")
-                }
-            }
+            try output.printAgent(groups)
         }
     }
 
@@ -282,11 +229,7 @@ public struct ContactsCommand: AsyncParsableCommand {
                     jobTitle: jobTitle
                 )
             }
-            if output.isJSON || output.isAgent {
-                try printAgentJSON(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try printAgentJSON(result)
         }
     }
 
@@ -298,7 +241,7 @@ public struct ContactsCommand: AsyncParsableCommand {
             abstract: "Edit an existing contact by identifier."
         )
 
-        @Argument(help: "Contact identifier (from `pippin contacts show` or `list --format json`).")
+        @Argument(help: "Contact identifier (from `pippin contacts show` or `list`).")
         public var identifier: String
 
         @Option(name: .long, help: "New given (first) name.")
@@ -337,11 +280,7 @@ public struct ContactsCommand: AsyncParsableCommand {
                 organization: organization,
                 jobTitle: jobTitle
             )
-            if output.isJSON || output.isAgent {
-                try printAgentJSON(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            try printAgentJSON(result)
         }
     }
 
@@ -353,142 +292,26 @@ public struct ContactsCommand: AsyncParsableCommand {
             abstract: "Delete a contact by identifier."
         )
 
-        @Argument(help: "Contact identifier (from `pippin contacts show` or `list --format json`).")
+        @Argument(help: "Contact identifier (from `pippin contacts show` or `list`).")
         public var identifier: String
 
-        @Flag(name: .long, help: "Skip confirmation prompt.")
+        @Flag(name: .long, help: "Required: deletion cannot be undone.")
         public var force: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
-        public mutating func run() async throws {
-            if !force {
-                print("Delete contact \(identifier)? [y/N] ", terminator: "")
-                let response = readLine() ?? ""
-                guard response.lowercased() == "y" || response.lowercased() == "yes" else {
-                    print("Aborted.")
-                    return
-                }
-            }
-            let result = try ContactsBridge.deleteContact(identifier: identifier)
-            if output.isJSON || output.isAgent {
-                try printAgentJSON(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
+        public mutating func validate() throws {
+            // A stdin prompt would hang an agent, so refusal replaces it.
+            guard force else {
+                throw ValidationError("Deleting a contact cannot be undone. Pass --force to confirm.")
             }
         }
-    }
-}
 
-// MARK: - Shared helpers
-
-/// Mask an email address to avoid logging it in cleartext while retaining some identifiability.
-/// Examples:
-///   "alice@example.com" -> "a***@e*****.com"
-private func maskEmail(_ email: String) -> String {
-    let parts = email.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
-    guard parts.count == 2 else {
-        // Fallback: mask all but first and last character if not a standard email format.
-        guard email.count > 2 else { return String(repeating: "*", count: email.count) }
-        let first = email.first!
-        let last = email.last!
-        let maskedCount = email.count - 2
-        return "\(first)\(String(repeating: "*", count: maskedCount))\(last)"
+        public mutating func run() async throws {
+            let result = try ContactsBridge.deleteContact(identifier: identifier)
+            try printAgentJSON(result)
+        }
     }
-    let localPart = String(parts[0])
-    let domainPart = String(parts[1])
-
-    // Mask local part: keep first character if available.
-    let maskedLocal: String
-    if localPart.count <= 1 {
-        maskedLocal = String(repeating: "*", count: max(localPart.count, 1))
-    } else {
-        let first = localPart.first!
-        maskedLocal = "\(first)\(String(repeating: "*", count: localPart.count - 1))"
-    }
-
-    // Split domain into name and TLD, mask most of the name.
-    let domainComponents = domainPart.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-    guard domainComponents.count == 2 else {
-        // Non-standard domain, fully mask.
-        return "\(maskedLocal)@\(String(repeating: "*", count: max(domainPart.count, 1)))"
-    }
-    let domainName = String(domainComponents[0])
-    let tld = String(domainComponents[1])
-
-    let maskedDomainName: String
-    if domainName.count <= 1 {
-        maskedDomainName = String(repeating: "*", count: max(domainName.count, 1))
-    } else {
-        let first = domainName.first!
-        maskedDomainName = "\(first)\(String(repeating: "*", count: domainName.count - 1))"
-    }
-
-    return "\(maskedLocal)@\(maskedDomainName).\(tld)"
-}
-
-/// Mask a phone number to avoid logging it in cleartext, keeping only the last few digits.
-/// Examples:
-///   "+1 415 555 1234" -> "**********1234"
-private func maskPhone(_ phone: String) -> String {
-    // Remove whitespace to determine length, but preserve original non-space characters' count.
-    let digitsOnly = phone.filter { !$0.isWhitespace }
-    guard digitsOnly.count > 4 else {
-        return String(repeating: "*", count: digitsOnly.count)
-    }
-    let visibleCount = 4
-    let maskedCount = max(digitsOnly.count - visibleCount, 0)
-    let visibleSuffix = digitsOnly.suffix(visibleCount)
-    return String(repeating: "*", count: maskedCount) + String(visibleSuffix)
-}
-
-private func formatContactLine(_ contact: ContactInfo) -> String {
-    let name = contact.fullName.isEmpty ? "(no name)" : contact.fullName
-    let emailPart = contact.emails.first.map { " <\(maskEmail($0.value))>" } ?? ""
-    let phonePart = contact.phones.first.map { "  \(maskPhone($0.value))" } ?? ""
-    return "\(name)\(emailPart)\(phonePart)"
-}
-
-private func printContactCard(_ contact: ContactInfo) {
-    var cardFields: [(String, String)] = [
-        ("ID", contact.id),
-        ("Name", contact.fullName.isEmpty ? "(no name)" : contact.fullName),
-    ]
-    if !contact.givenName.isEmpty { cardFields.append(("Given Name", contact.givenName)) }
-    if !contact.familyName.isEmpty { cardFields.append(("Family Name", contact.familyName)) }
-    if let org = contact.organization { cardFields.append(("Organization", org)) }
-    if let title = contact.jobTitle { cardFields.append(("Job Title", title)) }
-    if let birthday = contact.birthday { cardFields.append(("Birthday", birthday)) }
-    if !contact.emails.isEmpty {
-        let emailStr: String = contact.emails.map { (lv: LabeledValue) -> String in
-            let labelPart: String = lv.label.map { "[\($0)] " } ?? ""
-            return labelPart + lv.value
-        }.joined(separator: "\n")
-        cardFields.append(("Emails", emailStr))
-    }
-    if !contact.phones.isEmpty {
-        let phoneStr: String = contact.phones.map { (lv: LabeledValue) -> String in
-            let labelPart: String = lv.label.map { "[\($0)] " } ?? ""
-            return labelPart + lv.value
-        }.joined(separator: "\n")
-        cardFields.append(("Phones", phoneStr))
-    }
-    if !contact.postalAddresses.isEmpty {
-        let addrStr: String = contact.postalAddresses.map { (addr: PostalAddress) -> String in
-            let parts = [addr.street, addr.city, addr.state, addr.postalCode, addr.country]
-                .filter { !$0.isEmpty }
-            let labelPart: String = addr.label.map { "[\($0)] " } ?? ""
-            return labelPart + parts.joined(separator: ", ")
-        }.joined(separator: "\n")
-        cardFields.append(("Addresses", addrStr))
-    }
-    if !contact.socialProfiles.isEmpty {
-        let socialStr: String = contact.socialProfiles.map { (sp: SocialProfile) -> String in
-            sp.service + ": " + sp.username
-        }.joined(separator: "\n")
-        cardFields.append(("Social", socialStr))
-    }
-    print(TextFormatter.card(fields: cardFields))
 }
