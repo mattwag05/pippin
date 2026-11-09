@@ -19,12 +19,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [feat] The contact index caches progress when a scan runs out of time and resumes on the next call, so an address book too large for one call still ends up cached. A change to the address book discards partial work. Closes pippin-07tt.
 - [feat] `mail index` and `mail search --semantic` can use embeddings from any OpenAI-compatible `/v1/embeddings` endpoint, selected with `ai.embeddings` or `--provider`. Ollama remains the default. Closes pippin-edjh.
 - [feat] Memo transcription can use Apple's on-device SpeechAnalyzer, which needs macOS 26 or later and nothing installed, or any OpenAI-compatible `/v1/audio/transcriptions` endpoint, selected with `ai.transcription`. mlx-audio remains the default. Closes pippin-edjh.
 - [feat] `PIPPIN_CONFIG` points pippin at a different config file.
 
 ### Fixed
 
+- [bug] Detached jobs no longer inherit the 55s MCP clamps, run in their own session so they survive their MCP server, and `job_wait` is capped under the tool-call limit. Closes part of pippin-07tt.
 - [bug] A Mail or Messages send that timed out could be sent twice, because the script runner re-ran it after relaunching the app. Sends no longer auto-retry, and a timed-out send reports `send_outcome_unknown`.
 - [bug] Semantic search no longer ranks messages embedded by a different model than the active one, and `mail index` re-embeds them after a backend change. Indexes built with Ollama stay current. Closes pippin-edjh.
 - [bug] Ollama embeddings now use `ai.ollama.url` instead of always calling localhost. Closes pippin-edjh.

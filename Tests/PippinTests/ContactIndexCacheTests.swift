@@ -76,22 +76,41 @@ final class ContactIndexCacheTests: XCTestCase {
         XCTAssertTrue(loaded.isEmpty)
     }
 
-    func testPersistIfCompleteSkipsTimedOutIndex() {
-        // A soft-timeout hit means the enumeration is partial — caching it
-        // would freeze incomplete data behind a current token.
-        ContactsBridge.persistIfComplete(makeIndex(), timedOut: true, token: Data("t1".utf8), to: cache)
+    func testTimedOutScanIsNeverServedAsComplete() {
+        ContactsBridge.persist(makeIndex(), timedOut: true, scanned: 7, token: Data("t1".utf8), to: cache)
         XCTAssertNil(cache.load(matching: Data("t1".utf8)))
     }
 
-    func testPersistIfCompleteWritesCompleteIndex() throws {
+    func testTimedOutScanResumesFromItsOffset() throws {
         let token = Data("t1".utf8)
-        ContactsBridge.persistIfComplete(makeIndex(), timedOut: false, token: token, to: cache)
+        ContactsBridge.persist(makeIndex(), timedOut: true, scanned: 7, token: token, to: cache)
+        let partial = try XCTUnwrap(cache.loadPartial(matching: token))
+        XCTAssertEqual(partial.offset, 7)
+        XCTAssertEqual(partial.index.displayName(for: "bob@example.com"), "Bob Jones")
+    }
+
+    func testChangedTokenDiscardsPartialWork() {
+        ContactsBridge.persist(makeIndex(), timedOut: true, scanned: 7, token: Data("t1".utf8), to: cache)
+        XCTAssertNil(cache.loadPartial(matching: Data("t2".utf8)))
+    }
+
+    func testFinishingAScanClearsTheResumeMarker() {
+        let token = Data("t1".utf8)
+        ContactsBridge.persist(makeIndex(), timedOut: true, scanned: 7, token: token, to: cache)
+        ContactsBridge.persist(makeIndex(), timedOut: false, scanned: 20, token: token, to: cache)
+        XCTAssertNotNil(cache.load(matching: token))
+        XCTAssertNil(cache.loadPartial(matching: token))
+    }
+
+    func testCompleteScanWritesIndex() throws {
+        let token = Data("t1".utf8)
+        ContactsBridge.persist(makeIndex(), timedOut: false, scanned: 2, token: token, to: cache)
         let loaded = try XCTUnwrap(cache.load(matching: token))
         XCTAssertEqual(loaded.displayName(for: "bob@example.com"), "Bob Jones")
     }
 
-    func testPersistIfCompleteSkipsNilToken() {
-        ContactsBridge.persistIfComplete(makeIndex(), timedOut: false, token: nil, to: cache)
+    func testNilTokenWritesNothing() {
+        ContactsBridge.persist(makeIndex(), timedOut: false, scanned: 2, token: nil, to: cache)
         XCTAssertNil(cache.load(matching: Data("t1".utf8)))
     }
 

@@ -142,3 +142,21 @@ final class JobCommandTests: XCTestCase {
         XCTAssertThrowsError(try parseDuration("-1d"))
     }
 }
+
+final class JobEnvironmentTests: XCTestCase {
+    func testJobsDoNotInheritTheMCPMarker() {
+        let environment = JobLauncher.jobEnvironment(from: ["PIPPIN_MCP": "1", "PATH": "/bin"])
+        XCTAssertNil(environment["PIPPIN_MCP"])
+        XCTAssertEqual(environment["PATH"], "/bin")
+    }
+
+    func testJobWaitIsClampedUnderTheToolCallCap() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "job_wait"))
+        let over = try tool.buildArgs(.object(["id": .string("x"), "timeout": .int(300)]))
+        XCTAssertTrue(over.contains("--timeout=50"))
+        let under = try tool.buildArgs(.object(["id": .string("x"), "timeout": .int(10)]))
+        XCTAssertTrue(under.contains("--timeout=10"))
+        let absent = try tool.buildArgs(.object(["id": .string("x")]))
+        XCTAssertTrue(absent.contains("--timeout=50"))
+    }
+}

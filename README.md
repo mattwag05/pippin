@@ -133,9 +133,9 @@ pippin mail verify "acct||INBOX||12345"           # full per-dimension baseline 
 # every Received hop, every Authentication-Results instance, the ARC set, and DKIM
 # signatures — auth failures hidden in older chain instances and a broken ARC chain
 # (cv=fail) count toward the verdict.
-pippin mail reply "acct||INBOX||12345" --body "Thanks!"
-pippin mail forward "acct||INBOX||12345" --to other@example.com
-pippin mail send --to user@example.com --subject "Hello" --body "Hi there" --dry-run
+pippin mail reply "acct||INBOX||12345" --body "Thanks!" --confirm  # previews without --confirm
+pippin mail forward "acct||INBOX||12345" --to other@example.com --confirm
+pippin mail send --to user@example.com --subject "Hello" --body "Hi there" --confirm
 pippin mail attachments "acct||INBOX||12345" --save-dir ~/Downloads
 pippin mail mark "acct||INBOX||12345" --read
 pippin mail move "acct||INBOX||12345" --to Archive

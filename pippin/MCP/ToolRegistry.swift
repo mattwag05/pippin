@@ -1799,14 +1799,15 @@ enum MCPToolRegistry {
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Job id or unambiguous prefix."),
-                    "timeout": Schema.integer("Maximum seconds to wait (default: 300).", default: 300),
+                    "timeout": Schema.integer("Maximum seconds to wait (default and maximum: 50, under the tool-call cap).", default: 50),
                 ],
                 required: ["id"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("job", "wait")
                 try argv.append(ArgHelpers.requiredString(args, "id"))
-                argv += ArgHelpers.optionIfInt(args, "timeout", flagName: "--timeout")
+                // Must end before the 60s child cap or the kill loses the job status.
+                argv.append(ArgHelpers.option("--timeout", String(min(ArgHelpers.int(args, "timeout") ?? 50, 50))))
                 return argv
             }
         ),

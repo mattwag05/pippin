@@ -475,7 +475,7 @@ final class ToolRegistryTests: XCTestCase {
             "timeout": .int(60),
         ]))
         XCTAssertTrue(argv.contains("abc"))
-        XCTAssertTrue(argv.contains("--timeout=60"))
+        XCTAssertTrue(argv.contains("--timeout=50")) // clamped under the 60s tool-call cap
     }
 
     // MARK: - Option values are bound with `=` (flag-confusion guard)

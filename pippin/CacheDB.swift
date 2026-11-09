@@ -7,5 +7,11 @@ import GRDB
 func openCacheQueue(path: String) throws -> DatabaseQueue {
     let dir = (path as NSString).deletingLastPathComponent
     try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-    return try DatabaseQueue(path: path)
+    var config = Configuration()
+    // A background fill writes while other commands read the same store.
+    config.busyMode = .timeout(5)
+    config.prepareDatabase { db in
+        try db.execute(sql: "PRAGMA journal_mode = WAL")
+    }
+    return try DatabaseQueue(path: path, configuration: config)
 }

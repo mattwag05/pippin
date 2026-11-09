@@ -304,6 +304,8 @@ public struct JobRunnerInternalCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
+        // Own session, so a host tearing down its process group leaves the job alive.
+        _ = setsid()
         if argv.first == "--" { argv.removeFirst() }
         let store = JobStore()
         var job = try store.readCanonical(id)
@@ -371,6 +373,7 @@ enum JobLauncher {
         process.standardOutput = stdoutHandle
         process.standardError = stderrHandle
         process.standardInput = FileHandle.nullDevice
+        process.environment = jobEnvironment(from: ProcessInfo.processInfo.environment)
 
         do {
             try process.run()
@@ -383,6 +386,12 @@ enum JobLauncher {
         try? stdoutHandle.close()
         try? stderrHandle.close()
         return process.processIdentifier
+    }
+
+    /// A job outlives the MCP call that started it, so it must not keep that
+    /// call's clamps (55s script cap, 50s AI budget).
+    static func jobEnvironment(from environment: [String: String]) -> [String: String] {
+        environment.filter { $0.key != "PIPPIN_MCP" }
     }
 
     private static func openAppend(_ path: String) throws -> FileHandle {
