@@ -22,7 +22,7 @@ Package.swift               # SPM manifest (swift-tools-version: 6.0)
 Makefile                    # build/test/lint/ci/install helpers
 pippin/                     # PippinLib target — all application logic
   Commands/                 # ArgumentParser subcommand structs (one file per command group)
-  Formatting/               # AgentOutput (envelope v1), JSONOutput, TextFormatter, BridgeOutcome, Remediation
+  Formatting/               # AgentOutput (envelope v4), FieldProjection, TextFormatter (truncate/duration helpers), BridgeOutcome, Remediation
   MailBridge/               # osascript JXA runner + script builders (+ cross-account timeout scaling)
   MailAIBridge/             # embeddings, semantic search, triage, prompt-injection scanner (Ollama-backed)
   MemosBridge/              # GRDB read-only access to Voice Memos + transcription
@@ -88,8 +88,8 @@ The GitHub `ci.yml` build/test workflow is **disabled** — CI runs **locally** 
 - Use `mb.messages()` for unfiltered fetch — `mb.messages.whose({})()` is **invalid JXA**.
 - **Timeouts are not fixed constants.** Single-account caps scale up for cross-account scans, and under MCP (`PIPPIN_MCP=1`) all caps are clamped to 55s by `MailBridge.clampHardTimeout`. The 22s soft cap (`SoftTimeout.defaultMs`) fires first in normal operation. See `TIMEOUT_ANALYSIS.md` and `pippin/MailBridge/MailBridge.swift` for the current numbers.
 
-### Agent output (envelope v1)
-- `--format agent` wraps every response in `{"v":1,"status":"ok","duration_ms":N,"data":<payload>}` (or `{...,"status":"error","error":{"code","message","remediation"?}}`). Canonical version constant: `AGENT_SCHEMA_VERSION` in `pippin/Formatting/AgentOutput.swift`. Changing a snake_case key or a CLI flag name is a breaking change for MCP clients.
+### Agent output (envelope v4)
+- Every command and every error writes one compact JSON envelope: `{"v":4,"status":"ok","duration_ms":N,"partial"?,"warnings"?,"next_cursor"?,"data":<payload>}` or `{...,"status":"error","error":{"code","message","next_step","remediation"?}}`. `--format agent` is an accepted no-op; `--format text|json` are usage errors. Commands conform to `AgentCommand` and return an `AgentResult` from `execute()`. Canonical version constant: `AGENT_SCHEMA_VERSION` in `pippin/Formatting/AgentOutput.swift`. Changing a snake_case key or a CLI flag name is a breaking change for MCP clients.
 
 ### memos (GRDB/SQLite)
 - `VoiceMemosDB` opens a read-only `DatabaseQueue` (`configuration.readonly = true`).

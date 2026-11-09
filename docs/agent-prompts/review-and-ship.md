@@ -22,8 +22,8 @@ Work through each changed file. For anything that fails the bar below, fix it yo
 - Logic matches the changelog description, no regressions
 - Bridge patterns followed: `enum` + `static` methods, `nonisolated(unsafe)` + DispatchGroup (intentional for Swift 6)
 - Async commands hop sync blocking work via `detachBlocking { ... }` — see `pippin/DetachBlocking.swift` and any `process.waitUntilExit` / `DispatchSemaphore.wait` / `sendSynchronousRequest` callsite
-- Agent output uses the three-way pattern: `isJSON -> printJSON`, `isAgent -> printAgentJSON`, else text — wrapped in envelope v1 (`{v, status, duration_ms, data|error}`)
-- Progress output guarded by `!outputOptions.isStructured`
+- Commands return an `AgentResult` from `execute()` and never print; output is envelope v4 (`{v, status, duration_ms, partial?, warnings?, next_cursor?, data|error}`)
+- Progress goes to stderr; stdout carries only the envelope
 - Compound IDs use the `account||mailbox||numericId` format correctly
 - Mail/Notes bridges threading `softTimeoutMs` and surfacing `outcome.timedOut` to callers
 

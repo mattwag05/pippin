@@ -12,7 +12,7 @@ The child `pippin` process produces compact agent JSON that the server wraps ver
 
 ## Exit-code-to-error mapping
 
-When the child exits non-zero, stdout contains an `AgentError` JSON (`{"error":{"code":"snake_case","message":"..."}}`) from `printAgentError`. The server passes this through as the tool result text with `isError: true`. Do NOT convert it to a JSON-RPC-level `-326xx` error — those are reserved for protocol-level failures (unknown method, malformed request, launch failure).
+When the child exits non-zero, stdout contains the error envelope (`{"v":4,"status":"error","duration_ms":N,"error":{"code":"snake_case","message":"...","next_step":{...}}}`) from `printAgentError`. The server passes this through as the tool result text with `isError: true`. Do NOT convert it to a JSON-RPC-level `-326xx` error — those are reserved for protocol-level failures (unknown method, malformed request, launch failure).
 
 ## ArgumentParser error messages in agent mode (pippin-kzi)
 
@@ -65,3 +65,7 @@ The MCP layer SIGKILLs any child exceeding ~60s. A tool whose command runs per-i
 ## Write-safety gates live in `buildArgs`, before the child spawns
 
 `ArgHelpers.dryRunUnlessConfirmed` (sends preview unless `confirm:true`) and `ArgHelpers.forceFromConfirm` (deletes throw without it). The delete gate must stay pre-spawn: `contacts delete` blocks on `readLine()` without `--force`, so letting the omission through hangs the tool call for the full 60s child timeout instead of erroring. Verified by timing in `e2e-smoke.sh`, not by exit code.
+
+## In-process tools run the CLI command, with a deadline
+
+Only EventKit and Contacts reads run in-process (`MCPInProcessTools`). They parse the same argv a child would get and call the same `AgentCommand.execute()`, so the two paths cannot drift. A blocking framework call can only be abandoned, not killed, so each gets a 25s deadline; on expiry the tool routes through a child for the rest of the session. JXA, AI, browser, audio and every write stay in children, where a hard kill exists.

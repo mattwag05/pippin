@@ -67,6 +67,7 @@ pippin mail index --account Work              # build semantic search index
 pippin mail cache warm --limit 50             # pre-fetch recent bodies into the cache
 pippin mail cache stats                       # cached message count + age range
 pippin mail cache clear                       # empty the cache (--older-than-days N to prune)
+pippin job run -- mail cache fill             # build the metadata index that speeds list and search without Full Disk Access
 ```
 
 Message bodies are cached locally (`~/.config/pippin/mail-cache.db`) so repeat `mail show`/`mail index` reads skip the slow IMAP fetch (~75× faster on a hit). Pass `mail show --no-cache` to force a live fetch. Read/unread state is never cached — `mail list`/`search` always report it live.
@@ -284,7 +285,7 @@ pippin mcp-server                             # run the server (stdin/stdout JSO
 pippin mcp-server --list-tools                # dump the registered tools as JSON
 ```
 
-Ships with 44 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch`, and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+Ships with 76 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch`, and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
 
 ## Agent Integration
 

@@ -91,9 +91,9 @@ JXA script errors arrive from `ScriptRunner` as a generic non-zero-exit failure,
 
 Notes IDs start with `x-coredata://` — `String(id.prefix(8))` always yields `"x-coreda"`. Use `id.components(separatedBy: "/").last` for display.
 
-## Memos progress output in agent mode
+## Memos progress output
 
-Progress `print()` calls guarded by `!outputOptions.isJSON` also need `&& !outputOptions.isAgent` — otherwise stdout is corrupted in agent mode.
+Progress goes to stderr. Stdout carries only the envelope, so a stray `print()` corrupts it.
 
 ## `CalendarBridge` is `@unchecked Sendable` — parallelize reads
 

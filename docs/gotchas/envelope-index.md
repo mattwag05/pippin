@@ -4,8 +4,7 @@ The fast path lives in `pippin/MailBridge/MailEnvelopeIndex.swift`, hooked at
 the top of `MailBridge.listMessages`/`searchMessages`/`listActivity`/`listMailboxes` (metadata
 only; any failure falls back to JXA automatically — and since pippin-1son
 (2026-07-30) the failure reason is captured in `ScanOutcome.fastPathNote` and
-surfaced as an envelope `warnings` entry (agent) / stderr `Warning:` (text,
-json), so a seconds-instead-of-milliseconds scan is self-diagnosing rather than
+surfaced as an envelope `warnings` entry, so a seconds-instead-of-milliseconds scan is self-diagnosing rather than
 silent; a fast path *disabled* by env/config intentionally emits no note).
 Kill switches:
 `PIPPIN_MAIL_FASTPATH=0` env (per-invocation, used by the e2e parity check) >
@@ -128,3 +127,13 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   with EPERM → `accessDenied` → JXA fallback (reason in `warnings`). `doctor`
   reports fast-path availability as an informational check (`.skip`, never
   `.fail` — mail works either way).
+
+## Without Full Disk Access: Pippin's own store (pippin-e154)
+
+The read order for mail metadata is Envelope Index if readable, then `~/.config/pippin/mail-meta.db`, then direct JXA. `PIPPIN_MAIL_STORE=0` skips the store.
+
+- **Filling.** `pippin job run -- mail cache fill` does a bulk JXA read per mailbox and writes each one atomically, under `flock`, so an interrupted fill resumes at the next mailbox. Nothing starts it automatically. Live measurement: 70 mailboxes, 39,951 messages, 64s; a resumed run took 2.8s.
+- **What is stored.** Only fields that never change. Read state and identity come from a live bulk read on every answer, because Mail has no trustworthy change signal (`mb.unreadCount` under-reports, pippin-zxsq).
+- **Reconciling.** A live row whose date disagrees with the store is evicted and read live, since a rebuilt index can reassign row ids. A date collision compares RFC Message-ID. A live id missing from the store is read live and written through.
+- **Incomplete mailboxes.** Any mailbox not fully filled falls back to direct reads rather than answering from partial data.
+- **Ids.** Compound ids match the direct path, so `show`, `mark` and `move` work unchanged.

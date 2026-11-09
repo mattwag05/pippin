@@ -112,7 +112,7 @@ These are **additive** (non-breaking) — existing fields (`matches`, `excluded_
 
 ## How it works
 
-Each `tools/call` spawns `pippin <subcommand> --format agent` as a child process and returns the child's compact JSON stdout as the tool result. This guarantees the MCP path stays in perfect parity with the existing CLI path used by the morning-briefing task and manual invocations.
+Quick EventKit and Contacts reads run in-process: the server parses the same argv and runs the same command code the CLI runs, under a 25s deadline. A tool that exceeds it moves to a child process for the rest of the session. Everything else (JXA, AI, browser, audio, every write) spawns `pippin <subcommand>` as a child process and returns its compact JSON stdout as the tool result. Either way the result is the same envelope the CLI writes.
 
 - Successful tool call → `{"content":[{"type":"text","text":"<agent JSON>"}],"isError":false}`
 - Tool failure (bad ID, permission denied, etc.) → same shape with `isError:true` and the pippin `AgentError` JSON as text
@@ -123,22 +123,22 @@ Diagnostics (startup banner, warnings) go to stderr and do not pollute the JSON-
 
 ## MCP-preferred, CLI-fallback (for agents)
 
-Because every tool call just shells out to `pippin <subcommand> --format agent`, the MCP server and the CLI are two surfaces over the **same binary** with **identical** [envelope v2](#envelope-v2-v1-2026-04-20-v2-2026-07-15) output. So:
+The MCP server and the CLI are two surfaces over the **same binary** with **identical** [envelope v4](#envelope-v4-v1-2026-04-20-v2-2026-07-15-v3-2026-08-12-v4-2026-11-08) output. So:
 
 - **Prefer the MCP tools where they're attached** — an agent gateway and Claude Cowork (via the `pippin@mw-plugins` plugin) can both register `pippin mcp-server`, so `mail_list`, `calendar_today`, etc. are first-class tools there.
-- **Fall back to the CLI when no MCP server is attached** — a bare Claude Code session, a scheduled task, or any shell context. The invocation maps one-to-one (tool `mail_list` → `pippin mail list`); just add `--format agent`:
+- **Fall back to the CLI when no MCP server is attached** — a bare Claude Code session, a scheduled task, or any shell context. The invocation maps one-to-one (tool `mail_list` → `pippin mail list`), and no format flag is needed:
 
 ```bash
-~/.local/bin/pippin <area> <verb> … --format agent
+~/.local/bin/pippin <area> <verb> …
 # e.g. the mail_list tool ≡
-~/.local/bin/pippin mail list --unread --limit 5 --format agent
+~/.local/bin/pippin mail list --unread --limit 5
 ```
 
 Use the stable **`~/.local/bin/pippin`** path (the `make install` copy), **not** the brew symlink (`/opt/homebrew/bin/pippin`): macOS keys the bare-CLI TCC grant on the binary's resolved path, and brew's is the *versioned* `Cellar/<ver>/bin/pippin`, so a grant there is lost on every upgrade. The fallback is lossless — same envelope, same typed exit codes, same Automation/EventKit permissions — so an agent that drops to the shell behaves identically to one calling the MCP tool.
 
-## Envelope v3 (v1: 2026-04-20; v2: 2026-07-15; v3: 2026-08-12)
+## Envelope v4 (v1: 2026-04-20; v2: 2026-07-15; v3: 2026-08-12; v4: 2026-11-08)
 
-Every `--format agent` stdout is wrapped in a versioned envelope. The MCP tool-result text field carries the envelope verbatim — clients that parse pippin JSON must reach one level deeper.
+Every command's stdout is wrapped in a versioned envelope. The MCP tool-result text field carries the envelope verbatim — clients that parse pippin JSON must reach one level deeper.
 
 **Ok shape:**
 ```json

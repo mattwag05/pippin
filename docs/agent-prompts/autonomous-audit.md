@@ -35,13 +35,13 @@ Work through each category. For each finding, note the file, line, and severity.
 - Compound ID parsing edge cases (`account||mailbox||numericId`)
 
 ### AX (Agent Experience)
-- Commands missing `--format agent` support or with broken agent output
-- Agent output that isn't compact JSON (must use `printAgentJSON`, not `printJSON`)
-- Agent output not wrapped in envelope v1 (`{v, status, duration_ms, data|error}`) — see `pippin/Formatting/AgentOutput.swift`
-- Progress `print()` calls not guarded by `!outputOptions.isStructured`
-- Action results not following the three-way pattern: `isJSON -> printJSON`, `isAgent -> printAgentJSON`, else text
+- Commands that print to stdout instead of returning an `AgentResult` from `execute()`
+- Array rows missing an `EssentialRow` default projection, or a row default that drops `id`
+- Output outside envelope v4 (`{v, status, duration_ms, partial?, warnings?, next_cursor?, data|error}`): see `pippin/Formatting/AgentOutput.swift`
+- Progress written to stdout (stdout carries only the envelope; progress goes to stderr)
+- Error types without an authored `agentCode` and `nextStep` (`RemediableError`)
 - Missing `debugDetail` on bridge error types
-- `outcome.timedOut` from MailBridge/NotesBridge/ContactsBridge silently dropped instead of surfaced through `output.emit(...,timedOut:,timedOutHint:)`
+- `outcome.timedOut` from MailBridge/NotesBridge/ContactsBridge silently dropped instead of surfaced through `AgentResult.emit(...,timedOut:,timedOutHint:)`
 
 ### Concurrency
 - Async commands (`AsyncParsableCommand.run`) calling sync work that blocks on `process.waitUntilExit()`, `DispatchSemaphore.wait()`, or `sendSynchronousRequest()` without hopping through `detachBlocking { ... }` (see `pippin/DetachBlocking.swift`)
@@ -55,7 +55,6 @@ Work through each category. For each finding, note the file, line, and severity.
 
 ### Code Quality
 - Dead code, duplicated logic, overly complex functions
-- `TextFormatter.actionResult` dict overload not used (hand-rolled inline formatting)
 - Shared validation helpers not reused across similar commands
 - GRDB `SQL` type inference traps (missing explicit type annotations)
 
