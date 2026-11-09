@@ -124,6 +124,23 @@ A soft timeout self-bounds a JXA loop, but if the per-iteration body does **one 
 
 Fix: fetch the property for the whole collection in **one** Apple Event via the bulk getter on the *plural specifier* (not the materialized array): `_notesRef.modificationDate()` returns a parallel array of all dates. Keep the specifier (`_notesRef = app.notes`), materialize elements once (`notes = _notesRef()`), bulk-fetch (`_mods = _notesRef.modificationDate()`), then the bounded loop is **pure JS** (zero Apple Events) and never starves. See `NotesBridge.jsResolveNotesAndBulkMods`. Per-note `.body()`/`.plaintext()` stay per-item but only for the returned page.
 
+## Bulk Apple Event reads on Mail, measured (pippin-25pr, 2026-11-08)
+
+`scripts/measure-mail-bulk.sh` timed the per-message loop against plural-specifier getters on real mailboxes (Yahoo IMAP INBOX 2856, Exchange Inbox 6167, Gmail INBOX 3118, Gmail All Mail 6398; median of 3; raw rows in `measure-mail-bulk-2026-11-08.jsonl`):
+
+| Read | Cost |
+| --- | --- |
+| Per-message loop (id, dates, read, subject, sender, size, attachments) | 66.7 ms per row on every account, so 200 rows cost 13.3s |
+| One bulk getter for the WHOLE mailbox (`mb.messages.subject()` etc.) | 65 to 320 ms per property, about 0.05 ms per row |
+| Volatile set in bulk (`id`, `dateReceived`, `readStatus`) | 241 to 547 ms for the whole mailbox |
+| `messageId` in bulk | 0.5 to 2.1 s, fine for a background fill, not per answer |
+| `mailAttachments` in bulk | 4.9 to 19 s: never bulk-read it; store `has_attachment` as nullable and fill lazily |
+| `whose({dateReceived: {_greaterThan: d}})` + bulk getters | 4.6 to 9.4 s, slower than bulk-reading everything and filtering in JS |
+
+Alignment held everywhere: every property array had the mailbox's length, `id()` was identical before and after the other reads, and 50 random per-message spot checks matched the bulk arrays on all four mailboxes. Gmail's `[Gmail]/All Mail` is nested, so `acct.mailboxes.byName('All Mail')` fails with -1728; enumerate `acct.mailboxes()` and match `name()`. A ranged AppleScript read (`messages a thru b`) was not measured because whole-mailbox bulk already meets the budget.
+
+Spotlight is not an option without Full Disk Access: `mdfind` for `com.apple.mail.emlx` and `kMDItemKind == "Mail Message"` returns 0 from a CLI on an index that is enabled (pippin-pnok).
+
 ## Parallel osascript into Mail.app — Apple Events do NOT serialize (pippin-17rq, measured 2026-07-30)
 
 The plausible assumption that concurrent osascripts queue on Mail's main thread is **wrong**. Measured with two bounded per-account `mail search` probes (`PIPPIN_MAIL_FASTPATH=0`, 3 alternating rounds): serial total 7.32s vs concurrent total 6.08s ≈ max(1.35s, 5.97s) — genuine parallelism, concurrent = max not sum. Per-account fan-out was still **not** built: wall time is bounded by the slowest account (real speedup only 1.20x on this account mix) and the JXA path is a rarely-hit, self-diagnosing fallback behind the ~70ms Envelope Index. Revisit only if the JXA fallback becomes hot AND account scan times are balanced (then speedup approaches N×). Full numbers in bd pippin-17rq (closed).
