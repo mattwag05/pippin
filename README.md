@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="https://github.com/mattwag05/pippin/releases/latest"><img src="https://img.shields.io/github/v/release/mattwag05/pippin?style=flat-square&color=orange" alt="Release" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/mattwag05/pippin?style=flat-square" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/mattwag05/pippin?style=flat-square&cacheSeconds=3600" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS_15%2B-blue?style=flat-square" alt="macOS 15+" />
   <img src="https://img.shields.io/badge/arch-arm64-lightgrey?style=flat-square" alt="arm64" />
 </p>
