@@ -190,13 +190,10 @@ elif [[ -n "$PVAK_BAD" ]]; then
 else
   PASS=$((PASS+1)); echo "  ok    mail show returns the listed message, $PVAK_N ids across accounts (pippin-pvak)"
 fi
-# pippin-xz6: an empty --before result whose newest-N window never reached the
-# cutoff must carry the shortfall advisory (JXA must emit oldestExaminedMs /
-# reachedMailboxEnd). Pass if matches exist (impossible pre-2000) OR the hint fired.
-# PIPPIN_MAIL_FASTPATH=0 PIPPIN_MAIL_STORE=0: the hint is a JXA-window artifact — the Envelope Index
-# fast path scans the full index, so its empty result is complete and hint-free.
-PIPPIN_MAIL_FASTPATH=0 PIPPIN_MAIL_STORE=0 run "mail list --before shortfall hint (pippin-xz6, JXA path)" "
-len(d['data']) > 0 or any('scan window did not reach' in w for w in (d.get('warnings') or []))" \
+# pippin-xz6: bulk reads examine the whole mailbox, so an empty --before result
+# on the JXA path is complete and must not claim the scan fell short.
+PIPPIN_MAIL_FASTPATH=0 PIPPIN_MAIL_STORE=0 run "mail list --before empty result is complete (pippin-xz6, JXA path)" "
+d['status'] == 'ok' and not any('scan window did not reach' in w for w in (d.get('warnings') or []))" \
   -- mail list --before 2000-01-01 --limit 3
 
 # --- pippin-60x: Envelope Index fast path — id parity vs the JXA path.
@@ -490,7 +487,7 @@ len(d['data']) == 0 or (
   and 'plainText' in d['data'][0]
   and 'modifiedAt' in d['data'][0]
   and 'modificationDate' not in d['data'][0])" \
-  -- notes list --limit 3
+  -- notes list --limit 3 --fields all
 
 # --- Messages (FDA) — v2 bare array + no tapback rows (pippin-4ke)
 run "messages list is bare array (v2)" "isinstance(d['data'], list)"   -- messages list --since-hours 168
