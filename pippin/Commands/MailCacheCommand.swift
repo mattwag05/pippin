@@ -11,14 +11,10 @@ public extension MailCommand {
         public static let configuration = CommandConfiguration(
             commandName: "cache",
             abstract: "Inspect and manage the local mail body cache.",
-            subcommands: [Stats.self, Clear.self, Warm.self]
+            subcommands: [Stats.self, Clear.self, Warm.self, Fill.self]
         )
 
         public init() {}
-
-        /// No-timeout hint placeholder — cache ops never set `timedOut`, so the
-        /// hint string is never surfaced; `emit` just needs a value.
-        static let noTimeoutHint = ""
 
         struct ClearResult: Codable { let deleted: Int }
         struct WarmResult: Codable {
@@ -28,7 +24,7 @@ public extension MailCommand {
 
         // MARK: - stats
 
-        struct Stats: AsyncParsableCommand {
+        struct Stats: AgentCommand {
             public static let configuration = CommandConfiguration(
                 commandName: "stats",
                 abstract: "Show cached message count and age range."
@@ -38,19 +34,15 @@ public extension MailCommand {
 
             public init() {}
 
-            public mutating func run() async throws {
+            public mutating func execute() async throws -> AgentResult {
                 let stats = MailBodyCache.shared?.stats() ?? MailCacheStats(count: 0, oldest: nil, newest: nil)
-                try output.emit(stats, timedOutHint: Cache.noTimeoutHint) {
-                    print("cached messages: \(stats.count)")
-                    if let oldest = stats.oldest { print("oldest: \(oldest)") }
-                    if let newest = stats.newest { print("newest: \(newest)") }
-                }
+                return AgentResult(stats)
             }
         }
 
         // MARK: - clear
 
-        struct Clear: AsyncParsableCommand {
+        struct Clear: AgentCommand {
             public static let configuration = CommandConfiguration(
                 commandName: "clear",
                 abstract: "Delete all cached message bodies (or only those older than --older-than-days)."
@@ -63,7 +55,7 @@ public extension MailCommand {
 
             public init() {}
 
-            public mutating func run() async throws {
+            public mutating func execute() async throws -> AgentResult {
                 let deleted: Int
                 if let days = olderThanDays {
                     let cutoff = Date().addingTimeInterval(-Double(days) * 86400)
@@ -71,15 +63,45 @@ public extension MailCommand {
                 } else {
                     deleted = MailBodyCache.shared?.clear() ?? 0
                 }
-                try output.emit(ClearResult(deleted: deleted), timedOutHint: Cache.noTimeoutHint) {
-                    print("deleted \(deleted) cached message(s)")
-                }
+                return AgentResult(ClearResult(deleted: deleted))
+            }
+        }
+
+        // MARK: - fill
+
+        struct Fill: AgentCommand {
+            public static let configuration = CommandConfiguration(
+                commandName: "fill",
+                abstract: "Fill or refresh Pippin's mail metadata index, which needs no Full Disk Access.",
+                discussion: "Can take minutes on large accounts, so run it through `pippin job run -- mail cache fill`. Re-running resumes: mailboxes finished within --max-age-hours are skipped."
+            )
+
+            @Option(name: .long, help: "Limit to a single account (default: all).")
+            public var account: String?
+
+            @Option(name: .long, help: "Skip mailboxes refreshed within this many hours (default: 6).")
+            public var maxAgeHours: Double = 6
+
+            @OptionGroup public var output: OutputOptions
+
+            public init() {}
+
+            public mutating func validate() throws {
+                guard maxAgeHours >= 0 else { throw ValidationError("--max-age-hours must be 0 or greater.") }
+            }
+
+            public mutating func execute() async throws -> AgentResult {
+                let account = self.account
+                let maxAge = maxAgeHours * 3600
+                return try await AgentResult(detachBlocking {
+                    try MailBridge.fillMetaStore(account: account, maxAge: maxAge)
+                })
             }
         }
 
         // MARK: - warm
 
-        struct Warm: AsyncParsableCommand {
+        struct Warm: AgentCommand {
             public static let configuration = CommandConfiguration(
                 commandName: "warm",
                 abstract: "Pre-fetch recent message bodies into the cache so later reads are instant."
@@ -102,7 +124,7 @@ public extension MailCommand {
                 guard limit > 0 else { throw ValidationError("--limit must be positive.") }
             }
 
-            public mutating func run() async throws {
+            public mutating func execute() async throws -> AgentResult {
                 let account = self.account
                 let mailbox = self.mailbox
                 let limit = self.limit
@@ -122,9 +144,7 @@ public extension MailCommand {
                     }
                     return (warmed, failed)
                 }
-                try output.emit(WarmResult(warmed: warmed, failed: failed), timedOutHint: Cache.noTimeoutHint) {
-                    print("warmed \(warmed) message(s)" + (failed > 0 ? ", \(failed) failed" : ""))
-                }
+                return AgentResult(WarmResult(warmed: warmed, failed: failed))
             }
         }
     }

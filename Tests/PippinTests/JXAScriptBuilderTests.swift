@@ -70,125 +70,11 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("var operationalDate = receivedDate || sentDate;"))
     }
 
-    func testDirectionProbeUsesSharedMailDateNormalizer() {
-        let script = MailBridge.jsProbeNewestFirst(collection: "allMsgs", fallbackNewestFirst: false)
-        XCTAssertTrue(script.contains("mailDates(allMsgs[0]).operationalDate"))
-        XCTAssertTrue(script.contains("mailDates(allMsgs[allMsgs.length - 1]).operationalDate"))
-        XCTAssertFalse(script.contains("allMsgs[0].dateSent()"))
-    }
-
     func testReadRowsUseSharedMailDateNormalizer() {
         let script = MailBridge.buildReadScript(account: "Account", mailbox: "INBOX", messageId: "1")
         XCTAssertTrue(script.contains("function mailDates(msg)"))
         XCTAssertTrue(script.contains("var dates = mailDates(msg);"))
         XCTAssertTrue(script.contains("receivedAt: dates.receivedDate"))
-    }
-
-    func testUnscopedListGloballySortsThenPaginatesCandidates() {
-        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10, offset: 3)
-        XCTAssertTrue(script.contains("results.sort(function(a, b)"))
-        XCTAssertTrue(script.contains("a.__operationalAt"))
-        XCTAssertTrue(script.contains("results = results.slice(offset, offset + limit);"))
-        XCTAssertFalse(script.contains("results.length < limit && !_meta.timedOut; a++"))
-    }
-
-    func testUnscopedSearchGloballyDeduplicatesSortsThenPaginatesCandidates() {
-        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, offset: 3)
-        XCTAssertTrue(script.contains("results.sort(function(a, b)"))
-        XCTAssertTrue(script.contains("results = results.slice(offset, offset + limit);"))
-        XCTAssertTrue(script.contains("seenMsgKeys[dedupKey]"))
-        XCTAssertFalse(script.contains("if (skipped < offset)"))
-        XCTAssertFalse(script.contains("results.length < limit && !_meta.timedOut; a++"))
-    }
-
-    func testUnscopedListFetchesPreviewOnlyAfterGlobalPagination() throws {
-        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10, offset: 3, preview: 100)
-        let slice = try XCTUnwrap(script.range(of: "results = results.slice(offset, offset + limit);")?.lowerBound)
-        let bodyFetch = try XCTUnwrap(script.range(of: "results[r].__msg.content()")?.lowerBound)
-        XCTAssertLessThan(slice, bodyFetch)
-    }
-
-    func testListTieSortUsesNumericMessageRowID() {
-        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
-        XCTAssertTrue(script.contains("__rowId: Number(msg.id())"))
-        XCTAssertTrue(script.contains("return a.__rowId - b.__rowId;"))
-        XCTAssertFalse(script.contains("return a.__tieBreak < b.__tieBreak"))
-    }
-
-    func testSearchTieSortUsesNumericMessageRowID() {
-        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
-        XCTAssertTrue(script.contains("__rowId: Number(msg.id())"))
-        XCTAssertTrue(script.contains("return a.__rowId - b.__rowId;"))
-    }
-
-    func testGeneratedTieComparatorOrdersRowID2Before10() throws {
-        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
-        let start = try XCTUnwrap(script.range(of: "results.sort(function(a, b) {")?.lowerBound)
-        let suffix = script[start...]
-        let end = try XCTUnwrap(suffix.range(of: "});")?.upperBound)
-        let sort = String(suffix[..<end])
-        let fixture = "var results = [{__operationalAt: '2026-01-01T00:00:00Z', __rowId: 10}, {__operationalAt: '2026-01-01T00:00:00Z', __rowId: 2}];\n\(sort)\nJSON.stringify(results.map(function(row) { return row.__rowId; }));"
-        let context = try XCTUnwrap(JSContext())
-        XCTAssertEqual(context.evaluateScript(fixture)?.toString(), "[2,10]")
-    }
-
-    func testListExtendsCandidateScanThroughTimestampTieBoundary() {
-        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
-        XCTAssertTrue(script.contains("var candidateBoundaryMs = null;"))
-        XCTAssertTrue(script.contains("var usableCandidateCount = 0;"))
-        XCTAssertTrue(script.contains("usableCandidateCount += 1;"))
-        XCTAssertTrue(script.contains("candidateBoundaryMs !== null && operationalDate.getTime() < candidateBoundaryMs"))
-        XCTAssertTrue(script.contains("if (usableCandidateCount === candidateLimit) candidateBoundaryMs = operationalDate.getTime();"))
-        XCTAssertFalse(script.contains("k === candidateLimit - 1"))
-    }
-
-    func testUsableCandidateFixtureSkipsUndatedRowsBeforeSettingTieBoundary() throws {
-        let context = try XCTUnwrap(JSContext())
-        let fixture = "var usableCandidateCount = 0; var boundary = null; var accepted = []; var rows = [100, null, 90, 90, 80]; for (var i = 0; i < rows.length; i++) { var timestamp = rows[i]; if (timestamp === null) continue; if (boundary !== null && timestamp < boundary) break; usableCandidateCount += 1; if (usableCandidateCount === 2) boundary = timestamp; accepted.push(timestamp); } JSON.stringify({accepted: accepted, boundary: boundary});"
-        XCTAssertEqual(context.evaluateScript(fixture)?.toString(), "{\"accepted\":[100,90,90],\"boundary\":90}")
-    }
-
-    func testDeferredListPreviewChecksTimeoutThenCleansAllInternalFields() throws {
-        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10, preview: 100)
-        let slice = try XCTUnwrap(script.range(of: "results = results.slice(offset, offset + limit);")?.lowerBound)
-        let afterSlice = String(script[slice...])
-        XCTAssertTrue(afterSlice.contains("if (Date.now() - _listStart > softTimeoutMs) { _meta.timedOut = true; break; }"))
-        XCTAssertTrue(afterSlice.contains("delete results[r].__msg;"))
-        XCTAssertTrue(afterSlice.contains("delete results[r].__operationalAt;"))
-        XCTAssertTrue(afterSlice.contains("delete results[r].__rowId;"))
-        XCTAssertTrue(afterSlice.contains("for (var c = 0; c < results.length; c++)"))
-        XCTAssertTrue(afterSlice.contains("delete results[c].__msg;"))
-        XCTAssertTrue(afterSlice.contains("delete results[c].__operationalAt;"))
-        XCTAssertTrue(afterSlice.contains("delete results[c].__rowId;"))
-    }
-
-    func testActivityRowsFallBackToReceiptTimeWhenSentAccessorFails() {
-        let script = MailBridge.buildActivityScript(account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0)
-        XCTAssertTrue(script.contains("var msgDate = dates.sentDate || operationalDate;"))
-        XCTAssertTrue(script.contains("if (operationalDate === null) continue;"))
-    }
-
-    func testActivityTieSortUsesNumericRowIDAndCleansIt() throws {
-        let script = MailBridge.buildActivityScript(account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0)
-        XCTAssertTrue(script.contains("__rowId: Number(msg.id())"))
-        XCTAssertTrue(script.contains("return a.__rowId - b.__rowId;"))
-        XCTAssertTrue(script.contains("delete results[p2].__rowId;"))
-        let start = try XCTUnwrap(script.range(of: "results.sort(function(a, b) {")?.lowerBound)
-        let suffix = script[start...]
-        let end = try XCTUnwrap(suffix.range(of: "});")?.upperBound)
-        let sort = String(suffix[..<end])
-        let fixture = "var results = [{__operationalAt: '2026-01-01T00:00:00Z', __rowId: 10}, {__operationalAt: '2026-01-01T00:00:00Z', __rowId: 2}];\n\(sort)\nJSON.stringify(results.map(function(row) { return row.__rowId; }));"
-        let context = try XCTUnwrap(JSContext())
-        XCTAssertEqual(context.evaluateScript(fixture)?.toString(), "[2,10]")
-    }
-
-    func testHeaderlessSearchAndActivityDedupUseOperationalTimestamp() {
-        let search = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
-        let activity = MailBridge.buildActivityScript(account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0)
-        for script in [search, activity] {
-            XCTAssertTrue(script.contains("sender + '\\x00' + operationalDate.toISOString()"))
-            XCTAssertFalse(script.contains("sender + '\\x00' + msgDate.toISOString()"))
-        }
     }
 
     // MARK: - buildSearchScript
@@ -240,9 +126,9 @@ final class JXAScriptBuilderTests: XCTestCase {
         // A --body hit already fetched the body for the match test — the row
         // must carry a snippet instead of discarding it.
         let script = MailBridge.buildSearchScript(query: "test", account: nil, searchBody: true, limit: 10)
-        XCTAssertTrue(script.contains("var bodyPrev = null;"))
-        XCTAssertTrue(script.contains("bodyPrev = body.length > previewChars ? body.substring(0, previewChars) + '…' : body;"))
-        XCTAssertTrue(script.contains("bodyPreview: bodyPrev"))
+        XCTAssertTrue(script.contains("bodyPrev: null"))
+        XCTAssertTrue(script.contains("c.bodyPrev = body.length > previewChars ? body.substring(0, previewChars) + '…' : body;"))
+        XCTAssertTrue(script.contains("bodyPreview: c2.bodyPrev"))
     }
 
     func testSearchScriptDefaultPreviewChars200() {
@@ -362,7 +248,8 @@ final class JXAScriptBuilderTests: XCTestCase {
 
     func testListScriptContainsMessageSize() {
         let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
-        XCTAssertTrue(script.contains("msg.messageSize()"))
+        XCTAssertTrue(script.contains("spec.messageSize()"))
+        XCTAssertTrue(script.contains("size: c.b.size[c.i]"))
     }
 
     func testListScriptContainsHasAttachment() {
@@ -382,9 +269,9 @@ final class JXAScriptBuilderTests: XCTestCase {
             account: nil, mailbox: "INBOX", unread: false, limit: 10, preview: 200
         )
         XCTAssertTrue(script.contains("var previewChars = 200;"))
-        // msg.content() is required to trigger the IMAP body fetch per CLAUDE.md.
-        XCTAssertTrue(script.contains("msg.content()"), "preview branch must call msg.content() to force IMAP fetch")
-        XCTAssertTrue(script.contains("results[r].bodyPreview"), "preview values should be attached as bodyPreview key")
+        // content() is required to trigger the IMAP body fetch per CLAUDE.md.
+        XCTAssertTrue(script.contains("row.__msg.content()"), "preview branch must call content() to force IMAP fetch")
+        XCTAssertTrue(script.contains("row.bodyPreview"), "preview values should be attached as bodyPreview key")
     }
 
     func testListScriptPreviewClampsAbove4000() {
@@ -555,7 +442,8 @@ final class JXAScriptBuilderTests: XCTestCase {
 
     func testSearchScriptContainsMessageSize() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
-        XCTAssertTrue(script.contains("msg.messageSize()"))
+        XCTAssertTrue(script.contains("spec.messageSize()"))
+        XCTAssertTrue(script.contains("size: c2.b.size[c2.i]"))
     }
 
     func testSearchScriptContainsHasAttachment() {
@@ -851,69 +739,7 @@ final class JXAScriptBuilderTests: XCTestCase {
         XCTAssertTrue(script.contains("'c@d.com'"))
     }
 
-    // MARK: - Scan direction probe (GitHub #23/#24)
-
-    func testJsProbeNewestFirstComparesEndpointDates() {
-        let js = MailBridge.jsProbeNewestFirst(collection: "allMsgs", fallbackNewestFirst: false)
-        XCTAssertTrue(js.contains("var newestFirst = false;"))
-        XCTAssertTrue(js.contains("mailDates(allMsgs[0]).operationalDate"))
-        XCTAssertTrue(js.contains("mailDates(allMsgs[allMsgs.length - 1]).operationalDate"))
-        XCTAssertTrue(js.contains("allMsgs.length >= 2"), "probe must guard against 0/1-message collections")
-        XCTAssertTrue(js.contains("try {"), "probe must fall back to the assumption on Apple Event errors")
-    }
-
-    func testJsProbeNewestFirstFallbackTrue() {
-        let js = MailBridge.jsProbeNewestFirst(collection: "msgs", fallbackNewestFirst: true)
-        XCTAssertTrue(js.contains("var newestFirst = true;"))
-        XCTAssertTrue(js.contains("mailDates(msgs[0]).operationalDate"))
-    }
-
-    func testSearchScriptProbesScanDirection() {
-        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
-        XCTAssertTrue(script.contains("var newestFirst"))
-        XCTAssertTrue(
-            script.contains("newestFirst ? k : totalMsgs - 1 - k"),
-            "scan index must be derived from the probed direction so the walk is newest→oldest either way"
-        )
-    }
-
-    func testListScriptProbesScanDirection() {
-        let script = MailBridge.buildListScript(account: nil, mailbox: "INBOX", unread: false, limit: 10)
-        XCTAssertTrue(script.contains("var newestFirst"))
-        XCTAssertTrue(
-            script.contains("newestFirst ? k : totalMsgs - 1 - k"),
-            "list candidates must walk newest to oldest before global pagination"
-        )
-    }
-
-    func testActivityScriptProbesScanDirection() {
-        let script = MailBridge.buildActivityScript(
-            account: nil, mailboxes: ["INBOX"], since: nil, limit: 10, preview: 0
-        )
-        XCTAssertTrue(script.contains("var newestFirst"))
-        XCTAssertTrue(
-            script.contains("newestFirst ? k : totalMsgs - 1 - k"),
-            "activity scan must walk the newest N regardless of underlying order"
-        )
-    }
-
-    func testSearchScriptWindowIsNewestNRegardlessOfOrder() {
-        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
-        // The per-mailbox cap still applies, but as a count of newest positions,
-        // not a raw index slice from either end.
-        XCTAssertTrue(script.contains("Math.min(totalMsgs, perMailboxLimit)"))
-        XCTAssertFalse(script.contains("allMsgs.slice("), "raw slices bake in an ordering assumption")
-    }
-
     // MARK: - buildSearchScript (#23: date-window scan efficiency)
-
-    func testSearchScriptBreaksOnceOlderThanAfterDate() {
-        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, after: "2026-06-01")
-        XCTAssertTrue(
-            script.contains("if (afterDate !== null && operationalDate < afterDate) break;"),
-            "walking newest→oldest, the first message older than --after ends the mailbox scan"
-        )
-    }
 
     func testSearchScriptKeepsBeforeContinueGuard() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, before: "2026-06-10")
@@ -923,25 +749,11 @@ final class JXAScriptBuilderTests: XCTestCase {
         )
     }
 
-    func testSearchScriptShiftsWindowTowardBeforeDate() {
-        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, before: "2026-06-10")
-        // Binary search over receipt-first timestamp probes starts near --before.
-        XCTAssertTrue(script.contains("var scanFrom = 0;"))
-        XCTAssertTrue(script.contains("(lo + hi) >> 1"), "window shift must binary-search index positions")
-        XCTAssertTrue(script.contains("mailDates(allMsgs"), "probes must use the shared date normalizer, never content()")
-        XCTAssertTrue(script.contains("_meta.windowsShifted++"))
-    }
-
     func testSearchScriptDateGuardPrecedesContentFetch() throws {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, searchBody: true, limit: 10, after: "2026-06-01")
         let guardIdx = try XCTUnwrap(script.range(of: "operationalDate < afterDate")?.lowerBound)
-        let bodyIdx = try XCTUnwrap(script.range(of: "msg.content()")?.lowerBound)
+        let bodyIdx = try XCTUnwrap(script.range(of: "bodyMsg.content()")?.lowerBound)
         XCTAssertLessThan(guardIdx, bodyIdx)
-    }
-
-    func testSearchScriptEmitsWindowsShiftedMeta() {
-        let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10)
-        XCTAssertTrue(script.contains("windowsShifted: 0"))
     }
 
     // MARK: - buildSearchScript (--from filter, GitHub #21)
@@ -971,7 +783,7 @@ final class JXAScriptBuilderTests: XCTestCase {
     func testSearchScriptFromGuardPrecedesBodyFetch() throws {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, searchBody: true, limit: 10, from: "boss")
         let guardIdx = try XCTUnwrap(script.range(of: "fromFilter.toLowerCase()")?.lowerBound)
-        let bodyIdx = try XCTUnwrap(script.range(of: "msg.content()")?.lowerBound)
+        let bodyIdx = try XCTUnwrap(script.range(of: "bodyMsg.content()")?.lowerBound)
         XCTAssertLessThan(guardIdx, bodyIdx, "sender guard must skip messages before the expensive content() fetch")
     }
 
@@ -1053,7 +865,6 @@ final class JXAScriptBuilderTests: XCTestCase {
 
     func testSearchScriptToRecipientsCalledOnMatch() {
         let script = MailBridge.buildSearchScript(query: "test", account: nil, limit: 10, to: "user@example.com")
-        XCTAssertTrue(script.contains("matched && toFilter !== null"))
         XCTAssertTrue(script.contains("msg.toRecipients()"))
     }
 

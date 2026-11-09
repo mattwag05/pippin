@@ -280,17 +280,19 @@ final class ContactsCommandTests: XCTestCase {
     }
 
     func testDeleteContactParseWithIdentifier() {
-        XCTAssertNoThrow(try ContactsCommand.DeleteContact.parse(["abc-123"]))
+        XCTAssertNoThrow(try ContactsCommand.DeleteContact.parse(["abc-123", "--force"]))
     }
 
     func testDeleteContactIdentifierValue() throws {
-        let cmd = try ContactsCommand.DeleteContact.parse(["contact-to-delete"])
+        let cmd = try ContactsCommand.DeleteContact.parse(["contact-to-delete", "--force"])
         XCTAssertEqual(cmd.identifier, "contact-to-delete")
     }
 
-    func testDeleteContactForceFlagDefaultFalse() throws {
-        let cmd = try ContactsCommand.DeleteContact.parse(["some-id"])
-        XCTAssertFalse(cmd.force)
+    func testDeleteContactWithoutForceIsRefused() {
+        XCTAssertThrowsError(try ContactsCommand.DeleteContact.parse(["some-id"])) { error in
+            let message = ContactsCommand.DeleteContact.message(for: error)
+            XCTAssertTrue(message.contains("--force"), "got: \(message)")
+        }
     }
 
     func testDeleteContactForceFlagSetTrue() throws {

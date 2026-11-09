@@ -22,6 +22,41 @@ public enum MessagesError: LocalizedError, Sendable {
     }
 }
 
+extension MessagesError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .databaseNotFound: return "database_not_found"
+        case .accessDenied: return "access_denied"
+        case .conversationNotFound: return "conversation_not_found"
+        case .databaseError: return "database_error"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .databaseNotFound: return .human("Open the Messages app once to create its database, then retry.")
+        case .accessDenied:
+            return .human("Enable Full Disk Access for pippin and the app that launches it in System Settings > Privacy & Security > Full Disk Access, then relaunch that app.")
+        case .conversationNotFound: return .call(tool: "messages_list", argv: ["messages", "list"])
+        case .databaseError: return .call(tool: "doctor", argv: ["doctor"])
+        }
+    }
+
+    public var remediation: Remediation? {
+        switch self {
+        case .accessDenied: return .fullDiskAccess(integration: "Messages", listCommand: "pippin messages list")
+        // Named here because the catalog's entry for this shared code is about Voice Memos.
+        case .databaseNotFound:
+            return Remediation(
+                humanHint: "Messages database not found. Open the Messages app once to create it.",
+                doctorCheck: "Messages access",
+                shellCommand: "open -a Messages && sleep 3"
+            )
+        default: return nil
+        }
+    }
+}
+
 /// Read-only access to `~/Library/Messages/chat.db`.
 ///
 /// Apple's Messages epoch is 2001-01-01 UTC — the same as Foundation's

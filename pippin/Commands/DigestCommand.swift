@@ -1,7 +1,7 @@
 import ArgumentParser
 import Foundation
 
-public struct DigestCommand: AsyncParsableCommand {
+public struct DigestCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "digest",
         abstract: "Aggregated daily digest: unread mail, today's calendar, due reminders, and recent notes."
@@ -51,7 +51,7 @@ public struct DigestCommand: AsyncParsableCommand {
         calendar.date(byAdding: .day, value: calendarDays, to: endOfToday)
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         var warnings: [String] = []
         let skipSet = Set(skip)
         let cal = Calendar.current
@@ -177,98 +177,6 @@ public struct DigestCommand: AsyncParsableCommand {
             warnings: warnings
         )
 
-        if output.isAgent {
-            try output.printAgent(payload)
-        } else if output.isJSON {
-            try printJSON(payload)
-        } else {
-            printDigestText(payload)
-        }
-    }
-}
-
-// MARK: - Text formatter
-
-private func printDigestText(_ payload: DigestPayload) {
-    let f = DateFormatter()
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.dateFormat = "EEE, MMM d 'at' h:mm a"
-    print("Digest — \(f.string(from: Date()))\n")
-
-    // Mail
-    print("MAIL")
-    if payload.mail.perAccount.isEmpty {
-        print("  No accounts.")
-    } else {
-        print("  \(payload.mail.totalUnread) unread total")
-        for summary in payload.mail.perAccount {
-            print("  \(summary.account): \(summary.unread) unread")
-            for msg in summary.topMessages {
-                print("    • \(msg.subject) — \(msg.from)")
-            }
-        }
-    }
-    print("")
-
-    // Calendar — Today
-    print("CALENDAR — TODAY")
-    if payload.calendar.today.isEmpty {
-        print("  No events today.")
-    } else {
-        for event in payload.calendar.today {
-            let time = event.isAllDay ? "all day" : TextFormatter.compactDate(event.startDate)
-            print("  • \(event.title) (\(time))")
-        }
-    }
-    print("")
-
-    // Calendar — Upcoming
-    print("CALENDAR — UPCOMING")
-    if payload.calendar.upcoming.isEmpty {
-        print("  Nothing upcoming.")
-    } else {
-        for event in payload.calendar.upcoming {
-            let time = event.isAllDay ? "all day" : TextFormatter.compactDate(event.startDate)
-            print("  • \(event.title) (\(time)) [\(event.calendarTitle)]")
-        }
-    }
-    print("")
-
-    // Reminders
-    print("REMINDERS")
-    if payload.reminders.overdue.isEmpty, payload.reminders.dueToday.isEmpty {
-        print("  None due.")
-    } else {
-        if !payload.reminders.overdue.isEmpty {
-            print("  Overdue (\(payload.reminders.overdue.count)):")
-            for r in payload.reminders.overdue {
-                print("    • \(r.title)")
-            }
-        }
-        if !payload.reminders.dueToday.isEmpty {
-            print("  Due today (\(payload.reminders.dueToday.count)):")
-            for r in payload.reminders.dueToday {
-                print("    • \(r.title)")
-            }
-        }
-    }
-    print("")
-
-    // Notes
-    print("NOTES — RECENT")
-    if payload.notes.recent.isEmpty {
-        print("  No recent notes.")
-    } else {
-        for note in payload.notes.recent {
-            print("  • \(note.title) [\(note.folder)]")
-        }
-    }
-
-    if !payload.warnings.isEmpty {
-        print("")
-        print("WARNINGS")
-        for w in payload.warnings {
-            print("  ⚠ \(w)")
-        }
+        return AgentResult(payload)
     }
 }

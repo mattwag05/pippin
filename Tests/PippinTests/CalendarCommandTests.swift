@@ -87,7 +87,7 @@ final class CalendarCommandTests: XCTestCase {
             "--location", "Room A",
             "--notes", "Bring notes",
             "--url", "https://example.com",
-            "--format", "json",
+            "--format", "agent",
         ]))
     }
 
@@ -101,9 +101,9 @@ final class CalendarCommandTests: XCTestCase {
         XCTAssertNoThrow(try CalendarCommand.Delete.parse(["some-event-id", "--force"]))
     }
 
-    func testDeleteWithForceAndJsonFormat() {
+    func testDeleteWithForceAndAgentFormat() {
         XCTAssertNoThrow(try CalendarCommand.Delete.parse([
-            "some-event-id", "--force", "--format", "json",
+            "some-event-id", "--force", "--format", "agent",
         ]))
     }
 
@@ -245,12 +245,12 @@ final class CalendarCommandTests: XCTestCase {
 
     // MARK: - Output format
 
-    func testEventsAcceptsJsonFormat() {
-        XCTAssertNoThrow(try CalendarCommand.Events.parse(["--format", "json"]))
+    func testEventsAcceptsAgentFormat() {
+        XCTAssertNoThrow(try CalendarCommand.Events.parse(["--format", "agent"]))
     }
 
-    func testListAcceptsJsonFormat() {
-        XCTAssertNoThrow(try CalendarCommand.ListCalendars.parse(["--format", "json"]))
+    func testListAcceptsAgentFormat() {
+        XCTAssertNoThrow(try CalendarCommand.ListCalendars.parse(["--format", "agent"]))
     }
 
     func testShowRequiresId() {
@@ -261,12 +261,12 @@ final class CalendarCommandTests: XCTestCase {
         XCTAssertNoThrow(try CalendarCommand.Show.parse(["some-event-id"]))
     }
 
-    func testShowAcceptsJsonFormat() {
-        XCTAssertNoThrow(try CalendarCommand.Show.parse(["event-id", "--format", "json"]))
+    func testShowAcceptsAgentFormat() {
+        XCTAssertNoThrow(try CalendarCommand.Show.parse(["event-id", "--format", "agent"]))
     }
 
-    func testAgendaAcceptsJsonFormat() {
-        XCTAssertNoThrow(try CalendarCommand.Agenda.parse(["--format", "json"]))
+    func testAgendaAcceptsAgentFormat() {
+        XCTAssertNoThrow(try CalendarCommand.Agenda.parse(["--format", "agent"]))
     }
 
     // MARK: - Edit: --span flag
@@ -398,8 +398,8 @@ final class CalendarCommandTests: XCTestCase {
         XCTAssertNoThrow(try CalendarCommand.Search.parse(["--query", "meeting", "--calendar-name", "Work"]))
     }
 
-    func testSearchJsonFormat() {
-        XCTAssertNoThrow(try CalendarCommand.Search.parse(["--query", "x", "--format", "json"]))
+    func testSearchAgentFormat() {
+        XCTAssertNoThrow(try CalendarCommand.Search.parse(["--query", "x", "--format", "agent"]))
     }
 
     func testSearchValidRangesPasses() {
@@ -418,10 +418,6 @@ final class CalendarCommandTests: XCTestCase {
 
     func testTodayNoArgsPasses() {
         XCTAssertNoThrow(try CalendarCommand.Today.parse([]))
-    }
-
-    func testTodayJsonFormatPasses() {
-        XCTAssertNoThrow(try CalendarCommand.Today.parse(["--format", "json"]))
     }
 
     func testTodayAgentFormatPasses() {
@@ -443,10 +439,6 @@ final class CalendarCommandTests: XCTestCase {
         XCTAssertNoThrow(try CalendarCommand.Remaining.parse([]))
     }
 
-    func testRemainingJsonFormatPasses() {
-        XCTAssertNoThrow(try CalendarCommand.Remaining.parse(["--format", "json"]))
-    }
-
     func testRemainingAgentFormatPasses() {
         XCTAssertNoThrow(try CalendarCommand.Remaining.parse(["--format", "agent"]))
     }
@@ -464,10 +456,6 @@ final class CalendarCommandTests: XCTestCase {
 
     func testUpcomingNoArgsPasses() {
         XCTAssertNoThrow(try CalendarCommand.Upcoming.parse([]))
-    }
-
-    func testUpcomingJsonFormatPasses() {
-        XCTAssertNoThrow(try CalendarCommand.Upcoming.parse(["--format", "json"]))
     }
 
     func testUpcomingAgentFormatPasses() {
@@ -509,10 +497,6 @@ final class CalendarCommandTests: XCTestCase {
 
     func testConflictsInvalidRangeFails() {
         XCTAssertThrowsError(try CalendarCommand.Conflicts.parse(["--range", "yesterday"]))
-    }
-
-    func testConflictsJsonFormatPasses() {
-        XCTAssertNoThrow(try CalendarCommand.Conflicts.parse(["--format", "json"]))
     }
 
     func testConflictsAgentFormatPasses() {

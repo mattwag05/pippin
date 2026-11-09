@@ -67,6 +67,23 @@ public enum CursorError: LocalizedError, Sendable {
     }
 }
 
+extension CursorError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .cursorMismatch: return "cursor_mismatch"
+        case .invalidCursor: return "invalid_cursor"
+        case .invalidPageSize: return "invalid_page_size"
+        case .invalidPage: return "invalid_page"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .cursorMismatch, .invalidCursor, .invalidPageSize, .invalidPage: return .none
+        }
+    }
+}
+
 // MARK: - PaginationOptions
 
 /// Shared `--cursor` / `--page-size` flag pair. Mix into any list command via

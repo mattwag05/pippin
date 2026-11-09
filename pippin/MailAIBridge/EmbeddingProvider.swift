@@ -170,7 +170,8 @@ public struct OpenAIEmbeddingProvider: EmbeddingProvider {
         let (data, httpResponse) = try sendSynchronousRequest(request, waitTimeoutSeconds: Int(timeout) + 5)
         guard httpResponse.statusCode == 200 else {
             throw OpenAIProvider.errorForHTTPStatus(
-                httpResponse.statusCode, data: data, model: model, baseURL: baseURL
+                httpResponse.statusCode, data: data, model: model, baseURL: baseURL,
+                retryAfter: parseRetryAfter(httpResponse)
             )
         }
         return try Self.parseEmbeddings(data, expected: texts.count)

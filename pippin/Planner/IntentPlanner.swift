@@ -369,3 +369,19 @@ enum IntentPlannerError: LocalizedError {
         return nil
     }
 }
+
+extension IntentPlannerError: RemediableError {
+    var agentCode: String {
+        switch self {
+        case .parseFailed: return "parse_failed"
+        case .unknownTool: return "unknown_tool"
+        case .invalidPlan: return "invalid_plan"
+        }
+    }
+
+    var nextStep: NextStep {
+        switch self {
+        case .parseFailed, .unknownTool, .invalidPlan: return .none
+        }
+    }
+}

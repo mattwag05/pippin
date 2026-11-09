@@ -85,27 +85,16 @@ struct Pippin: AsyncParsableCommand {
             }
         } catch {
             // CleanExit (--help, --version) and ExitCode (intentional exit code) must be handled normally.
-            if error is CleanExit || error is ExitCode {
+            // `parseAsRoot` wraps --help/--version in a CommandError, so ask
+            // ArgumentParser whether this is a success rather than testing types.
+            if error is CleanExit || error is ExitCode || Pippin.exitCode(for: error) == .success {
                 Pippin.exit(withError: error)
-            } else if isAgentMode() {
-                printAgentError(error, startedAt: startedAt)
-                // Typed exit code so a calling shell can branch on the failure
-                // class without parsing the JSON envelope.
-                Darwin.exit(PippinExitCode.from(error))
-            } else if let remediation = RemediationCatalog.resolve(for: error) {
-                // Catalogued errors print ourselves so we can append remediation.
-                // Uncatalogued errors (ValidationError, etc.) fall through to
-                // ArgumentParser so its usage-help formatting is preserved.
-                let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                fputs("Error: \(message)\n\n", stderr)
-                fputs("\(remediation.humanHint)\n", stderr)
-                if let cmd = remediation.shellCommand {
-                    fputs("  $ \(cmd)\n", stderr)
-                }
-                fputs("Run 'pippin doctor' for diagnostics.\n", stderr)
-                Darwin.exit(PippinExitCode.from(error))
             } else {
-                Pippin.exit(withError: error)
+                // Every failure, including argument parsing, is an error
+                // envelope (pippin-xg3z). Typed exit code so a calling shell
+                // can branch on the failure class without parsing the JSON.
+                printAgentError(error, startedAt: startedAt)
+                Darwin.exit(PippinExitCode.from(error))
             }
         }
     }
@@ -132,15 +121,6 @@ struct Pippin: AsyncParsableCommand {
             Darwin.exit(status)
         }
         // status < 0: SPI unavailable (-2) or spawn failed (-1) — run in-process.
-    }
-
-    /// Returns true if `--format agent` was passed on the command line.
-    private static func isAgentMode() -> Bool {
-        let args = CommandLine.arguments
-        for index in 0 ..< (args.count - 1) where args[index] == "--format" {
-            if args[index + 1] == "agent" { return true }
-        }
-        return args.contains("--format=agent")
     }
 }
 

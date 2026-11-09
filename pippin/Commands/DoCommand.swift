@@ -6,7 +6,7 @@ import Foundation
 /// `pippin do "<intent>"` — hand an LLM the MCP tool registry and let it
 /// plan + execute the minimum sequence of tool calls. Single-turn: one
 /// planning round (plus optional self-repair), then straight execution.
-public struct DoCommand: AsyncParsableCommand {
+public struct DoCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "do",
         abstract: "Plan and execute pippin tool calls for a natural-language intent.",
@@ -77,7 +77,7 @@ public struct DoCommand: AsyncParsableCommand {
         return kinds
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let ai = try AIProviderFactory.make(
             providerFlag: provider, modelFlag: model, apiKeyFlag: apiKey
         )
@@ -117,8 +117,7 @@ public struct DoCommand: AsyncParsableCommand {
                 dryRun: true,
                 executed: false
             )
-            try emit(dry)
-            return
+            return AgentResult(dry)
         }
 
         let pippinPath = MCPServerRuntime.resolvePippinPath()
@@ -149,20 +148,7 @@ public struct DoCommand: AsyncParsableCommand {
             dryRun: false,
             executed: execution.executed
         )
-        try emit(result)
-    }
-
-    private func emit(_ value: some Encodable) throws {
-        if output.isAgent {
-            try output.printAgent(value)
-        } else if output.isJSON {
-            try printJSON(value)
-        } else {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(value)
-            print(String(data: data, encoding: .utf8) ?? "")
-        }
+        return AgentResult(result)
     }
 
     static func decodeChildStdout(_ stdout: Data) -> JSONValue {
@@ -272,6 +258,21 @@ public enum DoError: LocalizedError {
             return "Planned step for '\(tool)' failed schema validation: \(err.localizedDescription)"
         case let .buildArgsFailed(tool, err):
             return "Could not build argv for '\(tool)': \(err.localizedDescription)"
+        }
+    }
+}
+
+extension DoError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .stepValidationFailed: return "step_validation_failed"
+        case .buildArgsFailed: return "build_args_failed"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .stepValidationFailed, .buildArgsFailed: return .none
         }
     }
 }

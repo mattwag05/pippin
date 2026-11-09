@@ -95,9 +95,10 @@ public extension ContactsBridge {
     /// timeout so a huge address book can't blow the command's budget.
     ///
     /// Persisted via `ContactIndexCache`: when the store's history token matches
-    /// the cached one, the index is rebuilt from disk with no enumeration. Any
-    /// cache failure is a silent miss; only complete (non-timed-out, non-erroring)
-    /// enumerations are written back.
+    /// the cached one, the index is rebuilt from disk with no enumeration. A scan
+    /// cut off by the deadline saves its progress and the next call resumes it,
+    /// so an address book too big for one call still ends up cached. Any cache
+    /// failure is a silent miss.
     static func contactIndex(
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         cache: ContactIndexCache? = ContactIndexCache.shared
@@ -108,7 +109,10 @@ public extension ContactsBridge {
         if let token, let cached = cache?.load(matching: token) {
             return cached
         }
-        var index = ContactIndex()
+        let resumed = token.flatMap { cache?.loadPartial(matching: $0) }
+        var index = resumed?.index ?? ContactIndex()
+        let skip = resumed?.offset ?? 0
+        var scanned = 0
         var timedOut = false
         let keys: [CNKeyDescriptor] = [
             CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
@@ -117,14 +121,21 @@ public extension ContactsBridge {
             CNContactOrganizationNameKey as CNKeyDescriptor,
         ]
         let request = CNContactFetchRequest(keysToFetch: keys)
+        // Resuming by offset needs the same order on every run.
+        request.sortOrder = .familyName
         let deadline = Date().addingTimeInterval(Double(SoftTimeout.clamp(softTimeoutMs)) / 1000.0)
         do {
             try store.enumerateContacts(with: request) { contact, stop in
+                if scanned < skip {
+                    scanned += 1
+                    return
+                }
                 if Date() >= deadline {
                     timedOut = true
                     stop.pointee = true
                     return
                 }
+                scanned += 1
                 let name = CNContactFormatter.string(from: contact, style: .fullName)
                     ?? contact.organizationName
                 index.add(
@@ -136,17 +147,16 @@ public extension ContactsBridge {
         } catch {
             return index // possibly partial — return live results, never cache
         }
-        persistIfComplete(index, timedOut: timedOut, token: token, to: cache)
+        persist(index, timedOut: timedOut, scanned: scanned, token: token, to: cache)
         return index
     }
 
-    /// Write a freshly-enumerated index back to the cache — unless it's partial
-    /// (soft timeout hit) or there's no token to key it on, since caching a
-    /// partial index would freeze incomplete data behind a current token.
-    static func persistIfComplete(
-        _ index: ContactIndex, timedOut: Bool, token: Data?, to cache: ContactIndexCache?
+    /// Write an enumerated index back to the cache: complete, or, after a soft
+    /// timeout, marked incomplete with how far it got. No token, no write.
+    static func persist(
+        _ index: ContactIndex, timedOut: Bool, scanned: Int, token: Data?, to cache: ContactIndexCache?
     ) {
-        guard !timedOut, let token else { return }
-        cache?.store(index, token: token)
+        guard let token else { return }
+        cache?.store(index, token: token, resumeOffset: timedOut ? scanned : nil)
     }
 }

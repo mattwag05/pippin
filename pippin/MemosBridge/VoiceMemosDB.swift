@@ -56,6 +56,32 @@ public enum VoiceMemosError: LocalizedError, Sendable {
     }
 }
 
+extension VoiceMemosError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .databaseNotFound: return "database_not_found"
+        case .unsupportedSchemaVersion: return "unsupported_schema_version"
+        case .memoNotFound: return "memo_not_found"
+        case .memoEvicted: return "memo_evicted"
+        case .fileNotFound: return "file_not_found"
+        case .exportFailed: return "export_failed"
+        case .ambiguousId: return "ambiguous_id"
+        case .accessDenied: return "access_denied"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .databaseNotFound: return .human("Open the Voice Memos app once to create its database, then retry.")
+        case .unsupportedSchemaVersion, .fileNotFound, .exportFailed: return .none
+        case .memoNotFound, .ambiguousId: return .call(tool: "memos_list", argv: ["memos", "list"])
+        case .memoEvicted: return .human("Download this recording from iCloud in the Voice Memos app, then retry.")
+        case .accessDenied:
+            return .human("Enable Full Disk Access for pippin and the app that launches it in System Settings > Privacy & Security > Full Disk Access, then relaunch that app.")
+        }
+    }
+}
+
 public final class VoiceMemosDB: Sendable {
     /// Schema versions confirmed to work with this code.
     /// Update after macOS upgrades if Z_VERSION changes.

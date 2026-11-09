@@ -14,6 +14,10 @@ public enum MailBridgeError: LocalizedError, Sendable {
     case accountNotFound(String, available: [String])
     case searchIncomplete
     case timeout
+    /// A send timed out. The message may or may not have gone out.
+    case sendOutcomeUnknown
+    /// Another `mail cache fill` holds the lock.
+    case fillInProgress
     case decodingFailed(String)
     case invalidMessageId(String)
     case invalidMailbox(String)
@@ -29,6 +33,10 @@ public enum MailBridgeError: LocalizedError, Sendable {
         case .searchIncomplete:
             return "Mail search timed out before examining a complete result set. Narrow with --account, --mailbox, --after, or --before and retry."
         case .timeout: return "Mail automation timed out. Try narrowing with --account, --mailbox, or --after."
+        case .fillInProgress:
+            return "Another mail cache fill is already running."
+        case .sendOutcomeUnknown:
+            return "The send timed out and may or may not have been delivered. Check the Sent mailbox before sending again."
         case .decodingFailed: return "Failed to decode Mail response"
         case let .invalidMessageId(id): return "Invalid message id: \(id)"
         case let .invalidMailbox(name): return "Invalid mailbox name: \(name)"
@@ -48,6 +56,38 @@ public enum MailBridgeError: LocalizedError, Sendable {
 }
 
 extension MailBridgeError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .scriptFailed: return "script_failed"
+        case .messageNotFound: return "message_not_found"
+        case .accountNotFound: return "account_not_found"
+        case .searchIncomplete: return "search_incomplete"
+        case .timeout: return "timeout"
+        case .sendOutcomeUnknown: return "send_outcome_unknown"
+        case .fillInProgress: return "fill_in_progress"
+        case .decodingFailed: return "decoding_failed"
+        case .invalidMessageId: return "invalid_message_id"
+        case .invalidMailbox: return "invalid_mailbox"
+        case .accessDenied: return "access_denied"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .scriptFailed: return .call(tool: "doctor", argv: ["doctor"])
+        case .messageNotFound: return .call(tool: "mail_list", argv: ["mail", "list"])
+        case .accountNotFound: return .call(tool: "mail_accounts", argv: ["mail", "accounts"])
+        case .searchIncomplete, .decodingFailed, .invalidMessageId: return .none
+        case .timeout: return .retry(after: 5)
+        case .fillInProgress: return .call(tool: "job_list", argv: ["job", "list"])
+        case .sendOutcomeUnknown:
+            return .call(tool: "mail_list", args: ["mailbox": "Sent"], argv: ["mail", "list", "--mailbox", "Sent"])
+        case .invalidMailbox: return .call(tool: "mail_mailboxes", argv: ["mail", "mailboxes"])
+        case .accessDenied:
+            return .human("Run `pippin permissions` in a terminal and approve Automation control of Mail.")
+        }
+    }
+
     public var remediation: Remediation? {
         switch self {
         case .accessDenied: return .automationAccess(app: "Mail", trigger: "pippin mail list")
@@ -57,6 +97,10 @@ extension MailBridgeError: RemediableError {
 }
 
 // MARK: - MailMessage
+
+extension MailMessage: EssentialRow {
+    public static let essentialFields = ["id", "from", "fromContact", "subject", "date", "read", "hasAttachment", "bodyPreview"]
+}
 
 public struct MailMessage: Codable, Sendable {
     public let id: String // compound: "account||mailbox||messageId"

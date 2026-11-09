@@ -112,7 +112,7 @@ These are **additive** (non-breaking) — existing fields (`matches`, `excluded_
 
 ## How it works
 
-Each `tools/call` spawns `pippin <subcommand> --format agent` as a child process and returns the child's compact JSON stdout as the tool result. This guarantees the MCP path stays in perfect parity with the existing CLI path used by the morning-briefing task and manual invocations.
+Quick EventKit and Contacts reads run in-process: the server parses the same argv and runs the same command code the CLI runs, under a 25s deadline. A tool that exceeds it moves to a child process for the rest of the session. Everything else (JXA, AI, browser, audio, every write) spawns `pippin <subcommand>` as a child process and returns its compact JSON stdout as the tool result. Either way the result is the same envelope the CLI writes.
 
 - Successful tool call → `{"content":[{"type":"text","text":"<agent JSON>"}],"isError":false}`
 - Tool failure (bad ID, permission denied, etc.) → same shape with `isError:true` and the pippin `AgentError` JSON as text
@@ -123,49 +123,50 @@ Diagnostics (startup banner, warnings) go to stderr and do not pollute the JSON-
 
 ## MCP-preferred, CLI-fallback (for agents)
 
-Because every tool call just shells out to `pippin <subcommand> --format agent`, the MCP server and the CLI are two surfaces over the **same binary** with **identical** [envelope v2](#envelope-v2-v1-2026-04-20-v2-2026-07-15) output. So:
+The MCP server and the CLI are two surfaces over the **same binary** with **identical** [envelope v4](#envelope-v4-v1-2026-04-20-v2-2026-07-15-v3-2026-08-12-v4-2026-11-08) output. So:
 
 - **Prefer the MCP tools where they're attached** — an agent gateway and Claude Cowork (via the `pippin@mw-plugins` plugin) can both register `pippin mcp-server`, so `mail_list`, `calendar_today`, etc. are first-class tools there.
-- **Fall back to the CLI when no MCP server is attached** — a bare Claude Code session, a scheduled task, or any shell context. The invocation maps one-to-one (tool `mail_list` → `pippin mail list`); just add `--format agent`:
+- **Fall back to the CLI when no MCP server is attached** — a bare Claude Code session, a scheduled task, or any shell context. The invocation maps one-to-one (tool `mail_list` → `pippin mail list`), and no format flag is needed:
 
 ```bash
-~/.local/bin/pippin <area> <verb> … --format agent
+~/.local/bin/pippin <area> <verb> …
 # e.g. the mail_list tool ≡
-~/.local/bin/pippin mail list --unread --limit 5 --format agent
+~/.local/bin/pippin mail list --unread --limit 5
 ```
 
 Use the stable **`~/.local/bin/pippin`** path (the `make install` copy), **not** the brew symlink (`/opt/homebrew/bin/pippin`): macOS keys the bare-CLI TCC grant on the binary's resolved path, and brew's is the *versioned* `Cellar/<ver>/bin/pippin`, so a grant there is lost on every upgrade. The fallback is lossless — same envelope, same typed exit codes, same Automation/EventKit permissions — so an agent that drops to the shell behaves identically to one calling the MCP tool.
 
-## Envelope v3 (v1: 2026-04-20; v2: 2026-07-15; v3: 2026-08-12)
+## Envelope v4 (v1: 2026-04-20; v2: 2026-07-15; v3: 2026-08-12; v4: 2026-11-08)
 
-Every `--format agent` stdout is wrapped in a versioned envelope. The MCP tool-result text field carries the envelope verbatim — clients that parse pippin JSON must reach one level deeper.
+Every command's stdout is wrapped in a versioned envelope. The MCP tool-result text field carries the envelope verbatim — clients that parse pippin JSON must reach one level deeper.
 
 **Ok shape:**
 ```json
-{"v":3,"status":"ok","duration_ms":234,"data":<original payload>}
+{"v":4,"status":"ok","duration_ms":234,"data":<original payload>}
 ```
 
 **Error shape:**
 ```json
-{"v":3,"status":"error","duration_ms":12,"error":{"code":"access_denied","message":"…","remediation":{…}?}}
+{"v":4,"status":"error","duration_ms":12,"error":{"code":"access_denied","message":"…","next_step":{"retryable":false,"human_action":"…"},"remediation":{…}?}}
 ```
+
+`next_step` is always present on an error (v4). `retryable` says whether the same call can work again, `retry_after_seconds` how long to wait, `next_call` (`{tool, args, argv}`) a call to make instead, and `human_action` what only a person can do. A timed-out send reports `send_outcome_unknown` and is not retryable, because the message may already have gone out.
 
 **v3 pagination change (2026-08-12, pippin-37az):** `data` no longer changes TYPE when a pagination flag is passed. Previously `--page`/`--page-size`/`--cursor` switched `data` from `[…]` to `{items, next_cursor}` while `v` stayed `2`, so a consumer doing the documented `for m in payload["data"]` iterated the dict's KEYS and yielded the string `"items"` — no exception, no error status, just wrong data (observed: one bogus row per page across 20 pages). The cursor is now the top-level `next_cursor`, and `data` stays the payload array either way:
 
 ```json
-{"v":3,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
+{"v":4,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
 ```
-
-`--format json` is unchanged — it has no envelope to hoist a cursor into, so it still writes the whole `{items, next_cursor}` document.
 
 **v2 payload changes (2026-07-15):** the envelope frame is identical to v1; the bump marks four payload-shape changes — `messages list` returns a bare `data:[…]` array (previously `data:{excluded_count, conversations:[…]}`; the excluded count moved to `warnings` when non-zero); notes `creationDate`/`modificationDate` were renamed `createdAt`/`modifiedAt`; all-day calendar events serialize `startDate`/`endDate` as date-only `YYYY-MM-DD` (previously a misleading UTC instant); memos dates gained `.000Z` fractional seconds. Everything else is unchanged from v1.
 
 Fields:
-- `v` — envelope schema version. `1` was the first enveloped shape, introduced in [pippin-xy0](https://github.com/mattwag05/pippin/issues); `3` is current. Future breakage bumps this.
+- `v` — envelope schema version. `1` was the first enveloped shape, introduced in [pippin-xy0](https://github.com/mattwag05/pippin/issues); `4` is current (adds `error.next_step`). Future breakage bumps this.
 - `status` — `"ok"` or `"error"`.
 - `duration_ms` — wall-clock milliseconds from command construction to JSON serialization.
 - `data` — the previous raw payload, shape unchanged.
-- `error` — the `AgentError.ErrorPayload` (`code`, `message`, optional `remediation`), previously emitted at the top level.
+- `error` — the `AgentError.ErrorPayload` (`code`, `message`, `next_step`, optional `remediation`), previously emitted at the top level.
+- Rows from list and search tools default to essential fields. Pass `fields` to select keys or `fields: "all"` for whole rows; paginated tools also take `cursor`, `pageSize` and `page`.
 - `partial` (*optional, additive since 2026-07-30*): `true` when a result set is incomplete (scan soft-timed-out or under-reached). **Omitted entirely on complete results.** For `mail_search` specifically, a timed-out scan with no matches returns an error envelope with code `search_incomplete` and narrowing guidance instead of partial success with an empty array. Empty timed-out `mail_list` and `mail_activity` results may still carry `partial:true`. Emitted by the mail scan tools (`mail_list`, `mail_search`, `mail_activity`).
 - `next_cursor` — *optional, v3*: opaque pagination token for the next page, present only when a pagination flag was passed AND more results remain. **Omitted, not null, on the last page** — its absence is the end-of-results signal. Bound to the query by a filter-hash, so reusing a token after changing a filter fails as `cursor_mismatch` rather than returning mixed pages.
 - `warnings` — *optional*: non-fatal advisories (soft-timeout hints — which list the configured account names — and Envelope-Index fast-path fallback reasons). Omitted when empty.
@@ -193,9 +194,8 @@ On failure, the `pippin` child process exits with a typed code derived from the 
 | `4` | auth / permission / config | no | `access_denied`, `missing_api_key`, `not_available` |
 | `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
 | `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
-| `64` | argument-parse failure at the root command (unknown subcommand, e.g. an experimental-gated `audio`/`browser` without `PIPPIN_EXPERIMENTAL=1`) | no | — (ArgumentParser exits before an envelope is produced) |
 
-In `--format agent` mode (what the MCP server uses), argument validation and parse failures (a bad `--start`, a missing required flag, an unknown flag) map to `2` (usage) like any other bad input. Outside agent mode, ArgumentParser handles those itself and keeps its own `64` so its formatted usage help is preserved. The MCP server passes the child's exit code through verbatim, so MCP clients see the same codes. The mapping lives in [`pippin/Formatting/PippinExitCode.swift`](../pippin/Formatting/PippinExitCode.swift).
+Argument validation and parse failures (a bad `--start`, a missing required flag, an unknown subcommand) map to `2` (usage) like any other bad input, with an error envelope. The MCP server passes the child's exit code through verbatim, so MCP clients see the same codes. The mapping lives in [`pippin/Formatting/PippinExitCode.swift`](../pippin/Formatting/PippinExitCode.swift).
 
 ## Wire into Claude Code
 
@@ -274,4 +274,4 @@ Each response comes back as a single line of newline-delimited JSON on stdout.
 - **Claude Code / Claude Desktop** — register via `claude mcp add` or the desktop config JSON; both pick up tools automatically on restart.
 - **Morning-briefing scheduled task** — still shells out to the pippin CLI directly (no migration planned; the task is single-shot enough that MCP doesn't add value).
 
-All CLI and MCP consumers receive envelope v3 responses (see above) as of 2026-08-12.
+All CLI and MCP consumers receive envelope v4 responses (see above).

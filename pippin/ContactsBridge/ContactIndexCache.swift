@@ -23,7 +23,7 @@ public final class ContactIndexCache: Sendable {
     }
 
     /// Bump to discard caches written by an incompatible older layout.
-    private static let schemaVersion = 1
+    private static let schemaVersion = 2
 
     private let dbQueue: DatabaseQueue
 
@@ -61,7 +61,9 @@ public final class ContactIndexCache: Sendable {
             guard let version = try Int.fetchOne(db, sql: "SELECT value FROM meta WHERE key = 'schema_version'"),
                   version == Self.schemaVersion,
                   let stored = try Data.fetchOne(db, sql: "SELECT value FROM meta WHERE key = 'history_token'"),
-                  stored == token
+                  stored == token,
+                  // A resumable partial scan must never read as a finished index.
+                  try Int.fetchOne(db, sql: "SELECT value FROM meta WHERE key = 'resume_offset'") == nil
             else { return nil }
             var byPhone: [String: String] = [:]
             var byEmail: [String: String] = [:]
@@ -81,9 +83,34 @@ public final class ContactIndexCache: Sendable {
         return ContactIndex(byPhone: maps.byPhone, byEmail: maps.byEmail)
     }
 
-    /// Replace the cache with `index`'s final maps under `token`. Best-effort:
-    /// failures never propagate (the caller already has its live index).
-    public func store(_ index: ContactIndex, token: Data) {
+    /// The partial index and how many contacts it covers, if a scan under this
+    /// same `token` was cut off. A different token means the address book
+    /// changed mid-scan, so the partial work is not returned and gets replaced.
+    public func loadPartial(matching token: Data) -> (index: ContactIndex, offset: Int)? {
+        let found = try? dbQueue.read { db -> (byPhone: [String: String], byEmail: [String: String], offset: Int)? in
+            guard let version = try Int.fetchOne(db, sql: "SELECT value FROM meta WHERE key = 'schema_version'"),
+                  version == Self.schemaVersion,
+                  let stored = try Data.fetchOne(db, sql: "SELECT value FROM meta WHERE key = 'history_token'"),
+                  stored == token,
+                  let offset = try Int.fetchOne(db, sql: "SELECT value FROM meta WHERE key = 'resume_offset'")
+            else { return nil }
+            var byPhone: [String: String] = [:]
+            var byEmail: [String: String] = [:]
+            for row in try Row.fetchAll(db, sql: "SELECT kind, key, name FROM mappings") {
+                let key: String = row["key"]
+                let name: String = row["name"]
+                if (row["kind"] as String) == "phone" { byPhone[key] = name } else { byEmail[key] = name }
+            }
+            return (byPhone, byEmail, offset)
+        }
+        guard let found = found ?? nil else { return nil }
+        return (ContactIndex(byPhone: found.byPhone, byEmail: found.byEmail), found.offset)
+    }
+
+    /// Replace the cache with `index`'s final maps under `token`. A non-nil
+    /// `resumeOffset` marks it incomplete: readable only through `loadPartial`.
+    /// Best-effort: failures never propagate (the caller has its live index).
+    public func store(_ index: ContactIndex, token: Data, resumeOffset: Int? = nil) {
         try? dbQueue.write { db in
             try db.execute(sql: "DELETE FROM mappings")
             for (key, name) in index.byPhone {
@@ -102,6 +129,13 @@ public final class ContactIndexCache: Sendable {
                 sql: "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?), ('history_token', ?)",
                 arguments: [Self.schemaVersion, token]
             )
+            try db.execute(sql: "DELETE FROM meta WHERE key = 'resume_offset'")
+            if let resumeOffset {
+                try db.execute(
+                    sql: "INSERT INTO meta (key, value) VALUES ('resume_offset', ?)",
+                    arguments: [resumeOffset]
+                )
+            }
         }
     }
 }

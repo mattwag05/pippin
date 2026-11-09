@@ -25,7 +25,7 @@ public struct JobCommand: AsyncParsableCommand {
 
     // MARK: Run
 
-    public struct Run: AsyncParsableCommand {
+    public struct Run: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "run",
             abstract: "Fork a detached pippin sub-command; returns a job_id immediately.",
@@ -52,7 +52,7 @@ public struct JobCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let store = JobStore()
             try ensureRoot(store)
             let id = JobId.generate()
@@ -78,22 +78,13 @@ public struct JobCommand: AsyncParsableCommand {
             var display = seed
             display.pid = pid
 
-            if output.isAgent {
-                try output.printAgent(display)
-            } else if output.isJSON {
-                try printJSON(display)
-            } else {
-                print("job_id: \(id)")
-                print("pid:    \(pid)")
-                print("status: running")
-                print("tail logs: pippin job logs \(id) --stream")
-            }
+            return AgentResult(display)
         }
     }
 
     // MARK: Show
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show a job's status + stdout/stderr tails."
@@ -109,33 +100,19 @@ public struct JobCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let store = JobStore()
             let job = try store.read(id)
             let stdoutTail = store.tailStdout(job.id, maxBytes: max(0, tail))
             let stderrTail = store.tailStderr(job.id, maxBytes: max(0, tail))
             let view = JobView(job: job, stdoutTail: stdoutTail, stderrTail: stderrTail)
-            if output.isAgent {
-                try output.printAgent(view)
-            } else if output.isJSON {
-                try printJSON(view)
-            } else {
-                printJobHeader(job)
-                if !stdoutTail.isEmpty {
-                    print("— stdout (tail \(stdoutTail.count)B) —")
-                    print(stdoutTail)
-                }
-                if !stderrTail.isEmpty {
-                    print("— stderr (tail \(stderrTail.count)B) —")
-                    print(stderrTail)
-                }
-            }
+            return AgentResult(view)
         }
     }
 
     // MARK: List
 
-    public struct List: AsyncParsableCommand {
+    public struct List: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List recent jobs (default: 20 most recent)."
@@ -155,32 +132,20 @@ public struct JobCommand: AsyncParsableCommand {
             guard limit > 0 else { throw ValidationError("--limit must be positive.") }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let store = JobStore()
             var jobs = store.all().sorted { $0.startedAt > $1.startedAt }
             if let filter = status {
                 jobs = jobs.filter { $0.status == filter }
             }
             jobs = Array(jobs.prefix(limit))
-            if output.isAgent {
-                try output.printAgent(jobs)
-            } else if output.isJSON {
-                try printJSON(jobs)
-            } else {
-                if jobs.isEmpty {
-                    print("No jobs.")
-                } else {
-                    for job in jobs {
-                        printJobLine(job)
-                    }
-                }
-            }
+            return AgentResult(jobs)
         }
     }
 
     // MARK: Wait
 
-    public struct Wait: AsyncParsableCommand {
+    public struct Wait: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "wait",
             abstract: "Block until a job reaches a terminal state, then print its status."
@@ -199,7 +164,7 @@ public struct JobCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let store = JobStore()
             // Resolve prefix once; subsequent reads use the canonical id
             // so we don't re-scan the job dir on every 200ms tick.
@@ -210,14 +175,7 @@ public struct JobCommand: AsyncParsableCommand {
             while true {
                 let job = try store.readCanonical(canonicalId)
                 if job.status.isTerminal {
-                    if output.isAgent {
-                        try output.printAgent(job)
-                    } else if output.isJSON {
-                        try printJSON(job)
-                    } else {
-                        printJobHeader(job)
-                    }
-                    return
+                    return AgentResult(job)
                 }
                 if let deadline, Date() >= deadline {
                     throw JobCommandError.waitTimedOut(job.id, timeoutSeconds: timeout)
@@ -247,17 +205,23 @@ public struct JobCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Read stderr instead of stdout.")
         public var stderr: Bool = false
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
         public mutating func run() async throws {
+            struct JobLogs: Encodable {
+                let id: String
+                let stream: String
+                let text: String
+            }
             let store = JobStore()
             let resolved = try store.resolve(id)
             let path = stderr ? store.stderrPath(resolved) : store.stdoutPath(resolved)
             if !stream {
-                if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-                   let text = String(data: data, encoding: .utf8) {
-                    print(text, terminator: "")
-                }
+                let text = (try? Data(contentsOf: URL(fileURLWithPath: path)))
+                    .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                try print(output.render(AgentResult(JobLogs(id: resolved, stream: stderr ? "stderr" : "stdout", text: text))))
                 return
             }
             // Streaming tail: seek to end? Start at beginning for the first
@@ -291,7 +255,7 @@ public struct JobCommand: AsyncParsableCommand {
 
     // MARK: Gc
 
-    public struct Gc: AsyncParsableCommand {
+    public struct Gc: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "gc",
             abstract: "Prune terminal jobs older than --older-than (default: 7d)."
@@ -307,25 +271,13 @@ public struct JobCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let seconds = try parseDuration(olderThan)
             let cutoff = Date().addingTimeInterval(-Double(seconds))
             let store = JobStore()
             let removed = try store.gc(olderThan: cutoff)
             let result = GcResult(removed: removed, cutoff: cutoff)
-            if output.isAgent {
-                try output.printAgent(result)
-            } else if output.isJSON {
-                try printJSON(result)
-            } else {
-                if removed.isEmpty {
-                    print("No jobs older than \(olderThan).")
-                } else {
-                    for id in removed {
-                        print("removed \(id)")
-                    }
-                }
-            }
+            return AgentResult(result)
         }
     }
 }
@@ -352,6 +304,8 @@ public struct JobRunnerInternalCommand: AsyncParsableCommand {
     public init() {}
 
     public mutating func run() async throws {
+        // Own session, so a host tearing down its process group leaves the job alive.
+        _ = setsid()
         if argv.first == "--" { argv.removeFirst() }
         let store = JobStore()
         var job = try store.readCanonical(id)
@@ -419,6 +373,7 @@ enum JobLauncher {
         process.standardOutput = stdoutHandle
         process.standardError = stderrHandle
         process.standardInput = FileHandle.nullDevice
+        process.environment = jobEnvironment(from: ProcessInfo.processInfo.environment)
 
         do {
             try process.run()
@@ -431,6 +386,12 @@ enum JobLauncher {
         try? stdoutHandle.close()
         try? stderrHandle.close()
         return process.processIdentifier
+    }
+
+    /// A job outlives the MCP call that started it, so it must not keep that
+    /// call's clamps (55s script cap, 50s AI budget).
+    static func jobEnvironment(from environment: [String: String]) -> [String: String] {
+        environment.filter { $0.key != "PIPPIN_MCP" }
     }
 
     private static func openAppend(_ path: String) throws -> FileHandle {
@@ -462,6 +423,23 @@ public enum JobCommandError: LocalizedError {
             return "Job \(id) did not reach a terminal state within \(seconds)s."
         case let .invalidDuration(input):
             return "Could not parse duration '\(input)'. Expected a number followed by d, h, or m (e.g. 7d)."
+        }
+    }
+}
+
+extension JobCommandError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .launchFailed: return "launch_failed"
+        case .waitTimedOut: return "wait_timed_out"
+        case .invalidDuration: return "invalid_duration"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .launchFailed, .invalidDuration: return .none
+        case .waitTimedOut: return .retry(after: 5)
         }
     }
 }
@@ -536,25 +514,4 @@ func parseDuration(_ input: String) throws -> Int {
     case "w", "W": return value * 86400 * 7
     default: throw JobCommandError.invalidDuration(input)
     }
-}
-
-private func printJobHeader(_ job: Job) {
-    print("job_id:     \(job.id)")
-    print("status:     \(job.status.rawValue)")
-    print("argv:       \(job.argv.joined(separator: " "))")
-    if let pid = job.pid { print("pid:        \(pid)") }
-    print("started:    \(TextFormatter.compactDate(job.startedAt))")
-    if let endedAt = job.endedAt {
-        print("ended:      \(TextFormatter.compactDate(endedAt))")
-    }
-    if let exitCode = job.exitCode { print("exit_code:  \(exitCode)") }
-    if let durationMs = job.durationMs { print("duration:   \(durationMs)ms") }
-}
-
-private func printJobLine(_ job: Job) {
-    let shortId = String(job.id.prefix(12))
-    let statusStr = job.status.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0)
-    let argvStr = job.argv.joined(separator: " ")
-    let when = TextFormatter.compactDate(job.startedAt)
-    print("\(shortId)  \(statusStr)  \(when)  \(argvStr)")
 }

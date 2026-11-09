@@ -1,31 +1,6 @@
 import Foundation
 
 extension MailBridge {
-    // MARK: - Scan Direction Probe
-
-    /// JXA snippet declaring `var newestFirst` for a message collection.
-    ///
-    /// Whether `mailbox.messages()` is index-ordered oldest→newest or
-    /// newest→oldest varies by account/provider (GitHub #23/#24 — Gmail All
-    /// Mail returned 2018-era mail from a "newest N" window built on the wrong
-    /// assumption). Instead of assuming, probe the direction with two cheap
-    /// Apple Events (receipt time with sent-time fallback on the first and last message) and let the
-    /// caller derive its scan window/iteration order from the result.
-    /// Falls back to `fallbackNewestFirst` (the script's historical
-    /// assumption) on error or when the collection has fewer than 2 messages.
-    static func jsProbeNewestFirst(collection: String, fallbackNewestFirst: Bool) -> String {
-        """
-        var newestFirst = \(fallbackNewestFirst ? "true" : "false");
-        try {
-            if (\(collection).length >= 2) {
-                var firstDate = mailDates(\(collection)[0]).operationalDate;
-                var lastDate = mailDates(\(collection)[\(collection).length - 1]).operationalDate;
-                if (firstDate !== null && lastDate !== null) newestFirst = firstDate >= lastDate;
-            }
-        } catch(e) {}
-        """
-    }
-
     /// JXA keeps sent and receipt timestamps separate. Receipt time drives
     /// operational sorting and filtering; sent time remains the message date.
     static func jsMailDates() -> String {
@@ -42,6 +17,62 @@ extension MailBridge {
             try { receivedDate = usableMailDate(msg.dateReceived()); } catch(e) {}
             var operationalDate = receivedDate || sentDate;
             return {sentDate: sentDate, receivedDate: receivedDate, operationalDate: operationalDate};
+        }
+        """
+    }
+
+    /// JXA declaring `bulkMailbox(mb)`: one Apple Event per property for a whole
+    /// mailbox, about 0.05 ms per row against 67 ms per row one message at a time
+    /// (docs/gotchas/jxa.md, pippin-25pr). Returns nil if the parallel arrays
+    /// disagree or the mailbox changed mid-read, because a shifted array would
+    /// pair one message's id with another's subject.
+    ///
+    /// `mailAttachments` and `whose()` stay out: both cost seconds in bulk.
+    static func jsBulkMailbox() -> String {
+        """
+        function bulkMailbox(mb) {
+            var spec = mb.messages;
+            var b = {};
+            try {
+                b.ids = spec.id();
+                b.received = spec.dateReceived();
+                b.sent = spec.dateSent();
+                b.read = spec.readStatus();
+                b.subject = spec.subject();
+                b.sender = spec.sender();
+                b.size = spec.messageSize();
+                var idsAfter = spec.id();
+            } catch (e) {
+                // Plural getters throw -1728 on an empty mailbox rather than returning [].
+                try { if (spec.length === 0) return {ids: [], received: [], sent: [], read: [], subject: [], sender: [], size: []}; } catch (e2) {}
+                return null;
+            }
+            var n = b.ids.length;
+            if (b.received.length !== n || b.sent.length !== n || b.read.length !== n
+                || b.subject.length !== n || b.sender.length !== n || b.size.length !== n
+                || idsAfter.length !== n) return null;
+            for (var i = 0; i < n; i++) { if (b.ids[i] !== idsAfter[i]) return null; }
+            return b;
+        }
+        function bulkDates(b, i) {
+            var sentDate = usableMailDate(b.sent[i]);
+            var receivedDate = usableMailDate(b.received[i]);
+            return {sentDate: sentDate, receivedDate: receivedDate, operationalDate: receivedDate || sentDate};
+        }
+        // One materialization per mailbox, only when a row is actually needed:
+        // `mb.messages[i]` is positional and cost about 650 ms a row on large mailboxes.
+        function messageAt(mb, b, i) {
+            try {
+                if (!b.msgs) b.msgs = mb.messages();
+                if (b.msgs.length !== b.ids.length) return null;
+                var m = b.msgs[i];
+                return m.id() === b.ids[i] ? m : null;
+            } catch (e) { return null; }
+        }
+        function newestFirstThenRowId(x, y) {
+            if (x.opIso < y.opIso) return 1;
+            if (x.opIso > y.opIso) return -1;
+            return x.rowId - y.rowId;
         }
         """
     }
@@ -73,6 +104,7 @@ extension MailBridge {
         \(jsFindMailboxByName())
         \(jsResolveMailbox())
         \(jsMailDates())
+        \(jsBulkMailbox())
         var acctFilter = \(acctFilter);
         var mbFilter = '\(mbName)';
         var unreadOnly = \(unread ? "true" : "false");
@@ -84,20 +116,21 @@ extension MailBridge {
         var afterDate = afterFilter !== null ? new Date(afterFilter) : null;
         var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var softTimeoutMs = \(safeSoftTimeoutMs);
-        var results = [];
-        var candidateLimit = limit + offset;
-        // reachedMailboxEnd / oldestExaminedMs drive the "scan window did not
-        // reach --before" hint: the newest-N window can bottom out before
-        // reaching an old --before cutoff, so an empty result is ambiguous
-        // (no matches vs window too shallow) unless we know how far back we got.
+        // A bulk read examines the whole mailbox, so reachedMailboxEnd is always true
+        // unless the scan was cut off (reported through timedOut).
         var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false, reachedMailboxEnd: true, oldestExaminedMs: null};
-        // Soft timeout: bail out of the per-message body-fetch loop with whatever
-        // we've got so the CLI returns partial results before the ScriptRunner
-        // hard timeout (and the MCP runChild 60s cap) kicks in.
+        // Soft timeout: return what we have before the ScriptRunner hard timeout
+        // (and the MCP runChild 60s cap). The scan stops early enough to leave time
+        // for the per-message reads of the rows that will be returned.
         var _listStart = Date.now();
+        var _scanBudgetMs = Math.floor(softTimeoutMs * 0.8);
 
         var accounts = mail.accounts();
+        var candidates = [];
+        // An unreadable mailbox skips itself, and the answer is marked partial.
+        var _unreadableMailbox = false;
         for (var a = 0; a < accounts.length && !_meta.timedOut; a++) {
+            if (Date.now() - _listStart > _scanBudgetMs) { _meta.timedOut = true; break; }
             var acct = accounts[a];
             var acctName = acct.name();
             if (acctFilter !== null && acctName !== acctFilter) continue;
@@ -108,88 +141,71 @@ extension MailBridge {
             _meta.mailboxesScanned++;
             var resolvedMbName = mb.name();
 
-            // whose({}) is invalid JXA — use messages() directly for all-messages case
-            var msgs = unreadOnly ? mb.messages.whose({readStatus: false})() : mb.messages();
-            if (!msgs) continue;
-            var totalMsgs = msgs.length;
-            \(jsProbeNewestFirst(collection: "msgs", fallbackNewestFirst: true))
-            // Each mailbox contributes enough newest candidates for the global
-            // post-merge offset and limit. Equal boundary timestamps are also
-            // included so numeric row-id ordering can choose the correct page.
-            var candidateBoundaryMs = null;
-            var usableCandidateCount = 0;
+            var b = bulkMailbox(mb);
+            if (b === null) { _unreadableMailbox = true; continue; }
 
-            // Metadata assembly stays bounded per message. Preview body reads
-            // happen only after global sorting and pagination selects rows.
-            for (var k = 0; k < totalMsgs; k++) {
-                if (Date.now() - _listStart > softTimeoutMs) { _meta.timedOut = true; break; }
-                var msg = msgs[newestFirst ? k : totalMsgs - 1 - k];
+            // Pure JS from here: no Apple Events however large the mailbox is.
+            for (var i = 0; i < b.ids.length; i++) {
                 _meta.messagesExamined++;
-
-                // Date range filter (cheap — no IMAP fetch)
-                var dates = mailDates(msg);
+                if (unreadOnly && b.read[i]) continue;
+                var dates = bulkDates(b, i);
                 var operationalDate = dates.operationalDate;
                 if (operationalDate === null) continue;
-                var msgDate = dates.sentDate || operationalDate;
-                if (candidateBoundaryMs !== null && operationalDate.getTime() < candidateBoundaryMs) {
-                    _meta.reachedMailboxEnd = false;
-                    break;
-                }
-                usableCandidateCount += 1;
-                if (usableCandidateCount === candidateLimit) candidateBoundaryMs = operationalDate.getTime();
-                var _mms = operationalDate.getTime();
-                if (_meta.oldestExaminedMs === null || _mms < _meta.oldestExaminedMs) _meta.oldestExaminedMs = _mms;
+                var opMs = operationalDate.getTime();
+                if (_meta.oldestExaminedMs === null || opMs < _meta.oldestExaminedMs) _meta.oldestExaminedMs = opMs;
                 if (afterDate !== null && operationalDate < afterDate) continue;
                 if (beforeDate !== null && operationalDate > beforeDate) continue;
-
-                var msgSize = null;
-                try { msgSize = msg.messageSize(); } catch(e) {}
-                var msgHasAtt = false;
-                try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {}
-
-                var row = {
-                    id: acctName + '||' + resolvedMbName + '||' + msg.id(),
-                    account: acctName,
-                    mailbox: resolvedMbName,
-                    subject: msg.subject(),
-                    from: msg.sender(),
-                    to: [],
-                    date: msgDate.toISOString(),
-                    receivedAt: dates.receivedDate === null ? null : dates.receivedDate.toISOString(),
-                    read: msg.readStatus(),
-                    body: null,
-                    size: msgSize,
-                    hasAttachment: msgHasAtt,
-                    __msg: msg,
-                    __rowId: Number(msg.id())
-                };
-                row.__operationalAt = operationalDate.toISOString();
-                results.push(row);
+                candidates.push({
+                    mb: mb, b: b, i: i, acct: acctName, mbName: resolvedMbName, dates: dates,
+                    opIso: operationalDate.toISOString(), rowId: Number(b.ids[i])
+                });
             }
         }
 
-        results.sort(function(a, b) {
-            if (a.__operationalAt < b.__operationalAt) return 1;
-            if (a.__operationalAt > b.__operationalAt) return -1;
-            return a.__rowId - b.__rowId;
-        });
-        results = results.slice(offset, offset + limit);
-        for (var r = 0; r < results.length; r++) {
-            if (Date.now() - _listStart > softTimeoutMs) { _meta.timedOut = true; break; }
-            if (previewChars > 0) {
-                try {
-                    var raw = results[r].__msg.content();
-                    if (raw != null && raw !== '') {
-                        var s = String(raw);
-                        results[r].bodyPreview = s.length > previewChars ? s.substring(0, previewChars) + '…' : s;
+        if (_unreadableMailbox) _meta.timedOut = true;
+        candidates.sort(newestFirstThenRowId);
+        candidates = candidates.slice(offset, offset + limit);
+        var results = [];
+        for (var r = 0; r < candidates.length; r++) {
+            var c = candidates[r];
+            var row = {
+                id: c.acct + '||' + c.mbName + '||' + c.b.ids[c.i],
+                account: c.acct,
+                mailbox: c.mbName,
+                subject: c.b.subject[c.i] || '',
+                from: c.b.sender[c.i] || '',
+                to: [],
+                date: (c.dates.sentDate || c.dates.operationalDate).toISOString(),
+                receivedAt: c.dates.receivedDate === null ? null : c.dates.receivedDate.toISOString(),
+                read: c.b.read[c.i],
+                body: null,
+                size: c.b.size[c.i],
+                hasAttachment: null
+            };
+            // Per-message reads only for the rows being returned, while time remains.
+            if (Date.now() - _listStart > softTimeoutMs) {
+                _meta.timedOut = true;
+            } else {
+                row.__msg = messageAt(c.mb, c.b, c.i);
+                if (row.__msg === null) {
+                    // The mailbox changed under us: the bulk row is still right.
+                    _meta.timedOut = true;
+                } else {
+                    try { row.hasAttachment = row.__msg.mailAttachments().length > 0; } catch (e) {}
+                    if (previewChars > 0) {
+                        try {
+                            var raw = row.__msg.content();
+                            if (raw != null && raw !== '') {
+                                var s = String(raw);
+                                row.bodyPreview = s.length > previewChars ? s.substring(0, previewChars) + '…' : s;
+                            }
+                        } catch (e) {}
                     }
-                } catch (e) {}
+                }
+                delete row.__msg;
             }
-            delete results[r].__msg;
-            delete results[r].__operationalAt;
-            delete results[r].__rowId;
+            results.push(row);
         }
-        for (var c = 0; c < results.length; c++) { delete results[c].__msg; delete results[c].__operationalAt; delete results[c].__rowId; }
 
         JSON.stringify({results: results, meta: _meta});
         """
@@ -277,7 +293,7 @@ extension MailBridge {
         let beforeFilter = jsEscapeOptional(before)
         let toFilter = jsEscapeOptional(to)
         let fromFilter = jsEscapeOptional(from)
-        // Clamp limit to prevent runaway scans; per-mailbox cap bounds scan time
+        // Clamp limit to prevent runaway scans; the per-mailbox cap bounds body fetches
         let safeLimitVal = max(1, min(limit, 500))
         let perMailboxLimit = 500
         let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
@@ -292,6 +308,7 @@ extension MailBridge {
         \(jsCollectAllMailboxes())
         \(jsResolveMailbox())
         \(jsMailDates())
+        \(jsBulkMailbox())
         var query = '\(safeQuery)'.toLowerCase();
         var acctFilter = \(acctFilter);
         var mbFilter = \(mbFilter);
@@ -308,13 +325,17 @@ extension MailBridge {
         var afterDate = afterFilter !== null ? new Date(afterFilter) : null;
         var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var results = [];
-        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false, windowsShifted: 0};
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
         var seenMsgKeys = {};
         // Soft timeout: bail out of nested scan loops with whatever we've got so the
         // CLI returns partial results before the ScriptRunner hard timeout kicks in.
         var _searchStart = Date.now();
+        var _scanBudgetMs = Math.floor(softTimeoutMs * 0.8);
 
         var accounts = mail.accounts();
+        var candidates = [];
+        // An unreadable mailbox skips itself, and the answer is marked partial.
+        var _unreadableMailbox = false;
         for (var a = 0; a < accounts.length && !_meta.timedOut; a++) {
             var acct = accounts[a];
             var acctName = acct.name();
@@ -329,130 +350,111 @@ extension MailBridge {
                 mbList = collectAllMailboxes(acct.mailboxes(), []);
             }
             for (var m = 0; m < mbList.length && !_meta.timedOut; m++) {
-                if (Date.now() - _searchStart > softTimeoutMs) { _meta.timedOut = true; break; }
+                if (Date.now() - _searchStart > _scanBudgetMs) { _meta.timedOut = true; break; }
                 var mb = mbList[m];
                 _meta.mailboxesScanned++;
-                // Cap messages scanned per mailbox. Probe the collection's index
-                // order with receipt-time Apple Events and sent-time fallback so the window
-                // always covers the NEWEST perMailboxLimit messages and walks
-                // newest→oldest, regardless of underlying order (GitHub #23/#24).
-                var allMsgs = mb.messages();
-                if (!allMsgs) continue;
-                var totalMsgs = allMsgs.length;
-                \(jsProbeNewestFirst(collection: "allMsgs", fallbackNewestFirst: false))
-                var scanCount = Math.min(totalMsgs, perMailboxLimit);
-                var scanFrom = 0;
-                if (beforeDate !== null && totalMsgs > 0) {
-                    // --before set and the newest message is after it: binary-search
-                    // receipt-time probes with sent-time fallback (one cheap Apple Event each, no content())
-                    // to start the window near the date range instead of burning it
-                    // on messages the date guard would skip anyway (#23).
-                    try {
-                        if (mailDates(allMsgs[newestFirst ? 0 : totalMsgs - 1]).operationalDate > beforeDate) {
-                            var lo = 0, hi = totalMsgs - 1;
-                            while (lo < hi) {
-                                var mid = (lo + hi) >> 1;
-                                var probeDate = mailDates(allMsgs[newestFirst ? mid : totalMsgs - 1 - mid]).operationalDate;
-                                if (probeDate > beforeDate) { lo = mid + 1; } else { hi = mid; }
-                            }
-                            scanFrom = lo;
-                            _meta.windowsShifted++;
-                        }
-                    } catch(e) {}
-                }
+                var mbName = mb.name();
+                var b = bulkMailbox(mb);
+                if (b === null) { _unreadableMailbox = true; continue; }
 
-                // k is a newest→oldest position; map it onto the real index.
-                for (var k = scanFrom; k < scanFrom + scanCount && k < totalMsgs; k++) {
-                    if (Date.now() - _searchStart > softTimeoutMs) { _meta.timedOut = true; break; }
-                    var msg = allMsgs[newestFirst ? k : totalMsgs - 1 - k];
+                // Subject and sender match over the whole mailbox with no Apple
+                // Events, so old mail is reachable without Full Disk Access.
+                var inRange = [];
+                for (var i = 0; i < b.ids.length; i++) {
                     _meta.messagesExamined++;
-
-                    // Date range filter (cheap — no IMAP fetch). The walk is
-                    // newest→oldest, so the first message older than --after ends
-                    // this mailbox's scan; messages newer than --before are skipped
-                    // cheaply before any content() call.
-                    var dates = mailDates(msg);
+                    var dates = bulkDates(b, i);
                     var operationalDate = dates.operationalDate;
                     if (operationalDate === null) continue;
-                    var msgDate = dates.sentDate || operationalDate;
-                    if (afterDate !== null && operationalDate < afterDate) break;
+                    if (afterDate !== null && operationalDate < afterDate) continue;
                     if (beforeDate !== null && operationalDate > beforeDate) continue;
-
-                    var subject = msg.subject() || '';
-                    var sender = msg.sender() || '';
+                    var sender = b.sender[i] || '';
                     if (fromFilter !== null && sender.toLowerCase().indexOf(fromFilter.toLowerCase()) === -1) continue;
-
-                    // Check subject and sender first (fast, no body fetch needed)
+                    inRange.push({
+                        mb: mb, b: b, i: i, acct: acctName, mbName: mbName, dates: dates,
+                        opIso: operationalDate.toISOString(), rowId: Number(b.ids[i]), bodyPrev: null
+                    });
+                }
+                // content() is per-message, so spend that budget on the newest mail.
+                if (searchBody) inRange.sort(newestFirstThenRowId);
+                var bodyFetches = 0;
+                for (var j = 0; j < inRange.length; j++) {
+                    var c = inRange[j];
+                    var subject = (c.b.subject[c.i] || '');
+                    var from = (c.b.sender[c.i] || '');
                     var matched = subject.toLowerCase().indexOf(query) !== -1
-                               || sender.toLowerCase().indexOf(query) !== -1;
-
-                    // Only fetch body if explicitly requested and subject/sender didn't
-                    // match. The body is already in hand after a match — keep a snippet
-                    // instead of discarding it, so --body hits return usable content.
-                    var bodyPrev = null;
-                    if (!matched && searchBody) {
-                        var body = String(msg.content() || '');
+                               || from.toLowerCase().indexOf(query) !== -1;
+                    if (!matched && searchBody && bodyFetches < perMailboxLimit) {
+                        if (Date.now() - _searchStart > _scanBudgetMs) { _meta.timedOut = true; break; }
+                        bodyFetches++;
+                        var bodyMsg = messageAt(c.mb, c.b, c.i);
+                        if (bodyMsg === null) { _unreadableMailbox = true; continue; }
+                        var body = '';
+                        try { body = String(bodyMsg.content() || ''); } catch (e) { _unreadableMailbox = true; continue; }
                         if (body.toLowerCase().indexOf(query) !== -1) {
                             matched = true;
-                            bodyPrev = body.length > previewChars ? body.substring(0, previewChars) + '…' : body;
+                            c.bodyPrev = body.length > previewChars ? body.substring(0, previewChars) + '…' : body;
                         }
                     }
-
-                    // Recipient filter: only fetch toRecipients() after text match (avoids overhead)
-                    if (matched && toFilter !== null) {
-                        var recipients = msg.toRecipients();
-                        var toMatched = false;
-                        for (var r = 0; r < recipients.length; r++) {
-                            if (recipients[r].address().toLowerCase().indexOf(toFilter.toLowerCase()) !== -1) {
-                                toMatched = true; break;
-                            }
-                        }
-                        if (!toMatched) matched = false;
-                    }
-
-                    if (matched) {
-                        // Gmail lists the same message in both INBOX and [Gmail]/All Mail.
-                        var dedupKey = null;
-                        try { dedupKey = msg.messageId(); } catch(e) {}
-                        if (!dedupKey) dedupKey = subject + '\\x00' + sender + '\\x00' + operationalDate.toISOString();
-                        if (seenMsgKeys[dedupKey]) continue;
-                        seenMsgKeys[dedupKey] = true;
-
-                        var msgSize = null;
-                        try { msgSize = msg.messageSize(); } catch(e) {}
-                        var msgHasAtt = false;
-                        try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {}
-                        var toAddrs = [];
-                        try { toAddrs = msg.toRecipients().map(function(r) { return r.address(); }); } catch(e) {}
-                        results.push({
-                            id: acctName + '||' + mb.name() + '||' + msg.id(),
-                            account: acctName,
-                            mailbox: mb.name(),
-                            subject: subject,
-                            from: sender,
-                            to: toAddrs,
-                            date: msgDate.toISOString(),
-                            receivedAt: dates.receivedDate === null ? null : dates.receivedDate.toISOString(),
-                            read: msg.readStatus(),
-                            body: null,
-                            bodyPreview: bodyPrev,
-                            size: msgSize,
-                            hasAttachment: msgHasAtt,
-                            __operationalAt: operationalDate.toISOString(),
-                            __rowId: Number(msg.id())
-                        });
-                    }
+                    if (matched) candidates.push(c);
                 }
             }
         }
 
-        results.sort(function(a, b) {
-            if (a.__operationalAt < b.__operationalAt) return 1;
-            if (a.__operationalAt > b.__operationalAt) return -1;
-            return a.__rowId - b.__rowId;
-        });
+        if (_unreadableMailbox) _meta.timedOut = true;
+        candidates.sort(newestFirstThenRowId);
+        // Per-message reads, newest first, only until the page is full.
+        for (var k = 0; k < candidates.length && results.length < offset + limit; k++) {
+            var c2 = candidates[k];
+            var subject2 = c2.b.subject[c2.i] || '';
+            var sender2 = c2.b.sender[c2.i] || '';
+            var opDate = c2.dates.operationalDate;
+            var msg = null;
+            if (Date.now() - _searchStart > softTimeoutMs) {
+                _meta.timedOut = true;
+                // A recipient filter cannot be honored without reading recipients.
+                if (toFilter !== null) break;
+            } else {
+                msg = messageAt(c2.mb, c2.b, c2.i);
+                if (msg === null) {
+                    // The mailbox changed under us: the bulk row is still right,
+                    // but an unverifiable recipient filter must not pass it.
+                    _meta.timedOut = true;
+                    if (toFilter !== null) continue;
+                }
+            }
+            var toAddrs = [];
+            if (msg !== null) {
+                try { toAddrs = msg.toRecipients().map(function(r) { return r.address(); }); } catch(e) {}
+                if (toFilter !== null) {
+                    var toLower = toFilter.toLowerCase();
+                    if (!toAddrs.some(function(addr) { return addr.toLowerCase().indexOf(toLower) !== -1; })) continue;
+                }
+            }
+            // Gmail lists the same message in both INBOX and [Gmail]/All Mail.
+            var dedupKey = null;
+            if (msg !== null) { try { dedupKey = msg.messageId(); } catch(e) {} }
+            if (!dedupKey) dedupKey = subject2 + '\\x00' + sender2 + '\\x00' + opDate.toISOString();
+            if (seenMsgKeys[dedupKey]) continue;
+            seenMsgKeys[dedupKey] = true;
+            var msgHasAtt = null;
+            if (msg !== null) { try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {} }
+            results.push({
+                id: c2.acct + '||' + c2.mbName + '||' + c2.b.ids[c2.i],
+                account: c2.acct,
+                mailbox: c2.mbName,
+                subject: subject2,
+                from: sender2,
+                to: toAddrs,
+                date: (c2.dates.sentDate || opDate).toISOString(),
+                receivedAt: c2.dates.receivedDate === null ? null : c2.dates.receivedDate.toISOString(),
+                read: c2.b.read[c2.i],
+                body: null,
+                bodyPreview: c2.bodyPrev,
+                size: c2.b.size[c2.i],
+                hasAttachment: msgHasAtt
+            });
+        }
         results = results.slice(offset, offset + limit);
-        for (var p = 0; p < results.length; p++) { delete results[p].__operationalAt; delete results[p].__rowId; }
 
         JSON.stringify({results: results, meta: _meta});
         """
@@ -472,7 +474,6 @@ extension MailBridge {
         let mbNamesJS = jsStringArray(mailboxes)
         let sinceJS = since.map { "'\(formatEventDate($0))'" } ?? "null"
         let safeLimit = max(1, min(limit, 500))
-        let perMailboxLimit = 500
         let previewChars = preview.map { max(0, min($0, 4000)) } ?? 0
         let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
 
@@ -483,12 +484,12 @@ extension MailBridge {
         \(jsCollectAllMailboxes())
         \(jsResolveMailbox())
         \(jsMailDates())
+        \(jsBulkMailbox())
         var acctFilter = \(acctFilter);
         var targetNames = \(mbNamesJS);
         var sinceRaw = \(sinceJS);
         var sinceDate = sinceRaw !== null ? new Date(sinceRaw) : null;
         var limit = \(safeLimit);
-        var perMailboxLimit = \(perMailboxLimit);
         var previewChars = \(previewChars);
         var softTimeoutMs = \(safeSoftTimeoutMs);
         var results = [];
@@ -498,8 +499,12 @@ extension MailBridge {
         // loop so the CLI returns partial results before the ScriptRunner hard
         // timeout (and the MCP runChild 60s cap) kicks in.
         var _activityStart = Date.now();
+        var _scanBudgetMs = Math.floor(softTimeoutMs * 0.8);
 
         var accounts = mail.accounts();
+        var candidates = [];
+        // An unreadable mailbox skips itself, and the answer is marked partial.
+        var _unreadableMailbox = false;
         for (var a = 0; a < accounts.length && !_meta.timedOut; a++) {
             var acct = accounts[a];
             var acctName = acct.name();
@@ -507,7 +512,7 @@ extension MailBridge {
             _meta.accountsScanned++;
 
             for (var t = 0; t < targetNames.length && !_meta.timedOut; t++) {
-                if (Date.now() - _activityStart > softTimeoutMs) { _meta.timedOut = true; break; }
+                if (Date.now() - _activityStart > _scanBudgetMs) { _meta.timedOut = true; break; }
                 var targetName = targetNames[t];
                 var mb = resolveMailbox(acct, targetName);
                 if (mb === null) {
@@ -519,80 +524,73 @@ extension MailBridge {
                 }
                 _meta.mailboxesScanned++;
                 var resolvedMbName = mb.name();
+                var b = bulkMailbox(mb);
+                if (b === null) { _unreadableMailbox = true; continue; }
 
-                // Probe the collection's index order with receipt-time Apple
-                // Events and sent-time fallback so the window always covers the NEWEST
-                // perMailboxLimit messages, regardless of underlying order
-                // (GitHub #24 — the old last-N window grabbed the OLDEST 500
-                // on accounts whose messages() is newest-first).
-                var allMsgs = mb.messages();
-                if (!allMsgs) continue;
-                var totalMsgs = allMsgs.length;
-                \(jsProbeNewestFirst(collection: "allMsgs", fallbackNewestFirst: false))
-                var scanCount = Math.min(totalMsgs, perMailboxLimit);
-                for (var k = 0; k < scanCount && !_meta.timedOut; k++) {
-                    if (Date.now() - _activityStart > softTimeoutMs) { _meta.timedOut = true; break; }
-                    var msg = allMsgs[newestFirst ? k : totalMsgs - 1 - k];
+                for (var i = 0; i < b.ids.length; i++) {
                     _meta.messagesExamined++;
-                    var dates = mailDates(msg);
+                    var dates = bulkDates(b, i);
                     var operationalDate = dates.operationalDate;
                     if (operationalDate === null) continue;
-                    var msgDate = dates.sentDate || operationalDate;
                     if (sinceDate !== null && operationalDate < sinceDate) continue;
-
-                    var subject = msg.subject() || '';
-                    var sender = msg.sender() || '';
-
-                    var dedupKey = null;
-                    try { dedupKey = msg.messageId(); } catch(e) {}
-                    if (!dedupKey) {
-                        dedupKey = subject + '\\x00' + sender + '\\x00' + operationalDate.toISOString();
-                    }
-                    if (seenMsgKeys[dedupKey]) continue;
-                    seenMsgKeys[dedupKey] = true;
-
-                    var msgSize = null;
-                    try { msgSize = msg.messageSize(); } catch(e) {}
-                    var msgHasAtt = false;
-                    try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {}
-                    var toAddrs = [];
-                    try { toAddrs = msg.toRecipients().map(function(r) { return r.address(); }); } catch(e) {}
-
-                    var row = {
-                        id: acctName + '||' + resolvedMbName + '||' + msg.id(),
-                        account: acctName,
-                        mailbox: resolvedMbName,
-                        subject: subject,
-                        from: sender,
-                        to: toAddrs,
-                        date: msgDate.toISOString(),
-                        receivedAt: dates.receivedDate === null ? null : dates.receivedDate.toISOString(),
-                        read: msg.readStatus(),
-                        body: null,
-                        size: msgSize,
-                        hasAttachment: msgHasAtt,
-                        __msg: msg,
-                        __operationalAt: operationalDate.toISOString(),
-                        __rowId: Number(msg.id())
-                    };
-                    results.push(row);
+                    candidates.push({
+                        mb: mb, b: b, i: i, acct: acctName, mbName: resolvedMbName, dates: dates,
+                        opIso: operationalDate.toISOString(), rowId: Number(b.ids[i])
+                    });
                 }
             }
         }
 
-        // ISO 8601 lexicographic sort == chronological (descending).
-        results.sort(function(a, b) {
-            if (a.__operationalAt < b.__operationalAt) return 1;
-            if (a.__operationalAt > b.__operationalAt) return -1;
-            return a.__rowId - b.__rowId;
-        });
-        if (results.length > limit) results = results.slice(0, limit);
+        if (_unreadableMailbox) _meta.timedOut = true;
+        candidates.sort(newestFirstThenRowId);
+        // Per-message reads, newest first, only until the page is full.
+        for (var q = 0; q < candidates.length && results.length < limit; q++) {
+            var c = candidates[q];
+            var subject = c.b.subject[c.i] || '';
+            var sender = c.b.sender[c.i] || '';
+            var opDate = c.dates.operationalDate;
+            var msg = null;
+            if (Date.now() - _activityStart > softTimeoutMs) {
+                _meta.timedOut = true;
+            } else {
+                msg = messageAt(c.mb, c.b, c.i);
+                if (msg === null) _meta.timedOut = true; // Mailbox changed; the bulk row is still right.
+            }
+            // INBOX and Sent can overlap on labeled accounts such as Gmail.
+            var dedupKey = null;
+            if (msg !== null) { try { dedupKey = msg.messageId(); } catch(e) {} }
+            if (!dedupKey) dedupKey = subject + '\\x00' + sender + '\\x00' + opDate.toISOString();
+            if (seenMsgKeys[dedupKey]) continue;
+            seenMsgKeys[dedupKey] = true;
+            var msgHasAtt = null;
+            var toAddrs = [];
+            if (msg !== null) {
+                try { msgHasAtt = msg.mailAttachments().length > 0; } catch(e) {}
+                try { toAddrs = msg.toRecipients().map(function(r) { return r.address(); }); } catch(e) {}
+            }
+            results.push({
+                id: c.acct + '||' + c.mbName + '||' + c.b.ids[c.i],
+                account: c.acct,
+                mailbox: c.mbName,
+                subject: subject,
+                from: sender,
+                to: toAddrs,
+                date: (c.dates.sentDate || opDate).toISOString(),
+                receivedAt: c.dates.receivedDate === null ? null : c.dates.receivedDate.toISOString(),
+                read: c.b.read[c.i],
+                body: null,
+                size: c.b.size[c.i],
+                hasAttachment: msgHasAtt,
+                __msg: msg
+            });
+        }
 
-        // Preview fetch runs AFTER slice so msg.content() only fires for survivors.
-        // Time-check inside the loop so a slow IMAP fetch can't blow the budget.
+        // Preview fetch runs last so msg.content() only fires for returned rows,
+        // and is time-checked so a slow IMAP fetch can't blow the budget.
         if (previewChars > 0) {
             for (var p = 0; p < results.length && !_meta.timedOut; p++) {
                 if (Date.now() - _activityStart > softTimeoutMs) { _meta.timedOut = true; break; }
+                if (results[p].__msg === null) continue;
                 try {
                     var raw = results[p].__msg.content();
                     if (raw != null && raw !== '') {
@@ -602,7 +600,7 @@ extension MailBridge {
                 } catch (e) {}
             }
         }
-        for (var p2 = 0; p2 < results.length; p2++) { delete results[p2].__msg; delete results[p2].__operationalAt; delete results[p2].__rowId; }
+        for (var p2 = 0; p2 < results.length; p2++) { delete results[p2].__msg; }
 
         JSON.stringify({results: results, meta: _meta});
         """

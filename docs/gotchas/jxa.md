@@ -91,9 +91,9 @@ JXA script errors arrive from `ScriptRunner` as a generic non-zero-exit failure,
 
 Notes IDs start with `x-coredata://` — `String(id.prefix(8))` always yields `"x-coreda"`. Use `id.components(separatedBy: "/").last` for display.
 
-## Memos progress output in agent mode
+## Memos progress output
 
-Progress `print()` calls guarded by `!outputOptions.isJSON` also need `&& !outputOptions.isAgent` — otherwise stdout is corrupted in agent mode.
+Progress goes to stderr. Stdout carries only the envelope, so a stray `print()` corrupts it.
 
 ## `CalendarBridge` is `@unchecked Sendable` — parallelize reads
 
@@ -123,6 +123,25 @@ A hard cap must also sit above the soft cap it guards, with room for the script 
 A soft timeout self-bounds a JXA loop, but if the per-iteration body does **one Apple Event per item** (`notes[j].modificationDate()`, `msgs[j].dateSent()`), a large collection can spend the *entire* budget before the loop emits anything — the caller gets `timedOut=true` with **empty** results, which reads as "zero items" not "partial". `notes list`/`search` returned nothing on big vaults for exactly this reason.
 
 Fix: fetch the property for the whole collection in **one** Apple Event via the bulk getter on the *plural specifier* (not the materialized array): `_notesRef.modificationDate()` returns a parallel array of all dates. Keep the specifier (`_notesRef = app.notes`), materialize elements once (`notes = _notesRef()`), bulk-fetch (`_mods = _notesRef.modificationDate()`), then the bounded loop is **pure JS** (zero Apple Events) and never starves. See `NotesBridge.jsResolveNotesAndBulkMods`. Per-note `.body()`/`.plaintext()` stay per-item but only for the returned page.
+
+## Bulk Apple Event reads on Mail, measured (pippin-25pr, 2026-11-08)
+
+`scripts/measure-mail-bulk.sh` timed the per-message loop against plural-specifier getters on real mailboxes (Yahoo IMAP INBOX 2856, Exchange Inbox 6167, Gmail INBOX 3118, Gmail All Mail 6398; median of 3; raw rows in `measure-mail-bulk-2026-11-08.jsonl`):
+
+| Read | Cost |
+| --- | --- |
+| Per-message loop (id, dates, read, subject, sender, size, attachments) | 66.7 ms per row on every account, so 200 rows cost 13.3s |
+| One bulk getter for the WHOLE mailbox (`mb.messages.subject()` etc.) | 65 to 320 ms per property, about 0.05 ms per row |
+| Volatile set in bulk (`id`, `dateReceived`, `readStatus`) | 241 to 547 ms for the whole mailbox |
+| `messageId` in bulk | 0.5 to 2.1 s, fine for a background fill, not per answer |
+| `mailAttachments` in bulk | 4.9 to 19 s: never bulk-read it; store `has_attachment` as nullable and fill lazily |
+| `whose({dateReceived: {_greaterThan: d}})` + bulk getters | 4.6 to 9.4 s, slower than bulk-reading everything and filtering in JS |
+
+Alignment held everywhere: every property array had the mailbox's length, `id()` was identical before and after the other reads, and 50 random per-message spot checks matched the bulk arrays on all four mailboxes. Gmail's `[Gmail]/All Mail` is nested, so `acct.mailboxes.byName('All Mail')` fails with -1728; enumerate `acct.mailboxes()` and match `name()`. A ranged AppleScript read (`messages a thru b`) was not measured because whole-mailbox bulk already meets the budget.
+
+Plural getters throw -1728 on an empty mailbox rather than returning `[]`, so check `spec.length === 0` before treating a throw as a failure. Positional specifiers (`mb.messages[i]`) cost about 650 ms a row on a large mailbox; materialize once with `mb.messages()` and index that array.
+
+Spotlight is not an option without Full Disk Access: `mdfind` for `com.apple.mail.emlx` and `kMDItemKind == "Mail Message"` returns 0 from a CLI on an index that is enabled (pippin-pnok).
 
 ## Parallel osascript into Mail.app — Apple Events do NOT serialize (pippin-17rq, measured 2026-07-30)
 

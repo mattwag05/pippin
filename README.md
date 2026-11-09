@@ -18,7 +18,7 @@
 
 ---
 
-pippin gives AI agents and scripts structured access to sandboxed Apple apps that are normally locked behind GUI-only automation. Every command outputs clean JSON (`--format json`) or token-efficient compact JSON (`--format agent`) — ready to pipe into `jq`, feed to an LLM, or wire into a cron job.
+pippin gives AI agents and scripts structured access to sandboxed Apple apps that are normally locked behind GUI-only automation. Every command answers with token-efficient compact JSON in a versioned envelope, ready to feed to an LLM, pipe into `jq`, or wire into a cron job.
 
 ```
 pippin mail list --unread --format agent
@@ -82,7 +82,7 @@ background). Run it again any time TCC resets (e.g. after a macOS upgrade).
 | Contacts | Contacts | ✅ `pippin permissions` |
 | Automation > Mail | Mail | ✅ `pippin permissions` |
 | Automation > Notes | Notes | ✅ `pippin permissions` |
-| Full Disk Access | Voice Memos, Messages; Mail fast path (optional, ~1000x list/search) | ❌ grant manually (no prompt exists) |
+| Full Disk Access | Voice Memos, Messages; Mail fast path (optional, ~1000x list/search; `mail cache fill` is the alternative without it) | ❌ grant manually (no prompt exists) |
 
 > **Persistence:** grants stick across rebuilds/upgrades only if the binary is
 > signed with a stable identity. `make install` / the Homebrew formula sign with
@@ -112,6 +112,9 @@ pippin mail search "invoice" --preview 200                       # inline a body
 # A timed-out scan with matches returns them with `partial: true`. A timed-out scan
 # with no matches returns `search_incomplete` plus guidance to narrow the search,
 # so incomplete coverage is never reported as a clean empty result.
+# Without Full Disk Access, build Pippin's own index for faster list and search:
+pippin job run -- mail cache fill
+
 # With Full Disk Access granted, list/search/activity metadata reads Mail's on-disk
 # Envelope Index directly (~ms, full-history search — `pippin doctor` shows availability).
 # Without it, the JXA path applies; on large multi-account mailboxes pair --from/--body
@@ -133,9 +136,9 @@ pippin mail verify "acct||INBOX||12345"           # full per-dimension baseline 
 # every Received hop, every Authentication-Results instance, the ARC set, and DKIM
 # signatures — auth failures hidden in older chain instances and a broken ARC chain
 # (cv=fail) count toward the verdict.
-pippin mail reply "acct||INBOX||12345" --body "Thanks!"
-pippin mail forward "acct||INBOX||12345" --to other@example.com
-pippin mail send --to user@example.com --subject "Hello" --body "Hi there" --dry-run
+pippin mail reply "acct||INBOX||12345" --body "Thanks!" --confirm  # previews without --confirm
+pippin mail forward "acct||INBOX||12345" --to other@example.com --confirm
+pippin mail send --to user@example.com --subject "Hello" --body "Hi there" --confirm
 pippin mail attachments "acct||INBOX||12345" --save-dir ~/Downloads
 pippin mail mark "acct||INBOX||12345" --read
 pippin mail move "acct||INBOX||12345" --to Archive
@@ -329,7 +332,7 @@ Scan recent Sent mail and recently-modified Notes for commitments you made and s
 
 ```bash
 pippin actions extract                          # Dry-run: list extracted commitments
-pippin actions extract --days 14 --format json  # Last 2 weeks, structured output
+pippin actions extract --days 14                # Last 2 weeks
 pippin actions extract --create --list "Work"   # Write reminders directly to Reminders.app
 pippin actions extract --no-notes               # Mail only
 pippin actions extract --provider claude        # Use Claude instead of Ollama
@@ -340,8 +343,7 @@ pippin actions extract --provider claude        # Use Claude instead of Ollama
 ```bash
 pippin shell                        # Start interactive session
 pippin                              # Same — bare pippin defaults to REPL
-pippin shell --format json          # All commands in session output JSON
-echo "calendar agenda" | pippin shell --format agent  # Pipe mode for scripting
+echo "calendar agenda" | pippin shell  # Pipe mode for scripting
 ```
 
 Inside the REPL, type commands without the `pippin` prefix:
@@ -353,17 +355,11 @@ pippin> calendar agenda
 pippin> quit
 ```
 
-### Output Formats
+### Output
 
-Every command supports three modes:
+Every command answers with one contract: the compact JSON agent envelope `{v, status, duration_ms, partial?, warnings?, next_cursor?, data}`. The `text` and `json` formats were removed; `--format agent` is still accepted as a no-op, and `--format text` or `--format json` fails with a usage error. Pipe through `jq '.data'` for a human look.
 
-| Flag | Description |
-|---|---|
-| `--format text` | Human-readable tables and cards (default) |
-| `--format json` | Pretty-printed JSON for scripting |
-| `--format agent` | Compact JSON, minimal tokens — built for LLM pipelines |
-
-`--fields id,subject,...` projects structured output (json + agent) to just the named keys, trimming tokens for scan workflows.
+`--fields id,subject,...` projects `data` to just the named keys, trimming tokens for scan workflows.
 
 ### Agent discovery & exit codes
 
@@ -371,7 +367,7 @@ Every command supports three modes:
 pippin agent-info --format agent     # version, formats, exit-code map, tool count, commands
 ```
 
-On failure pippin sets a typed exit code so a calling shell can branch without parsing JSON: `2` usage, `3` not-found, `4` auth/permission/config, `5` tool/bridge failure, `7` timeout/rate-limit (`64` for argument-parsing errors).
+On failure pippin sets a typed exit code so a calling shell can branch without parsing JSON: `2` usage, `3` not-found, `4` auth/permission/config, `5` tool/bridge failure, `7` timeout/rate-limit/transient failure. Every error envelope also carries `error.next_step`: whether to retry and when, the next call to make, or what a person has to do.
 
 ### Pagination
 
@@ -506,13 +502,13 @@ pippin reminders list --format agent
 pippin mail list --unread --limit 10 --format agent
 
 # Export and transcribe today's voice memos
-pippin memos list --since $(date +%Y-%m-%d) --format json \
-  | jq -r '.[].id' \
+pippin memos list --since $(date +%Y-%m-%d) \
+  | jq -r '.data[].id' \
   | xargs -I{} pippin memos export {} --output ~/memos --transcribe
 
 # Find unread emails from a specific sender
-pippin mail list --unread --format json \
-  | jq '.[] | select(.from | contains("boss@company.com"))'
+pippin mail list --unread \
+  | jq '.data[] | select(.from | contains("boss@company.com"))'
 ```
 
 ## Architecture

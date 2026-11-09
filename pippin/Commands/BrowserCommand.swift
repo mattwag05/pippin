@@ -16,7 +16,7 @@ public struct BrowserCommand: AsyncParsableCommand {
 
     // MARK: - Open
 
-    public struct Open: AsyncParsableCommand {
+    public struct Open: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "open",
             abstract: "Open a URL in the browser and return page info."
@@ -41,7 +41,7 @@ public struct BrowserCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let url = self.url
             let sessionDir = self.sessionDir
             let (info, attempts) = try await BrowserRetry.run(
@@ -51,27 +51,17 @@ public struct BrowserCommand: AsyncParsableCommand {
             ) {
                 try BrowserBridge.open(url: url, sessionDir: sessionDir)
             }
-            if output.isJSON {
-                try printJSON(info)
-            } else if output.isAgent {
-                if retry > 0 {
-                    try output.printAgent(WithAttempts(payload: info, attempts: attempts))
-                } else {
-                    try output.printAgent(info)
-                }
+            if retry > 0 {
+                return AgentResult(WithAttempts(payload: info, attempts: attempts))
             } else {
-                print("URL:   \(info.url)")
-                print("Title: \(info.title)")
-                if let status = info.status {
-                    print("Status: \(status)")
-                }
+                return AgentResult(info)
             }
         }
     }
 
     // MARK: - Snapshot
 
-    public struct Snapshot: AsyncParsableCommand {
+    public struct Snapshot: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "snapshot",
             abstract: "Take an accessibility snapshot of the current page."
@@ -93,7 +83,7 @@ public struct BrowserCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let sessionDir = self.sessionDir
             let (result, attempts) = try await BrowserRetry.run(
                 retry: retry,
@@ -102,39 +92,17 @@ public struct BrowserCommand: AsyncParsableCommand {
             ) {
                 try BrowserBridge.snapshot(sessionDir: sessionDir)
             }
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                if retry > 0 {
-                    try output.printAgent(WithAttempts(payload: result, attempts: attempts))
-                } else {
-                    try output.printAgent(result)
-                }
+            if retry > 0 {
+                return AgentResult(WithAttempts(payload: result, attempts: attempts))
             } else {
-                print("URL:   \(result.url)")
-                print("Title: \(result.title)")
-                print("")
-                printTree(result.snapshot, indent: 0)
-            }
-        }
-
-        private func printTree(_ elements: [ElementRef], indent: Int) {
-            let prefix = String(repeating: "  ", count: indent)
-            for element in elements {
-                let refPart = element.ref.isEmpty ? "" : " \(element.ref)"
-                let namePart = element.name.map { " \"\($0)\"" } ?? ""
-                let valuePart = element.value.map { " = \($0)" } ?? ""
-                print("\(prefix)[\(element.role)]\(refPart)\(namePart)\(valuePart)")
-                if !element.children.isEmpty {
-                    printTree(element.children, indent: indent + 1)
-                }
+                return AgentResult(result)
             }
         }
     }
 
     // MARK: - Screenshot
 
-    public struct Screenshot: AsyncParsableCommand {
+    public struct Screenshot: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "screenshot",
             abstract: "Capture a screenshot of the current page."
@@ -150,26 +118,20 @@ public struct BrowserCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let file = self.file
             let sessionDir = self.sessionDir
             let savedPath = try await detachBlocking {
                 try BrowserBridge.screenshot(outputPath: file, sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "screenshot", details: ["path": savedPath])
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Screenshot saved to: \(savedPath)")
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Click
 
-    public struct Click: AsyncParsableCommand {
+    public struct Click: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "click",
             abstract: "Click an element by @ref ID."
@@ -185,26 +147,20 @@ public struct BrowserCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let ref = self.ref
             let sessionDir = self.sessionDir
             _ = try await detachBlocking {
                 try BrowserBridge.click(ref: ref, sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "click", details: ["ref": ref])
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Clicked \(ref)")
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Fill
 
-    public struct Fill: AsyncParsableCommand {
+    public struct Fill: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "fill",
             abstract: "Fill an input element by @ref ID."
@@ -223,7 +179,7 @@ public struct BrowserCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let ref = self.ref
             let value = self.value
             let sessionDir = self.sessionDir
@@ -231,19 +187,13 @@ public struct BrowserCommand: AsyncParsableCommand {
                 try BrowserBridge.fill(ref: ref, value: value, sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "fill", details: ["ref": ref])
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Filled \(ref)")
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Scroll
 
-    public struct Scroll: AsyncParsableCommand {
+    public struct Scroll: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "scroll",
             abstract: "Scroll the page in a direction."
@@ -259,7 +209,7 @@ public struct BrowserCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let validDirections = ["up", "down", "left", "right"]
             guard validDirections.contains(direction.lowercased()) else {
                 throw BrowserCommandError(
@@ -272,19 +222,13 @@ public struct BrowserCommand: AsyncParsableCommand {
                 try BrowserBridge.scroll(direction: lowered, sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "scroll", details: ["direction": lowered])
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Scrolled \(direction)")
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Tabs
 
-    public struct Tabs: AsyncParsableCommand {
+    public struct Tabs: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "tabs",
             abstract: "List all open browser tabs."
@@ -297,33 +241,18 @@ public struct BrowserCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let sessionDir = self.sessionDir
             let tabs = try await detachBlocking {
                 try BrowserBridge.tabs(sessionDir: sessionDir)
             }
-            if output.isJSON {
-                try printJSON(tabs)
-            } else if output.isAgent {
-                try output.printAgent(tabs)
-            } else {
-                if tabs.isEmpty {
-                    print("No open tabs.")
-                    return
-                }
-                let activeMarker = "*"
-                let inactiveMarker = " "
-                for tab in tabs {
-                    let marker = tab.isActive ? activeMarker : inactiveMarker
-                    print("\(marker) [\(tab.index)] \(tab.title)  \(tab.url)")
-                }
-            }
+            return AgentResult(tabs)
         }
     }
 
     // MARK: - Close
 
-    public struct Close: AsyncParsableCommand {
+    public struct Close: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "close",
             abstract: "Close the current browser session."
@@ -336,25 +265,19 @@ public struct BrowserCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let sessionDir = self.sessionDir
             try await detachBlocking {
                 try BrowserBridge.close(sessionDir: sessionDir)
             }
             let result = BrowserActionResult(success: true, action: "close")
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print("Browser session closed.")
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Fetch
 
-    public struct Fetch: AsyncParsableCommand {
+    public struct Fetch: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "fetch",
             abstract: "Fetch a URL via HTTP (no browser required)."
@@ -376,7 +299,7 @@ public struct BrowserCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let url = self.url
             let (result, attempts) = try await BrowserRetry.run(
                 retry: retry,
@@ -386,16 +309,10 @@ public struct BrowserCommand: AsyncParsableCommand {
                 let content = try BrowserBridge.fetch(url: url)
                 return FetchResult(url: url, content: content)
             }
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                if retry > 0 {
-                    try output.printAgent(WithAttempts(payload: result, attempts: attempts))
-                } else {
-                    try output.printAgent(result)
-                }
+            if retry > 0 {
+                return AgentResult(WithAttempts(payload: result, attempts: attempts))
             } else {
-                print(result.content)
+                return AgentResult(result)
             }
         }
     }
@@ -407,5 +324,15 @@ private struct BrowserCommandError: LocalizedError {
     let message: String
     var errorDescription: String? {
         message
+    }
+}
+
+extension BrowserCommandError: RemediableError {
+    var agentCode: String {
+        "browser_command_error"
+    }
+
+    var nextStep: NextStep {
+        .none
     }
 }

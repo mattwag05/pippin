@@ -1,7 +1,7 @@
 import ArgumentParser
 import Foundation
 
-public struct MemosCaptureCommand: AsyncParsableCommand {
+public struct MemosCaptureCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "capture",
         abstract: "Transcribe a voice memo, extract action items, create Reminders."
@@ -16,7 +16,7 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Reminder list name (default: Inbox).")
     public var list: String?
 
-    @Flag(name: .long, help: "Preview items without creating reminders. Auto-on when stdout is a TTY.")
+    @Flag(name: .long, help: "Preview items without creating reminders.")
     public var dryRun: Bool = false
 
     @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
@@ -28,7 +28,7 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
     @Option(name: .long, help: "API key for Claude provider.")
     public var apiKey: String?
 
-    @OptionGroup public var outputOptions: OutputOptions
+    @OptionGroup public var output: OutputOptions
 
     private static let defaultCaptureList = "Inbox"
 
@@ -40,8 +40,8 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
         }
     }
 
-    public mutating func run() async throws {
-        let effectiveDryRun = dryRun || shouldDefaultDryRun()
+    public mutating func execute() async throws -> AgentResult {
+        let effectiveDryRun = dryRun
 
         let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
         let cache = try TranscriptCache()
@@ -108,26 +108,10 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
             dryRun: effectiveDryRun
         )
 
-        if outputOptions.isJSON {
-            try printJSON(payload)
-        } else if outputOptions.isAgent {
-            try outputOptions.printAgent(payload)
-        } else {
-            printText(payload)
-        }
+        return AgentResult(payload)
     }
 
     // MARK: - Private
-
-    private func shouldDefaultDryRun() -> Bool {
-        // Only auto-engage dry-run for human-facing text output. Structured
-        // formats (json + agent) are typically scripted/automated callers
-        // who expect commit-by-default — anything else makes piping awkward
-        // (e.g. `pippin … --format json | jq` would silently produce a
-        // preview). Matches the CHANGELOG wording: "auto-on for TTY text".
-        if outputOptions.isStructured { return false }
-        return isatty(fileno(stdout)) != 0
-    }
 
     private func resolveMemo(db: VoiceMemosDB) throws -> VoiceMemo {
         if let memo {
@@ -188,36 +172,6 @@ public struct MemosCaptureCommand: AsyncParsableCommand {
         }
         let available = lists.map(\.title).joined(separator: ", ")
         throw MemosCaptureError.listNotFound(name: name, available: available)
-    }
-
-    private func printText(_ payload: MemosCaptureResult) {
-        let header = TextFormatter.card(fields: [
-            ("Memo", payload.memo.title),
-            ("ID", String(payload.memo.id.prefix(8))),
-            ("Transcript", "\(payload.transcriptionChars) chars"),
-            ("List", payload.list),
-            ("Mode", payload.dryRun ? "dry-run" : "committed"),
-        ])
-        print(header)
-        if payload.items.isEmpty {
-            print("No action items extracted.")
-            return
-        }
-        for item in payload.items {
-            var line = "  • \(item.title)"
-            if let due = item.dueHint { line += "  [due: \(due)]" }
-            print(line)
-            if let notes = item.notes, !notes.isEmpty {
-                print("      \"\(notes)\"")
-            }
-        }
-        if payload.dryRun {
-            print("")
-            print("(dry run — re-run without --dry-run or from a non-TTY to commit)")
-        } else {
-            print("")
-            print("Created \(payload.createdCount) reminder(s) in \(payload.list).")
-        }
     }
 }
 
@@ -304,6 +258,25 @@ public enum MemosCaptureError: LocalizedError, Sendable {
             return """
             Reminders list '\(name)' not found. Create it in the Reminders app, or pass --list with one of: \(available).
             """
+        }
+    }
+}
+
+extension MemosCaptureError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .noRecordings: return "no_recordings"
+        case .memoTooShort: return "memo_too_short"
+        case .malformedAIResponse: return "malformed_ai_response"
+        case .listNotFound: return "list_not_found"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .noRecordings: return .human("Record a memo in the Voice Memos app, then retry.")
+        case .memoTooShort, .malformedAIResponse: return .none
+        case .listNotFound: return .call(tool: "reminders_lists", argv: ["reminders", "lists"])
         }
     }
 }

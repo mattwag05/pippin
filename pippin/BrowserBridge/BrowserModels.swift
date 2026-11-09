@@ -64,8 +64,7 @@ public struct TabInfo: Codable, Sendable {
 
 // MARK: - Fetch Result
 
-/// Structured payload for `pippin browser fetch --format json|agent`. Text mode
-/// still prints the raw content for pipe-friendliness.
+/// Structured payload for `pippin browser fetch`.
 public struct FetchResult: Codable, Sendable {
     public let url: String
     public let content: String
@@ -134,6 +133,32 @@ public enum BrowserBridgeError: LocalizedError, Sendable {
         case let .navigationFailed(msg): return msg
         case let .fetchFailed(msg): return msg
         default: return nil
+        }
+    }
+}
+
+extension BrowserBridgeError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .nodeNotInstalled: return "node_not_installed"
+        case .playwrightNotInstalled: return "playwright_not_installed"
+        case .sessionNotActive: return "session_not_active"
+        case .navigationFailed: return "navigation_failed"
+        case .elementNotFound: return "element_not_found"
+        case .scriptFailed: return "script_failed"
+        case .decodingFailed: return "decoding_failed"
+        case .timeout: return "timeout"
+        case .fetchFailed: return "fetch_failed"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .nodeNotInstalled: return .human("Install Node.js with `brew install node`.")
+        case .playwrightNotInstalled: return .human("Install Playwright with `npm install -g playwright`.")
+        case .sessionNotActive, .navigationFailed, .elementNotFound, .decodingFailed, .fetchFailed: return .none
+        case .scriptFailed: return .call(tool: "doctor", argv: ["doctor"])
+        case .timeout: return .retry(after: 5)
         }
     }
 }

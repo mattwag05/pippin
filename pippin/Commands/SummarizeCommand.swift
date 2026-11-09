@@ -1,7 +1,7 @@
 import ArgumentParser
 import Foundation
 
-public struct SummarizeCommand: AsyncParsableCommand {
+public struct SummarizeCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "summarize",
         abstract: "Summarize a voice memo using AI."
@@ -31,13 +31,13 @@ public struct SummarizeCommand: AsyncParsableCommand {
     @Option(name: [.customLong("since")], help: "Only summarize memos on or after YYYY-MM-DD (with --all).")
     public var since: String?
 
-    @Option(name: .long, help: "Write output to a directory instead of stdout.")
-    public var output: String?
+    @Option(name: .customLong("output"), help: ArgumentHelp("Also write each summary as a markdown file in this directory.", valueName: "output"))
+    public var outputDir: String?
 
     @Option(name: .long, help: "Parallel summarization jobs (default: 2).")
     public var jobs: Int = 2
 
-    @OptionGroup public var outputOptions: OutputOptions
+    @OptionGroup public var output: OutputOptions
 
     public init() {}
 
@@ -58,7 +58,7 @@ public struct SummarizeCommand: AsyncParsableCommand {
         }
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let db = try VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())
         let cache = try TranscriptCache()
         let aiProvider = try AIProviderFactory.make(
@@ -78,12 +78,6 @@ public struct SummarizeCommand: AsyncParsableCommand {
                 Array(memos[i ..< min(i + jobs, memos.count)])
             }
             for chunk in chunks {
-                if !outputOptions.isStructured {
-                    for memo in chunk {
-                        print("Summarizing: \(memo.title)...", terminator: " ")
-                        fflush(stdout)
-                    }
-                }
                 // Extract self properties before task group (can't capture mutating self)
                 let tmpl = template
                 let prmt = prompt
@@ -116,67 +110,42 @@ public struct SummarizeCommand: AsyncParsableCommand {
                     return out.sorted { $0.0 < $1.0 }
                 }
                 for (_, result) in chunkResults {
-                    switch result {
-                    case let .success(r):
+                    if case let .success(r) = result {
                         results.append(r)
-                        if let outputDir = output {
+                        if let outputDir {
                             try writeResult(r, toDir: outputDir)
                         }
-                        if !outputOptions.isStructured { print("done") }
-                    case let .failure(e):
-                        if !outputOptions.isStructured { print("FAILED: \(e.localizedDescription)") }
                     }
                 }
             }
 
-            if outputOptions.isJSON {
-                try printJSON(results)
-            } else if outputOptions.isAgent {
-                try outputOptions.printAgent(results)
-            } else if output == nil {
-                for result in results {
-                    printSummaryText(result)
-                    print("")
-                }
-            } else {
-                print("\nSummarized \(results.count) recording(s) → \(output!)")
-            }
-
-        } else if let id {
-            guard let memo = try db.getMemoByPrefix(id: id) else {
-                throw VoiceMemosError.memoNotFound(id)
-            }
-            let template = self.template
-            let prompt = self.prompt
-            let providerFlag = provider
-            // summarizeMemoStatic spawns a Python subprocess (transcription) and
-            // calls aiProvider.complete() which blocks via DispatchSemaphore —
-            // hop off the cooperative pool.
-            let result = try await detachBlocking {
-                try Self.summarizeMemoStatic(
-                    memo: memo, db: db, cache: cache,
-                    aiProvider: aiProvider, systemPrompt: systemPrompt,
-                    template: template, prompt: prompt, provider: providerFlag
-                )
-            }
-
-            if let outputDir = output {
-                let path = try writeResult(result, toDir: outputDir)
-                if !outputOptions.isStructured {
-                    print("Summary written to: \(path)")
-                } else if outputOptions.isAgent {
-                    try outputOptions.printAgent(result)
-                } else {
-                    try printJSON(result)
-                }
-            } else if outputOptions.isJSON {
-                try printJSON(result)
-            } else if outputOptions.isAgent {
-                try outputOptions.printAgent(result)
-            } else {
-                printSummaryText(result)
-            }
+            return AgentResult(results)
         }
+
+        guard let id else {
+            throw ValidationError("Provide a memo UUID/prefix or --all.")
+        }
+        guard let memo = try db.getMemoByPrefix(id: id) else {
+            throw VoiceMemosError.memoNotFound(id)
+        }
+        let template = self.template
+        let prompt = self.prompt
+        let providerFlag = provider
+        // summarizeMemoStatic spawns a Python subprocess (transcription) and
+        // calls aiProvider.complete() which blocks via DispatchSemaphore, so
+        // hop off the cooperative pool.
+        let result = try await detachBlocking {
+            try Self.summarizeMemoStatic(
+                memo: memo, db: db, cache: cache,
+                aiProvider: aiProvider, systemPrompt: systemPrompt,
+                template: template, prompt: prompt, provider: providerFlag
+            )
+        }
+
+        if let outputDir {
+            try writeResult(result, toDir: outputDir)
+        }
+        return AgentResult(result)
     }
 
     // MARK: - Private
@@ -254,34 +223,18 @@ public struct SummarizeCommand: AsyncParsableCommand {
         )
     }
 
+    /// Write the summary as a markdown file; the structured result still goes
+    /// to stdout in the envelope.
     @discardableResult
     private func writeResult(_ result: SummarizeResult, toDir dir: String) throws -> String {
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let dateStr = VoiceMemosDB.exportDatePrefix(result.createdAt)
         let sanitized = VoiceMemosDB.sanitizeFilename(result.title)
-        let ext = outputOptions.isStructured ? "json" : "md"
         let baseName = "\(dateStr)_\(sanitized)"
-        let path = VoiceMemosDB.resolveCollision(dir: dir, baseName: baseName, ext: ext)
-
-        if outputOptions.isJSON {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(result)
-            try data.write(to: URL(fileURLWithPath: path))
-        } else {
-            let markdown = "# \(result.title)\n\n\(result.summary)\n"
-            try markdown.write(toFile: path, atomically: true, encoding: .utf8)
-        }
+        let path = VoiceMemosDB.resolveCollision(dir: dir, baseName: baseName, ext: "md")
+        let markdown = "# \(result.title)\n\n\(result.summary)\n"
+        try markdown.write(toFile: path, atomically: true, encoding: .utf8)
         return path
-    }
-
-    private func printSummaryText(_ result: SummarizeResult) {
-        let card = TextFormatter.card(fields: [
-            ("Title", result.title),
-            ("ID", String(result.id.prefix(8))),
-        ])
-        print(card)
-        print(result.summary)
     }
 }
 

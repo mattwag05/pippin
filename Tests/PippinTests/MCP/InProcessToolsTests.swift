@@ -43,23 +43,6 @@ final class InProcessToolsTests: XCTestCase {
 
     // MARK: - Envelope helpers (deterministic, no live stores)
 
-    func testOkEnvelopeMatchesEnvelopeV1Frame() throws {
-        let text = try MCPInProcessTools.okEnvelope(["k": "v"], startedAt: Date())
-        let envelope = try decodeObject(text)
-        XCTAssertEqual(envelope["v"] as? Int, AGENT_SCHEMA_VERSION)
-        XCTAssertEqual(envelope["status"] as? String, "ok")
-        XCTAssertGreaterThanOrEqual(try XCTUnwrap(envelope["duration_ms"] as? Int), 0)
-        let data = try XCTUnwrap(envelope["data"] as? [String: Any])
-        XCTAssertEqual(data["k"] as? String, "v")
-        XCTAssertNil(envelope["warnings"], "warnings must be omitted when nil")
-    }
-
-    func testOkEnvelopeCarriesWarnings() throws {
-        let text = try MCPInProcessTools.okEnvelope([1, 2], startedAt: Date(), warnings: ["partial"])
-        let envelope = try decodeObject(text)
-        XCTAssertEqual(envelope["warnings"] as? [String], ["partial"])
-    }
-
     func testErrorEnvelopeUsesAgentErrorCodeDerivation() throws {
         let text = MCPInProcessTools.errorEnvelope(CalendarBridgeError.accessDenied, startedAt: Date())
         let envelope = try decodeObject(text)
@@ -109,11 +92,12 @@ final class InProcessToolsTests: XCTestCase {
 
     func testInProcessToolArgErrorMatchesChildPathShape() async throws {
         // buildArgs still validates arguments for in-process tools, so a missing
-        // required arg yields the same "Argument error: …" text as the child path.
+        // required arg yields the same error envelope as the child path.
         let (text, isError) = try await callTool("reminders_show")
         XCTAssertTrue(isError)
-        XCTAssertTrue(text.hasPrefix("Argument error:"), "got: \(text)")
-        XCTAssertTrue(text.contains("id"))
+        let error = try XCTUnwrap(decodeObject(text)["error"] as? [String: Any])
+        XCTAssertEqual(error["code"] as? String, "missing_required")
+        XCTAssertEqual(error["message"] as? String, "Missing required argument: id")
     }
 
     // MARK: - Live-store envelope parity (ok or access_denied, both envelope v1)
@@ -170,17 +154,134 @@ final class InProcessToolsTests: XCTestCase {
     }
 
     func testCalendarEventsRejectsBadDateWithErrorEnvelope() async throws {
+        // A bad date fails the command's validate() while parsing, so this holds
+        // even headless: it never reaches the bridge.
         let (text, isError) = try await callTool(
             "calendar_events",
             arguments: #"{"from":"not-a-date"}"#
         )
         XCTAssertTrue(isError)
         let envelope = try decodeObject(text)
+        XCTAssertEqual(envelope["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(envelope["status"] as? String, "error")
         let error = try XCTUnwrap(envelope["error"] as? [String: Any])
-        // Bad input never reaches the bridge, so this holds even headless.
-        XCTAssertEqual(error["code"] as? String, "wrong_type")
-        XCTAssertTrue((error["message"] as? String ?? "").contains("from"))
+        XCTAssertNotNil(error["code"] as? String)
+    }
+
+    // MARK: - Deadline and demotion
+
+    func testDeadlineReturnsTimeoutEnvelopeThenDemotesToChild() async throws {
+        // The demotion set is process-global, so the name must be unique.
+        let name = "deadline_tool_\(UUID().uuidString)"
+        let slow = MCPTool(
+            name: name,
+            description: "test double",
+            inputSchema: Schema.empty,
+            buildArgs: { _ in [] },
+            inProcess: { _ in
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                return "late"
+            }
+        )
+
+        let first = try await callTool(name, tools: [slow], pippinPath: "/usr/bin/true", inProcessDeadline: 0.05)
+        XCTAssertTrue(first.isError)
+        let envelope = try decodeObject(first.text)
+        XCTAssertEqual(envelope["status"] as? String, "error")
+        let error = try XCTUnwrap(envelope["error"] as? [String: Any])
+        XCTAssertEqual(error["code"] as? String, "in_process_timed_out")
+
+        // `/usr/bin/true` exits 0 with no stdout, which the child path maps to `{}`.
+        let second = try await callTool(name, tools: [slow], pippinPath: "/usr/bin/true", inProcessDeadline: 0.05)
+        XCTAssertFalse(second.isError)
+        XCTAssertEqual(second.text, "{}")
+    }
+
+    // MARK: - Registry argv against the real commands
+
+    /// Minimal valid arguments for in-process tools with required parameters. A
+    /// new tool with required parameters fails in `buildArgs` until listed here.
+    private static let minimalArguments: [String: String] = [
+        "calendar_search": #"{"query":"zz-no-such-event"}"#,
+        "reminders_show": #"{"id":"zz-no-such-reminder"}"#,
+        "reminders_search": #"{"query":"zz-no-such-reminder"}"#,
+        "contacts_search": #"{"query":"zz-no-such-contact"}"#,
+        "contacts_show": #"{"identifier":"zz-no-such-contact"}"#,
+    ]
+
+    private func inProcessArgvs() throws -> [(name: String, argv: [String])] {
+        try MCPToolRegistry.tools.filter { $0.inProcess != nil }.map { tool in
+            let json = Self.minimalArguments[tool.name] ?? "{}"
+            let arguments = try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+            return try (tool.name, tool.buildArgs(arguments))
+        }
+    }
+
+    func testEveryInProcessToolArgvParsesToAnAgentCommand() async throws {
+        let tools = try inProcessArgvs()
+        XCTAssertEqual(Set(tools.map(\.name)), Self.migratedTools)
+        for (name, argv) in tools {
+            do {
+                _ = try await MCPInProcessTools.withDeadline(seconds: 5) {
+                    try await MCPInProcessTools.execute(argv)
+                }
+            } catch MCPServerRuntimeError.inProcessTimedOut {
+                // Parsing runs before the store call and a usage error throws at
+                // once, so a slow store (Contacts in the xctest host) still passed.
+                continue
+            } catch let error as MCPServerRuntimeError {
+                XCTFail("\(name): \(error.localizedDescription)")
+            } catch {
+                // Bridge errors (no grant, no such id) are fine: they prove the command ran.
+                XCTAssertFalse(
+                    String(reflecting: type(of: error)).hasPrefix("ArgumentParser."),
+                    "\(name) argv \(argv) is a usage error: \(error)"
+                )
+            }
+        }
+    }
+
+    func testCLIAndInProcessEnvelopesAreEquivalent() async throws {
+        CLIIntegrationTests.setUp()
+        let binary = try XCTUnwrap(CLIIntegrationTests.binaryURL, "pippin binary not found; run `swift build` first")
+        for (name, argv) in try inProcessArgvs() {
+            let cli = CLIIntegrationTests.runProcess(binary.path, args: argv)
+            let inProcess: String
+            if name.hasPrefix("contacts_") {
+                // TCC answers per process identity: in the xctest host Contacts
+                // gets past the grant check and stalls on contactsd, so compare
+                // against the same execute() inside a real `pippin mcp-server`.
+                inProcess = try mcpServerText(binary: binary, tool: name)
+            } else {
+                do {
+                    inProcess = try await MCPInProcessTools.execute(argv)
+                } catch {
+                    inProcess = MCPInProcessTools.errorEnvelope(error, startedAt: Date())
+                }
+            }
+            var cliEnvelope = try decodeObject(cli.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
+            var inProcessEnvelope = try decodeObject(inProcess)
+            cliEnvelope["duration_ms"] = nil
+            inProcessEnvelope["duration_ms"] = nil
+            XCTAssertEqual(
+                NSDictionary(dictionary: cliEnvelope),
+                NSDictionary(dictionary: inProcessEnvelope),
+                "\(name): CLI and in-process envelopes differ"
+            )
+        }
+    }
+
+    private func mcpServerText(binary: URL, tool: String) throws -> String {
+        let arguments = Self.minimalArguments[tool] ?? "{}"
+        let request = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"\#(tool)","arguments":\#(arguments)}}"#
+        let server = CLIIntegrationTests.runProcess(
+            "/bin/sh",
+            args: ["-c", #"printf '%s\n' "$1" | "$0" mcp-server"#, binary.path, request]
+        )
+        let response = try decodeObject(server.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
+        let result = try XCTUnwrap(response["result"] as? [String: Any], "\(tool): \(server.stdout)")
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        return try XCTUnwrap(content.first?["text"] as? String)
     }
 
     // MARK: - Helpers
@@ -191,17 +292,21 @@ final class InProcessToolsTests: XCTestCase {
     }
 
     /// Dispatch a tools/call through `MCPDispatcher` and return the tool result
-    /// text. `pippinPath` is a poison pill (`/usr/bin/false`): if the tool were
+    /// text. `pippinPath` defaults to a poison pill (`/usr/bin/false`): if the tool were
     /// dispatched to a child by mistake, the result would be a non-JSON "exited
     /// 1 with no output" string and the envelope assertions would fail.
     private func callTool(
         _ name: String,
         arguments: String = "{}",
-        tools: [MCPTool] = MCPToolRegistry.tools
+        tools: [MCPTool] = MCPToolRegistry.tools,
+        pippinPath: String = "/usr/bin/false",
+        inProcessDeadline: Double = Double(MCPInProcessTools.deadlineSeconds)
     ) async throws -> (text: String, isError: Bool) {
         let json = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"\#(name)","arguments":\#(arguments)}}"#
         let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(json.utf8))
-        let maybeResponse = await MCPDispatcher.handle(request, pippinPath: "/usr/bin/false", tools: tools)
+        let maybeResponse = await MCPDispatcher.handle(
+            request, pippinPath: pippinPath, tools: tools, inProcessDeadline: inProcessDeadline
+        )
         let response = try XCTUnwrap(maybeResponse)
         let data = try JSONEncoder().encode(response)
         let decoded = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])

@@ -19,7 +19,7 @@ thread blocking concern doesn't apply. Hang risk is low in practice — EventKit
 predicates are efficient. Captured to revisit if a real hang surfaces against
 `reminders_list`, `calendar_events`, or `findConflicts` on a large vault or
 wide date range. Then: add a generic `withAsyncTimeout` helper, thread
-`softTimeoutMs` through, reuse `OutputOptions.emit(...,timedOut:,...)` for
+`softTimeoutMs` through, reuse `AgentResult.emit(...,timedOut:,...)` for
 the warning envelope.
 
 ### Lift Outcome<T> into a shared bridge module (`pippin-a9v`) — P3

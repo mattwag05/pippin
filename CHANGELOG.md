@@ -9,14 +9,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- [breaking] Output is agent-only. The `text` and `json` formats were removed; every command, and every error including argument parsing, writes the compact JSON agent envelope. `--format agent` is still accepted as a no-op; `--format text` or `--format json` fails with a usage error (exit 2) naming the replacement. Scripts that read bare JSON now read `.data`; `pippin shell --format` is gone; exit code 64 no longer occurs. Closes pippin-xg3z.
+- [breaking] Envelope v4: every error carries `error.next_step` with `retryable`, `retry_after_seconds`, `next_call` and `human_action`, authored per source. Codes no longer depend on Swift case names. `missing_api_key`, `malformed_ai_response` and `invalid_entries_json` replace their garbled forms. HTTP 429 is `rate_limited`, HTTP 5xx is `server_error`. MCP argument errors, child timeouts and crashes return error envelopes; a crash is `child_crashed` rather than a timeout. Closes pippin-pxz9.
+- [breaking] List and search rows default to essential fields. `--fields all` returns whole rows, and a requested field that no row has produces a warning. MCP list and search tools gain `fields`, and paginated ones gain `cursor`, `pageSize` and `page`. Closes pippin-w5j3.
+- [breaking] `mail send`, `reply` and `forward` preview unless `--confirm` is passed. Scripts that send must add it.
+- [refactor] Commands return results instead of printing, so the CLI and in-process MCP tools share one implementation. An in-process tool that exceeds 25s moves to a child process for the session. Closes pippin-ql27.
+
 ### Added
 
+- [feat] `pippin mail cache fill` builds a metadata index Pippin owns, in `~/.config/pippin/mail-meta.db`, so list and search get faster without Full Disk Access. Run it with `pippin job run -- mail cache fill`; it resumes by mailbox. Read state and message identity are still read live on every answer, and a reassigned id never returns another message. Set `PIPPIN_MAIL_STORE=0` to turn it off. Closes pippin-e154.
+- [feat] Mail list, search and activity read each mailbox with bulk Apple Events and filter in memory, so without Full Disk Access they see the whole mailbox instead of a newest-N window. An unreadable mailbox or one that changes mid-read marks the answer partial rather than empty.
+- [feat] The contact index caches progress when a scan runs out of time and resumes on the next call, so an address book too large for one call still ends up cached. A change to the address book discards partial work. Closes pippin-07tt.
 - [feat] `mail index` and `mail search --semantic` can use embeddings from any OpenAI-compatible `/v1/embeddings` endpoint, selected with `ai.embeddings` or `--provider`. Ollama remains the default. Closes pippin-edjh.
 - [feat] Memo transcription can use Apple's on-device SpeechAnalyzer, which needs macOS 26 or later and nothing installed, or any OpenAI-compatible `/v1/audio/transcriptions` endpoint, selected with `ai.transcription`. mlx-audio remains the default. Closes pippin-edjh.
 - [feat] `PIPPIN_CONFIG` points pippin at a different config file.
 
 ### Fixed
 
+- [bug] Detached jobs no longer inherit the 55s MCP clamps, run in their own session so they survive their MCP server, and `job_wait` is capped under the tool-call limit. Closes part of pippin-07tt.
+- [bug] A Mail or Messages send that timed out could be sent twice, because the script runner re-ran it after relaunching the app. Sends no longer auto-retry, and a timed-out send reports `send_outcome_unknown`.
 - [bug] Semantic search no longer ranks messages embedded by a different model than the active one, and `mail index` re-embeds them after a backend change. Indexes built with Ollama stay current. Closes pippin-edjh.
 - [bug] Ollama embeddings now use `ai.ollama.url` instead of always calling localhost. Closes pippin-edjh.
 - [bug] `pippin doctor` reports the backend configured for AI features, embeddings, and transcription. It no longer says `mail triage` and `mail extract` need Ollama when another provider is configured. Closes pippin-edjh.

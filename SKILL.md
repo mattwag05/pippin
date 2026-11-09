@@ -43,11 +43,7 @@ pippin                 # start interactive REPL
 
 ## Output Formats
 
-All commands support `--format <text|json|agent>`:
-
-- **text** (default) — human-readable table/prose output
-- **json** — pretty-printed JSON for scripting
-- **agent** — compact JSON optimized for LLM token efficiency, wrapped in the **envelope v1** (see [Agent Integration](#agent-integration))
+Every command emits compact JSON wrapped in the agent **envelope** (see [Agent Integration](#agent-integration)). There is no other format: `--format agent` is accepted as a no-op and `--format text` or `--format json` fails with a usage error.
 
 ## Command Groups
 
@@ -60,9 +56,9 @@ pippin mail accounts                          # list configured accounts
 pippin mail list --account Work --limit 10    # recent messages
 pippin mail show <compound-id>                # full message content
 pippin mail search "invoice" --account Work   # search by subject/sender
-pippin mail send --to user@example.com --subject "Hi" --body "Hello"
-pippin mail reply <compound-id> --body "Thanks"
-pippin mail forward <compound-id> --to other@example.com
+pippin mail send --to user@example.com --subject "Hi" --body "Hello" --confirm  # previews without --confirm
+pippin mail reply <compound-id> --body "Thanks" --confirm
+pippin mail forward <compound-id> --to other@example.com --confirm
 pippin mail activity --account Work           # recent send/receive activity
 pippin mail triage --account Work --limit 20  # AI-powered priority triage
 pippin mail extract <compound-id>             # extract dates, amounts, contacts
@@ -71,6 +67,7 @@ pippin mail index --account Work              # build semantic search index
 pippin mail cache warm --limit 50             # pre-fetch recent bodies into the cache
 pippin mail cache stats                       # cached message count + age range
 pippin mail cache clear                       # empty the cache (--older-than-days N to prune)
+pippin job run -- mail cache fill             # build the metadata index that speeds list and search without Full Disk Access
 ```
 
 Message bodies are cached locally (`~/.config/pippin/mail-cache.db`) so repeat `mail show`/`mail index` reads skip the slow IMAP fetch (~75× faster on a hit). Pass `mail show --no-cache` to force a live fetch. Read/unread state is never cached — `mail list`/`search` always report it live.
@@ -191,7 +188,7 @@ Scan recent Sent mail and recently-modified Notes for commitments you made, and 
 
 ```bash
 pippin actions extract                          # dry-run: list extracted commitments
-pippin actions extract --days 14 --format json  # last 2 weeks, structured output
+pippin actions extract --days 14                # last 2 weeks
 pippin actions extract --create --list "Work"   # write reminders into Reminders.app
 pippin actions extract --no-notes               # mail only
 pippin actions extract --provider claude        # use Claude instead of Ollama
@@ -288,20 +285,20 @@ pippin mcp-server                             # run the server (stdin/stdout JSO
 pippin mcp-server --list-tools                # dump the registered tools as JSON
 ```
 
-Ships with 44 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch`, and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+Ships with 76 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch`, and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
 
 ## Agent Integration
 
 ### Envelope v1
 
-In `--format agent` mode, every response is wrapped in a versioned envelope:
+Every response is wrapped in a versioned envelope:
 
-- **Success:** `{"v":1,"status":"ok","duration_ms":N,"data":<payload>}` — the previous raw payload now lives under `.data`.
-- **Error:** `{"v":1,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","remediation":{…}?}}`
+- **Success:** `{"v":4,"status":"ok","duration_ms":N,"data":<payload>}`
+- **Error:** `{"v":4,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","next_step":{…},"remediation":{…}?}}`. Act on `next_step`: `retryable` with `retry_after_seconds` (same call can work again), `next_call` as `{tool, args, argv}` (make this call instead), `human_action` (only a person can do this; tell them). `send_outcome_unknown` means a send timed out and may have gone out, so check before sending again.
 
 `pippin mail accounts --format agent` →
 ```json
-{"v":1,"status":"ok","duration_ms":34,"data":[{"account":"iCloud","email":"user@icloud.com"},{"account":"Work","email":"user@company.com"}]}
+{"v":4,"status":"ok","duration_ms":34,"data":[{"account":"iCloud","email":"user@icloud.com"},{"account":"Work","email":"user@company.com"}]}
 ```
 
 Extract the payload with `jq '.data'`; check `jq -r '.status'` before consuming. Single-field error reads like `.error.code` still work.
@@ -319,7 +316,7 @@ On failure, `pippin` sets a typed process exit code so a calling shell can branc
 | `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
 | `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
 
-In `--format agent` mode, argument validation and parse failures (bad flags, missing required args) map to `2` (usage) like any other bad input. Outside agent mode they keep ArgumentParser's own codes (`64` usage, `0` for help/version) so its formatted usage text is preserved. Typed codes apply to runtime errors in `--format agent` mode and to errors with a catalogued remediation in text/json mode.
+Argument validation and parse failures (bad flags, missing required args, unknown subcommands) map to `2` (usage) with an error envelope. `--help` and `--version` print plain text and exit `0`.
 
 ### Pagination
 
@@ -334,7 +331,7 @@ pippin mail list --account icloud --cursor <token> --format agent
 **`.data` is always the payload array, paginated or not** (envelope v3). The cursor is envelope metadata and sits next to `status`/`duration_ms`, so `for m in payload["data"]` is correct in every case:
 
 ```json
-{"v":3,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
+{"v":4,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
 ```
 
 `next_cursor` is **omitted, not null**, on the last page — its absence is the end-of-results signal. (Envelope v2 and earlier switched `.data` to `{items, next_cursor}` whenever a pagination flag was passed, so iterating `.data` yielded the dict's keys instead of rows.)
@@ -343,7 +340,7 @@ Cursor tokens are bound to the query by a filter-hash — changing a filter mid-
 
 ### Field projection (`--fields`)
 
-`--fields id,subject,from` trims structured output to just those top-level keys, cutting tokens for scan workflows. Supported on `mail list`, `notes list`/`search`, `calendar events`/`today`/`remaining`/`upcoming`, and `reminders list`/`search`. Works in **both `--format json` and `--format agent`** (in agent mode it projects the envelope's `.data`, leaving `v`/`status`/`duration_ms` intact). For paginated output it projects each element of `.data` and preserves the top-level `next_cursor`.
+List and search rows default to essential fields (for mail: `id`, `from`, `fromContact`, `subject`, `date`, `read`, `hasAttachment`, `bodyPreview`). `--fields id,subject,from` selects keys instead, `--fields all` returns whole rows, and a requested field no row has produces a warning. For paginated output it projects each element of `.data` and preserves the top-level `next_cursor`.
 
 ```bash
 pippin mail list --limit 20 --fields id,subject,from --format agent   # → [{id,subject,from}, ...] under .data

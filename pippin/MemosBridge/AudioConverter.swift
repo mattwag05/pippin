@@ -137,3 +137,19 @@ public enum AudioConverterError: LocalizedError, Sendable {
         }
     }
 }
+
+extension AudioConverterError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .formatUnsupported: return "format_unsupported"
+        case .bufferAllocationFailed: return "buffer_allocation_failed"
+        case .conversionFailed: return "conversion_failed"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .formatUnsupported, .bufferAllocationFailed, .conversionFailed: return .none
+        }
+    }
+}

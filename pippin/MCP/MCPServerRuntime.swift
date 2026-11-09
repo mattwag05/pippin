@@ -103,8 +103,10 @@ enum MCPServerRuntime {
         // Hard timeout: SIGTERM, then SIGKILL after a 2s grace, mirroring
         // ScriptRunner's pattern. Without this the JSON-RPC loop blocks forever
         // if the child wedges (e.g. osascript stuck on an unresponsive Mail.app).
+        let killedByTimeout = ConcurrentSlot<Bool>()
         let timeoutItem = DispatchWorkItem {
             guard process.isRunning else { return }
+            killedByTimeout.set(true)
             process.terminate()
             DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
                 if process.isRunning { kill(process.processIdentifier, SIGKILL) }
@@ -116,13 +118,13 @@ enum MCPServerRuntime {
         timeoutItem.cancel()
         drainGroup.wait()
 
-        // Detect timeout from process state, not a separate flag — avoids the
-        // race where the child exits naturally microseconds before the timeout
-        // work item fires. `.uncaughtSignal` plus elapsed≥timeout is the
-        // signature of "we killed it"; SIGSEGV-style crashes flow through as
-        // non-zero exit codes via the normal AgentError pipeline.
+        // A signal death is a timeout only if our own timer sent it. Anything
+        // else is a crash, which must not read as a retryable timeout.
         if process.terminationReason == .uncaughtSignal {
-            throw MCPServerRuntimeError.childTimedOut(seconds: timeoutSeconds)
+            if killedByTimeout.get() == true {
+                throw MCPServerRuntimeError.childTimedOut(seconds: timeoutSeconds)
+            }
+            throw MCPServerRuntimeError.childCrashed(signal: process.terminationStatus)
         }
 
         return ChildResult(
@@ -135,9 +137,35 @@ enum MCPServerRuntime {
 
 // MARK: - Errors
 
-enum MCPServerRuntimeError: LocalizedError {
+enum MCPServerRuntimeError: LocalizedError, RemediableError {
     case processLaunchFailed(String, underlying: Error)
     case childTimedOut(seconds: Int)
+    case childCrashed(signal: Int32)
+    case childNoOutput(exitCode: Int32)
+    case inProcessTimedOut(seconds: Int)
+    case notInProcessCapable(String)
+
+    var agentCode: String {
+        switch self {
+        case .processLaunchFailed: return "child_launch_failed"
+        case .childTimedOut: return "child_timed_out"
+        case .childCrashed: return "child_crashed"
+        case .childNoOutput: return "child_no_output"
+        case .inProcessTimedOut: return "in_process_timed_out"
+        case .notInProcessCapable: return "not_in_process_capable"
+        }
+    }
+
+    var nextStep: NextStep {
+        switch self {
+        case .processLaunchFailed, .childCrashed, .childNoOutput:
+            return .call(tool: "doctor", argv: ["doctor"])
+        case .childTimedOut, .inProcessTimedOut:
+            return .retry(after: 5)
+        case .notInProcessCapable:
+            return .none
+        }
+    }
 
     var errorDescription: String? {
         switch self {
@@ -145,6 +173,14 @@ enum MCPServerRuntimeError: LocalizedError {
             return "Failed to launch child pippin at \(path): \(error.localizedDescription)"
         case let .childTimedOut(seconds):
             return "pippin child exceeded \(seconds)s and was terminated. Narrow the request (--account, --mailbox, --limit) or rerun with a more specific query."
+        case let .childCrashed(signal):
+            return "pippin child crashed with signal \(signal)."
+        case let .childNoOutput(exitCode):
+            return "pippin child exited \(exitCode) with no output."
+        case let .inProcessTimedOut(seconds):
+            return "The tool did not answer within \(seconds)s. Retry; it now runs in a separate process for this session."
+        case let .notInProcessCapable(command):
+            return "Internal error: '\(command)' is registered as in-process but is not an AgentCommand."
         }
     }
 }
@@ -178,7 +214,8 @@ enum MCPDispatcher {
     static func handle(
         _ request: JSONRPCRequest,
         pippinPath: String,
-        tools: [MCPTool] = MCPToolRegistry.tools
+        tools: [MCPTool] = MCPToolRegistry.tools,
+        inProcessDeadline: Double = Double(MCPInProcessTools.deadlineSeconds)
     ) async -> JSONRPCResponse? {
         // Notifications (no id) never get a response, even on error.
         if request.isNotification {
@@ -197,7 +234,8 @@ enum MCPDispatcher {
                 id: id,
                 params: request.params,
                 pippinPath: pippinPath,
-                tools: tools
+                tools: tools,
+                inProcessDeadline: inProcessDeadline
             )
         case "ping":
             return JSONRPCResponse(id: id, result: .object([:]))
@@ -242,7 +280,8 @@ enum MCPDispatcher {
         id: JSONRPCID,
         params: JSONValue?,
         pippinPath: String,
-        tools: [MCPTool]
+        tools: [MCPTool],
+        inProcessDeadline: Double
     ) async -> JSONRPCResponse {
         guard let toolName = params?["name"]?.stringValue else {
             return JSONRPCResponse(
@@ -262,35 +301,28 @@ enum MCPDispatcher {
             )
         }
 
+        let toolStartedAt = Date()
         let argv: [String]
         do {
             argv = try tool.buildArgs(toolArguments)
         } catch {
-            return wrapToolResult(
-                id: id,
-                payload: MCPToolCallResult(
-                    text: "Argument error: \(error.localizedDescription)",
-                    isError: true
-                )
-            )
+            return errorResult(id: id, error, startedAt: toolStartedAt)
         }
 
-        // In-process fast path: no child spawn. The handler returns the same
-        // envelope-v1 JSON the child would print; thrown errors become the same
-        // error envelope `printAgentError` would emit, with isError: true.
-        if let handler = tool.inProcess {
-            let startedAt = Date()
+        // In-process fast path: no child spawn, same command as the child runs.
+        // A tool that wedges past the deadline moves to the child path, where
+        // a hard kill exists, for the rest of the session.
+        if let handler = tool.inProcess, !MCPInProcessTools.isDemoted(tool.name) {
             do {
-                let text = try await handler(toolArguments)
+                let text = try await MCPInProcessTools.withDeadline(seconds: inProcessDeadline) {
+                    try await handler(argv)
+                }
                 return wrapToolResult(id: id, payload: MCPToolCallResult(text: text, isError: false))
             } catch {
-                return wrapToolResult(
-                    id: id,
-                    payload: MCPToolCallResult(
-                        text: MCPInProcessTools.errorEnvelope(error, startedAt: startedAt),
-                        isError: true
-                    )
-                )
+                if case MCPServerRuntimeError.inProcessTimedOut = error {
+                    MCPInProcessTools.demote(tool.name)
+                }
+                return errorResult(id: id, error, startedAt: toolStartedAt)
             }
         }
 
@@ -301,33 +333,10 @@ enum MCPDispatcher {
             childResult = try await detachBlocking {
                 try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath)
             }
-        } catch let error as MCPServerRuntimeError {
-            // Timeout is a tool-level failure (the user can act on it); other
-            // runtime errors are protocol-level (the user can't).
-            if case .childTimedOut = error {
-                return wrapToolResult(
-                    id: id,
-                    payload: MCPToolCallResult(
-                        text: error.localizedDescription,
-                        isError: true
-                    )
-                )
-            }
-            return JSONRPCResponse(
-                id: id,
-                error: JSONRPCError(
-                    code: JSONRPCError.internalError,
-                    message: error.localizedDescription
-                )
-            )
         } catch {
-            return JSONRPCResponse(
-                id: id,
-                error: JSONRPCError(
-                    code: JSONRPCError.internalError,
-                    message: error.localizedDescription
-                )
-            )
+            // Every failure to run the child is tool-level: the caller can act
+            // on it, and the envelope says how.
+            return errorResult(id: id, error, startedAt: toolStartedAt)
         }
 
         let stdoutString = String(data: childResult.stdout, encoding: .utf8) ?? ""
@@ -337,13 +346,23 @@ enum MCPDispatcher {
             let text = trimmed.isEmpty ? "{}" : trimmed
             return wrapToolResult(id: id, payload: MCPToolCallResult(text: text, isError: false))
         } else {
-            // Non-zero exit: child already printed AgentError JSON to stdout via printAgentError.
-            // Pass through verbatim so clients can parse it.
-            let text = trimmed.isEmpty
-                ? "pippin child exited \(childResult.exitCode) with no output"
-                : trimmed
-            return wrapToolResult(id: id, payload: MCPToolCallResult(text: text, isError: true))
+            // Non-zero exit: the child already printed its error envelope;
+            // pass it through verbatim so clients can parse it.
+            if trimmed.isEmpty {
+                return errorResult(
+                    id: id, MCPServerRuntimeError.childNoOutput(exitCode: childResult.exitCode),
+                    startedAt: toolStartedAt
+                )
+            }
+            return wrapToolResult(id: id, payload: MCPToolCallResult(text: trimmed, isError: true))
         }
+    }
+
+    private static func errorResult(id: JSONRPCID, _ error: Error, startedAt: Date) -> JSONRPCResponse {
+        wrapToolResult(
+            id: id,
+            payload: MCPToolCallResult(text: MCPInProcessTools.errorEnvelope(error, startedAt: startedAt), isError: true)
+        )
     }
 
     private static func wrapToolResult(id: JSONRPCID, payload: MCPToolCallResult) -> JSONRPCResponse {

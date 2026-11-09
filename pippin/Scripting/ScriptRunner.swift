@@ -10,6 +10,27 @@ public enum ScriptRunnerError: Error, Sendable {
     case automationDenied(String) // Automation (Apple Events) not authorized for the target bundle id (pippin-qjf)
 }
 
+extension ScriptRunnerError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .timeout: return "timeout"
+        case .nonZeroExit: return "non_zero_exit"
+        case .stderrOnSuccess: return "stderr_on_success"
+        case .launchFailed: return "launch_failed"
+        case .automationDenied: return "automation_denied"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .timeout: return .retry(after: 5)
+        case .nonZeroExit, .stderrOnSuccess, .launchFailed: return .call(tool: "doctor", argv: ["doctor"])
+        case .automationDenied:
+            return .human("Run `pippin permissions` in a terminal and approve Automation control of the target app.")
+        }
+    }
+}
+
 /// Shared osascript runner used by NotesBridge and MailBridge. Extracted to
 /// centralize the concurrent pipe-drain + SIGTERM/SIGKILL timeout pattern and
 /// to add a single auto-relaunch fallback when the host app is not running.

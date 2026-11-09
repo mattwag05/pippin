@@ -212,6 +212,13 @@ enum MailBridge {
                 fastPathNote = fastPathFallbackNote(error)
             }
         }
+        // Pippin's own index: no Full Disk Access, verified by a live read.
+        if fastPath, (preview ?? 0) == 0, let messages = listFromStore(
+            account: account, mailbox: mailbox, unread: unread,
+            limit: clampedLimit, offset: clampedOffset, after: after, before: before
+        ) {
+            return ListOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
+        }
         let script = buildListScript(
             account: account, mailbox: mailbox, unread: unread,
             limit: clampedLimit, offset: clampedOffset, preview: preview,
@@ -411,6 +418,13 @@ enum MailBridge {
                 fastPathNote = fastPathFallbackNote(error)
             }
         }
+        // Recipients and bodies are not in the store, so those searches read Mail.
+        if fastPath, !searchBody, to == nil, let messages = searchFromStore(
+            query: query, account: account, mailbox: mailbox,
+            limit: limit, offset: clampedOffset, after: after, before: before, from: from
+        ) {
+            return SearchOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
+        }
         let script = buildSearchScript(
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
             limit: limit, offset: clampedOffset, after: after, before: before, to: to,
@@ -434,7 +448,6 @@ enum MailBridge {
                 "[search] accounts scanned: \(meta.accountsScanned)",
                 "[search] mailboxes scanned: \(meta.mailboxesScanned)",
                 "[search] messages examined: \(meta.messagesExamined)",
-                "[search] scan windows shifted toward --before: \(meta.windowsShifted)",
                 "[search] body search: \(searchBody ? "on" : "off (use --body to search message content)")",
                 "[search] timed out: \(meta.timedOut ? "yes (returning partial results)" : "no")",
             ]
@@ -505,7 +518,7 @@ enum MailBridge {
             dryRun: dryRun
         )
         // Send triggers SMTP handshake — use 45s timeout
-        let json = try runScript(script, timeoutSeconds: 45)
+        let json = try runScript(script, timeoutSeconds: 45, sending: !dryRun)
         return try decode(BridgeActionResult.self, from: json)
     }
 
@@ -543,7 +556,7 @@ enum MailBridge {
             attachmentPaths: attachmentPaths,
             dryRun: dryRun
         )
-        let json = try runScript(script, timeoutSeconds: 45)
+        let json = try runScript(script, timeoutSeconds: 45, sending: !dryRun)
         return try decode(BridgeActionResult.self, from: json)
     }
 
@@ -571,7 +584,7 @@ enum MailBridge {
             attachmentPaths: attachmentPaths,
             dryRun: dryRun
         )
-        let json = try runScript(script, timeoutSeconds: 45)
+        let json = try runScript(script, timeoutSeconds: 45, sending: !dryRun)
         return try decode(BridgeActionResult.self, from: json)
     }
 
@@ -654,12 +667,16 @@ enum MailBridge {
         return cache.get(compoundId: compoundId, expectedDate: identity)
     }
 
-    /// Current date per compound id from the Envelope Index, for cache
-    /// validation on paths with no list row in hand. Empty when the fast path
-    /// is disabled or unreadable, which makes every cache read a miss.
+    /// Current date per compound id, for cache validation on paths with no list
+    /// row in hand: from the Envelope Index when readable, otherwise one live
+    /// read. Empty on failure, which makes every cache read a miss.
     static func cacheIdentities(for compoundIds: [String]) -> [String: String] {
-        guard fastPathEnabled(), let index = try? makeFastPathIndex(accountName: nil) else { return [:] }
-        return (try? index.sentDatesByCompoundId(for: compoundIds)) ?? [:]
+        if fastPathEnabled(), let index = try? makeFastPathIndex(accountName: nil),
+           let dates = try? index.sentDatesByCompoundId(for: compoundIds) {
+            return dates
+        }
+        guard let facts = try? liveMetaFacts(compoundIds) else { return [:] }
+        return facts.compactMapValues(\.dateSent)
     }
 
     /// Batch read (`mail show <id> <id> …`): warm the cache for all misses in
@@ -960,9 +977,6 @@ enum MailBridge {
         let mailboxesScanned: Int
         let messagesExamined: Int
         let timedOut: Bool
-        /// Count of mailboxes whose scan window was binary-search-shifted toward
-        /// a `--before` date (search script only; list/activity omit it).
-        let windowsShifted: Int
         /// `false` when any scanned mailbox's newest-N window stopped short of its
         /// oldest message (list script only). Feeds the `--before` shortfall hint.
         let reachedMailboxEnd: Bool
@@ -977,13 +991,12 @@ enum MailBridge {
             messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
             // Backward-compatible: scripts that don't emit timedOut default to false.
             timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
-            windowsShifted = try container.decodeIfPresent(Int.self, forKey: .windowsShifted) ?? 0
             reachedMailboxEnd = try container.decodeIfPresent(Bool.self, forKey: .reachedMailboxEnd) ?? true
             oldestExaminedMs = try container.decodeIfPresent(Double.self, forKey: .oldestExaminedMs)
         }
 
         private enum CodingKeys: String, CodingKey {
-            case accountsScanned, mailboxesScanned, messagesExamined, timedOut, windowsShifted
+            case accountsScanned, mailboxesScanned, messagesExamined, timedOut
             case reachedMailboxEnd, oldestExaminedMs
         }
     }

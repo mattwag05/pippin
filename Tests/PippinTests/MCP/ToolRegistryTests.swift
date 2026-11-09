@@ -128,7 +128,7 @@ final class ToolRegistryTests: XCTestCase {
               case let .object(properties)? = schema["properties"] else {
             return XCTFail("mail_search schema must expose object properties")
         }
-        let expected = Set(["query", "account", "mailbox", "body", "preview", "after", "before", "to", "from", "limit", "semantic", "fields"])
+        let expected = Set(["query", "account", "mailbox", "body", "preview", "after", "before", "to", "from", "limit", "semantic", "fields", "cursor", "pageSize", "page"])
         XCTAssertEqual(Set(properties.keys), expected)
 
         let argv = try tool.buildArgs(.object([
@@ -475,7 +475,7 @@ final class ToolRegistryTests: XCTestCase {
             "timeout": .int(60),
         ]))
         XCTAssertTrue(argv.contains("abc"))
-        XCTAssertTrue(argv.contains("--timeout=60"))
+        XCTAssertTrue(argv.contains("--timeout=50")) // clamped under the 60s tool-call cap
     }
 
     // MARK: - Option values are bound with `=` (flag-confusion guard)

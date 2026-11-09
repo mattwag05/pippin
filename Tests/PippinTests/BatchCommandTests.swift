@@ -104,14 +104,14 @@ final class BatchCommandTests: XCTestCase {
     }
 
     func testResolvedArgvDoesNotDoubleAddFormat() {
-        let entry = BatchEntry(cmd: "mail", args: ["list", "--format", "json"])
-        XCTAssertEqual(entry.resolvedArgv, ["mail", "list", "--format", "json"])
+        let entry = BatchEntry(cmd: "mail", args: ["list", "--format", "agent"])
+        XCTAssertEqual(entry.resolvedArgv, ["mail", "list", "--format", "agent"])
     }
 
     func testResolvedArgvRespectsEqualsFormatForm() {
         // ArgumentParser also accepts --format=value; don't inject a second one.
-        let entry = BatchEntry(cmd: "mail", args: ["list", "--format=json"])
-        XCTAssertEqual(entry.resolvedArgv, ["mail", "list", "--format=json"])
+        let entry = BatchEntry(cmd: "mail", args: ["list", "--format=agent"])
+        XCTAssertEqual(entry.resolvedArgv, ["mail", "list", "--format=agent"])
     }
 
     // MARK: - dispatch (empty input)
@@ -138,7 +138,6 @@ final class BatchCommandTests: XCTestCase {
     func testBatchEntryErrorCodesAreSnakeCase() {
         XCTAssertEqual(BatchEntryErrorCode.emptyOutput.rawValue, "empty_output")
         XCTAssertEqual(BatchEntryErrorCode.invalidJSON.rawValue, "invalid_json")
-        XCTAssertEqual(BatchEntryErrorCode.childLaunchFailed.rawValue, "child_launch_failed")
     }
 
     // MARK: - Bad-child runOne path (synthetic envelope on launch failure)

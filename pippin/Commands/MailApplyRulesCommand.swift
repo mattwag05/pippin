@@ -6,7 +6,7 @@ import Foundation
 /// Deliberately a separate command from `mail triage` rather than a
 /// `triage --apply` flag: triage is safe to run casually and must stay that
 /// way. Nothing here mutates without `--live`.
-public struct MailApplyRules: AsyncParsableCommand {
+public struct MailApplyRules: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "apply-rules",
         abstract: "Apply triage rules' move/mark actions to a mailbox. Previews only unless --live."
@@ -52,7 +52,7 @@ public struct MailApplyRules: AsyncParsableCommand {
         }
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let account = self.account
         let mailbox = self.mailbox
         let scanLimit = self.scanLimit
@@ -151,14 +151,12 @@ public struct MailApplyRules: AsyncParsableCommand {
             return (scanOutcome, result)
         }
 
-        try output.emit(
+        return .emit(
             result,
             timedOut: scanOutcome.timedOut,
             timedOutHint: "mailbox scan timed out — some matching messages were not seen this run",
             extraWarnings: scanOutcome.fastPathNote.map { [$0] } ?? []
-        ) {
-            renderText(result)
-        }
+        )
     }
 
     // MARK: - Private
@@ -169,59 +167,5 @@ public struct MailApplyRules: AsyncParsableCommand {
         Dictionary(grouping: actions, by: \.from)
             .map { RuleApplySenderGroup(sender: $0.key, count: $0.value.count, actions: $0.value) }
             .sorted { $0.count == $1.count ? $0.sender < $1.sender : $0.count > $1.count }
-    }
-
-    private func renderText(_ result: RuleApplyResult) {
-        if result.planned == 0 {
-            // "Nothing matched" and "everything matched was held by a guard"
-            // are very different answers — don't collapse them.
-            print(result.matched == 0
-                ? "No messages matched an actuating rule."
-                : "\(result.matched) message(s) matched, but none were eligible this run.")
-            printCounts(result)
-            return
-        }
-
-        print(result.dryRun
-            ? "PLAN — dry run, nothing was changed. Re-run with --live to apply."
-            : "APPLIED — \(result.applied) message(s) actuated.")
-        print("")
-
-        for group in result.bySender {
-            // A sender can match different rules on different messages, so
-            // summarize every distinct action rather than assuming the first.
-            let targets = Set(group.actions.map(describeAction)).sorted().joined(separator: " / ")
-            let rules = Set(group.actions.map(\.rule)).sorted().joined(separator: ", ")
-            print("  \(group.sender)  (\(group.count))  \(targets)  [\(rules)]")
-            for action in group.actions.prefix(3) {
-                let failed = action.error.map { " — FAILED: \($0)" } ?? ""
-                print("      \(action.operationalDate.prefix(10))  \(TextFormatter.truncate(action.subject, to: 60))\(failed)")
-            }
-            if group.count > 3 {
-                print("      … and \(group.count - 3) more")
-            }
-        }
-
-        print("")
-        printCounts(result)
-    }
-
-    private func printCounts(_ result: RuleApplyResult) {
-        var held: [String] = []
-        if result.heldTooNew > 0 { held.append("\(result.heldTooNew) newer than \(minAgeDays)d") }
-        if result.heldUnread > 0 { held.append("\(result.heldUnread) unread") }
-        if result.heldOverCap > 0 { held.append("\(result.heldOverCap) over the \(maxActions) cap") }
-        let heldText = held.isEmpty ? "" : " · held: \(held.joined(separator: ", "))"
-        print("Scanned \(result.scanned) · matched \(result.matched) · planned \(result.planned)\(heldText)")
-        if result.failed > 0 {
-            print("\(result.failed) action(s) failed — see the per-message lines above.")
-        }
-    }
-
-    private func describeAction(_ action: RuleApplyAction) -> String {
-        var parts: [String] = []
-        if let moveTo = action.moveTo { parts.append("→ \(moveTo)") }
-        if let markRead = action.markRead { parts.append(markRead ? "mark read" : "mark unread") }
-        return parts.joined(separator: " + ")
     }
 }

@@ -25,6 +25,27 @@ public enum JobStoreError: LocalizedError, Sendable {
     }
 }
 
+extension JobStoreError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .rootCreationFailed: return "root_creation_failed"
+        case .jobNotFound: return "job_not_found"
+        case .ambiguousPrefix: return "ambiguous_prefix"
+        case .statusReadFailed: return "status_read_failed"
+        case .statusWriteFailed: return "status_write_failed"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case let .rootCreationFailed(path):
+            return .human("Make \(path) creatable and writable by the current user.")
+        case .jobNotFound, .ambiguousPrefix: return .call(tool: "job_list", argv: ["job", "list"])
+        case .statusReadFailed, .statusWriteFailed: return .none
+        }
+    }
+}
+
 // MARK: - JobStore
 
 /// Filesystem-backed job registry under `~/.cache/pippin/jobs/<id>/`.

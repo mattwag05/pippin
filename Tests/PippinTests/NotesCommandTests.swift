@@ -78,8 +78,8 @@ final class NotesCommandTests: XCTestCase {
         XCTAssertEqual(cmd.output.fields, "id,title")
     }
 
-    func testListJsonFormatPasses() {
-        XCTAssertNoThrow(try NotesCommand.List.parse(["--format", "json"]))
+    func testListAgentFormatPasses() {
+        XCTAssertNoThrow(try NotesCommand.List.parse(["--format", "agent"]))
     }
 
     // MARK: - Show subcommand
@@ -97,8 +97,8 @@ final class NotesCommandTests: XCTestCase {
         XCTAssertEqual(cmd.id, "x-coredata://abc/ICNote/p1")
     }
 
-    func testShowJsonFormatPasses() {
-        XCTAssertNoThrow(try NotesCommand.Show.parse(["some-id", "--format", "json"]))
+    func testShowAgentFormatPasses() {
+        XCTAssertNoThrow(try NotesCommand.Show.parse(["some-id", "--format", "agent"]))
     }
 
     // MARK: - Search subcommand
@@ -140,8 +140,8 @@ final class NotesCommandTests: XCTestCase {
         XCTAssertEqual(cmd.output.fields, "id,title,folder")
     }
 
-    func testSearchJsonFormatPasses() {
-        XCTAssertNoThrow(try NotesCommand.Search.parse(["query", "--format", "json"]))
+    func testSearchAgentFormatPasses() {
+        XCTAssertNoThrow(try NotesCommand.Search.parse(["query", "--format", "agent"]))
     }
 
     // MARK: - Folders subcommand
@@ -150,8 +150,8 @@ final class NotesCommandTests: XCTestCase {
         XCTAssertNoThrow(try NotesCommand.Folders.parse([]))
     }
 
-    func testFoldersJsonFormatPasses() {
-        XCTAssertNoThrow(try NotesCommand.Folders.parse(["--format", "json"]))
+    func testFoldersAgentFormatPasses() {
+        XCTAssertNoThrow(try NotesCommand.Folders.parse(["--format", "agent"]))
     }
 
     // MARK: - Create subcommand
@@ -179,8 +179,8 @@ final class NotesCommandTests: XCTestCase {
         XCTAssertEqual(cmd.body, "Some content")
     }
 
-    func testCreateJsonFormatPasses() {
-        XCTAssertNoThrow(try NotesCommand.Create.parse(["Note Title", "--format", "json"]))
+    func testCreateAgentFormatPasses() {
+        XCTAssertNoThrow(try NotesCommand.Create.parse(["Note Title", "--format", "agent"]))
     }
 
     func testCreateWithAllOptionsPasses() {
@@ -188,7 +188,7 @@ final class NotesCommandTests: XCTestCase {
             "My Note",
             "--folder", "Work",
             "--body", "Note content here",
-            "--format", "json",
+            "--format", "agent",
         ]))
     }
 
@@ -220,8 +220,8 @@ final class NotesCommandTests: XCTestCase {
         XCTAssertFalse(cmd.append)
     }
 
-    func testEditJsonFormatPasses() {
-        XCTAssertNoThrow(try NotesCommand.Edit.parse(["note-id", "--title", "Title", "--format", "json"]))
+    func testEditAgentFormatPasses() {
+        XCTAssertNoThrow(try NotesCommand.Edit.parse(["note-id", "--title", "Title", "--format", "agent"]))
     }
 
     // MARK: - Delete subcommand
@@ -238,8 +238,8 @@ final class NotesCommandTests: XCTestCase {
         XCTAssertNoThrow(try NotesCommand.Delete.parse(["note-id", "--force"]))
     }
 
-    func testDeleteWithForceAndJsonPasses() {
-        XCTAssertNoThrow(try NotesCommand.Delete.parse(["note-id", "--force", "--format", "json"]))
+    func testDeleteWithForceAndAgentPasses() {
+        XCTAssertNoThrow(try NotesCommand.Delete.parse(["note-id", "--force", "--format", "agent"]))
     }
 
     func testDeleteParsesId() throws {

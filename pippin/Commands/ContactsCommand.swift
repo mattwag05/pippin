@@ -17,9 +17,16 @@ public struct ContactsCommand: AsyncParsableCommand {
 
     public init() {}
 
+    /// The bridge fetches only named keys, so `--fields all` must name them all.
+    static func bridgeFields(_ raw: String?) -> [String]? {
+        let parsed = FieldProjection.parse(raw)
+        guard parsed == [FieldProjection.all] else { return parsed }
+        return ["emails", "phones", "organization", "jobtitle", "birthday", "postaladdresses", "socialprofiles"]
+    }
+
     // MARK: - List
 
-    public struct ListContacts: AsyncParsableCommand {
+    public struct ListContacts: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List all contacts (name + primary email/phone)."
@@ -32,45 +39,29 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // Contacts drives --fields server-side: fieldList selects which
             // CNContact keys are fetched (avoids reading email/phone bodies
             // across the whole store), unlike the client-side jsonData/emit
             // projection other commands use. Semantics intentionally differ.
-            let fieldList = FieldProjection.parse(output.fields)
+            let fieldList = ContactsCommand.bridgeFields(output.fields)
             let group = self.group
             // listContacts enumerates the full contact store (sync, can be slow
             // on large address books); hop off the cooperative pool.
             let outcome = try await detachBlocking {
                 try ContactsBridge.listContacts(group: group, fields: fieldList)
             }
-            if output.isStructured {
-                try output.emit(
-                    outcome.results,
-                    timedOut: outcome.timedOut,
-                    timedOutHint: ContactsCommand.timedOutHint
-                ) {}
-            } else {
-                try output.emit(
-                    outcome.results,
-                    timedOut: outcome.timedOut,
-                    timedOutHint: ContactsCommand.timedOutHint
-                ) {
-                    if outcome.results.isEmpty {
-                        print("No contacts found.")
-                    } else {
-                        for contact in outcome.results {
-                            print(formatContactLine(contact))
-                        }
-                    }
-                }
-            }
+            return .emit(
+                outcome.results,
+                timedOut: outcome.timedOut,
+                timedOutHint: ContactsCommand.timedOutHint
+            )
         }
     }
 
     // MARK: - Search
 
-    public struct SearchContacts: AsyncParsableCommand {
+    public struct SearchContacts: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
             abstract: "Search contacts by name, email, or phone."
@@ -107,8 +98,8 @@ public struct ContactsCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
-            let fieldList = FieldProjection.parse(output.fields)
+        public mutating func execute() async throws -> AgentResult {
+            let fieldList = ContactsCommand.bridgeFields(output.fields)
             let query = self.query ?? ""
             let contacts: [ContactInfo]
             let timedOut: Bool
@@ -142,67 +133,41 @@ public struct ContactsCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: contacts, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                try output.emitPage(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
-                    if page.items.isEmpty {
-                        print("No contacts found.")
-                    } else {
-                        for contact in page.items {
-                            print(formatContactLine(contact))
-                        }
-                    }
-                    if let cursor = page.nextCursor {
-                        print("(more — re-run with --cursor \(cursor))")
-                    }
-                }
-                return
+                return .emitPage(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint)
             }
 
             // Honor --limit in the non-paginated path too (matches calendar /
             // notes search). Previously the full result set was emitted and
             // --limit only took effect when paginating.
             let limited = Array(contacts.prefix(limit))
-            try output.emit(limited, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint) {
-                if limited.isEmpty {
-                    print("No contacts found.")
-                } else {
-                    for contact in limited {
-                        print(formatContactLine(contact))
-                    }
-                }
-            }
+            return .emit(limited, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint)
         }
     }
 
     // MARK: - Show
 
-    public struct ShowContact: AsyncParsableCommand {
+    public struct ShowContact: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show full contact details by identifier."
         )
 
-        @Argument(help: "Contact identifier (from `pippin contacts list --format json`).")
+        @Argument(help: "Contact identifier (from `pippin contacts list`).")
         public var identifier: String
 
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let contact = try ContactsBridge.getContact(identifier)
-            if output.isJSON {
-                try printJSON(contact)
-            } else if output.isAgent {
-                try output.printAgent(contact)
-            } else {
-                printContactCard(contact)
-            }
+            return AgentResult(contact)
         }
     }
 
     // MARK: - Groups
 
-    public struct ListGroups: AsyncParsableCommand {
+    public struct ListGroups: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "groups",
             abstract: "List contact groups."
@@ -212,28 +177,16 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // listGroups reads the contact store (sync); hop off the pool.
             let groups = try await detachBlocking { try ContactsBridge.listGroups() }
-            if output.isJSON {
-                try printJSON(groups)
-            } else if output.isAgent {
-                try output.printAgent(groups)
-            } else {
-                if groups.isEmpty {
-                    print("No contact groups found.")
-                    return
-                }
-                for group in groups {
-                    print("\(group.name) (\(group.contactCount) contacts)")
-                }
-            }
+            return AgentResult(groups)
         }
     }
 
     // MARK: - Create
 
-    public struct CreateContact: AsyncParsableCommand {
+    public struct CreateContact: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "create",
             abstract: "Create a new contact."
@@ -261,7 +214,7 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             guard (first != nil && !(first!.isEmpty)) || (last != nil && !(last!.isEmpty)) else {
                 throw ValidationError("At least one of --first or --last is required.")
             }
@@ -282,23 +235,19 @@ public struct ContactsCommand: AsyncParsableCommand {
                     jobTitle: jobTitle
                 )
             }
-            if output.isJSON || output.isAgent {
-                try printAgentJSON(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Edit
 
-    public struct EditContact: AsyncParsableCommand {
+    public struct EditContact: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "edit",
             abstract: "Edit an existing contact by identifier."
         )
 
-        @Argument(help: "Contact identifier (from `pippin contacts show` or `list --format json`).")
+        @Argument(help: "Contact identifier (from `pippin contacts show` or `list`).")
         public var identifier: String
 
         @Option(name: .long, help: "New given (first) name.")
@@ -323,7 +272,7 @@ public struct ContactsCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let hasChanges = [first, last, email, phone, organization, jobTitle].contains { $0 != nil }
             guard hasChanges else {
                 throw ValidationError("At least one field to update is required.")
@@ -337,158 +286,38 @@ public struct ContactsCommand: AsyncParsableCommand {
                 organization: organization,
                 jobTitle: jobTitle
             )
-            if output.isJSON || output.isAgent {
-                try printAgentJSON(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Delete
 
-    public struct DeleteContact: AsyncParsableCommand {
+    public struct DeleteContact: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "delete",
             abstract: "Delete a contact by identifier."
         )
 
-        @Argument(help: "Contact identifier (from `pippin contacts show` or `list --format json`).")
+        @Argument(help: "Contact identifier (from `pippin contacts show` or `list`).")
         public var identifier: String
 
-        @Flag(name: .long, help: "Skip confirmation prompt.")
+        @Flag(name: .long, help: "Required: deletion cannot be undone.")
         public var force: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
-        public mutating func run() async throws {
-            if !force {
-                print("Delete contact \(identifier)? [y/N] ", terminator: "")
-                let response = readLine() ?? ""
-                guard response.lowercased() == "y" || response.lowercased() == "yes" else {
-                    print("Aborted.")
-                    return
-                }
-            }
-            let result = try ContactsBridge.deleteContact(identifier: identifier)
-            if output.isJSON || output.isAgent {
-                try printAgentJSON(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
+        public mutating func validate() throws {
+            // A stdin prompt would hang an agent, so refusal replaces it.
+            guard force else {
+                throw ValidationError("Deleting a contact cannot be undone. Pass --force to confirm.")
             }
         }
-    }
-}
 
-// MARK: - Shared helpers
-
-/// Mask an email address to avoid logging it in cleartext while retaining some identifiability.
-/// Examples:
-///   "alice@example.com" -> "a***@e*****.com"
-private func maskEmail(_ email: String) -> String {
-    let parts = email.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
-    guard parts.count == 2 else {
-        // Fallback: mask all but first and last character if not a standard email format.
-        guard email.count > 2 else { return String(repeating: "*", count: email.count) }
-        let first = email.first!
-        let last = email.last!
-        let maskedCount = email.count - 2
-        return "\(first)\(String(repeating: "*", count: maskedCount))\(last)"
+        public mutating func execute() async throws -> AgentResult {
+            let result = try ContactsBridge.deleteContact(identifier: identifier)
+            return AgentResult(result)
+        }
     }
-    let localPart = String(parts[0])
-    let domainPart = String(parts[1])
-
-    // Mask local part: keep first character if available.
-    let maskedLocal: String
-    if localPart.count <= 1 {
-        maskedLocal = String(repeating: "*", count: max(localPart.count, 1))
-    } else {
-        let first = localPart.first!
-        maskedLocal = "\(first)\(String(repeating: "*", count: localPart.count - 1))"
-    }
-
-    // Split domain into name and TLD, mask most of the name.
-    let domainComponents = domainPart.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-    guard domainComponents.count == 2 else {
-        // Non-standard domain, fully mask.
-        return "\(maskedLocal)@\(String(repeating: "*", count: max(domainPart.count, 1)))"
-    }
-    let domainName = String(domainComponents[0])
-    let tld = String(domainComponents[1])
-
-    let maskedDomainName: String
-    if domainName.count <= 1 {
-        maskedDomainName = String(repeating: "*", count: max(domainName.count, 1))
-    } else {
-        let first = domainName.first!
-        maskedDomainName = "\(first)\(String(repeating: "*", count: domainName.count - 1))"
-    }
-
-    return "\(maskedLocal)@\(maskedDomainName).\(tld)"
-}
-
-/// Mask a phone number to avoid logging it in cleartext, keeping only the last few digits.
-/// Examples:
-///   "+1 415 555 1234" -> "**********1234"
-private func maskPhone(_ phone: String) -> String {
-    // Remove whitespace to determine length, but preserve original non-space characters' count.
-    let digitsOnly = phone.filter { !$0.isWhitespace }
-    guard digitsOnly.count > 4 else {
-        return String(repeating: "*", count: digitsOnly.count)
-    }
-    let visibleCount = 4
-    let maskedCount = max(digitsOnly.count - visibleCount, 0)
-    let visibleSuffix = digitsOnly.suffix(visibleCount)
-    return String(repeating: "*", count: maskedCount) + String(visibleSuffix)
-}
-
-private func formatContactLine(_ contact: ContactInfo) -> String {
-    let name = contact.fullName.isEmpty ? "(no name)" : contact.fullName
-    let emailPart = contact.emails.first.map { " <\(maskEmail($0.value))>" } ?? ""
-    let phonePart = contact.phones.first.map { "  \(maskPhone($0.value))" } ?? ""
-    return "\(name)\(emailPart)\(phonePart)"
-}
-
-private func printContactCard(_ contact: ContactInfo) {
-    var cardFields: [(String, String)] = [
-        ("ID", contact.id),
-        ("Name", contact.fullName.isEmpty ? "(no name)" : contact.fullName),
-    ]
-    if !contact.givenName.isEmpty { cardFields.append(("Given Name", contact.givenName)) }
-    if !contact.familyName.isEmpty { cardFields.append(("Family Name", contact.familyName)) }
-    if let org = contact.organization { cardFields.append(("Organization", org)) }
-    if let title = contact.jobTitle { cardFields.append(("Job Title", title)) }
-    if let birthday = contact.birthday { cardFields.append(("Birthday", birthday)) }
-    if !contact.emails.isEmpty {
-        let emailStr: String = contact.emails.map { (lv: LabeledValue) -> String in
-            let labelPart: String = lv.label.map { "[\($0)] " } ?? ""
-            return labelPart + lv.value
-        }.joined(separator: "\n")
-        cardFields.append(("Emails", emailStr))
-    }
-    if !contact.phones.isEmpty {
-        let phoneStr: String = contact.phones.map { (lv: LabeledValue) -> String in
-            let labelPart: String = lv.label.map { "[\($0)] " } ?? ""
-            return labelPart + lv.value
-        }.joined(separator: "\n")
-        cardFields.append(("Phones", phoneStr))
-    }
-    if !contact.postalAddresses.isEmpty {
-        let addrStr: String = contact.postalAddresses.map { (addr: PostalAddress) -> String in
-            let parts = [addr.street, addr.city, addr.state, addr.postalCode, addr.country]
-                .filter { !$0.isEmpty }
-            let labelPart: String = addr.label.map { "[\($0)] " } ?? ""
-            return labelPart + parts.joined(separator: ", ")
-        }.joined(separator: "\n")
-        cardFields.append(("Addresses", addrStr))
-    }
-    if !contact.socialProfiles.isEmpty {
-        let socialStr: String = contact.socialProfiles.map { (sp: SocialProfile) -> String in
-            sp.service + ": " + sp.username
-        }.joined(separator: "\n")
-        cardFields.append(("Social", socialStr))
-    }
-    print(TextFormatter.card(fields: cardFields))
 }

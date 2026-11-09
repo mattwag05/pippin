@@ -87,7 +87,7 @@ final class ActionsCommandTests: XCTestCase {
             "--provider", "ollama",
             "--create",
             "--list", "Follow-ups",
-            "--format", "json",
+            "--format", "agent",
         ])
         XCTAssertEqual(cmd.days, 3)
         XCTAssertTrue(cmd.mail)

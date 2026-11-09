@@ -38,6 +38,29 @@ public enum RemindersBridgeError: LocalizedError, Sendable {
 }
 
 extension RemindersBridgeError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .accessDenied: return "access_denied"
+        case .reminderNotFound: return "reminder_not_found"
+        case .listNotFound: return "list_not_found"
+        case .saveFailed: return "save_failed"
+        case .ambiguousId: return "ambiguous_id"
+        case .noDefaultCalendar: return "no_default_calendar"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .accessDenied:
+            return .human("Run `pippin permissions` in a terminal and approve Reminders access.")
+        case .reminderNotFound, .ambiguousId:
+            return .call(tool: "reminders_list", argv: ["reminders", "list"])
+        case .listNotFound, .noDefaultCalendar:
+            return .call(tool: "reminders_lists", argv: ["reminders", "lists"])
+        case .saveFailed: return .none
+        }
+    }
+
     public var remediation: Remediation? {
         switch self {
         case .accessDenied:
@@ -66,6 +89,10 @@ public struct ReminderList: Codable, Sendable {
         self.account = account
         self.isDefault = isDefault
     }
+}
+
+extension ReminderItem: EssentialRow {
+    public static let essentialFields = ["id", "title", "dueDate", "isCompleted", "priority", "listTitle"]
 }
 
 public struct ReminderItem: Codable, Sendable {
@@ -108,25 +135,5 @@ public struct ReminderItem: Codable, Sendable {
         self.priority = priority
         self.creationDate = creationDate
         self.lastModifiedDate = lastModifiedDate
-    }
-}
-
-// MARK: - Field filtering
-
-public extension ReminderItem {
-    /// Encode only the specified fields to JSON. Pass nil to get all fields (standard encoding).
-    func jsonData(fields: [String]?) throws -> Data {
-        guard let fields else { return try JSONEncoder().encode(self) }
-        let projected = try FieldProjection.projectedObject(self, fields: fields)
-        return try JSONSerialization.data(withJSONObject: projected, options: .sortedKeys)
-    }
-}
-
-public extension Array where Element == ReminderItem {
-    /// Encode each reminder with only the specified fields. Pass nil to get all fields.
-    func jsonData(fields: [String]?) throws -> Data {
-        guard let fields else { return try JSONEncoder().encode(self) }
-        let projected = try FieldProjection.projectedObject(self, fields: fields)
-        return try JSONSerialization.data(withJSONObject: projected, options: .sortedKeys)
     }
 }

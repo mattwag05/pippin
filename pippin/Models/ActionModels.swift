@@ -49,3 +49,18 @@ public enum ActionExtractorError: LocalizedError, Sendable {
         }
     }
 }
+
+extension ActionExtractorError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .malformedAIResponse: return "malformed_ai_response"
+        case .noSourcesSelected: return "no_sources_selected"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .malformedAIResponse, .noSourcesSelected: return .none
+        }
+    }
+}

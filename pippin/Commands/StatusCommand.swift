@@ -91,7 +91,7 @@ public struct StatusReport: Codable, Sendable {
     }
 }
 
-public struct StatusCommand: AsyncParsableCommand {
+public struct StatusCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "status",
         abstract: "Show a system dashboard: accounts, events, reminders, permissions."
@@ -101,18 +101,17 @@ public struct StatusCommand: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         // MCP caps the whole dashboard at 50s (under the 60s runChild cap) so a
         // slow section yields partial results instead of a SIGKILL; CLI is
         // unbounded. See pippin-0nk.
         let budgetMs = BatchBudget.forCurrentContext().softTimeoutMs
         let report = await detachBlocking { buildStatusReport(budgetMs: budgetMs) }
 
-        try output.emit(
+        return .emit(
             report,
             timedOut: report.timedOut,
-            timedOutHint: "status exceeded its \(budgetMs)ms budget; some sections were skipped",
-            renderText: { printTextReport(report) }
+            timedOutHint: "status exceeded its \(budgetMs)ms budget; some sections were skipped"
         )
     }
 }
@@ -316,73 +315,4 @@ private func gatherPermissions() -> [StatusReport.PermissionEntry] {
     entries.append(StatusReport.PermissionEntry(name: "Notes", granted: notesOK))
 
     return entries
-}
-
-// MARK: - Text Output
-
-private func printTextReport(_ report: StatusReport) {
-    print("pippin \(report.version) — status\n")
-
-    // Mail
-    if let mail = report.mail {
-        print("Mail")
-        if mail.accounts.isEmpty {
-            print("  No accounts configured")
-        } else {
-            for acct in mail.accounts {
-                print("  \(acct.name) (\(acct.email)) — \(acct.mailboxCount) mailboxes")
-            }
-        }
-        print()
-    }
-
-    // Calendar
-    if let cal = report.calendar {
-        print("Calendar")
-        print("  \(cal.calendarCount) calendars, \(cal.eventsToday) events today (\(cal.eventsRemaining) remaining)")
-        print()
-    }
-
-    // Reminders
-    if let rem = report.reminders {
-        print("Reminders")
-        var line = "  \(rem.listCount) lists, \(rem.incomplete) incomplete"
-        if rem.overdueCount > 0 {
-            line += " (\(rem.overdueCount) overdue)"
-        }
-        print(line)
-        print()
-    }
-
-    // Voice Memos
-    if let memos = report.memos {
-        print("Voice Memos")
-        print("  \(memos.recordingCount) recordings")
-        print()
-    }
-
-    // Notes
-    if let notes = report.notes {
-        print("Notes")
-        var line = "  \(notes.noteCount) notes in \(notes.folderCount) folders"
-        if notes.timedOut {
-            line += " (partial — Notes scan timed out)"
-        }
-        print(line)
-        print()
-    }
-
-    // Contacts
-    if let contacts = report.contacts {
-        print("Contacts")
-        print("  \(contacts.contactCount) contacts")
-        print()
-    }
-
-    // Permissions
-    print("Permissions")
-    for perm in report.permissions {
-        let icon = perm.granted ? "✓" : "✗"
-        print("  \(icon) \(perm.name)")
-    }
 }

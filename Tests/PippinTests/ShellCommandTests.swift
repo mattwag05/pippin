@@ -10,8 +10,8 @@ final class ShellCommandTests: XCTestCase {
 
     func testShellSplitWithFlags() {
         XCTAssertEqual(
-            shellSplit("mail list --account Work --format json"),
-            ["mail", "list", "--account", "Work", "--format", "json"]
+            shellSplit("mail list --account Work --format agent"),
+            ["mail", "list", "--account", "Work", "--format", "agent"]
         )
     }
 
@@ -46,8 +46,8 @@ final class ShellCommandTests: XCTestCase {
 
     func testShellSplitEqualsFlag() {
         XCTAssertEqual(
-            shellSplit("mail list --format=json"),
-            ["mail", "list", "--format=json"]
+            shellSplit("mail list --format=agent"),
+            ["mail", "list", "--format=agent"]
         )
     }
 
@@ -64,17 +64,10 @@ final class ShellCommandTests: XCTestCase {
 
     func testShellCommandParses() throws {
         // Verify the command can be created with no arguments
-        let command = try ShellCommand.parse([])
-        XCTAssertNil(command.format)
+        XCTAssertNoThrow(try ShellCommand.parse([]))
     }
 
-    func testShellCommandParsesWithFormat() throws {
-        let command = try ShellCommand.parse(["--format", "json"])
-        XCTAssertEqual(command.format, .json)
-    }
-
-    func testShellCommandParsesAgentFormat() throws {
-        let command = try ShellCommand.parse(["--format", "agent"])
-        XCTAssertEqual(command.format, .agent)
+    func testShellCommandRejectsFormatFlag() {
+        XCTAssertThrowsError(try ShellCommand.parse(["--format", "agent"]))
     }
 }

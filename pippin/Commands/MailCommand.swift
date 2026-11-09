@@ -45,34 +45,9 @@ public struct MailCommand: AsyncParsableCommand {
         return " Configured accounts: \(names.joined(separator: ", "))."
     }
 
-    /// Text-mode card fields for `mail show` (shared by the plain, --summarize,
-    /// and --sanitize renderings, which differ only in the body they display).
-    static func showCardFields(_ message: MailMessage, body: String) -> [(String, String)] {
-        var fields: [(String, String)] = [
-            ("From", message.from),
-            ("To", message.to.joined(separator: ", ")),
-            ("Received", TextFormatter.compactDate(message.operationalDate)),
-            ("Subject", message.subject),
-            ("Mailbox", "\(message.account) / \(message.mailbox)"),
-        ]
-        if let size = message.size {
-            fields.append(("Size", TextFormatter.fileSize(size)))
-        }
-        if let atts = message.attachments, !atts.isEmpty {
-            let attStr = atts.map { "\($0.name) (\($0.mimeType), \(TextFormatter.fileSize($0.size)))" }
-                .joined(separator: "\n")
-            fields.append(("Attachments", attStr))
-        }
-        if let anomalies = message.headerAnomalies {
-            fields.append(("⚠ Anomalies", anomalies.joined(separator: "\n")))
-        }
-        fields.append(("Body", body))
-        return fields
-    }
-
     // MARK: - Accounts
 
-    public struct Accounts: AsyncParsableCommand {
+    public struct Accounts: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "accounts",
             abstract: "List configured Mail accounts."
@@ -82,23 +57,16 @@ public struct MailCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // listAccounts spawns a blocking osascript subprocess; hop off the pool.
             let accounts = try await detachBlocking { try MailBridge.listAccounts() }
-            if output.isJSON {
-                try printJSON(accounts)
-            } else if output.isAgent {
-                try output.printAgent(accounts)
-            } else {
-                let rows = accounts.map { [$0.name, $0.email] }
-                print(TextFormatter.table(headers: ["NAME", "EMAIL"], rows: rows, columnWidths: [25, 50]))
-            }
+            return AgentResult(accounts)
         }
     }
 
     // MARK: - Mailboxes
 
-    public struct Mailboxes: AsyncParsableCommand {
+    public struct Mailboxes: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "mailboxes",
             abstract: "List mailboxes per account."
@@ -111,35 +79,17 @@ public struct MailCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let account = self.account
             // listMailboxes may spawn a blocking osascript subprocess; hop off the pool.
             let outcome = try await detachBlocking { try MailBridge.listMailboxes(account: account) }
-            let mailboxes = outcome.mailboxes
-            if output.isJSON {
-                if let note = outcome.fastPathNote {
-                    FileHandle.standardError.write(Data("Warning: \(note)\n".utf8))
-                }
-                try printJSON(mailboxes)
-            } else if output.isAgent {
-                try output.printAgent(mailboxes, warnings: outcome.fastPathNote.map { [$0] })
-            } else {
-                if let note = outcome.fastPathNote {
-                    FileHandle.standardError.write(Data("Warning: \(note)\n".utf8))
-                }
-                let rows = mailboxes.map { [$0.account, $0.name, "\($0.messageCount)", "\($0.unreadCount)"] }
-                print(TextFormatter.table(
-                    headers: ["ACCOUNT", "MAILBOX", "MESSAGES", "UNREAD"],
-                    rows: rows,
-                    columnWidths: [20, 25, 10, 8]
-                ))
-            }
+            return AgentResult(outcome.mailboxes, warnings: outcome.fastPathNote.map { [$0] })
         }
     }
 
     // MARK: - Search
 
-    public struct Search: AsyncParsableCommand {
+    public struct Search: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
             abstract: "Search messages by subject or sender. Use --from for sender-only searches; use --body only for slower body-content scans."
@@ -220,10 +170,9 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             if pagination.isActive {
-                try await runPaginated()
-                return
+                return try await runPaginated()
             }
             if semantic {
                 let embedProvider = try AIProviderFactory.makeEmbeddingProvider(
@@ -240,14 +189,7 @@ public struct MailCommand: AsyncParsableCommand {
                     )
                 }
 
-                if output.isJSON {
-                    try printJSON(messages)
-                } else if output.isAgent {
-                    try output.printAgent(messages)
-                } else {
-                    printMessageTable(messages)
-                }
-                return
+                return AgentResult(messages)
             }
 
             let query = self.query
@@ -290,39 +232,32 @@ public struct MailCommand: AsyncParsableCommand {
                 timedOut = timedOut || attached.timedOut
             }
             try MailBridge.requireCompleteSearch(resultCount: messages.count, timedOut: timedOut)
-            try await emitMessages(messages, timedOut: timedOut, fastPathNote: outcome.fastPathNote)
+            return try await emitMessages(messages, timedOut: timedOut, fastPathNote: outcome.fastPathNote)
         }
 
         static var timedOutHint: String {
             "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results" + MailCommand.accountNamesSuffix()
         }
 
-        private func emitMessages(_ messages: [MailMessage], timedOut: Bool, fastPathNote: String? = nil) async throws {
+        private func emitMessages(_ messages: [MailMessage], timedOut: Bool, fastPathNote: String? = nil) async throws -> AgentResult {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
-            try output.emit(
+            return .emit(
                 messages, timedOut: timedOut, timedOutHint: Self.timedOutHint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }
-            ) {
-                printMessageTable(messages)
-            }
+            )
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws {
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws -> AgentResult {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
-            try output.emitPage(
+            return .emitPage(
                 page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }
-            ) {
-                printMessageTable(page.items)
-                if let cursor = page.nextCursor {
-                    print("(more — re-run with --cursor \(cursor))")
-                }
-            }
+            )
         }
 
-        private func runPaginated() async throws {
+        private func runPaginated() async throws -> AgentResult {
             let hash = Pagination.filterHash([
                 "query": query,
                 "account": account,
@@ -401,13 +336,13 @@ public struct MailCommand: AsyncParsableCommand {
                 )
             }
             try MailBridge.requireCompleteSearch(resultCount: page.items.count, timedOut: paginatedTimedOut)
-            try await emitPage(page, timedOut: paginatedTimedOut, fastPathNote: paginatedFastPathNote)
+            return try await emitPage(page, timedOut: paginatedTimedOut, fastPathNote: paginatedFastPathNote)
         }
     }
 
     // MARK: - List
 
-    public struct List: AsyncParsableCommand {
+    public struct List: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List messages. Defaults to INBOX, all messages, limit 20."
@@ -482,10 +417,9 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             if pagination.isActive {
-                try await runPaginated()
-                return
+                return try await runPaginated()
             }
             let limit = self.limit
             let outcome = try await fetchList(limit: limit, offset: 0)
@@ -504,7 +438,7 @@ public struct MailCommand: AsyncParsableCommand {
 
                 if triageMap.count < messages.count {
                     let missing = messages.count - triageMap.count
-                    fputs("Warning: AI summary unavailable for \(missing) message(s). Use --format json for details.\n", stderr)
+                    fputs("Warning: AI summary unavailable for \(missing) message(s).\n", stderr)
                 }
 
                 struct MessageWithSummary: Codable {
@@ -513,25 +447,9 @@ public struct MailCommand: AsyncParsableCommand {
                 }
                 let withSummaries = messages.map { MessageWithSummary(message: $0, summary: triageMap[$0.id] ?? "(summary unavailable)") }
 
-                try output.emit(withSummaries, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields)) {
-                    let rows = messages.map { msg in
-                        [
-                            TextFormatter.truncate(msg.id, to: 8),
-                            TextFormatter.compactDate(msg.operationalDate),
-                            TextFormatter.truncate(msg.from, to: 18),
-                            TextFormatter.truncate(msg.subject, to: 24),
-                            msg.read ? "Y" : "N",
-                            TextFormatter.truncate(triageMap[msg.id] ?? "(summary unavailable)", to: 40),
-                        ]
-                    }
-                    print(TextFormatter.table(
-                        headers: ["ID", "DATE", "FROM", "SUBJECT", "READ", "SUMMARY"],
-                        rows: rows,
-                        columnWidths: [10, 18, 20, 26, 4, 42]
-                    ))
-                }
+                return .emit(withSummaries, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
             } else {
-                try await emitMessages(
+                return try await emitMessages(
                     messages, timedOut: outcome.timedOut, windowHint: outcome.windowHint,
                     fastPathNote: outcome.fastPathNote
                 )
@@ -552,33 +470,26 @@ public struct MailCommand: AsyncParsableCommand {
 
         private func emitMessages(
             _ messages: [MailMessage], timedOut: Bool, windowHint: String? = nil, fastPathNote: String? = nil
-        ) async throws {
+        ) async throws -> AgentResult {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
             let (warn, hint) = warning(timedOut: timedOut, windowHint: windowHint)
-            try output.emit(
+            return .emit(
                 messages, timedOut: warn, timedOutHint: hint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }
-            ) {
-                printMessageTable(messages)
-            }
+            )
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws {
+        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws -> AgentResult {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
-            try output.emitPage(
+            return .emitPage(
                 page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
                 fields: FieldProjection.parse(output.fields),
                 extraWarnings: [fastPathNote].compactMap { $0 }
-            ) {
-                printMessageTable(page.items)
-                if let cursor = page.nextCursor {
-                    print("(more — re-run with --cursor \(cursor))")
-                }
-            }
+            )
         }
 
-        private func runPaginated() async throws {
+        private func runPaginated() async throws -> AgentResult {
             let hash = Pagination.filterHash([
                 "account": account,
                 "mailbox": mailbox,
@@ -594,7 +505,7 @@ public struct MailCommand: AsyncParsableCommand {
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
             )
-            try await emitPage(page, timedOut: outcome.timedOut, fastPathNote: outcome.fastPathNote)
+            return try await emitPage(page, timedOut: outcome.timedOut, fastPathNote: outcome.fastPathNote)
         }
 
         /// Fetch a list page, routing `--preview N` through the body cache
@@ -630,7 +541,7 @@ public struct MailCommand: AsyncParsableCommand {
 
     // MARK: - Show (formerly Read)
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show one or more messages by compound id, or one by subject search.",
@@ -691,10 +602,9 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             if messageIds.count > 1 {
-                try await runBatch(compoundIds: messageIds)
-                return
+                return try await runBatch(compoundIds: messageIds)
             }
             let compoundId: String
             if let subject = subject {
@@ -720,22 +630,11 @@ public struct MailCommand: AsyncParsableCommand {
                 )
                 let summary = try TriageEngine.summarizeMessage(message: message, provider: summaryProvider)
 
-                if output.isJSON || output.isAgent {
-                    struct ShowWithSummary: Codable {
-                        let message: MailMessage
-                        let summary: String
-                    }
-                    let combined = ShowWithSummary(message: message, summary: summary)
-                    if output.isJSON {
-                        try printJSON(combined)
-                    } else {
-                        try output.printAgent(combined)
-                    }
-                } else {
-                    print(TextFormatter.card(fields: MailCommand.showCardFields(message, body: message.body ?? "(no body)")))
-                    print("")
-                    print("Summary: \(summary)")
+                struct ShowWithSummary: Codable {
+                    let message: MailMessage
+                    let summary: String
                 }
+                return AgentResult(ShowWithSummary(message: message, summary: summary))
             } else if sanitize {
                 let body = message.body ?? ""
                 let scanResult: ScanResult
@@ -753,63 +652,29 @@ public struct MailCommand: AsyncParsableCommand {
                     scanResult = PromptInjectionScanner.scan(text: body)
                 }
 
-                if output.isJSON || output.isAgent {
-                    struct ShowWithScan: Codable {
-                        let message: MailMessage
-                        let scan: ScanResult
-                    }
-                    let combined = ShowWithScan(message: message, scan: scanResult)
-                    if output.isJSON {
-                        try printJSON(combined)
-                    } else {
-                        try output.printAgent(combined)
-                    }
-                } else {
-                    print(TextFormatter.card(fields: MailCommand.showCardFields(
-                        message, body: scanResult.sanitizedBody.isEmpty ? "(no body)" : scanResult.sanitizedBody
-                    )))
-                    print("")
-                    print("Risk level: \(scanResult.riskLevel.rawValue.uppercased())")
-                    print("Threats found: \(scanResult.threats.count)")
-                    if !scanResult.threats.isEmpty {
-                        for threat in scanResult.threats {
-                            print("  [\(threat.category.rawValue)] confidence=\(String(format: "%.2f", threat.confidence)): \(threat.matchedText)")
-                        }
-                    }
+                struct ShowWithScan: Codable {
+                    let message: MailMessage
+                    let scan: ScanResult
                 }
+                return AgentResult(ShowWithScan(message: message, scan: scanResult))
             } else {
-                if output.isJSON {
-                    try printJSON(message)
-                } else if output.isAgent {
-                    try output.printAgent(message)
-                } else {
-                    print(TextFormatter.card(fields: MailCommand.showCardFields(message, body: message.body ?? "(no body)")))
-                }
+                return AgentResult(message)
             }
         }
 
         /// 2+ ids: one batched Mail pass for cache misses (`readMessages`), then
         /// emit an array. Single-id calls keep the original single-object shape.
-        private func runBatch(compoundIds: [String]) async throws {
+        private func runBatch(compoundIds: [String]) async throws -> AgentResult {
             let useCache = noCache ? nil : MailBodyCache.shared
             let fetched = try await detachBlocking { try MailBridge.readMessages(compoundIds: compoundIds, cache: useCache) }
             let messages = await MailCommand.enrichContacts(fetched, options: contactResolution)
-            if output.isJSON {
-                try printJSON(messages)
-            } else if output.isAgent {
-                try output.printAgent(messages)
-            } else {
-                for (i, message) in messages.enumerated() {
-                    if i > 0 { print("") }
-                    print(TextFormatter.card(fields: MailCommand.showCardFields(message, body: message.body ?? "(no body)")))
-                }
-            }
+            return AgentResult(messages, untrimmed: true) // `show` asks for whole messages.
         }
     }
 
     // MARK: - Verify (pippin-ml9)
 
-    public struct Verify: AsyncParsableCommand {
+    public struct Verify: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "verify",
             abstract: "Inspect a message's headers against the sender's historical baseline (phishing check)."
@@ -848,7 +713,7 @@ public struct MailCommand: AsyncParsableCommand {
             let verdict: String
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let id = messageId
             let useCache = noCache ? nil : MailBodyCache.shared
             // readMessage spawns a blocking osascript subprocess; hop off the
@@ -900,46 +765,13 @@ public struct MailCommand: AsyncParsableCommand {
                 anomalies: anomalies.isEmpty ? nil : anomalies, authChain: authChain, verdict: verdict
             )
 
-            if output.isJSON {
-                try printJSON(report)
-            } else if output.isAgent {
-                try output.printAgent(report)
-            } else {
-                print("From:    \(report.from)")
-                print("Subject: \(report.subject)")
-                print("Date:    \(report.date)")
-                print("")
-                for dim in report.dimensions {
-                    let priorText = dim.prior.isEmpty
-                        ? "no history"
-                        : dim.prior.sorted(by: { $0.value > $1.value }).map { "\($0.key) ×\($0.value)" }.joined(separator: ", ")
-                    print("\(dim.deviation ? "⚠️" : "  ") \(dim.name): \(dim.current)  (prior: \(priorText))")
-                }
-                print("")
-                if let chain = report.authChain {
-                    print("Auth chain (raw source): \(chain.received.count) Received hop(s), \(chain.authenticationResults.count) Authentication-Results, \(chain.arcSeals.count) ARC seal(s), \(chain.dkimSignatures.count) DKIM signature(s)")
-                    for auth in chain.authenticationResults + chain.arcAuthenticationResults {
-                        print("  \(auth)")
-                    }
-                    print("")
-                } else {
-                    print("Auth chain: unavailable (raw source could not be fetched)")
-                    print("")
-                }
-                if let anomalies = report.anomalies {
-                    for warning in anomalies {
-                        print("⚠️  \(warning)")
-                    }
-                    print("")
-                }
-                print(report.verdict)
-            }
+            return AgentResult(report)
         }
     }
 
     // MARK: - Read (hidden alias for backward compat)
 
-    public struct Read: AsyncParsableCommand {
+    public struct Read: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "read",
             abstract: "Read a message (use 'show' instead).",
@@ -953,17 +785,17 @@ public struct MailCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             var show = Show()
             show.messageIds = [messageId]
             show.output = output
-            try await show.run()
+            return try await show.execute()
         }
     }
 
     // MARK: - Mark
 
-    public struct Mark: AsyncParsableCommand {
+    public struct Mark: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "mark",
             abstract: "Mark a message as read or unread."
@@ -991,25 +823,19 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.markMessage(
                 compoundId: messageId,
                 read: read,
                 dryRun: dryRun
             )
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Move
 
-    public struct Move: AsyncParsableCommand {
+    public struct Move: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "move",
             abstract: "Move a message to another mailbox."
@@ -1028,25 +854,19 @@ public struct MailCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.moveMessage(
                 compoundId: messageId,
                 toMailbox: to,
                 dryRun: dryRun
             )
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Send
 
-    public struct Send: AsyncParsableCommand {
+    public struct Send: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "send",
             abstract: "Send an email message."
@@ -1073,8 +893,11 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("attach"), parsing: .unconditionalSingleValue, help: "Path to file to attach (repeatable).")
         public var attach: [String] = []
 
-        @Flag(name: .long, help: "Print what would happen without sending.")
+        @Flag(name: .long, help: "Preview without sending (the default unless --confirm is passed).")
         public var dryRun: Bool = false
+
+        @Flag(name: .long, help: "Actually send. Without this the command only previews.")
+        public var confirm: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
@@ -1090,7 +913,7 @@ public struct MailCommand: AsyncParsableCommand {
             try validateAttachmentPaths(attach)
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.sendMessage(
                 to: to,
                 subject: subject,
@@ -1099,21 +922,15 @@ public struct MailCommand: AsyncParsableCommand {
                 bcc: bcc,
                 from: from,
                 attachmentPaths: attach,
-                dryRun: dryRun
+                dryRun: dryRun || !confirm
             )
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Attachments
 
-    public struct Attachments: AsyncParsableCommand {
+    public struct Attachments: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "attachments",
             abstract: "List (and optionally save) attachments from a message."
@@ -1147,7 +964,7 @@ public struct MailCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // Resolve here, not in validate(): ArgumentParser may invoke validate() more
             // than once, and mutating saveDir there makes the mutual-exclusion check false-fire.
             let effectiveSaveDir = try saveToCache
@@ -1156,23 +973,7 @@ public struct MailCommand: AsyncParsableCommand {
             let msgId = messageId
             // listAttachments spawns a blocking osascript subprocess; hop off the pool.
             let attachments = try await detachBlocking { try MailBridge.listAttachments(compoundId: msgId, saveDir: effectiveSaveDir) }
-            if output.isJSON {
-                try printJSON(attachments)
-            } else if output.isAgent {
-                try output.printAgent(attachments)
-            } else if attachments.isEmpty {
-                print("No attachments.")
-            } else {
-                let rows = attachments.map { att -> [String] in
-                    let saved = att.savedPath.map { "  → \($0)" } ?? ""
-                    return [att.name, att.mimeType, TextFormatter.fileSize(att.size), saved]
-                }
-                print(TextFormatter.table(
-                    headers: ["NAME", "TYPE", "SIZE", "SAVED"],
-                    rows: rows,
-                    columnWidths: [30, 25, 10, 40]
-                ))
-            }
+            return AgentResult(attachments)
         }
 
         /// Per-message cache dir; sanitizes shell/path-hostile chars so Gmail `[Gmail]`
@@ -1199,7 +1000,7 @@ public struct MailCommand: AsyncParsableCommand {
 
     // MARK: - Reply
 
-    public struct Reply: AsyncParsableCommand {
+    public struct Reply: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "reply",
             abstract: "Reply to a message."
@@ -1226,8 +1027,11 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("attach"), parsing: .unconditionalSingleValue, help: "Path to file to attach (repeatable).")
         public var attach: [String] = []
 
-        @Flag(name: .long, help: "Print what would happen without sending.")
+        @Flag(name: .long, help: "Preview without sending (the default unless --confirm is passed).")
         public var dryRun: Bool = false
+
+        @Flag(name: .long, help: "Actually send. Without this the command only previews.")
+        public var confirm: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
@@ -1240,7 +1044,7 @@ public struct MailCommand: AsyncParsableCommand {
             try validateAttachmentPaths(attach)
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.replyToMessage(
                 compoundId: messageId,
                 body: body,
@@ -1249,21 +1053,15 @@ public struct MailCommand: AsyncParsableCommand {
                 bcc: bcc,
                 from: from,
                 attachmentPaths: attach,
-                dryRun: dryRun
+                dryRun: dryRun || !confirm
             )
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Forward
 
-    public struct Forward: AsyncParsableCommand {
+    public struct Forward: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "forward",
             abstract: "Forward a message."
@@ -1290,8 +1088,11 @@ public struct MailCommand: AsyncParsableCommand {
         @Option(name: .customLong("attach"), parsing: .unconditionalSingleValue, help: "Path to file to attach (repeatable).")
         public var attach: [String] = []
 
-        @Flag(name: .long, help: "Print what would happen without sending.")
+        @Flag(name: .long, help: "Preview without sending (the default unless --confirm is passed).")
         public var dryRun: Bool = false
+
+        @Flag(name: .long, help: "Actually send. Without this the command only previews.")
+        public var confirm: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
@@ -1307,7 +1108,7 @@ public struct MailCommand: AsyncParsableCommand {
             try validateAttachmentPaths(attach)
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.forwardMessage(
                 compoundId: messageId,
                 to: to,
@@ -1316,15 +1117,9 @@ public struct MailCommand: AsyncParsableCommand {
                 bcc: bcc,
                 from: from,
                 attachmentPaths: attach,
-                dryRun: dryRun
+                dryRun: dryRun || !confirm
             )
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 }
@@ -1358,24 +1153,4 @@ private func validateAttachmentPaths(_ paths: [String]) throws {
             throw ValidationError("Attachment file not found: \(filename)")
         }
     }
-}
-
-func printMessageTable(_ messages: [MailMessage]) {
-    let rows = messages.map { msg in
-        [
-            TextFormatter.truncate(msg.id, to: 8),
-            TextFormatter.compactDate(msg.operationalDate),
-            TextFormatter.truncate(msg.from, to: 18),
-            // ⚠ = header anomalies known from cached headers (pippin-fwa)
-            TextFormatter.truncate((msg.headerAnomalies != nil ? "⚠ " : "") + msg.subject, to: 24),
-            msg.read ? "Y" : "N",
-            msg.hasAttachment == true ? "A" : " ",
-            msg.size.map { TextFormatter.fileSize($0) } ?? "",
-        ]
-    }
-    print(TextFormatter.table(
-        headers: ["ID", "DATE", "FROM", "SUBJECT", "READ", "ATT", "SIZE"],
-        rows: rows,
-        columnWidths: [10, 18, 20, 26, 4, 3, 8]
-    ))
 }

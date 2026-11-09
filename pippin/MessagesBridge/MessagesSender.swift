@@ -11,7 +11,7 @@ public enum MessagesSendError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .timeout:
-            return "Messages send timed out."
+            return "The send timed out and may or may not have been delivered. Check the conversation before sending again."
         case let .scriptFailed(msg):
             return "Messages send failed: \(msg)"
         case let .phiFiltered(cats):
@@ -27,6 +27,32 @@ public enum MessagesSendError: LocalizedError, Sendable {
 }
 
 extension MessagesSendError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        // Not `timeout`: that code is retryable, and a retry here could deliver twice.
+        case .timeout: return "send_outcome_unknown"
+        case .scriptFailed: return "script_failed"
+        case .phiFiltered: return "phi_filtered"
+        case .recipientNotAllowed: return "recipient_not_allowed"
+        case .autonomousNotAuthorized: return "autonomous_not_authorized"
+        case .accessDenied: return "access_denied"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .timeout: return .call(tool: "messages_list", argv: ["messages", "list"])
+        case .scriptFailed: return .call(tool: "doctor", argv: ["doctor"])
+        case .phiFiltered: return .none
+        case .recipientNotAllowed:
+            return .human("Add this recipient to messages.autonomousAllowlist in pippin's config if autonomous sends to it are intended.")
+        case .autonomousNotAuthorized:
+            return .human("Set PIPPIN_AUTONOMOUS_MESSAGES=1 in the environment that runs pippin if autonomous sending is intended.")
+        case .accessDenied:
+            return .human("Enable Automation control of Messages for pippin in System Settings > Privacy & Security > Automation, or approve the prompt during an autonomous send from an interactive terminal.")
+        }
+    }
+
     public var remediation: Remediation? {
         switch self {
         case .accessDenied: return .automationAccess(app: "Messages", trigger: "pippin messages send")
@@ -57,10 +83,11 @@ public enum MessagesSender {
         body: String,
         timeoutSeconds: Int = 15,
         runner: @Sendable (String, Int) throws -> String = { script, timeout in
+            // No appName: the relaunch-and-retry would re-run a send that may
+            // already have gone out.
             try ScriptRunner.run(
                 script,
                 timeoutSeconds: timeout,
-                appName: "Messages",
                 automationBundleID: "com.apple.MobileSMS"
             )
         }

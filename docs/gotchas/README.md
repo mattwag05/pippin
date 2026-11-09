@@ -5,6 +5,7 @@ Hard-won patterns and traps. Keep CLAUDE.md focused on architecture and pointers
 | File | Load when |
 |------|-----------|
 | [jxa.md](jxa.md) | Editing any `*Bridge/` directory — Mail, Notes, Reminders, Calendar, Audio, Contacts, Browser. JXA + EventKit + IMAP traps. |
+| [envelope-index.md](envelope-index.md) | Mail list/search speed, the Envelope Index fast path, or Pippin's own `mail-meta.db` store. |
 | [swift.md](swift.md) | Editing `pippin/Commands/`, adding subcommands, touching Swift 6 concurrency, or changing `OutputOptions`/agent JSON. |
 | [build.md](build.md) | CI failing, `swiftformat` misbehaving, `swift test` won't resolve, juggling worktrees. |
 | [mcp.md](mcp.md) | Editing `pippin/MCP/` or `McpServerCommand.swift`. For usage/wiring, see [../mcp-server.md](../mcp-server.md). |

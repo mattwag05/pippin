@@ -62,10 +62,6 @@ final class MailActivityTests: XCTestCase {
         XCTAssertEqual(MailCommand.Activity.parseMailboxList(cmd.mailboxes), ["INBOX", "Drafts", "Sent"])
     }
 
-    func testActivityAcceptsJsonFormat() {
-        XCTAssertNoThrow(try MailCommand.Activity.parse(["--format", "json"]))
-    }
-
     func testActivityAcceptsAgentFormat() {
         XCTAssertNoThrow(try MailCommand.Activity.parse(["--format", "agent"]))
     }
@@ -149,8 +145,8 @@ final class MailActivityTests: XCTestCase {
         let script = MailBridge.buildActivityScript(
             account: nil, mailboxes: ["INBOX"], since: nil, limit: 7, preview: nil
         )
-        XCTAssertTrue(script.contains("results.sort"), "final sort must be emitted")
-        XCTAssertTrue(script.contains("results.slice(0, limit)"), "final truncate must be emitted")
+        XCTAssertTrue(script.contains("candidates.sort(newestFirstThenRowId)"), "candidates must be sorted before per-message reads")
+        XCTAssertTrue(script.contains("results.length < limit"), "per-message reads must stop once the page is full")
         XCTAssertTrue(script.contains("var limit = 7;"))
     }
 

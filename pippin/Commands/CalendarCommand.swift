@@ -20,24 +20,17 @@ public struct CalendarCommand: AsyncParsableCommand {
     /// every event-listing subcommand so the wording stays consistent. (pippin-mgg)
     static let timedOutHint = "calendar fetch did not complete within 15s — returning partial results; narrow the window with --from/--to (or --range) for a complete, faster fetch"
 
-    /// Write the soft-timeout warning to stderr for non-agent output. Agent mode
-    /// carries it in the envelope `warnings` array instead (see `timedOutWarnings`),
-    /// so a stderr line would be double-noise for MCP clients (which capture child
-    /// stderr). No-op unless `timedOut`.
-    static func warnTimedOut(_ output: OutputOptions, timedOut: Bool) {
-        guard timedOut, !output.isAgent else { return }
-        FileHandle.standardError.write(Data("Warning: \(timedOutHint)\n".utf8))
-    }
-
-    /// The `warnings` array to thread into an agent-mode `printAgent` call when a
-    /// fetch returned partial results; `nil` (omitted) otherwise.
+    /// The `warnings` array to thread into an `AgentResult` when a fetch
+    /// returned partial results; `nil` (omitted) otherwise. The envelope is the
+    /// only place the advisory goes: a stderr line would be double-noise for MCP
+    /// clients, which capture child stderr.
     static func timedOutWarnings(_ timedOut: Bool) -> [String]? {
         timedOut ? [timedOutHint] : nil
     }
 
     // MARK: - List (calendars)
 
-    public struct ListCalendars: AsyncParsableCommand {
+    public struct ListCalendars: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List calendars."
@@ -50,35 +43,20 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = CalendarBridge()
             var calendars = try await bridge.listCalendars()
             if let typeFilter = type {
                 let allowedTypes = typeFilter.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
                 calendars = calendars.filter { allowedTypes.contains($0.type.lowercased()) }
             }
-            if output.isJSON {
-                try printJSON(calendars)
-            } else if output.isAgent {
-                try output.printAgent(calendars)
-            } else {
-                if calendars.isEmpty {
-                    print("No calendars found.")
-                    return
-                }
-                let rows = calendars.map { [$0.title, $0.type, $0.account, $0.color] }
-                print(TextFormatter.table(
-                    headers: ["NAME", "TYPE", "ACCOUNT", "COLOR"],
-                    rows: rows,
-                    columnWidths: [25, 12, 25, 8]
-                ))
-            }
+            return AgentResult(calendars)
         }
     }
 
     // MARK: - Events
 
-    public struct Events: AsyncParsableCommand {
+    public struct Events: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "events",
             abstract: "List calendar events. Defaults to today."
@@ -129,7 +107,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let startDate: Date
             let endDate: Date
             if let range, let (rangeStart, rangeEnd) = parseRange(range) {
@@ -156,7 +134,6 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
             let listOutcome = try await bridge.listEvents(from: startDate, to: endDate, calendarId: calendarId)
             var events = listOutcome.results
-            CalendarCommand.warnTimedOut(output, timedOut: listOutcome.timedOut)
 
             if let typeFilter = type {
                 let allowedTypes = typeFilter.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
@@ -182,44 +159,20 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: events, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                if output.isJSON {
-                    let fieldList = FieldProjection.parse(output.fields)
-                    let itemsData = try page.items.jsonData(fields: fieldList)
-                    let itemsJSON = try JSONSerialization.jsonObject(with: itemsData)
-                    var dict: [String: Any] = ["items": itemsJSON]
-                    if let cursor = page.nextCursor { dict["next_cursor"] = cursor }
-                    let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
-                    print(String(data: out, encoding: .utf8)!)
-                } else if output.isAgent {
-                    try output.printAgentPage(page, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
-                } else {
-                    printEventsTable(page.items)
-                    if let cursor = page.nextCursor {
-                        print("(more — re-run with --cursor \(cursor))")
-                    }
-                }
-                return
+                return .page(page, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
             }
 
             if events.count > limit {
                 events = Array(events.prefix(limit))
             }
 
-            if output.isJSON {
-                let fieldList = FieldProjection.parse(output.fields)
-                let data = try events.jsonData(fields: fieldList)
-                print(String(data: data, encoding: .utf8)!)
-            } else if output.isAgent {
-                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
-            } else {
-                printEventsTable(events)
-            }
+            return AgentResult(events, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - Show
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Show full details for a single event by ID."
@@ -232,22 +185,16 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = CalendarBridge()
             let event = try await bridge.getEvent(id: id)
-            if output.isJSON {
-                try printJSON(event)
-            } else if output.isAgent {
-                try output.printAgent(event)
-            } else {
-                printEventCard(event)
-            }
+            return AgentResult(event)
         }
     }
 
     // MARK: - Create
 
-    public struct Create: AsyncParsableCommand {
+    public struct Create: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "create",
             abstract: "Create a new calendar event."
@@ -296,7 +243,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             guard let startDate = parseCalendarDate(start) else {
                 throw ValidationError("Invalid --start date.")
             }
@@ -320,19 +267,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 alertOffset: alert.flatMap { parseAlertDuration($0) }
             )
 
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Edit
 
-    public struct Edit: AsyncParsableCommand {
+    public struct Edit: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "edit",
             abstract: "Edit an existing calendar event."
@@ -396,7 +337,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let ekSpan = parseSpan(span) ?? .thisEvent
             let isAllDay: Bool? = allDay ? true : (noAllDay ? false : nil)
             let bridge = CalendarBridge()
@@ -413,19 +354,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 alertOffset: alert.flatMap { parseAlertDuration($0) },
                 span: ekSpan
             )
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Delete
 
-    public struct Delete: AsyncParsableCommand {
+    public struct Delete: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "delete",
             abstract: "Delete a calendar event."
@@ -453,23 +388,17 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let ekSpan = parseSpan(span) ?? .thisEvent
             let bridge = CalendarBridge()
             let result = try await bridge.deleteEvent(id: id, span: ekSpan)
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - SmartCreate
 
-    public struct SmartCreate: AsyncParsableCommand {
+    public struct SmartCreate: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "smart-create",
             abstract: "Create an event from a natural language description using AI."
@@ -500,7 +429,7 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let aiProvider = try AIProviderFactory.make(
                 providerFlag: provider,
                 modelFlag: model,
@@ -562,23 +491,14 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
 
             if dryRun {
-                let dryRunResult = SmartCreateDryRunResult(spec: parsed, conflicts: existingConflicts)
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                try print(String(data: encoder.encode(dryRunResult), encoding: .utf8)!)
-                return
+                return AgentResult(SmartCreateDryRunResult(spec: parsed, conflicts: existingConflicts))
             }
 
             if !existingConflicts.isEmpty {
-                if output.isAgent {
-                    let titles = existingConflicts.map { $0.title }.joined(separator: ", ")
-                    throw SmartCalendarError.calendarConflict(
-                        "Event conflicts with \(existingConflicts.count) existing event(s): \(titles)"
-                    )
-                } else {
-                    let titles = existingConflicts.map { $0.title }.joined(separator: ", ")
-                    fputs("Warning: \(existingConflicts.count) conflict(s) with: \(titles)\n", stderr)
-                }
+                let titles = existingConflicts.map { $0.title }.joined(separator: ", ")
+                throw SmartCalendarError.calendarConflict(
+                    "Event conflicts with \(existingConflicts.count) existing event(s): \(titles)"
+                )
             }
 
             let result = try await bridge.createEvent(
@@ -591,19 +511,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 isAllDay: parsed.isAllDay ?? false
             )
 
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(TextFormatter.actionResult(success: result.success, action: result.action, details: result.details))
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Agenda
 
-    public struct Agenda: AsyncParsableCommand {
+    public struct Agenda: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "agenda",
             abstract: "AI-generated briefing of upcoming events."
@@ -631,13 +545,12 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let bridge = CalendarBridge()
             let start = Calendar.current.startOfDay(for: Date())
             let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
             let agendaOutcome = try await bridge.listEvents(from: start, to: end)
             let events = agendaOutcome.results
-            CalendarCommand.warnTimedOut(output, timedOut: agendaOutcome.timedOut)
 
             let aiProvider = try AIProviderFactory.make(
                 providerFlag: provider,
@@ -687,24 +600,18 @@ public struct CalendarCommand: AsyncParsableCommand {
                 "eventCount": "\(events.count)",
             ]
             // Flat [String:String] payload (not a model array), so this filters
-            // by key directly rather than going through jsonData(fields:); reuse
-            // FieldProjection.parse for the comma-split so it matches everywhere.
+            // by key directly; reuse FieldProjection.parse for the comma-split so
+            // it matches everywhere.
             if let fieldList = FieldProjection.parse(output.fields) {
                 result = result.filter { fieldList.contains($0.key) }
             }
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result, warnings: CalendarCommand.timedOutWarnings(agendaOutcome.timedOut))
-            } else {
-                print(briefing)
-            }
+            return AgentResult(result, warnings: CalendarCommand.timedOutWarnings(agendaOutcome.timedOut))
         }
     }
 
     // MARK: - Search
 
-    public struct Search: AsyncParsableCommand {
+    public struct Search: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "search",
             abstract: "Search events by text across a date range."
@@ -752,7 +659,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let now = Date()
             let cal = Calendar.current
             let startDate = from.flatMap { parseCalendarDate($0) }
@@ -767,7 +674,6 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
             let searchOutcome = try await bridge.listEvents(from: startDate, to: endDate, calendarId: calendarId)
             var events = searchOutcome.results
-            CalendarCommand.warnTimedOut(output, timedOut: searchOutcome.timedOut)
 
             let q = (positionalQuery ?? query ?? "").lowercased()
             events = events.filter { event in
@@ -779,21 +685,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 events = Array(events.prefix(limit))
             }
 
-            let fieldList = FieldProjection.parse(output.fields)
-            if output.isJSON {
-                let data = try events.jsonData(fields: fieldList)
-                print(String(data: data, encoding: .utf8)!)
-            } else if output.isAgent {
-                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(searchOutcome.timedOut), fields: fieldList)
-            } else {
-                printEventsTable(events)
-            }
+            return AgentResult(events, warnings: CalendarCommand.timedOutWarnings(searchOutcome.timedOut), fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - Today
 
-    public struct Today: AsyncParsableCommand {
+    public struct Today: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "today",
             abstract: "List events for today."
@@ -803,27 +701,17 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let (start, end) = parseRange("today")!
             let bridge = CalendarBridge()
             let outcome = try await bridge.listEvents(from: start, to: end, calendarId: nil)
-            let events = outcome.results
-            CalendarCommand.warnTimedOut(output, timedOut: outcome.timedOut)
-            let fieldList = FieldProjection.parse(output.fields)
-            if output.isJSON {
-                let data = try events.jsonData(fields: fieldList)
-                print(String(data: data, encoding: .utf8)!)
-            } else if output.isAgent {
-                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
-            } else {
-                printEventsTable(events)
-            }
+            return AgentResult(outcome.results, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - Remaining
 
-    public struct Remaining: AsyncParsableCommand {
+    public struct Remaining: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "remaining",
             abstract: "List events from now until end of today."
@@ -833,28 +721,18 @@ public struct CalendarCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let now = Date()
             let endOfToday = parseRange("today")!.end
             let bridge = CalendarBridge()
             let outcome = try await bridge.listEvents(from: now, to: endOfToday, calendarId: nil)
-            let events = outcome.results
-            CalendarCommand.warnTimedOut(output, timedOut: outcome.timedOut)
-            let fieldList = FieldProjection.parse(output.fields)
-            if output.isJSON {
-                let data = try events.jsonData(fields: fieldList)
-                print(String(data: data, encoding: .utf8)!)
-            } else if output.isAgent {
-                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
-            } else {
-                printEventsTable(events)
-            }
+            return AgentResult(outcome.results, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: FieldProjection.parse(output.fields))
         }
     }
 
     // MARK: - Conflicts
 
-    public struct Conflicts: AsyncParsableCommand {
+    public struct Conflicts: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "conflicts",
             abstract: "Find overlapping calendar events in a time window."
@@ -885,7 +763,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let startDate: Date
             let endDate: Date
             if let range, let (rangeStart, rangeEnd) = parseRange(range) {
@@ -902,7 +780,6 @@ public struct CalendarCommand: AsyncParsableCommand {
             let bridge = CalendarBridge()
             let outcome = try await bridge.listEvents(from: startDate, to: endDate)
             let events = outcome.results
-            CalendarCommand.warnTimedOut(output, timedOut: outcome.timedOut)
 
             // Pre-parse dates once; events with unparseable dates are skipped
             let parsedEvents = events.compactMap { event -> (event: CalendarEvent, start: Date, end: Date)? in
@@ -933,27 +810,13 @@ public struct CalendarCommand: AsyncParsableCommand {
                 }
             }
 
-            if output.isJSON {
-                try printJSON(conflicts)
-            } else if output.isAgent {
-                try output.printAgent(conflicts, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut))
-            } else {
-                if conflicts.isEmpty {
-                    print("No conflicts found.")
-                } else {
-                    print("Found \(conflicts.count) conflict\(conflicts.count == 1 ? "" : "s"):")
-                    for conflict in conflicts {
-                        let titles = conflict.events.map { $0.title }.joined(separator: " ↔ ")
-                        print("  • \(titles) [\(conflict.overlapMinutes) min overlap]")
-                    }
-                }
-            }
+            return AgentResult(conflicts, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut))
         }
     }
 
     // MARK: - Upcoming
 
-    public struct Upcoming: AsyncParsableCommand {
+    public struct Upcoming: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "upcoming",
             abstract: "List events for the next 7 days."
@@ -974,12 +837,11 @@ public struct CalendarCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let (start, end) = parseRange("today+6")! // today + 6 more days = 7 days total
             let bridge = CalendarBridge()
             let outcome = try await bridge.listEvents(from: start, to: end, calendarId: nil)
             let events = outcome.results
-            CalendarCommand.warnTimedOut(output, timedOut: outcome.timedOut)
             let fieldList = FieldProjection.parse(output.fields)
 
             if pagination.isActive {
@@ -990,32 +852,10 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let page = try Pagination.paginate(
                     all: events, offset: offset, pageSize: pageSize, filterHash: hash
                 )
-                if output.isJSON {
-                    let itemsData = try page.items.jsonData(fields: fieldList)
-                    let itemsJSON = try JSONSerialization.jsonObject(with: itemsData)
-                    var dict: [String: Any] = ["items": itemsJSON]
-                    if let cursor = page.nextCursor { dict["next_cursor"] = cursor }
-                    let out = try JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
-                    print(String(data: out, encoding: .utf8)!)
-                } else if output.isAgent {
-                    try output.printAgentPage(page, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
-                } else {
-                    printEventsTable(page.items)
-                    if let cursor = page.nextCursor {
-                        print("(more — re-run with --cursor \(cursor))")
-                    }
-                }
-                return
+                return .page(page, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
             }
 
-            if output.isJSON {
-                let data = try events.jsonData(fields: fieldList)
-                print(String(data: data, encoding: .utf8)!)
-            } else if output.isAgent {
-                try output.printAgent(events, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
-            } else {
-                printEventsTable(events)
-            }
+            return AgentResult(events, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
         }
     }
 }
@@ -1033,6 +873,20 @@ enum CalendarNameResolutionError: LocalizedError {
     var errorDescription: String? {
         if case let .invalidCalendarName(msg) = self { return msg }
         return nil
+    }
+}
+
+extension CalendarNameResolutionError: RemediableError {
+    var agentCode: String {
+        switch self {
+        case .invalidCalendarName: return "invalid_calendar_name"
+        }
+    }
+
+    var nextStep: NextStep {
+        switch self {
+        case .invalidCalendarName: return .call(tool: "calendar_list", argv: ["calendar", "list"])
+        }
     }
 }
 
@@ -1090,7 +944,8 @@ private struct SmartCreateDryRunResult: Encodable {
     let conflicts: [CalendarEvent]
 }
 
-/// Error thrown by `calendar smart-create` in agent mode when conflicts are detected.
+/// Error thrown by `calendar smart-create` when conflicts are detected and
+/// `--allow-conflicts` was not passed.
 private enum SmartCalendarError: LocalizedError {
     case calendarConflict(String)
 
@@ -1100,56 +955,16 @@ private enum SmartCalendarError: LocalizedError {
     }
 }
 
-// MARK: - Text output helpers
+extension SmartCalendarError: RemediableError {
+    var agentCode: String {
+        switch self {
+        case .calendarConflict: return "calendar_conflict"
+        }
+    }
 
-private func printEventsTable(_ events: [CalendarEvent]) {
-    if events.isEmpty {
-        print("No events found.")
-        return
+    var nextStep: NextStep {
+        switch self {
+        case .calendarConflict: return .none
+        }
     }
-    let rows = events.map { event -> [String] in
-        let shortId = String(event.id.prefix(8))
-        let time = event.isAllDay
-            ? "all-day"
-            : TextFormatter.compactDate(event.startDate)
-        return [
-            shortId,
-            time,
-            TextFormatter.truncate(event.calendarTitle, to: 15),
-            TextFormatter.truncate(event.title, to: 30),
-        ]
-    }
-    print(TextFormatter.table(
-        headers: ["ID", "START", "CALENDAR", "TITLE"],
-        rows: rows,
-        columnWidths: [10, 18, 17, 32]
-    ))
-}
-
-private func printEventCard(_ event: CalendarEvent) {
-    var fields: [(String, String)] = [
-        ("ID", event.id),
-        ("Title", event.title),
-        ("Calendar", event.calendarTitle),
-        ("Start", event.startDate),
-        ("End", event.endDate),
-        ("All Day", event.isAllDay ? "yes" : "no"),
-    ]
-    if let loc = event.location { fields.append(("Location", loc)) }
-    if let url = event.url { fields.append(("URL", url)) }
-    if let rec = event.recurrence { fields.append(("Recurrence", rec)) }
-    if event.status != "none" { fields.append(("Status", event.status)) }
-    if let attendees = event.attendees, !attendees.isEmpty {
-        let attStr: String = attendees.map { a -> String in
-            let name = a.name ?? "Unknown"
-            let emailStr = a.email.map { " <\($0)>" } ?? ""
-            return "\(name)\(emailStr) [\(a.status)]"
-        }.joined(separator: "\n")
-        fields.append(("Attendees", attStr))
-    }
-    if let notes = event.notes { fields.append(("Notes", notes)) }
-    if let alerts = event.alerts, !alerts.isEmpty {
-        fields.append(("Alerts", alerts.joined(separator: "\n")))
-    }
-    print(TextFormatter.card(fields: fields))
 }

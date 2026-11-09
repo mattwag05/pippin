@@ -43,6 +43,29 @@ public enum AudioBridgeError: LocalizedError, Sendable {
     }
 }
 
+extension AudioBridgeError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .notAvailable: return "not_available"
+        case .processFailed: return "process_failed"
+        case .timeout: return "timeout"
+        case .decodingFailed: return "decoding_failed"
+        case .versionMismatch: return "version_mismatch"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .notAvailable: return .human("Install mlx-audio with `pipx install mlx-audio`.")
+        case .processFailed: return .call(tool: "doctor", argv: ["doctor"])
+        case .timeout: return .retry(after: 5)
+        case .decodingFailed: return .none
+        case let .versionMismatch(_, pinned):
+            return .human("Run `pipx install 'mlx-audio==\(pinned)' --force`.")
+        }
+    }
+}
+
 // MARK: - Audio Models
 
 /// Result of a speech-to-text transcription.

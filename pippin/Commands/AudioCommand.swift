@@ -12,7 +12,7 @@ public struct AudioCommand: AsyncParsableCommand {
 
     // MARK: - Speak
 
-    public struct Speak: AsyncParsableCommand {
+    public struct Speak: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "speak",
             abstract: "Synthesize speech from text using a TTS model."
@@ -34,7 +34,7 @@ public struct AudioCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
             // subprocesses (Python startup can take ~1-2s); hop off the pool.
             guard await detachBlocking({ AudioBridge.isAvailable() }) else {
@@ -49,24 +49,13 @@ public struct AudioCommand: AsyncParsableCommand {
                     outputPath: outputFile
                 )
             }
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                if let path = result.outputPath {
-                    print("Saved to: \(path)")
-                } else {
-                    print("Played via system audio.")
-                }
-                print("Model: \(result.modelUsed)  Voice: \(result.voiceUsed)")
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Transcribe
 
-    public struct Transcribe: AsyncParsableCommand {
+    public struct Transcribe: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "transcribe",
             abstract: "Transcribe an audio file to text using a STT model."
@@ -85,7 +74,7 @@ public struct AudioCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
             // subprocesses (Python startup can take ~1-2s); hop off the pool.
             guard await detachBlocking({ AudioBridge.isAvailable() }) else {
@@ -104,25 +93,13 @@ public struct AudioCommand: AsyncParsableCommand {
                     outputFormat: transcriptionFormat
                 )
             }
-            if output.isJSON {
-                try printJSON(result)
-            } else if output.isAgent {
-                try output.printAgent(result)
-            } else {
-                print(result.text)
-                if let language = result.language {
-                    print("Language: \(language)")
-                }
-                if let duration = result.duration {
-                    print("Duration: \(String(format: "%.1f", duration))s")
-                }
-            }
+            return AgentResult(result)
         }
     }
 
     // MARK: - Voices
 
-    public struct Voices: AsyncParsableCommand {
+    public struct Voices: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "voices",
             abstract: "List available TTS voices."
@@ -135,7 +112,7 @@ public struct AudioCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
             // subprocesses (Python startup can take ~1-2s); hop off the pool.
             guard await detachBlocking({ AudioBridge.isAvailable() }) else {
@@ -144,29 +121,13 @@ public struct AudioCommand: AsyncParsableCommand {
             let voices = try await detachBlocking { [model] in
                 try AudioBridge.listVoices(model: model)
             }
-            if output.isJSON {
-                try printJSON(voices)
-            } else if output.isAgent {
-                try output.printAgent(voices)
-            } else {
-                if voices.isEmpty {
-                    print("No voices found for model '\(model)'.")
-                    return
-                }
-                let idWidth = voices.map { $0.id.count }.max() ?? 10
-                let nameWidth = voices.map { $0.name.count }.max() ?? 10
-                print(String(format: "%-\(idWidth)s  %-\(nameWidth)s  %s", "ID", "Name", "Language"))
-                print(String(repeating: "-", count: idWidth + nameWidth + 14))
-                for v in voices {
-                    print(String(format: "%-\(idWidth)s  %-\(nameWidth)s  %s", v.id, v.name, v.language))
-                }
-            }
+            return AgentResult(voices)
         }
     }
 
     // MARK: - Models
 
-    public struct Models: AsyncParsableCommand {
+    public struct Models: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "models",
             abstract: "List available STT/TTS models."
@@ -176,26 +137,14 @@ public struct AudioCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             // isAvailable() probes via `which` + `python3 -c "import mlx_audio"`
             // subprocesses (Python startup can take ~1-2s); hop off the pool.
             guard await detachBlocking({ AudioBridge.isAvailable() }) else {
                 throw AudioCommandError.mlxAudioNotAvailable
             }
             let models = try await detachBlocking { try AudioBridge.listModels() }
-            if output.isJSON {
-                try printJSON(models)
-            } else if output.isAgent {
-                try output.printAgent(models)
-            } else {
-                if models.isEmpty {
-                    print("No models found.")
-                    return
-                }
-                for m in models {
-                    print(m)
-                }
-            }
+            return AgentResult(models)
         }
     }
 }
@@ -208,4 +157,14 @@ private struct AudioCommandError: LocalizedError {
     static let mlxAudioNotAvailable = AudioCommandError(
         errorDescription: "mlx-audio is not available. Install with: pip install mlx-audio"
     )
+}
+
+extension AudioCommandError: RemediableError {
+    var agentCode: String {
+        "audio_command_error"
+    }
+
+    var nextStep: NextStep {
+        .none
+    }
 }

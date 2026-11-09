@@ -128,8 +128,8 @@ final class CalendarRangeTests: XCTestCase {
         XCTAssertNoThrow(try CalendarCommand.Today.parse([]))
     }
 
-    func testTodaySubcommandParsesWithJsonFormat() {
-        XCTAssertNoThrow(try CalendarCommand.Today.parse(["--format", "json"]))
+    func testTodaySubcommandParsesWithAgentFormat() {
+        XCTAssertNoThrow(try CalendarCommand.Today.parse(["--format", "agent"]))
     }
 
     func testRemainingSubcommandParsesWithNoArgs() {
@@ -141,6 +141,6 @@ final class CalendarRangeTests: XCTestCase {
     }
 
     func testUpcomingSubcommandParsesWithFieldsAndFormat() {
-        XCTAssertNoThrow(try CalendarCommand.Upcoming.parse(["--fields", "title,startDate", "--format", "json"]))
+        XCTAssertNoThrow(try CalendarCommand.Upcoming.parse(["--fields", "title,startDate", "--format", "agent"]))
     }
 }

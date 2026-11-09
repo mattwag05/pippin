@@ -121,16 +121,11 @@ final class StatusCommandTests: XCTestCase {
 
     func testStatusCommandParsesNoArgs() throws {
         let command = try StatusCommand.parse([])
-        XCTAssertEqual(command.output.format, .text)
+        XCTAssertEqual(command.output.format, .agent)
     }
 
     func testStatusCommandParsesAgentFormat() throws {
         let command = try StatusCommand.parse(["--format", "agent"])
-        XCTAssertTrue(command.output.isAgent)
-    }
-
-    func testStatusCommandParsesJSONFormat() throws {
-        let command = try StatusCommand.parse(["--format", "json"])
-        XCTAssertTrue(command.output.isJSON)
+        XCTAssertEqual(command.output.format, .agent)
     }
 }

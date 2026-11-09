@@ -12,10 +12,11 @@ import Foundation
 /// Disk Access ones (Voice Memos, Messages) which have no prompt and must be
 /// granted manually.
 ///
-/// Priming is skipped automatically when there's no one to answer a dialog —
-/// under MCP, `--format agent|json`, a non-TTY pipe, or `--status` — in which
-/// case the command is a pure read-only report. (pippin-uu3)
-public struct PermissionsCommand: AsyncParsableCommand {
+/// Priming is skipped automatically when there's no one to answer a dialog
+/// (under MCP, a non-TTY pipe, or `--status`), in which case the command is a
+/// pure read-only report. Progress cues during priming go to stderr; stdout
+/// carries only the envelope. (pippin-uu3)
+public struct PermissionsCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "permissions",
         abstract: "Grant (interactively) and report macOS permissions for each app integration."
@@ -28,85 +29,33 @@ public struct PermissionsCommand: AsyncParsableCommand {
 
     public init() {}
 
-    public mutating func run() async throws {
-        let interactive = PermissionPriming.isInteractiveTerminal()
+    public mutating func execute() async throws -> AgentResult {
         let willPrime = !status && PermissionPriming.shouldPrime(
-            interactive: interactive,
-            isMCP: isMCPContext(),
-            isStructuredOutput: output.isStructured
+            interactive: PermissionPriming.isInteractiveTerminal(),
+            isMCP: isMCPContext()
         )
 
         if willPrime {
-            print("pippin permissions — granting access (answer each macOS prompt)")
-            print(String(repeating: "=", count: 52))
-            print()
-            print("Reminders…")
+            fputs("pippin permissions: granting access (answer each macOS prompt)\n", stderr)
+            fputs("Reminders...\n", stderr)
             _ = await PermissionPrimer.primeReminders()
-            print("Calendar…")
+            fputs("Calendar...\n", stderr)
             _ = await PermissionPrimer.primeCalendar()
-            print("Contacts…")
+            fputs("Contacts...\n", stderr)
             _ = await PermissionPrimer.primeContacts()
-            print("Mail & Notes (Automation)…")
+            fputs("Mail & Notes (Automation)...\n", stderr)
             await detachBlocking {
                 PermissionPrimer.primeMailAutomation()
                 PermissionPrimer.primeNotesAutomation()
             }
-            print()
         }
 
         let reports = await detachBlocking { PermissionPrimer.currentReports() }
-
-        if output.isAgent {
-            try output.printAgent(reports)
-        } else if output.isJSON {
-            try printJSON(reports)
-        } else {
-            renderText(reports, primed: willPrime, interactive: interactive)
-        }
-
         // A `.denied` integration needs an active manual grant in System
         // Settings — signal that to scripts. Not-determined (couldn't prime
         // here) and manual-required (FDA) are informational, not failures.
-        if reports.contains(where: { $0.state == .denied }) {
-            throw ExitCode(1)
-        }
-    }
-
-    private func renderText(_ reports: [PermissionReport], primed: Bool, interactive: Bool) {
-        for report in reports {
-            let icon: String
-            switch report.state {
-            case .granted: icon = "ok"
-            case .denied: icon = "FAIL"
-            case .notDetermined: icon = "??"
-            case .manualRequired: icon = "--"
-            case .unavailable: icon = "--"
-            case .unknown: icon = "??"
-            }
-            print("[\(icon)]  \(report.integration): \(report.detail)")
-            if report.state != .granted, let remediation = report.remediation {
-                for line in remediation.humanHint.components(separatedBy: .newlines) {
-                    print("       \(line)")
-                }
-            }
-        }
-
-        print()
-        let notGranted = reports.filter { $0.state != .granted && $0.state != .unavailable }
-        if notGranted.isEmpty {
-            print("All available integrations are granted. pippin is ready.")
-            return
-        }
-        if !primed, !status, !interactive {
-            print("Run `pippin permissions` from an interactive terminal to grant the promptable ones.")
-        }
-        let manual = notGranted.filter { $0.mechanism == .fullDiskAccess }
-        if !manual.isEmpty {
-            let names = manual.map(\.integration).joined(separator: ", ")
-            print("\(names) need Full Disk Access — there's no prompt; grant it manually (see above), then relaunch your terminal.")
-        }
+        return AgentResult(reports, exitCode: reports.contains { $0.state == .denied } ? 1 : 0)
     }
 }
 
-// Structured output is the `[PermissionReport]` array directly — both
-// `--format json` and `--format agent` (envelope `data`) emit it.
+// Structured output is the `[PermissionReport]` array directly (envelope `data`).

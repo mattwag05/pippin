@@ -6,7 +6,7 @@ import Foundation
 ///
 /// The MCP companion tool `batch` is the real unlock — MCP serializes tool
 /// calls one at a time, so a single `batch` call is the only way to fan out.
-public struct BatchCommand: AsyncParsableCommand {
+public struct BatchCommand: AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "batch",
         abstract: "Execute multiple pippin commands concurrently from a JSON array.",
@@ -40,7 +40,7 @@ public struct BatchCommand: AsyncParsableCommand {
         }
     }
 
-    public mutating func run() async throws {
+    public mutating func execute() async throws -> AgentResult {
         let parsed = try Self.readEntries(entries: entries, input: input)
         let pippinPath = MCPServerRuntime.resolvePippinPath()
         let results = await Self.dispatch(
@@ -49,15 +49,7 @@ public struct BatchCommand: AsyncParsableCommand {
             pippinPath: pippinPath
         )
 
-        if output.isAgent {
-            try output.printAgent(results)
-        } else if output.isJSON {
-            try printJSON(results)
-        } else {
-            let okCount = results.filter { Self.statusString($0) == "ok" }.count
-            let errCount = results.count - okCount
-            print("Batch: \(results.count) entries (\(okCount) ok, \(errCount) error)")
-        }
+        return AgentResult(results)
     }
 
     // MARK: - Helpers
@@ -143,10 +135,11 @@ public struct BatchCommand: AsyncParsableCommand {
                 message: "Child stdout was not valid JSON: \(String(trimmed.prefix(200)))"
             )
         } catch {
-            return entryEnvelopeError(
-                code: .childLaunchFailed,
-                message: error.localizedDescription
-            )
+            // Encodes the real cause: a timeout must not read as a launch failure.
+            return (try? JSONDecoder().decode(
+                JSONValue.self,
+                from: Data(MCPInProcessTools.errorEnvelope(error, startedAt: Date()).utf8)
+            )) ?? .object(["status": .string("error")])
         }
     }
 
@@ -183,7 +176,6 @@ public struct BatchCommand: AsyncParsableCommand {
 public enum BatchEntryErrorCode: String, Sendable {
     case emptyOutput = "empty_output"
     case invalidJSON = "invalid_json"
-    case childLaunchFailed = "child_launch_failed"
 }
 
 // MARK: - Entry decoding
@@ -227,6 +219,21 @@ public enum BatchError: LocalizedError {
             return "pippin batch: no input — provide a JSON array via stdin, --input, or --entries."
         case let .invalidEntriesJSON(detail):
             return "pippin batch: input was not a valid JSON array of {cmd, args} entries: \(detail)"
+        }
+    }
+}
+
+extension BatchError: RemediableError {
+    public var agentCode: String {
+        switch self {
+        case .emptyInput: return "empty_input"
+        case .invalidEntriesJSON: return "invalid_entries_json"
+        }
+    }
+
+    public var nextStep: NextStep {
+        switch self {
+        case .emptyInput, .invalidEntriesJSON: return .none
         }
     }
 }

@@ -18,15 +18,13 @@ final class PermissionsTests: XCTestCase {
 
     /// The whole feature's safety hinges on this: only prime when a human at a
     /// TTY can answer the dialog. Every other combination must NOT prime.
-    func testShouldPrimeOnlyWhenInteractiveAndNotStructuredAndNotMCP() {
-        XCTAssertTrue(PermissionPriming.shouldPrime(interactive: true, isMCP: false, isStructuredOutput: false))
+    func testShouldPrimeOnlyWhenInteractiveAndNotMCP() {
+        XCTAssertTrue(PermissionPriming.shouldPrime(interactive: true, isMCP: false))
 
         // Any single disqualifier flips it off.
-        XCTAssertFalse(PermissionPriming.shouldPrime(interactive: false, isMCP: false, isStructuredOutput: false))
-        XCTAssertFalse(PermissionPriming.shouldPrime(interactive: true, isMCP: true, isStructuredOutput: false))
-        XCTAssertFalse(PermissionPriming.shouldPrime(interactive: true, isMCP: false, isStructuredOutput: true))
+        XCTAssertFalse(PermissionPriming.shouldPrime(interactive: false, isMCP: false))
+        XCTAssertFalse(PermissionPriming.shouldPrime(interactive: true, isMCP: true))
         // …and combinations.
-        XCTAssertFalse(PermissionPriming.shouldPrime(interactive: false, isMCP: true, isStructuredOutput: true))
     }
 
     // MARK: - Mechanism promptability

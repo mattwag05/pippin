@@ -12,7 +12,7 @@ public struct TemplatesCommand: AsyncParsableCommand {
 
     // MARK: - List
 
-    public struct List: AsyncParsableCommand {
+    public struct List: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "list",
             abstract: "List all available templates."
@@ -22,7 +22,7 @@ public struct TemplatesCommand: AsyncParsableCommand {
 
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let manager = TemplateManager()
             let templates = manager.allTemplates()
 
@@ -34,19 +34,13 @@ public struct TemplatesCommand: AsyncParsableCommand {
             let items = templates.map { t in
                 TemplateListItem(name: t.name, description: t.description, builtIn: t.isBuiltIn)
             }
-            if output.isJSON {
-                try printJSON(items)
-            } else if output.isAgent {
-                try output.printAgent(items)
-            } else {
-                printTemplatesTable(templates)
-            }
+            return AgentResult(items)
         }
     }
 
     // MARK: - Show
 
-    public struct Show: AsyncParsableCommand {
+    public struct Show: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "show",
             abstract: "Print the system prompt for a template."
@@ -55,18 +49,24 @@ public struct TemplatesCommand: AsyncParsableCommand {
         @Argument(help: "Template name.")
         public var name: String
 
+        @OptionGroup public var output: OutputOptions
+
         public init() {}
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
+            struct TemplateContent: Encodable {
+                let name: String
+                let content: String
+            }
             let manager = TemplateManager()
             let template = try manager.resolve(name: name)
-            print(template.content)
+            return AgentResult(TemplateContent(name: template.name, content: template.content))
         }
     }
 
     // MARK: - Add
 
-    public struct Add: AsyncParsableCommand {
+    public struct Add: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "add",
             abstract: "Copy a .md template file into ~/.config/pippin/templates/."
@@ -74,6 +74,8 @@ public struct TemplatesCommand: AsyncParsableCommand {
 
         @Argument(help: "Path to .md file to add.")
         public var path: String
+
+        @OptionGroup public var output: OutputOptions
 
         public init() {}
 
@@ -86,29 +88,13 @@ public struct TemplatesCommand: AsyncParsableCommand {
             }
         }
 
-        public mutating func run() async throws {
+        public mutating func execute() async throws -> AgentResult {
             let manager = TemplateManager()
+            struct TemplateAdded: Encodable {
+                let path: String
+            }
             let dest = try manager.addTemplate(fromPath: path)
-            print("Template added: \(dest)")
+            return AgentResult(TemplateAdded(path: dest))
         }
     }
-}
-
-// MARK: - Text output
-
-private func printTemplatesTable(_ templates: [Template]) {
-    if templates.isEmpty {
-        print("No templates found.")
-        return
-    }
-    let rows = templates.map { t -> [String] in
-        let source = t.isBuiltIn ? "built-in" : "user"
-        return [t.name, source, t.description]
-    }
-    let table = TextFormatter.table(
-        headers: ["NAME", "SOURCE", "DESCRIPTION"],
-        rows: rows,
-        columnWidths: [20, 10, 50]
-    )
-    print(table)
 }

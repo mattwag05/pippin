@@ -19,7 +19,7 @@ public struct ShellCommand: AsyncParsableCommand {
         Enter pippin commands without the 'pippin' prefix. For example:
 
           pippin> mail accounts
-          pippin> mail list --account Work --format json
+          pippin> mail list --account Work
           pippin> calendar agenda
           pippin> quit
 
@@ -35,9 +35,6 @@ public struct ShellCommand: AsyncParsableCommand {
         Lines starting with # are treated as comments and ignored.
         """
     )
-
-    @Option(name: .long, help: "Default output format for all commands in this session: text, json, or agent.")
-    public var format: OutputFormat?
 
     @Option(name: .long, help: "Path to session state file (default: ~/.config/pippin/session.json).")
     public var sessionFile: String?
@@ -103,13 +100,6 @@ public struct ShellCommand: AsyncParsableCommand {
             // Parse the line into arguments, respecting quotes
             var args = shellSplit(trimmed)
 
-            // Inject default --format if set and not already present
-            if let fmt = format, !args.contains("--format"),
-               !args.contains(where: { $0.hasPrefix("--format=") }) {
-                args.append("--format")
-                args.append(fmt.rawValue)
-            }
-
             // Inject --account from session context for mail commands
             if let acct = session.activeAccount,
                !args.isEmpty,
@@ -146,11 +136,7 @@ public struct ShellCommand: AsyncParsableCommand {
         } catch where error is CleanExit || error is ExitCode {
             // --help or intentional exit code — don't crash the REPL
         } catch {
-            if let fmt = format, fmt == .agent {
-                printAgentError(error)
-            } else {
-                fputs("Error: \(error.localizedDescription)\n", stderr)
-            }
+            printAgentError(error)
         }
     }
 
@@ -250,7 +236,7 @@ public struct ShellCommand: AsyncParsableCommand {
             }
         }
         fputs("\nPrefix any command with its subcommand. Example: mail list --account Work\n", stderr)
-        fputs("Add --format json or --format agent for structured output.\n\n", stderr)
+        fputs("Every command answers with the compact JSON agent envelope.\n\n", stderr)
     }
 }
 

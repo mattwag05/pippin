@@ -1,3 +1,4 @@
+import ArgumentParser
 @testable import PippinLib
 import XCTest
 
@@ -19,16 +20,15 @@ final class AgentEnvelopeTests: XCTestCase {
         // createdAt/modifiedAt, all-day date-only, memos millis.
         // v3 (2026-08-12): `data` keeps its type under pagination; the cursor
         // moved to a top-level `next_cursor` (pippin-37az).
-        XCTAssertEqual(AGENT_SCHEMA_VERSION, 3)
+        // v4 (2026-11-08): `error` always carries `next_step` (pippin-pxz9).
+        XCTAssertEqual(AGENT_SCHEMA_VERSION, 4)
     }
 
     // MARK: - Ok envelope shape
 
     func testOkEnvelopeWrapsPayload() throws {
         let payload = Sample(name: "foo", count: 3)
-        let capture = try captureStdout {
-            try printAgentJSON(payload)
-        }
+        let capture = try agentJSON(payload)
         let json = try decodeObject(capture)
         XCTAssertEqual(json["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(json["status"] as? String, "ok")
@@ -40,9 +40,7 @@ final class AgentEnvelopeTests: XCTestCase {
     }
 
     func testOkEnvelopeIsCompactJSON() throws {
-        let capture = try captureStdout {
-            try printAgentJSON(Sample(name: "foo", count: 1))
-        }
+        let capture = try agentJSON(Sample(name: "foo", count: 1))
         XCTAssertFalse(capture.contains("\n  "), "Envelope must be compact (no pretty indent)")
         // Trailing newline from `print()` is expected; strip it before newline check.
         let trimmed = capture.trimmingCharacters(in: .newlines)
@@ -51,9 +49,7 @@ final class AgentEnvelopeTests: XCTestCase {
 
     func testOkEnvelopeDurationReflectsStartedAt() throws {
         let past = Date(timeIntervalSinceNow: -0.1) // 100ms ago
-        let capture = try captureStdout {
-            try printAgentJSON(Sample(name: "x", count: 0), startedAt: past)
-        }
+        let capture = try agentJSON(Sample(name: "x", count: 0), startedAt: past)
         let json = try decodeObject(capture)
         let durationMs = try XCTUnwrap(json["duration_ms"] as? Int)
         XCTAssertGreaterThanOrEqual(durationMs, 100 - 20, "duration_ms must reflect startedAt")
@@ -94,28 +90,22 @@ final class AgentEnvelopeTests: XCTestCase {
     // MARK: - Warnings (optional, omitted when empty)
 
     func testOkEnvelopeOmitsWarningsByDefault() throws {
-        let capture = try captureStdout {
-            try printAgentJSON(Sample(name: "x", count: 1))
-        }
+        let capture = try agentJSON(Sample(name: "x", count: 1))
         let json = try decodeObject(capture)
         XCTAssertNil(json["warnings"], "warnings must be absent when none are passed")
     }
 
     func testOkEnvelopeOmitsWarningsWhenEmpty() throws {
-        let capture = try captureStdout {
-            try printAgentJSON(Sample(name: "x", count: 1), warnings: [])
-        }
+        let capture = try agentJSON(Sample(name: "x", count: 1), warnings: [])
         let json = try decodeObject(capture)
         XCTAssertNil(json["warnings"], "empty warnings array must be omitted, not encoded as []")
     }
 
     func testOkEnvelopeIncludesWarningsWhenPresent() throws {
-        let capture = try captureStdout {
-            try printAgentJSON(
-                Sample(name: "x", count: 1),
-                warnings: ["partial results — narrow your query"]
-            )
-        }
+        let capture = try agentJSON(
+            Sample(name: "x", count: 1),
+            warnings: ["partial results — narrow your query"]
+        )
         let json = try decodeObject(capture)
         let warnings = try XCTUnwrap(json["warnings"] as? [String])
         XCTAssertEqual(warnings, ["partial results — narrow your query"])
@@ -123,15 +113,13 @@ final class AgentEnvelopeTests: XCTestCase {
 
     // MARK: - OutputOptions helper
 
-    func testOutputOptionsPrintAgentWrapsAndThreadsStartedAt() throws {
+    func testOutputOptionsRenderWrapsAndThreadsStartedAt() throws {
         var opts = try OutputOptions.parse(["--format", "agent"])
         _ = opts // silence 'was never mutated' — parse returns a new struct each time
         // Parse, wait, print — duration should reflect the wait.
         let parsed = try OutputOptions.parse(["--format", "agent"])
         Thread.sleep(forTimeInterval: 0.05) // 50ms
-        let capture = try captureStdout {
-            try parsed.printAgent(Sample(name: "bar", count: 7))
-        }
+        let capture = try parsed.render(AgentResult(Sample(name: "bar", count: 7)))
         let json = try decodeObject(capture)
         XCTAssertEqual(json["v"] as? Int, AGENT_SCHEMA_VERSION)
         XCTAssertEqual(json["status"] as? String, "ok")
@@ -141,13 +129,13 @@ final class AgentEnvelopeTests: XCTestCase {
 
     // MARK: - Projected envelope (--fields) frame parity
 
-    /// `printAgentProjectedJSON` hand-builds the envelope frame because its
+    /// `projectedAgentJSON` hand-builds the envelope frame because its
     /// `data` is opaque projected JSON. This guards against the hand-built frame
     /// drifting from the typed `AgentOkEnvelope` if the envelope shape evolves.
     func testProjectedFrameMatchesTyped() throws {
         let payload = [Sample(name: "foo", count: 3)]
-        let typed = try decodeObject(captureStdout { try printAgentJSON(payload) })
-        let projected = try decodeObject(captureStdout { try printAgentProjectedJSON(payload, fields: ["name"]) })
+        let typed = try decodeObject(agentJSON(payload))
+        let projected = try decodeObject(projectedAgentJSON(payload, fields: ["name"]))
         // Same top-level frame keys (everything except the payload itself).
         let frameKeys: (([String: Any]) -> Set<String>) = { Set($0.keys).subtracting(["data"]) }
         XCTAssertEqual(frameKeys(typed), frameKeys(projected), "projected envelope frame must match the typed envelope")
@@ -160,40 +148,32 @@ final class AgentEnvelopeTests: XCTestCase {
     }
 
     func testProjectedEnvelopeIncludesWarnings() throws {
-        let projected = try decodeObject(captureStdout {
-            try printAgentProjectedJSON([Sample(name: "x", count: 1)], fields: ["name"], warnings: ["partial"])
-        })
+        let projected = try decodeObject(projectedAgentJSON([Sample(name: "x", count: 1)], fields: ["name"], warnings: ["partial"]))
         XCTAssertEqual(projected["warnings"] as? [String], ["partial"])
     }
 
     // MARK: - Partial marker (soft-timeout / unfinished-scan results)
 
     func testOkEnvelopeOmitsPartialByDefault() throws {
-        let json = try decodeObject(captureStdout { try printAgentJSON(Sample(name: "x", count: 1)) })
+        let json = try decodeObject(agentJSON(Sample(name: "x", count: 1)))
         XCTAssertNil(json["partial"], "partial must be absent on a complete result")
     }
 
     func testOkEnvelopeIncludesPartialWhenTrue() throws {
-        let json = try decodeObject(captureStdout {
-            try printAgentJSON(Sample(name: "x", count: 1), partial: true)
-        })
+        let json = try decodeObject(agentJSON(Sample(name: "x", count: 1), partial: true))
         XCTAssertEqual(json["partial"] as? Bool, true)
         XCTAssertEqual(json["status"] as? String, "ok", "partial rides on the ok envelope, status unchanged")
     }
 
     func testProjectedEnvelopeIncludesPartial() throws {
-        let projected = try decodeObject(captureStdout {
-            try printAgentProjectedJSON([Sample(name: "x", count: 1)], fields: ["name"], partial: true)
-        })
+        let projected = try decodeObject(projectedAgentJSON([Sample(name: "x", count: 1)], fields: ["name"], partial: true))
         XCTAssertEqual(projected["partial"] as? Bool, true)
     }
 
     func testProjectedFrameMatchesTypedWithPartial() throws {
         let payload = [Sample(name: "foo", count: 3)]
-        let typed = try decodeObject(captureStdout { try printAgentJSON(payload, partial: true) })
-        let projected = try decodeObject(captureStdout {
-            try printAgentProjectedJSON(payload, fields: ["name"], partial: true)
-        })
+        let typed = try decodeObject(agentJSON(payload, partial: true))
+        let projected = try decodeObject(projectedAgentJSON(payload, fields: ["name"], partial: true))
         let frameKeys: (([String: Any]) -> Set<String>) = { Set($0.keys).subtracting(["data"]) }
         XCTAssertEqual(frameKeys(typed), frameKeys(projected), "hand-built partial frame must match the typed envelope")
     }
@@ -206,7 +186,7 @@ final class AgentEnvelopeTests: XCTestCase {
     func testPaginatedDataStaysAnArrayAndCursorGoesTopLevel() throws {
         let parsed = try OutputOptions.parse(["--format", "agent"])
         let page = Page(items: [Sample(name: "foo", count: 3)], nextCursor: "tok123")
-        let json = try decodeObject(captureStdout { try parsed.printAgentPage(page) })
+        let json = try decodeObject(parsed.render(.page(page)))
 
         let data = try XCTUnwrap(json["data"] as? [[String: Any]], "data must stay an array under pagination")
         XCTAssertEqual(data.count, 1)
@@ -220,9 +200,7 @@ final class AgentEnvelopeTests: XCTestCase {
     func testEmitPageKeepsArrayAndCursorWithoutAppleAppAccess() throws {
         let parsed = try OutputOptions.parse(["--format", "agent"])
         let page = Page(items: [Sample(name: "fixture", count: 1)], nextCursor: "next")
-        let json = try decodeObject(captureStdout {
-            try parsed.emitPage(page, timedOutHint: "fixture timeout", renderText: {})
-        })
+        let json = try decodeObject(parsed.render(.emitPage(page, timedOutHint: "fixture timeout")))
 
         let items = try XCTUnwrap(json["data"] as? [[String: Any]])
         XCTAssertEqual(items.first?["name"] as? String, "fixture")
@@ -235,10 +213,8 @@ final class AgentEnvelopeTests: XCTestCase {
     func testPaginatedAndUnpaginatedDataTypesMatch() throws {
         let parsed = try OutputOptions.parse(["--format", "agent"])
         let items = [Sample(name: "foo", count: 3)]
-        let plain = try decodeObject(captureStdout { try parsed.printAgent(items) })
-        let paged = try decodeObject(captureStdout {
-            try parsed.printAgentPage(Page(items: items, nextCursor: "tok"))
-        })
+        let plain = try decodeObject(parsed.render(AgentResult(items)))
+        let paged = try decodeObject(parsed.render(.page(Page(items: items, nextCursor: "tok"))))
         XCTAssertNotNil(plain["data"] as? [[String: Any]])
         XCTAssertNotNil(paged["data"] as? [[String: Any]])
         XCTAssertEqual(plain["data"] as? [[String: Any]] as NSArray?, paged["data"] as? [[String: Any]] as NSArray?)
@@ -248,15 +224,13 @@ final class AgentEnvelopeTests: XCTestCase {
     /// not null, so its absence is the end-of-results signal.
     func testExhaustedPageOmitsCursorEntirely() throws {
         let parsed = try OutputOptions.parse(["--format", "agent"])
-        let json = try decodeObject(captureStdout {
-            try parsed.printAgentPage(Page(items: [Sample(name: "foo", count: 3)], nextCursor: nil))
-        })
+        let json = try decodeObject(parsed.render(.page(Page(items: [Sample(name: "foo", count: 3)], nextCursor: nil))))
         XCTAssertFalse(json.keys.contains("next_cursor"))
     }
 
     /// A non-paginated envelope must never grow the key.
     func testUnpaginatedEnvelopeHasNoCursorKey() throws {
-        let json = try decodeObject(captureStdout { try printAgentJSON(Sample(name: "x", count: 1)) })
+        let json = try decodeObject(agentJSON(Sample(name: "x", count: 1)))
         XCTAssertFalse(json.keys.contains("next_cursor"))
     }
 
@@ -266,7 +240,7 @@ final class AgentEnvelopeTests: XCTestCase {
     func testProjectionAppliesToPageItemsAndKeepsCursor() throws {
         let parsed = try OutputOptions.parse(["--format", "agent", "--fields", "name"])
         let page = Page(items: [Sample(name: "foo", count: 3)], nextCursor: "tok123")
-        let json = try decodeObject(captureStdout { try parsed.printAgentPage(page) })
+        let json = try decodeObject(parsed.render(.page(page)))
         let data = try XCTUnwrap(json["data"] as? [[String: Any]])
         XCTAssertEqual(data.first?.keys.sorted(), ["name"])
         XCTAssertEqual(json["next_cursor"] as? String, "tok123")
@@ -274,13 +248,38 @@ final class AgentEnvelopeTests: XCTestCase {
 
     func testProjectedFrameMatchesTypedWithCursor() throws {
         let payload = [Sample(name: "foo", count: 3)]
-        let typed = try decodeObject(captureStdout { try printAgentJSON(payload, nextCursor: "tok") })
-        let projected = try decodeObject(captureStdout {
-            try printAgentProjectedJSON(payload, fields: ["name"], nextCursor: "tok")
-        })
+        let typed = try decodeObject(agentJSON(payload, nextCursor: "tok"))
+        let projected = try decodeObject(projectedAgentJSON(payload, fields: ["name"], nextCursor: "tok"))
         let frameKeys: (([String: Any]) -> Set<String>) = { Set($0.keys).subtracting(["data"]) }
         XCTAssertEqual(frameKeys(typed), frameKeys(projected), "hand-built cursor frame must match the typed envelope")
         XCTAssertEqual(projected["next_cursor"] as? String, "tok")
+    }
+
+    // MARK: - AgentCommand.run exit status
+
+    private struct ExitingCommand: AgentCommand {
+        @OptionGroup var output: OutputOptions
+        @Option var code: Int32 = 0
+
+        mutating func execute() async throws -> AgentResult {
+            AgentResult(["k": "v"], exitCode: code)
+        }
+    }
+
+    /// `doctor` reports failed checks in an ok envelope and still exits 1.
+    func testAgentCommandRunExitsWithResultExitCode() async throws {
+        var command = try ExitingCommand.parse(["--code", "1"])
+        do {
+            try await command.run()
+            XCTFail("run() must throw ExitCode for a non-zero AgentResult.exitCode")
+        } catch let exit as ExitCode {
+            XCTAssertEqual(exit.rawValue, 1)
+        }
+    }
+
+    func testAgentCommandRunDoesNotThrowForZeroExitCode() async throws {
+        var command = try ExitingCommand.parse([])
+        try await command.run()
     }
 
     // MARK: - Helpers
