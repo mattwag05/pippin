@@ -434,7 +434,6 @@ enum MailBridge {
                 "[search] accounts scanned: \(meta.accountsScanned)",
                 "[search] mailboxes scanned: \(meta.mailboxesScanned)",
                 "[search] messages examined: \(meta.messagesExamined)",
-                "[search] scan windows shifted toward --before: \(meta.windowsShifted)",
                 "[search] body search: \(searchBody ? "on" : "off (use --body to search message content)")",
                 "[search] timed out: \(meta.timedOut ? "yes (returning partial results)" : "no")",
             ]
@@ -960,9 +959,6 @@ enum MailBridge {
         let mailboxesScanned: Int
         let messagesExamined: Int
         let timedOut: Bool
-        /// Count of mailboxes whose scan window was binary-search-shifted toward
-        /// a `--before` date (search script only; list/activity omit it).
-        let windowsShifted: Int
         /// `false` when any scanned mailbox's newest-N window stopped short of its
         /// oldest message (list script only). Feeds the `--before` shortfall hint.
         let reachedMailboxEnd: Bool
@@ -977,13 +973,12 @@ enum MailBridge {
             messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
             // Backward-compatible: scripts that don't emit timedOut default to false.
             timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
-            windowsShifted = try container.decodeIfPresent(Int.self, forKey: .windowsShifted) ?? 0
             reachedMailboxEnd = try container.decodeIfPresent(Bool.self, forKey: .reachedMailboxEnd) ?? true
             oldestExaminedMs = try container.decodeIfPresent(Double.self, forKey: .oldestExaminedMs)
         }
 
         private enum CodingKeys: String, CodingKey {
-            case accountsScanned, mailboxesScanned, messagesExamined, timedOut, windowsShifted
+            case accountsScanned, mailboxesScanned, messagesExamined, timedOut
             case reachedMailboxEnd, oldestExaminedMs
         }
     }

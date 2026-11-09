@@ -19,6 +19,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [feat] Mail list, search and activity read each mailbox with bulk Apple Events and filter in memory, so without Full Disk Access they see the whole mailbox instead of a newest-N window. An unreadable mailbox or one that changes mid-read marks the answer partial rather than empty.
 - [feat] The contact index caches progress when a scan runs out of time and resumes on the next call, so an address book too large for one call still ends up cached. A change to the address book discards partial work. Closes pippin-07tt.
 - [feat] `mail index` and `mail search --semantic` can use embeddings from any OpenAI-compatible `/v1/embeddings` endpoint, selected with `ai.embeddings` or `--provider`. Ollama remains the default. Closes pippin-edjh.
 - [feat] Memo transcription can use Apple's on-device SpeechAnalyzer, which needs macOS 26 or later and nothing installed, or any OpenAI-compatible `/v1/audio/transcriptions` endpoint, selected with `ai.transcription`. mlx-audio remains the default. Closes pippin-edjh.
