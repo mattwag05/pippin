@@ -10,9 +10,9 @@ final class JSONValueTests: XCTestCase {
         XCTAssertEqual(JSONValue.int(-7).intValue, -7)
     }
 
-    func testIntValueFromInRangeDoubleTruncates() {
+    func testIntValueFromIntegralDoubleOnly() {
         XCTAssertEqual(JSONValue.double(5.0).intValue, 5)
-        XCTAssertEqual(JSONValue.double(5.7).intValue, 5, "fractional doubles truncate toward zero")
+        XCTAssertNil(JSONValue.double(5.7).intValue, "a fractional number is not an integer")
         XCTAssertEqual(JSONValue.double(1e18).intValue, Int64(1e18))
     }
 
