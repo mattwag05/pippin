@@ -220,11 +220,11 @@ public final class RemindersBridge: @unchecked Sendable {
 
     // MARK: - Complete
 
-    public func completeReminder(id: String) async throws -> BridgeActionResult {
+    public func completeReminder(id: String, completed: Bool = true) async throws -> BridgeActionResult {
         try await ensureAccess()
         let reminder = try findReminder(id: id, minimumPrefixLength: IDPrefix.minimumMutatingLength)
-        reminder.isCompleted = true
-        reminder.completionDate = Date()
+        // Setting isCompleted also sets or clears completionDate.
+        reminder.isCompleted = completed
         do {
             try store.save(reminder, commit: true)
         } catch {
@@ -232,7 +232,7 @@ public final class RemindersBridge: @unchecked Sendable {
         }
         return BridgeActionResult(
             success: true,
-            action: "complete",
+            action: completed ? "complete" : "uncomplete",
             details: ["id": reminder.calendarItemIdentifier, "title": reminder.title ?? ""]
         )
     }

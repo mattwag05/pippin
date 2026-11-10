@@ -913,16 +913,26 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Print what would happen without making changes.")
         public var dryRun: Bool = false
 
+        @Flag(name: .customLong("locate-by-message-id"), help: "Find the message in the id's mailbox by --expect-message-id instead of by row id (what `pippin undo` runs after a move).")
+        public var locateByMessageId: Bool = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
+
+        public mutating func validate() throws {
+            if locateByMessageId, expectMessageId == nil {
+                throw ValidationError("--locate-by-message-id needs --expect-message-id.")
+            }
+        }
 
         public mutating func execute() async throws -> AgentResult {
             let result = try MailBridge.moveMessage(
                 compoundId: messageId,
                 toMailbox: to,
                 dryRun: dryRun,
-                expectMessageId: expectMessageId
+                expectMessageId: expectMessageId,
+                locateByMessageId: locateByMessageId
             )
             return AgentResult(result)
         }

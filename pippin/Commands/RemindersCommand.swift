@@ -286,13 +286,16 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Argument(help: "Reminder ID, or a unique prefix of at least 8 characters, to complete.")
         public var id: String
 
+        @Flag(name: .long, help: "Mark the reminder as not completed instead (what `pippin undo` runs).")
+        public var incomplete: Bool = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
         public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
-            let result = try await bridge.completeReminder(id: id)
+            let result = try await bridge.completeReminder(id: id, completed: !incomplete)
             return AgentResult(result)
         }
     }
