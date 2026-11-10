@@ -152,16 +152,31 @@ enum MailBridge {
         let accounts = try MailAccountsCache.ensure(accountName: accountName) {
             try fetchAccountRecords()
         }
-        let index = try MailEnvelopeIndex(dbPath: dbPath, accounts: accounts)
+        let index = try sharedFastPathIndex(dbPath: dbPath, accounts: accounts)
         if try !index.unknownAccountUUIDs().isEmpty {
             let (_, fetchedAt) = MailAccountsCache.load()
             if MailAccountsCache.isStale(fetchedAt: fetchedAt),
                let fresh = try? fetchAccountRecords(), !fresh.isEmpty {
                 MailAccountsCache.save(fresh, fetchedAt: Date())
-                return try MailEnvelopeIndex(dbPath: dbPath, accounts: fresh)
+                return try sharedFastPathIndex(dbPath: dbPath, accounts: fresh)
             }
         }
         return index
+    }
+
+    private static let fastPathMemo: MailEnvelopeIndexMemo = {
+        // A static is never deinitialized, so drop the snapshot at exit or its
+        // temp dir would outlive the process.
+        atexit { MailBridge.fastPathMemo.clear() }
+        return MailEnvelopeIndexMemo()
+    }()
+
+    /// One snapshot per process while Mail's index is unchanged; see
+    /// `MailEnvelopeIndexMemo` for the invalidation rule.
+    private static func sharedFastPathIndex(
+        dbPath: String, accounts: [MailAccountRecord]
+    ) throws -> MailEnvelopeIndex {
+        try fastPathMemo.index(dbPath: dbPath, accounts: accounts)
     }
 
     /// Per-account mailbox counts for `pippin status`. Tries the Envelope Index
