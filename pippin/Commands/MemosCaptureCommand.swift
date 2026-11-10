@@ -1,7 +1,7 @@
 import ArgumentParser
 import Foundation
 
-public struct MemosCaptureCommand: AgentCommand {
+public struct MemosCaptureCommand: AgentCommand, AIFlagged {
     public static let configuration = CommandConfiguration(
         commandName: "capture",
         abstract: "Transcribe a voice memo, extract action items, create Reminders."
@@ -19,14 +19,7 @@ public struct MemosCaptureCommand: AgentCommand {
     @Flag(name: .long, help: "Preview items without creating reminders.")
     public var dryRun: Bool = false
 
-    @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
-    public var provider: String?
-
-    @Option(name: .long, help: "Model name (provider-specific default).")
-    public var model: String?
-
-    @Option(name: .long, help: "API key for Claude provider.")
-    public var apiKey: String?
+    @OptionGroup public var ai: AIOptions
 
     @OptionGroup public var output: OutputOptions
 

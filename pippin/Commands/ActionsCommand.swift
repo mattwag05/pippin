@@ -12,7 +12,7 @@ public struct ActionsCommand: AsyncParsableCommand {
 
     // MARK: - Extract
 
-    public struct Extract: AgentCommand {
+    public struct Extract: AgentCommand, AIFlagged {
         public static let configuration = CommandConfiguration(
             commandName: "extract",
             abstract: "Scan recent Sent mail and recently-modified Notes for commitments you made and emit draft reminders."
@@ -36,14 +36,7 @@ public struct ActionsCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Minimum confidence (0.0-1.0) to include an extracted action. Default: 0.5.")
         public var minConfidence: Float = 0.5
 
-        @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
-        public var provider: String?
-
-        @Option(name: .long, help: "Model name (provider-specific default).")
-        public var model: String?
-
-        @Option(name: .long, help: "API key for Claude provider.")
-        public var apiKey: String?
+        @OptionGroup public var ai: AIOptions
 
         @Option(name: .long, help: "Reminder list name to create into (when --create is set).")
         public var list: String?

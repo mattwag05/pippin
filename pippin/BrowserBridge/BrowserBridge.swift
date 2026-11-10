@@ -468,69 +468,30 @@ public enum BrowserBridge {
     /// Runs an already-written Node script file and returns stdout. Split out so
     /// `runNodeScript` owns the temp-file lifetime via `withTemporaryFile`.
     private static func runNodeScriptFile(_ tmpFile: URL, timeoutSeconds: Int) throws -> String {
-        let process = Process()
-        // Use env to pick up PATH-installed node
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["node", tmpFile.path]
-
-        process.environment = nodeEnvironment()
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
+        let outcome: Subprocess.Outcome
         do {
-            try process.run()
+            outcome = try Subprocess.run(
+                // Use env to pick up PATH-installed node
+                executable: URL(fileURLWithPath: "/usr/bin/env"),
+                arguments: ["node", tmpFile.path],
+                environment: nodeEnvironment(),
+                timeout: TimeInterval(timeoutSeconds)
+            )
         } catch {
             throw BrowserBridgeError.nodeNotInstalled
         }
 
-        // Drain both pipes concurrently to avoid deadlock on large output (>64KB pipe buffer)
-        // nonisolated(unsafe): each var is written once by one GCD block; group.wait() provides happens-before
-        nonisolated(unsafe) var stdoutData = Data()
-        nonisolated(unsafe) var stderrData = Data()
-        let group = DispatchGroup()
-
-        group.enter()
-        DispatchQueue.global().async {
-            stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
-        }
-
-        group.enter()
-        DispatchQueue.global().async {
-            stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
-        }
-
-        // Set up timeout: terminate after timeoutSeconds
-        let timeoutItem = DispatchWorkItem {
-            guard process.isRunning else { return }
-            process.terminate()
-            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            }
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds), execute: timeoutItem)
-
-        process.waitUntilExit()
-        timeoutItem.cancel()
-        group.wait()
-
         // Detect timeout via termination reason
-        if process.terminationReason == .uncaughtSignal {
+        if outcome.signaled {
             throw BrowserBridgeError.timeout
         }
 
-        let stdoutStr = (String(data: stdoutData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let stderrStr = (String(data: stderrData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard process.terminationStatus == 0 else {
-            throw BrowserBridgeError.scriptFailed(stderrStr.isEmpty ? "Node process exited with status \(process.terminationStatus)" : stderrStr)
+        let stderrStr = outcome.stderrText
+        guard outcome.status == 0 else {
+            throw BrowserBridgeError.scriptFailed(stderrStr.isEmpty ? "Node process exited with status \(outcome.status)" : stderrStr)
         }
 
-        return stdoutStr
+        return outcome.stdoutText
     }
 
     // MARK: - JSON Decoder

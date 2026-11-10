@@ -347,50 +347,14 @@ public enum AIProviderFactory {
         guard let binary = knownPaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
         else { return nil }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = [itemName]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        // Discard stderr at the OS level. Previously this was an undrained
-        // Pipe(): a chatty get-secret (>64KB of stderr) would block on a full
-        // pipe buffer and never exit, hanging waitUntilExit() forever.
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
-
-        // Drain stdout concurrently (so a large secret value can't deadlock on
-        // the 64KB stdout buffer) and bound the wait so a wedged get-secret
-        // (e.g. a vault prompt) can't hang the caller forever.
-        nonisolated(unsafe) var outData = Data()
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global().async {
-            outData = pipe.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
-        }
-
-        let timeoutItem = DispatchWorkItem {
-            guard process.isRunning else { return }
-            process.terminate()
-            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            }
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(10), execute: timeoutItem)
-
-        process.waitUntilExit()
-        timeoutItem.cancel()
-        group.wait()
-
-        // Non-zero exit, launch failure, or SIGTERM/SIGKILL from the timeout
-        // all surface as "no secret".
-        guard process.terminationStatus == 0, process.terminationReason != .uncaughtSignal else { return nil }
-        let output = (String(data: outData, encoding: .utf8) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // stderr is discarded at the OS level (a chatty get-secret must not
+        // block on a full pipe) and the wait is bounded so a wedged one (e.g. a
+        // vault prompt) can't hang the caller forever. A launch failure, a
+        // nonzero exit and a timeout kill all surface as "no secret".
+        guard let outcome = try? Subprocess.run(
+            executable: URL(fileURLWithPath: binary), arguments: [itemName], timeout: 10, discardStderr: true
+        ), outcome.status == 0, !outcome.signaled else { return nil }
+        let output = outcome.stdoutText
         return output.isEmpty ? nil : output
     }
 }

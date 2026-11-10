@@ -1,7 +1,7 @@
 import ArgumentParser
 import Foundation
 
-public struct SummarizeCommand: AgentCommand {
+public struct SummarizeCommand: AgentCommand, AIFlagged {
     public static let configuration = CommandConfiguration(
         commandName: "summarize",
         abstract: "Summarize a voice memo using AI."
@@ -19,14 +19,7 @@ public struct SummarizeCommand: AgentCommand {
     @Option(name: .long, help: "Free-form prompt (overrides --template).")
     public var prompt: String?
 
-    @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
-    public var provider: String?
-
-    @Option(name: .long, help: "Model name (provider-specific default).")
-    public var model: String?
-
-    @Option(name: .long, help: "API key for Claude provider.")
-    public var apiKey: String?
+    @OptionGroup public var ai: AIOptions
 
     @Option(name: [.customLong("since")], help: "Only summarize memos on or after YYYY-MM-DD (with --all).")
     public var since: String?

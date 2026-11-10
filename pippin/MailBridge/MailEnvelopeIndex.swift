@@ -164,6 +164,81 @@ private extension JSONEncoder {
     }
 }
 
+// MARK: - Snapshot reuse
+
+/// Hands out one Envelope Index snapshot per process for as long as it is
+/// still current, so a command that scans several accounts (`digest`,
+/// `status`) or a long-lived process (`mail watch`) copies the index once.
+///
+/// Invalidation rule: a snapshot is reused only while Mail's database file and
+/// its `-wal` each have the inode, size and modification time they had just
+/// before the snapshot was copied, and the account map is the same. Mail
+/// appends every change to the `-wal` (or rewrites the database at a
+/// checkpoint), so any new or changed message moves a stamp and the next call
+/// copies again. The stamp is read BEFORE the copy: a write that lands during
+/// the copy leaves the stored stamp older than the files, which forces a fresh
+/// copy next time instead of reusing a snapshot of unknown age.
+final class MailEnvelopeIndexMemo: @unchecked Sendable {
+    typealias Opener = @Sendable (String, [MailAccountRecord]) throws -> MailEnvelopeIndex
+
+    struct FileStamp: Equatable {
+        let inode: UInt64
+        let size: Int64
+        let modifiedSeconds: Int
+        let modifiedNanoseconds: Int
+
+        init?(path: String) {
+            var info = stat()
+            guard stat(path, &info) == 0 else { return nil }
+            inode = UInt64(info.st_ino)
+            size = Int64(info.st_size)
+            modifiedSeconds = info.st_mtimespec.tv_sec
+            modifiedNanoseconds = info.st_mtimespec.tv_nsec
+        }
+    }
+
+    private struct Key: Equatable {
+        let dbPath: String
+        let database: FileStamp?
+        let wal: FileStamp?
+        let accounts: [MailAccountRecord]
+    }
+
+    // @unchecked Sendable: `entry` is only touched under `lock`.
+    private let lock = NSLock()
+    private var entry: (key: Key, index: MailEnvelopeIndex)?
+
+    /// The current snapshot, opening one through `open` only when there is none
+    /// or the stored one is stale. The lock is held across `open` so concurrent
+    /// callers share one copy instead of racing to make several.
+    func index(
+        dbPath: String,
+        accounts: [MailAccountRecord],
+        open: Opener = { try MailEnvelopeIndex(dbPath: $0, accounts: $1) }
+    ) throws -> MailEnvelopeIndex {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = Key(
+            dbPath: dbPath,
+            database: FileStamp(path: dbPath),
+            wal: FileStamp(path: dbPath + "-wal"),
+            accounts: accounts
+        )
+        if let entry, entry.key == key { return entry.index }
+        entry = nil // drop the stale snapshot (and its temp dir) before copying again
+        let index = try open(dbPath, accounts)
+        entry = (key, index)
+        return index
+    }
+
+    /// Release the held snapshot so its temp dir is removed.
+    func clear() {
+        lock.lock()
+        entry = nil
+        lock.unlock()
+    }
+}
+
 // MARK: - Reader
 
 /// Read-only view over a snapshot of Mail's Envelope Index SQLite for
@@ -229,6 +304,7 @@ final class MailEnvelopeIndex: Sendable {
             try? fm.removeItem(atPath: dir)
             throw MailEnvelopeIndexError.accessDenied(error.localizedDescription)
         }
+        Self.adviseReadAhead(path: copyPath)
         do {
             // Writable open on OUR copy: SQLite needs to recover the copied WAL,
             // which a readonly config can refuse. Nothing here ever writes SQL.
@@ -245,6 +321,22 @@ final class MailEnvelopeIndex: Sendable {
             try? fm.removeItem(atPath: dir)
             throw error
         }
+    }
+
+    /// Ask the kernel to page the whole snapshot in with one sequential
+    /// read-ahead. The copy is an APFS clone, a new file with an empty page
+    /// cache, so without this the first query faults its pages in one random
+    /// read at a time: measured 188 ms against 34 ms for a 64 MB index.
+    /// Advisory only: a failure changes nothing but speed.
+    @discardableResult
+    static func adviseReadAhead(path: String) -> Bool {
+        let fd = open(path, O_RDONLY)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0 else { return false }
+        var advice = radvisory(ra_offset: 0, ra_count: Int32(clamping: info.st_size))
+        return fcntl(fd, F_RDADVISE, &advice) == 0
     }
 
     /// Test seam: pre-built (in-memory) queue, no snapshot.

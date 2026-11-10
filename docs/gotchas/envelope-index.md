@@ -49,6 +49,19 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   within ~2 minutes of delivery (Mail writes the index continuously while
   running). `read`-flag state lags only by Mail's own sync. Never open Mail's
   live files with a writable handle; never write SQL to any of this.
+- **The snapshot copy is cheap; the first query on it was not.** The copy is
+  an APFS clone (1 to 4 ms), but a clone is a new file with an empty page
+  cache, so the first query paged it in one random read at a time: 188 ms of
+  a 220 ms `mail list`. `MailEnvelopeIndex.adviseReadAhead` issues one
+  `F_RDADVISE` for the whole file after the copy (34 ms). Do not drop it, and
+  do not "fix" the copy. Numbers and method: [../performance.md](../performance.md).
+- **One snapshot per process, while current.** `MailBridge.makeFastPathIndex`
+  goes through `MailEnvelopeIndexMemo`: the snapshot is reused only while the
+  database and its `-wal` keep the inode, size and mtime they had just before
+  the copy, and the account map is unchanged. The stamp is read before the
+  copy, so a write that lands during it forces a fresh copy next time. An
+  `atexit` hook releases the snapshot, because a static is never
+  deinitialized and the temp dir would otherwise outlive the process.
 - **Version guard**: `properties` table `version`=4 (`minor_version`=90006 on
   macOS 27 beta / V10) — `MailEnvelopeIndex.knownVersions` gates the fast path;
   unknown version → JXA fallback + a `doctor` `.skip` notice. The V-number dir
