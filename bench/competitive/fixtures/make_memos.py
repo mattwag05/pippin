@@ -10,6 +10,7 @@ Standard library only, Python 3.9.
 """
 import json
 import os
+import re
 import shutil
 import sqlite3
 import struct
@@ -51,6 +52,11 @@ def install(manifest_path):
         shutil.copy2(DB, DB + ".orig")
     restore(quiet=True)
     con = sqlite3.connect(DB)
+    # The store's triggers call functions only Core Data registers (persistent history bookkeeping).
+    # Register each name the triggers use as a no-op so a plain INSERT can run.
+    triggers = " ".join(row[0] or "" for row in con.execute("SELECT sql FROM sqlite_master WHERE type = 'trigger'"))
+    for name in set(re.findall(r"\b(NSCoreData\w+)\s*\(", triggers)):
+        con.create_function(name, -1, lambda *args: None)
     ent = con.execute("SELECT Z_ENT FROM Z_PRIMARYKEY WHERE Z_NAME = 'CloudRecording'").fetchone()[0]
     top = con.execute("SELECT coalesce(max(Z_PK), 0) FROM ZCLOUDRECORDING").fetchone()[0]
     for i, r in enumerate(recordings):
