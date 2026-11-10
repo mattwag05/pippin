@@ -254,8 +254,8 @@ final class NotesTests: XCTestCase {
 
     func testBuildListScriptDoesNotFetchHTMLBody() {
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
-        XCTAssertFalse(script.contains("note.body()"), "List must not fetch the HTML body — `notes show` does")
-        XCTAssertTrue(script.contains("note.plaintext()"), "List still returns plainText")
+        XCTAssertFalse(script.contains(".body()"), "List must not fetch the HTML body; `notes show` does")
+        XCTAssertTrue(script.contains("'plaintext'"), "List still returns plainText when asked")
     }
 
     func testBuildSearchScriptDoesNotFetchHTMLBody() {
@@ -263,22 +263,21 @@ final class NotesTests: XCTestCase {
         XCTAssertFalse(script.contains("note.body()"), "Search must not fetch the HTML body — `notes show` does")
     }
 
-    func testBuildListScriptResolvesContainerOncePerNote() {
+    func testBuildListScriptReadsFoldersInBulk() {
+        // One bulk `container` column; the per-note container() read survives
+        // only inside the `_folderOfNote` fallback.
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
-        XCTAssertEqual(
-            script.components(separatedBy: "note.container()").count - 1, 1,
-            "container() must be resolved once per note, then id()/name() read off the resolved object"
-        )
+        XCTAssertTrue(script.contains("'container'"))
+        XCTAssertEqual(script.components(separatedBy: ".container()").count - 1, 1)
     }
 
     func testBuildSearchScriptReusesMatchTestReads() {
-        // The match test already read name()/plaintext(); matched notes must
-        // reuse those JS locals instead of firing two more Apple Events each.
+        // The match test reads title and plaintext from the bulk columns;
+        // matched rows reuse those values instead of asking Notes again.
         let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
-        XCTAssertTrue(script.contains("title: title,"), "Matched notes must reuse the cached title")
-        XCTAssertTrue(script.contains("plainText: plain,"), "Matched notes must reuse the cached plaintext")
-        XCTAssertEqual(script.components(separatedBy: "note.plaintext()").count - 1, 1)
-        XCTAssertEqual(script.components(separatedBy: "note.container()").count - 1, 1)
+        XCTAssertTrue(script.contains("title: row.title,"), "Matched notes must reuse the title already read")
+        XCTAssertTrue(script.contains("row.plain"), "Matched notes must reuse the plaintext already read")
+        XCTAssertEqual(script.components(separatedBy: ".plaintext()").count - 1, 1, "only the per-note fallback")
     }
 
     func testListAndSearchScriptsEmitRenamedDateKeys() {

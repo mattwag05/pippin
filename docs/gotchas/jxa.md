@@ -124,6 +124,16 @@ A soft timeout self-bounds a JXA loop, but if the per-iteration body does **one 
 
 Fix: fetch the property for the whole collection in **one** Apple Event via the bulk getter on the *plural specifier* (not the materialized array): `_notesRef.modificationDate()` returns a parallel array of all dates. Keep the specifier (`_notesRef = app.notes`), materialize elements once (`notes = _notesRef()`), bulk-fetch (`_mods = _notesRef.modificationDate()`), then the bounded loop is **pure JS** (zero Apple Events) and never starves. See `NotesBridge.jsResolveNotesAndBulkMods`. Per-note `.body()`/`.plaintext()` stay per-item but only for the returned page.
 
+## Bulk Apple Event reads on Notes, measured (2026-11-09)
+
+`notes list`, `search` and `folders` read whole columns with `NotesBridge.jsBulkNotes` (`_bulkRead`, `_folderIndex`). On a vault of 42 folders, medians of 5 runs, debug build: default `list` 12.8 s to 0.31 s, `list --fields all` 13.8 s to 0.34 s, a no-match `search` 22.1 s (partial) to 0.32 s (complete), `folders` 1.58 s to 0.21 s. Output was compared field by field against the per-note scripts and was identical.
+
+- **A folder's `notes` list is not the note's container.** One folder listed 63 notes whose `container()` was a different folder, so a note-to-folder map built from `app.folders.notes.id()` mislabels rows. Use the bulk `container` column: `app.notes.container()` returns one by-id folder specifier per note in one Apple Event, and `Automation.getDisplayString(spec)` yields `...folders.byId("<id>")` without another event.
+- `app.folders.notes.id()` (chained plural specifier) works and returns one id array per folder, which is what `folders` counts.
+- Bulk `plaintext` for the whole vault costs less than 50 per-note reads here. The per-note read is kept only as the fallback when Notes refuses the bulk one.
+- `_bulkRead` reads the id column before and after the other columns and fails after one retry on a mismatch, so a sync mid-read cannot pair a note with its neighbour's fields.
+- The scripts are executed in JavaScriptCore against a fake Notes (`NotesScriptBehaviorTests`). In that fake, a specifier is a JS function, and a function's own `name` is read-only: define the bulk `name` getter with `Object.defineProperty`, or the assignment is silently ignored.
+
 ## Bulk Apple Event reads on Mail, measured (pippin-25pr, 2026-11-08)
 
 `scripts/measure-mail-bulk.sh` timed the per-message loop against plural-specifier getters on real mailboxes (Yahoo IMAP INBOX 2856, Exchange Inbox 6167, Gmail INBOX 3118, Gmail All Mail 6398; median of 3; raw rows in `measure-mail-bulk-2026-11-08.jsonl`):

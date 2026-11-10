@@ -13,6 +13,8 @@ final class NotesScriptBehaviorTests: XCTestCase {
     Date.now = function() { return __clock; };
     var __events = {};
     var __writes = [];
+    var __tick = 0;
+    var Automation = {getDisplayString: function(spec) { return spec.__display; }};
     function __ev(name) { __events[name] = (__events[name] || 0) + 1; }
     function __total() { var n = 0; for (var k in __events) n += __events[k]; return n; }
     function __folderOf(row) {
@@ -22,7 +24,7 @@ final class NotesScriptBehaviorTests: XCTestCase {
     function __note(row) {
         var note = {
             id: function() { __ev('note.id'); return row.id; },
-            plaintext: function() { __ev('note.plaintext'); return row.plain; },
+            plaintext: function() { __ev('note.plaintext'); __clock += __tick; return row.plain; },
             creationDate: function() { __ev('note.creationDate'); return new Date(row.created); },
             modificationDate: function() { __ev('note.modificationDate'); return new Date(row.mod); },
             container: function() {
@@ -62,10 +64,16 @@ final class NotesScriptBehaviorTests: XCTestCase {
             };
         }
         spec.id = column('notes.id', function(r) { return r.id; });
-        spec.name = column('notes.name', function(r) { return r.name; });
+        // A JS function's own `name` is read-only, so it has to be redefined.
+        Object.defineProperty(spec, 'name', {value: column('notes.name', function(r) { return r.name; })});
         spec.plaintext = column('notes.plaintext', function(r) { return r.plain; });
         spec.modificationDate = column('notes.modificationDate', function(r) { return new Date(r.mod); });
         spec.creationDate = column('notes.creationDate', function(r) { return new Date(r.created); });
+        // Notes answers a bulk `container` read with one by-id folder specifier per note.
+        spec.container = column('notes.container', function(r) {
+            var f = __folderOf(r);
+            return {__display: 'Application("Notes").folders.byId("' + (f ? f.id : 'f-unlisted') + '")'};
+        });
         spec.byId = function(id) {
             var hit = rowsOf().filter(function(r) { return r.id === id; })[0];
             if (!hit) throw new Error("Can't get object. (-1728)");
@@ -90,7 +98,10 @@ final class NotesScriptBehaviorTests: XCTestCase {
     function __foldersSpec() {
         var spec = function() { __ev('folders()'); return __folders.map(__folder); };
         spec.id = function() { __ev('folders.id'); return __folders.map(function(f) { return f.id; }); };
-        spec.name = function() { __ev('folders.name'); return __folders.map(function(f) { return f.name; }); };
+        Object.defineProperty(spec, 'name', {value: function() {
+            __ev('folders.name');
+            return __folders.map(function(f) { return f.name; });
+        }});
         spec.whose = function(cond) {
             return function() {
                 __ev('folders.whose');
@@ -101,6 +112,7 @@ final class NotesScriptBehaviorTests: XCTestCase {
         spec.notes = {
             id: function() {
                 __ev('folders.notes.id');
+                if (__bulkThrows['folders.notes.id']) throw new Error('chained getter refused');
                 return __folders.map(function(f) {
                     return __rows.filter(function(r) { return r.folder === f.name; }).map(function(r) { return r.id; });
                 });
@@ -330,5 +342,258 @@ final class NotesScriptBehaviorTests: XCTestCase {
         XCTAssertEqual(agentErrorCode(for: error), "folder_not_found")
         XCTAssertEqual(PippinExitCode.from(error), 3)
         XCTAssertEqual(error.nextStep.nextCall?.tool, "notes_folders")
+    }
+
+    // MARK: - Read cost (PERF-1, PERF-2, PERF-6)
+
+    /// A vault of `count` notes, alternating between two folders.
+    static func vault(_ count: Int) -> String {
+        "__rows = []; for (var n = 1; n <= \(count); n++) { __rows.push(__mk(n, n % 2 ? 'Notes' : 'Work')); }"
+    }
+
+    func testSearchMissReadsTheWholeVaultInAFixedNumberOfAppleEvents() throws {
+        // Per-note name() + plaintext() reads made a no-match search cost two
+        // Apple Events per note, so it hit the soft cap before finishing.
+        let context = try makeContext(setup: Self.vault(300))
+        let json = try run(NotesBridge.buildSearchScript(query: "zzz-no-such-text", folder: nil, limit: 50), in: context)
+        let outcome = try NotesBridge.decode(NotesBridge.Outcome<[NoteInfo]>.self, from: json)
+        XCTAssertEqual(outcome.results.count, 0)
+        XCTAssertFalse(outcome.timedOut, "a miss must be a complete answer, not a partial one")
+        let seen = try events(context)
+        XCTAssertLessThan(seen.values.reduce(0, +), 15, "cost must not scale with the vault: \(seen)")
+    }
+
+    func testListCostDoesNotGrowWithTheNumberOfRows() throws {
+        let context = try makeContext(setup: Self.vault(300))
+        let json = try run(NotesBridge.buildListScript(folder: nil, limit: 50), in: context)
+        let outcome = try NotesBridge.decode(NotesBridge.Outcome<[NoteInfo]>.self, from: json)
+        XCTAssertEqual(outcome.results.count, 50)
+        let seen = try events(context)
+        XCTAssertLessThan(seen.values.reduce(0, +), 15, "about 7 Apple Events per row before: \(seen)")
+    }
+
+    func testFoldersCountNotesWithoutMaterializingThem() throws {
+        let context = try makeContext()
+        let json = try run(NotesBridge.buildListFoldersScript(), in: context)
+        let outcome = try NotesBridge.decode(NotesBridge.Outcome<[NoteFolder]>.self, from: json)
+        XCTAssertEqual(outcome.results.map(\.name), ["Notes", "Work"], "Recently Deleted stays hidden")
+        XCTAssertEqual(outcome.results.map(\.noteCount), [2, 2])
+        let seen = try events(context)
+        XCTAssertNil(seen["notes()"], "counting must not materialize every note: \(seen)")
+        XCTAssertLessThan(seen.values.reduce(0, +), 6, "cost must not scale with the folder count: \(seen)")
+    }
+
+    // MARK: - List and search behavior
+
+    private func list(
+        folder: String? = nil, limit: Int = 50, offset: Int = 0, fields: Set<String>? = nil, in context: JSContext
+    ) throws -> NotesBridge.Outcome<[NoteInfo]> {
+        let script = NotesBridge.buildListScript(folder: folder, limit: limit, offset: offset, fields: fields)
+        return try NotesBridge.decode(NotesBridge.Outcome<[NoteInfo]>.self, from: run(script, in: context))
+    }
+
+    private func search(
+        _ query: String, folder: String? = nil, limit: Int = 50, fields: Set<String>? = nil,
+        softTimeoutMs: Int = 22000, in context: JSContext
+    ) throws -> NotesBridge.Outcome<[NoteInfo]> {
+        let script = NotesBridge.buildSearchScript(
+            query: query, folder: folder, limit: limit, fields: fields, softTimeoutMs: softTimeoutMs
+        )
+        return try NotesBridge.decode(NotesBridge.Outcome<[NoteInfo]>.self, from: run(script, in: context))
+    }
+
+    private func ids(_ notes: [NoteInfo]) -> [Int] {
+        notes.compactMap { Int($0.id.components(separatedBy: "/p").last ?? "") }
+    }
+
+    func testListIsNewestFirstWithTheRightFolderAndNoTrashedNotes() throws {
+        let context = try makeContext()
+        let notes = try list(in: context).results
+        XCTAssertEqual(ids(notes), [5, 3, 2, 1], "note 4 is in Recently Deleted")
+        XCTAssertEqual(notes.map(\.folder), ["Work", "Notes", "Work", "Notes"])
+        XCTAssertEqual(notes.map(\.folderId), ["f-work", "f-notes", "f-work", "f-notes"])
+        XCTAssertEqual(notes.map(\.title), ["Title 5", "Title 3", "Title 2", "Title 1"], "each id keeps its own title")
+        XCTAssertEqual(notes[0].modificationDate, "2026-01-05T00:00:00.000Z")
+        XCTAssertEqual(notes[0].creationDate, "2025-01-05T00:00:00.000Z")
+        XCTAssertEqual(notes[0].plainText, "Title 5 body text 5")
+    }
+
+    func testListReadsOnlyTheFieldsTheCallerKeeps() throws {
+        let context = try makeContext()
+        let notes = try list(fields: ["id", "title", "folder", "modifiedAt"], in: context).results
+        XCTAssertEqual(ids(notes), [5, 3, 2, 1])
+        XCTAssertEqual(notes.map(\.folder), ["Work", "Notes", "Work", "Notes"])
+        let seen = try events(context)
+        // The default output drops these, so they must not be fetched at all.
+        XCTAssertNil(seen["notes.plaintext"], "\(seen)")
+        XCTAssertNil(seen["note.plaintext"], "\(seen)")
+        XCTAssertNil(seen["notes.creationDate"], "\(seen)")
+        XCTAssertEqual(notes.map(\.plainText), ["", "", "", ""])
+
+        let asked = try makeContext()
+        let withText = try list(fields: ["id", "plainText"], in: asked).results
+        XCTAssertEqual(withText[0].plainText, "Title 5 body text 5")
+        XCTAssertNil(try events(asked)["notes.creationDate"])
+    }
+
+    func testListPagesAreFullEvenWhenATrashedNoteSitsInTheWindow() throws {
+        // Sorted: 5, 4 (trashed), 3, 2, 1. Trashed notes are dropped before paging.
+        let context = try makeContext()
+        XCTAssertEqual(try ids(list(limit: 2, in: context).results), [5, 3])
+        XCTAssertEqual(try ids(list(limit: 2, offset: 2, in: context).results), [2, 1])
+        XCTAssertEqual(try ids(list(limit: 2, offset: 4, in: context).results), [])
+    }
+
+    func testListFolderFilterAndUnknownFolder() throws {
+        let context = try makeContext()
+        XCTAssertEqual(try ids(list(folder: "Work", in: context).results), [5, 2])
+        XCTAssertEqual(try ids(list(folder: "No Such Folder", in: context).results), [])
+        XCTAssertEqual(try ids(list(folder: "Recently Deleted", in: context).results), [], "trash stays hidden")
+    }
+
+    func testEmptyVaultIsAnEmptyListNotAnError() throws {
+        // Plural getters throw -1728 on an empty collection.
+        let context = try makeContext(setup: "__rows = [];")
+        XCTAssertEqual(try list(in: context).results.count, 0)
+        XCTAssertEqual(try search("x", in: context).results.count, 0)
+    }
+
+    // MARK: - Column alignment (DAT-09)
+
+    func testAVaultThatChangesMidReadIsRetriedOnceAndStaysAligned() throws {
+        // A sync deletes the newest note between the id read and the name
+        // read, shifting every later index by one.
+        let context = try makeContext(setup: """
+        var __shifted = false;
+        __onBulk = function(event) {
+            if (event === 'notes.name' && !__shifted) { __shifted = true; __rows.shift(); }
+        };
+        """)
+        let notes = try list(in: context).results
+        XCTAssertEqual(ids(notes), [5, 3, 2], "second attempt reads the settled vault")
+        for note in notes {
+            let n = try XCTUnwrap(ids([note]).first)
+            XCTAssertEqual(note.title, "Title \(n)", "a note must never get its neighbour's title")
+            XCTAssertEqual(note.modificationDate, String(format: "2026-01-%02dT00:00:00.000Z", n))
+        }
+    }
+
+    func testAVaultThatKeepsChangingFailsInsteadOfZippingMisalignedColumns() throws {
+        let context = try makeContext(setup: """
+        __rows = []; for (var n = 1; n <= 20; n++) { __rows.push(__mk(n, 'Notes')); }
+        __onBulk = function(event) { if (event === 'notes.name') { __rows.shift(); } };
+        """)
+        XCTAssertThrowsError(try list(in: context)) { error in
+            XCTAssertTrue("\(error)".contains("changed while it was being read"), "\(error)")
+        }
+        let searching = try makeContext(setup: """
+        __rows = []; for (var n = 1; n <= 20; n++) { __rows.push(__mk(n, 'Notes')); }
+        __onBulk = function(event) { if (event === 'notes.plaintext') { __rows.pop(); } };
+        """)
+        XCTAssertThrowsError(try search("title", in: searching))
+    }
+
+    // MARK: - Fallbacks when Notes refuses a bulk read
+
+    func testListFallsBackToAskingEachNoteForItsFolder() throws {
+        let context = try makeContext(setup: "__bulkThrows['notes.container'] = true;")
+        let notes = try list(fields: ["id", "folder"], in: context).results
+        XCTAssertEqual(ids(notes), [5, 3, 2, 1], "the trashed note is still skipped")
+        XCTAssertEqual(notes.map(\.folder), ["Work", "Notes", "Work", "Notes"])
+        XCTAssertEqual(try events(context)["note.container"], 5, "only the scanned window is asked")
+    }
+
+    func testListFallsBackToPerNotePlaintext() throws {
+        let context = try makeContext(setup: "__bulkThrows['notes.plaintext'] = true;")
+        let notes = try list(limit: 2, in: context).results
+        XCTAssertEqual(notes.map(\.plainText), ["Title 5 body text 5", "Title 3 body text 3"])
+        XCTAssertEqual(try events(context)["note.plaintext"], 2)
+    }
+
+    func testANoteInAFolderNotesDoesNotListKeepsAnEmptyFolder() throws {
+        let context = try makeContext(setup: "__rows[0].folder = 'Elsewhere';")
+        let note = try XCTUnwrap(list(in: context).results.last)
+        XCTAssertEqual(ids([note]), [1])
+        XCTAssertEqual(note.folder, "")
+        XCTAssertEqual(note.folderId, "")
+    }
+
+    // MARK: - Search
+
+    func testSearchMatchesTitleOrBodyCaseInsensitivelyNewestFirst() throws {
+        let context = try makeContext(setup: """
+        __rows[0].plain = 'has the Needle in its body';
+        __rows[4].name = 'NEEDLE in the title';
+        __rows[3].plain = 'needle in a trashed note';
+        """)
+        let notes = try search("needle", in: context).results
+        XCTAssertEqual(ids(notes), [5, 1], "newest first, trashed note 4 excluded")
+        XCTAssertEqual(notes.map(\.title), ["NEEDLE in the title", "Title 1"])
+        XCTAssertEqual(notes[1].plainText, "has the Needle in its body")
+        XCTAssertEqual(notes.map(\.folder), ["Work", "Notes"])
+        XCTAssertEqual(try ids(search("title", limit: 2, in: context).results), [5, 3])
+        XCTAssertEqual(try ids(search("title", folder: "Work", in: context).results), [5, 2])
+    }
+
+    func testSearchOmitsPlaintextFromRowsThatWillNotCarryIt() throws {
+        let context = try makeContext()
+        let notes = try search("body text", fields: ["id", "title"], in: context).results
+        XCTAssertEqual(notes.count, 4, "the body is still what was searched")
+        XCTAssertEqual(Set(notes.map(\.plainText)), [""])
+    }
+
+    func testSearchFallsBackToPerNotePlaintextAndReportsAnUnfinishedScan() throws {
+        let refused = try makeContext(setup: "__bulkThrows['notes.plaintext'] = true; __rows[0].plain = 'needle';")
+        let complete = try search("needle", in: refused)
+        XCTAssertEqual(ids(complete.results), [1])
+        XCTAssertFalse(complete.timedOut)
+
+        // Each per-note read costs 400 ms against a 1 s soft cap.
+        let slow = try makeContext(setup: """
+        __bulkThrows['notes.plaintext'] = true; __tick = 400; __rows[4].plain = 'needle';
+        """)
+        let partial = try search("needle", softTimeoutMs: 1000, in: slow)
+        XCTAssertTrue(partial.timedOut, "an unfinished scan must say so")
+        XCTAssertEqual(ids(partial.results), [], "note 5 was never reached, and that is reported, not hidden")
+    }
+
+    // MARK: - Folders and count
+
+    func testFoldersFallBackWhenTheChainedReadIsRefused() throws {
+        let context = try makeContext(setup: "__bulkThrows['folders.notes.id'] = true;")
+        let json = try run(NotesBridge.buildListFoldersScript(), in: context)
+        let outcome = try NotesBridge.decode(NotesBridge.Outcome<[NoteFolder]>.self, from: json)
+        XCTAssertEqual(outcome.results.map(\.noteCount), [2, 2])
+        XCTAssertEqual(outcome.results.map(\.id), ["f-notes", "f-work"])
+    }
+
+    func testAnEmptyFolderCountsZero() throws {
+        let context = try makeContext(setup: "__folders.push({id: 'f-empty', name: 'Empty'});")
+        let json = try run(NotesBridge.buildListFoldersScript(), in: context)
+        let outcome = try NotesBridge.decode(NotesBridge.Outcome<[NoteFolder]>.self, from: json)
+        XCTAssertEqual(outcome.results.last?.name, "Empty")
+        XCTAssertEqual(outcome.results.last?.noteCount, 0)
+    }
+
+    func testCountIsOneCountEvent() throws {
+        let context = try makeContext()
+        XCTAssertEqual(try run(NotesBridge.buildCountScript(folder: nil), in: context), #"{"count":5}"#)
+        XCTAssertEqual(try events(context), ["notes.length": 1])
+        let inFolder = try makeContext()
+        XCTAssertEqual(try run(NotesBridge.buildCountScript(folder: "Work"), in: inFolder), #"{"count":2}"#)
+        XCTAssertNil(try events(inFolder)["notes()"])
+    }
+
+    // MARK: - Fields reach the bridge
+
+    func testEmittedFieldsFollowTheFieldsOption() throws {
+        XCTAssertEqual(try NotesCommand.emittedFields(NotesCommand.List.parse([]).output), Set(NoteInfo.essentialFields))
+        XCTAssertEqual(
+            try NotesCommand.emittedFields(NotesCommand.List.parse(["--fields", "id, plainText"]).output),
+            ["id", "plainText"]
+        )
+        XCTAssertNil(try NotesCommand.emittedFields(NotesCommand.List.parse(["--fields", "all"]).output))
+        XCTAssertFalse(NotesBridge.jsNeeds(Set(NoteInfo.essentialFields)).contains("true"))
+        XCTAssertFalse(NotesBridge.jsNeeds(nil).contains("false"), "other callers of listNotes get every field")
     }
 }

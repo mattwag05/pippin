@@ -20,9 +20,17 @@ enum NotesBridge {
     /// bounded by the soft timeout, surfaced as `timedOut`.
     static let maxListLimit = 500
 
-    static func listNotes(folder: String? = nil, limit: Int = 50, offset: Int = 0, softTimeoutMs: Int = 22000) throws -> Outcome<[NoteInfo]> {
+    /// `fields` names the row fields the caller will keep (nil = all). The
+    /// script skips the reads behind fields nobody asked for; a skipped field
+    /// comes back as an empty string.
+    static func listNotes(
+        folder: String? = nil, limit: Int = 50, offset: Int = 0, fields: Set<String>? = nil,
+        softTimeoutMs: Int = 22000
+    ) throws -> Outcome<[NoteInfo]> {
         let clampedLimit = max(1, min(limit, maxListLimit))
-        let script = buildListScript(folder: folder, limit: clampedLimit, offset: max(0, offset), softTimeoutMs: softTimeoutMs)
+        let script = buildListScript(
+            folder: folder, limit: clampedLimit, offset: max(0, offset), fields: fields, softTimeoutMs: softTimeoutMs
+        )
         let json = try runScript(script)
         return try decode(Outcome<[NoteInfo]>.self, from: json)
     }
@@ -33,9 +41,13 @@ enum NotesBridge {
         return try decode(NoteInfo.self, from: json)
     }
 
-    static func searchNotes(query: String, folder: String? = nil, limit: Int = 50, softTimeoutMs: Int = 22000) throws -> Outcome<[NoteInfo]> {
+    static func searchNotes(
+        query: String, folder: String? = nil, limit: Int = 50, fields: Set<String>? = nil, softTimeoutMs: Int = 22000
+    ) throws -> Outcome<[NoteInfo]> {
         let clampedLimit = max(1, min(limit, 500))
-        let script = buildSearchScript(query: query, folder: folder, limit: clampedLimit, softTimeoutMs: softTimeoutMs)
+        let script = buildSearchScript(
+            query: query, folder: folder, limit: clampedLimit, fields: fields, softTimeoutMs: softTimeoutMs
+        )
         let json = try runScript(script)
         return try decode(Outcome<[NoteInfo]>.self, from: json)
     }
@@ -46,11 +58,9 @@ enum NotesBridge {
         return try decode(Outcome<[NoteFolder]>.self, from: json)
     }
 
-    /// Count notes without fetching bodies. `pippin status` and similar
-    /// dashboards just want `noteCount`; the full `listNotes` path iterates
-    /// every note's `.body()` + `.plaintext()` over JXA, which busts the
-    /// ScriptRunner cap on vaults of a few hundred notes. `app.notes().length`
-    /// is a single Apple Event — typically <500ms.
+    /// Count notes without fetching anything else. `pippin status` and similar
+    /// dashboards just want `noteCount`. `app.notes.length` is one count Apple
+    /// Event; `app.notes().length` materialized every note specifier first.
     static func countNotes(folder: String? = nil) throws -> Int {
         let script = buildCountScript(folder: folder)
         let json = try runScript(script, timeoutSeconds: 10)
@@ -110,30 +120,112 @@ enum NotesBridge {
 
     // MARK: - JXA Helpers
 
-    /// JXA fragment shared by `buildListScript` / `buildSearchScript` that
-    /// resolves the collection specifier `_notesRef`, materializes the element
-    /// array `notes`, and bulk-fetches every note's `modificationDate` in a
-    /// SINGLE Apple Event (`_notesRef.modificationDate()` → `_mods`). A prior
-    /// loop read `notes[j].modificationDate()` once per note — O(n) Apple Events
-    /// — which on large vaults spent the entire soft-timeout before the sort,
-    /// leaving `pairs` empty and returning ZERO results (pippin-mo7). Bulk
-    /// property access off the plural specifier is one round-trip regardless of
-    /// vault size. Falls back to an empty `_mods` (notes keep `mod: 0`, native
-    /// order) if the bulk getter throws, so results stay non-empty either way.
-    /// Expects `folderFilter`, `app`, `_start`, `softTimeoutMs`, and `_meta` to
-    /// already be declared in the script.
-    static let jsResolveNotesAndBulkMods = """
+    /// JXA shared by list, search and folders: whole-column reads on the plural
+    /// specifier. One Apple Event returns a property for EVERY note, where a
+    /// per-note loop costs one event per note per property; that loop made
+    /// `notes list` about 217 ms a row, and `notes search` hit the soft cap
+    /// before it had read the vault (pippin-mo7, PERF-1/2/6).
+    ///
+    /// `_bulkRead` brackets the columns with two reads of the id column. A sync
+    /// that adds or removes a note mid-read shifts every later index, and
+    /// zipping the columns anyway would give each note its neighbour's fields,
+    /// so a mismatch is retried once and then fails (DAT-09). `optional`
+    /// columns that Notes refuses come back null for the caller to handle.
+    ///
+    /// `_folderIndex` reads every folder's id and name in two events and, when
+    /// asked, every folder's note ids in a third through the chained specifier.
+    /// Plural getters throw -1728 on an empty collection, hence the length
+    /// guards. Expects `app` to be declared.
+    static let jsBulkNotes = """
+    function _bulkRead(spec, columns, optional) {
+        var all = columns.concat(optional);
+        if (!spec || spec.length === 0) {
+            var none = {id: []};
+            all.forEach(function(c) { none[c] = []; });
+            return none;
+        }
+        for (var attempt = 0; attempt < 2; attempt++) {
+            var out = {id: spec.id()};
+            var aligned = true;
+            all.forEach(function(c) {
+                try { out[c] = spec[c](); } catch (e) {
+                    if (optional.indexOf(c) === -1) { throw e; }
+                    out[c] = null;
+                }
+                if (out[c] !== null && out[c].length !== out.id.length) { aligned = false; }
+            });
+            var after = spec.id();
+            if (aligned && after.length === out.id.length && after.join('\\n') === out.id.join('\\n')) { return out; }
+        }
+        throw new Error('Notes changed while it was being read. Retry.');
+    }
+    function _folderIndex(withNotes) {
+        var spec = app.folders;
+        if (spec.length === 0) { return {id: [], name: [], notes: []}; }
+        var out = {id: spec.id(), name: spec.name(), notes: null};
+        if (!withNotes) {
+            if (out.name.length !== out.id.length) { throw new Error('Notes folders changed while they were being read. Retry.'); }
+            return out;
+        }
+        try { out.notes = spec.notes.id(); } catch (e) { out.notes = null; }
+        if (out.notes === null) {
+            // Chained read refused: one read per folder. An empty folder throws.
+            var each = spec();
+            out.notes = [];
+            for (var f = 0; f < each.length; f++) {
+                try { out.notes.push(each[f].notes.id()); } catch (e) { out.notes.push([]); }
+            }
+        }
+        if (out.name.length !== out.id.length || out.notes.length !== out.id.length) {
+            throw new Error('Notes folders changed while they were being read. Retry.');
+        }
+        return out;
+    }
+    """
+
+    /// JXA shared by list and search: resolve the note collection `_notesRef`
+    /// and the two ways to learn a note's folder.
+    ///
+    /// `_folderAt` uses the bulk `container` column: one Apple Event returns a
+    /// by-id folder specifier per note, and a specifier's display string
+    /// carries the folder id without asking Notes again. A folder's own `notes`
+    /// list is NOT a substitute: on a real vault one folder listed notes whose
+    /// container was a different folder. `_folderOfNote` asks the note itself
+    /// (three events), for the rows the bulk read could not place.
+    /// Expects `folderFilter` and `jsBulkNotes`.
+    static let jsResolveNotes = """
     var _notesRef = null;
     if (folderFilter !== null) {
-        var folders = app.folders.whose({name: folderFilter})();
-        if (folders.length > 0) { _notesRef = folders[0].notes; }
+        var _matched = app.folders.whose({name: folderFilter})();
+        if (_matched.length > 0) { _notesRef = _matched[0].notes; }
     } else {
         _notesRef = app.notes;
     }
-    var notes = _notesRef ? _notesRef() : [];
-    var _mods = [];
-    if (_notesRef) { try { _mods = _notesRef.modificationDate(); } catch (e) { _mods = []; } }
+    var _folderName = {};
+    var _fi = _folderIndex(false);
+    for (var _f = 0; _f < _fi.id.length; _f++) { _folderName[_fi.id[_f]] = _fi.name[_f]; }
+    function _folderAt(cols, j) {
+        var spec = cols.container ? cols.container[j] : null;
+        if (!spec) { return null; }
+        var m = /byId\\("([^"]+)"\\)$/.exec(Automation.getDisplayString(spec));
+        if (!m || _folderName[m[1]] === undefined) { return null; }
+        return {id: m[1], name: _folderName[m[1]]};
+    }
+    function _folderOfNote(noteId) {
+        try {
+            var c = _notesRef.byId(noteId).container();
+            return {id: c.id(), name: c.name()};
+        } catch (e) { return {id: '', name: ''}; }
+    }
     """
+
+    /// JS flags for the optional row fields. `plainText` and `createdAt` cost
+    /// reads the default output drops, so they are fetched only on request.
+    static func jsNeeds(_ fields: Set<String>?) -> String {
+        let plain = fields?.contains("plainText") ?? true
+        let created = fields?.contains("createdAt") ?? true
+        return "var needPlain = \(plain); var needCreated = \(created);"
+    }
 
     /// Apple Notes `delete` is a soft-delete into this folder (no scriptable
     /// hard-delete / empty-trash exists — pippin-cxd). list/show/search/folders
@@ -160,29 +252,11 @@ enum NotesBridge {
         """
     }
 
-    /// JXA fragment shared by `buildListScript` / `buildSearchScript`. Builds a
-    /// plain JS array `pairs = [{note, mod, iso}]` from the already-materialized
-    /// `notes` + bulk `_mods` arrays (see `jsResolveNotesAndBulkMods`), then
-    /// sorts it newest-first on the in-memory `mod` key. The loop fires ZERO
-    /// Apple Events (pure array indexing), so it completes near-instantly even
-    /// on huge vaults — the soft-timeout check remains only as a backstop. A
-    /// comparator that read the date off live note objects would fire an Apple
-    /// Event per comparison (O(n log n) round-trips). `iso` caches the ISO-8601
-    /// string so the results loop doesn't re-fetch the date. Expects `notes`,
-    /// `_mods`, `_start`, `softTimeoutMs`, and `_meta` to already be declared.
-    static let jsSortNotesByModDate = """
-    var pairs = [];
-    for (var j = 0; j < notes.length; j++) {
-        if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
-        var _d = _mods[j] || null;
-        pairs.push({ note: notes[j], mod: _d ? _d.getTime() : 0, iso: _d ? _d.toISOString() : '' });
-    }
-    pairs.sort(function(a, b) { return b.mod - a.mod; });
-    """
-
     // MARK: - JXA Script Builders
 
-    static func buildListScript(folder: String?, limit: Int, offset: Int = 0, softTimeoutMs: Int = 22000) -> String {
+    static func buildListScript(
+        folder: String?, limit: Int, offset: Int = 0, fields: Set<String>? = nil, softTimeoutMs: Int = 22000
+    ) -> String {
         let folderFilter = jsEscapeOptional(folder)
         let clampedTimeout = SoftTimeout.clamp(softTimeoutMs)
         return """
@@ -194,43 +268,55 @@ enum NotesBridge {
         var softTimeoutMs = \(clampedTimeout);
         var _start = Date.now();
         var _meta = { timedOut: false };
-        // Resolve specifier + bulk-fetch modificationDate (see jsResolveNotesAndBulkMods).
-        \(jsResolveNotesAndBulkMods)
-        // Sort by modificationDate, newest first (see jsSortNotesByModDate).
-        \(jsSortNotesByModDate)
-        // Native offset: skip the first `offset` sorted notes and emit only the
-        // `limit` window. Plaintext (the expensive per-note Apple Event) is
-        // fetched only for the returned window, so deep offsets don't multiply
-        // fetch cost — they still iterate all notes for the sort, which the
-        // soft cap above bounds (partial results set _meta.timedOut). The HTML
-        // .body() is deliberately NOT fetched: list callers never need it
-        // (`notes show` fetches it separately) and it dominated list latency/RSS.
+        \(jsNeeds(fields))
+        \(jsBulkNotes)
+        \(jsResolveNotes)
+        var cols = _bulkRead(
+            _notesRef, ['name', 'modificationDate'].concat(needCreated ? ['creationDate'] : []),
+            ['container'].concat(needPlain ? ['plaintext'] : [])
+        );
+        // Pure JS from here to the sort: no Apple Events. Soft-deleted notes
+        // (pippin-cxd) are dropped BEFORE paging, so a page is not short.
+        var rows = [];
+        for (var j = 0; j < cols.id.length; j++) {
+            var _in = _folderAt(cols, j);
+            if (_in && _in.name === '\(recentlyDeletedFolderName)') { continue; }
+            var _d = cols.modificationDate[j] || null;
+            rows.push({j: j, folder: _in, mod: _d ? _d.getTime() : 0, iso: _d ? _d.toISOString() : ''});
+        }
+        // Newest first.
+        rows.sort(function(a, b) { return b.mod - a.mod; });
+        // Native offset: emit only the `limit` window. The HTML body is never
+        // fetched here (`notes show` does that).
         var results = [];
-        for (var i = offset; i < pairs.length && results.length < limit; i++) {
+        for (var i = offset; i < rows.length && results.length < limit; i++) {
+            // Only the per-note reads below can be slow, so the soft cap is
+            // checked here.
             if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
-            var note = pairs[i].note;
-            var folderId = '';
-            var folderName = '';
-            try {
-                var _c = note.container();
-                folderId = _c.id();
-                folderName = _c.name();
-            } catch(e) {}
-            // Skip soft-deleted notes (pippin-cxd). ponytail: filtering here
-            // (offset/limit applied to the pre-filter `pairs`) can under-fill a
-            // page by the count of trashed notes in the window — cosmetic, and
-            // rare; the alternative (per-folder Apple Events) would defeat the
-            // pippin-mo7 bulk-modificationDate optimization.
-            if (folderName === '\(recentlyDeletedFolderName)') { continue; }
+            var row = rows[i];
+            var noteId = cols.id[row.j];
+            if (!row.folder) {
+                row.folder = _folderOfNote(noteId);
+                if (row.folder.name === '\(recentlyDeletedFolderName)') { continue; }
+            }
+            // plainText is read only when asked for: from the bulk column, or
+            // per note if Notes refused the bulk read.
+            var plain = '';
+            if (needPlain && cols.plaintext) {
+                plain = cols.plaintext[row.j] || '';
+            } else if (needPlain) {
+                try { plain = _notesRef.byId(noteId).plaintext() || ''; } catch (e) {}
+            }
+            var _created = needCreated ? cols.creationDate[row.j] : null;
             results.push({
-                id: note.id(),
-                title: note.name(),
-                plainText: note.plaintext(),
-                folder: folderName,
-                folderId: folderId,
+                id: noteId,
+                title: cols.name[row.j],
+                plainText: plain,
+                folder: row.folder.name,
+                folderId: row.folder.id,
                 account: null,
-                createdAt: note.creationDate().toISOString(),
-                modifiedAt: pairs[i].iso
+                createdAt: _created ? _created.toISOString() : '',
+                modifiedAt: row.iso
             });
         }
         JSON.stringify({results: results, meta: _meta});
@@ -238,7 +324,7 @@ enum NotesBridge {
     }
 
     /// Returns `{count: N}` for the named folder (or whole vault when nil).
-    /// No iteration, no body fetch — single Apple Event.
+    /// No iteration, no body fetch: one count Apple Event.
     static func buildCountScript(folder: String?) -> String {
         let folderFilter = jsEscapeOptional(folder)
         return """
@@ -248,9 +334,9 @@ enum NotesBridge {
         var n = 0;
         if (folderFilter !== null) {
             var folders = app.folders.whose({name: folderFilter})();
-            if (folders.length > 0) { n = folders[0].notes().length; }
+            if (folders.length > 0) { n = folders[0].notes.length; }
         } else {
-            n = app.notes().length;
+            n = app.notes.length;
         }
         JSON.stringify({count: n});
         """
@@ -288,7 +374,9 @@ enum NotesBridge {
         """
     }
 
-    static func buildSearchScript(query: String, folder: String?, limit: Int, softTimeoutMs: Int = 22000) -> String {
+    static func buildSearchScript(
+        query: String, folder: String?, limit: Int, fields: Set<String>? = nil, softTimeoutMs: Int = 22000
+    ) -> String {
         let safeQuery = jsEscape(query)
         let folderFilter = jsEscapeOptional(folder)
         let clampedTimeout = SoftTimeout.clamp(softTimeoutMs)
@@ -301,46 +389,57 @@ enum NotesBridge {
         var softTimeoutMs = \(clampedTimeout);
         var _start = Date.now();
         var _meta = { timedOut: false };
-        // Resolve specifier + bulk-fetch modificationDate (see jsResolveNotesAndBulkMods).
-        \(jsResolveNotesAndBulkMods)
-        // Sort by modificationDate before filtering — preserves "most recently
-        // modified matches first" while keeping the pre-filter work bounded
-        // (see jsSortNotesByModDate).
-        \(jsSortNotesByModDate)
-        var results = [];
-        for (var i = 0; i < pairs.length && results.length < limit; i++) {
-            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
-            var note = pairs[i].note;
-            var title = '';
-            var plain = '';
-            try { title = note.name() || ''; } catch(e) {}
-            try { plain = note.plaintext() || ''; } catch(e) {}
-            var matched = title.toLowerCase().indexOf(query) !== -1
-                       || plain.toLowerCase().indexOf(query) !== -1;
-            if (matched) {
-                var folderId = '';
-                var folderName = '';
-                try {
-                    var _c = note.container();
-                    folderId = _c.id();
-                    folderName = _c.name();
-                } catch(e) {}
-                // Skip soft-deleted notes (pippin-cxd; see buildListScript note).
-                if (folderName === '\(recentlyDeletedFolderName)') { continue; }
-                // Reuse the title/plain already fetched for the match test —
-                // re-reading name()/plaintext() doubled the per-match Apple
-                // Events. HTML body is not fetched (see buildListScript).
-                results.push({
-                    id: note.id(),
-                    title: title,
-                    plainText: plain,
-                    folder: folderName,
-                    folderId: folderId,
-                    account: null,
-                    createdAt: note.creationDate().toISOString(),
-                    modifiedAt: pairs[i].iso
-                });
+        \(jsNeeds(fields))
+        \(jsBulkNotes)
+        \(jsResolveNotes)
+        // Titles and plaintext for the WHOLE collection in one Apple Event
+        // each, so a query that matches nothing is still a complete answer.
+        var cols = _bulkRead(
+            _notesRef, ['name', 'modificationDate'].concat(needCreated ? ['creationDate'] : []),
+            ['plaintext', 'container']
+        );
+        var plains = cols.plaintext;
+        if (plains === null) {
+            // Bulk plaintext refused: read it per note under the soft cap.
+            // Notes not reached match on title only and the result is partial.
+            plains = [];
+            for (var p = 0; p < cols.id.length; p++) {
+                if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
+                try { plains.push(_notesRef.byId(cols.id[p]).plaintext() || ''); } catch (e) { plains.push(''); }
             }
+        }
+        var rows = [];
+        for (var j = 0; j < cols.id.length; j++) {
+            var title = cols.name[j] || '';
+            var plain = plains[j] || '';
+            if (title.toLowerCase().indexOf(query) === -1 && plain.toLowerCase().indexOf(query) === -1) { continue; }
+            var _in = _folderAt(cols, j);
+            // Skip soft-deleted notes (pippin-cxd).
+            if (_in && _in.name === '\(recentlyDeletedFolderName)') { continue; }
+            var _d = cols.modificationDate[j] || null;
+            rows.push({j: j, title: title, plain: plain, folder: _in, mod: _d ? _d.getTime() : 0, iso: _d ? _d.toISOString() : ''});
+        }
+        // Most recently modified matches first.
+        rows.sort(function(a, b) { return b.mod - a.mod; });
+        var results = [];
+        for (var i = 0; i < rows.length && results.length < limit; i++) {
+            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
+            var row = rows[i];
+            if (!row.folder) {
+                row.folder = _folderOfNote(cols.id[row.j]);
+                if (row.folder.name === '\(recentlyDeletedFolderName)') { continue; }
+            }
+            var _created = needCreated ? cols.creationDate[row.j] : null;
+            results.push({
+                id: cols.id[row.j],
+                title: row.title,
+                plainText: needPlain ? row.plain : '',
+                folder: row.folder.name,
+                folderId: row.folder.id,
+                account: null,
+                createdAt: _created ? _created.toISOString() : '',
+                modifiedAt: row.iso
+            });
         }
         JSON.stringify({results: results, meta: _meta});
         """
@@ -354,20 +453,19 @@ enum NotesBridge {
         var softTimeoutMs = \(clampedTimeout);
         var _start = Date.now();
         var _meta = { timedOut: false };
-        var folders = app.folders();
+        \(jsBulkNotes)
+        // Three Apple Events for every folder; the count is the length of each
+        // folder's id column, not a materialized note list (PERF-6).
+        var _fi = _folderIndex(true);
         var results = [];
-        for (var i = 0; i < folders.length; i++) {
-            if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
-            var f = folders[i];
+        for (var i = 0; i < _fi.id.length; i++) {
             // Hide the soft-delete trash folder from the live folder list (pippin-cxd).
-            try { if (f.name() === '\(recentlyDeletedFolderName)') { continue; } } catch(e) {}
-            var count = 0;
-            try { count = f.notes().length; } catch(e) {}
+            if (_fi.name[i] === '\(recentlyDeletedFolderName)') { continue; }
             results.push({
-                id: f.id(),
-                name: f.name(),
+                id: _fi.id[i],
+                name: _fi.name[i],
                 account: null,
-                noteCount: count
+                noteCount: _fi.notes[i].length
             });
         }
         JSON.stringify({results: results, meta: _meta});
