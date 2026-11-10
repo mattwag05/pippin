@@ -19,7 +19,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [feat] `reminders complete --incomplete`, `notes show --html`, `mail move --locate-by-message-id` (used by undo).
 - [feat] `doctor` reports a policy file that does not parse.
 - [feat] `docs/schemas/v4/`: the envelope schema, an input schema for every MCP tool, output schemas for 69 tools and an `index.json` that maps each tool to its CLI command. The files are generated from the tool registry and a test fails when they are stale.
-- [docs] Competitive head-to-head harness (`bench/competitive/`, one command in a disposable VM) and results against nine other open-source Apple automation tools, losses included ([docs/competitive/results.md](docs/competitive/results.md)). New SECURITY.md threat model, CONTRIBUTING.md, [docs/architecture.md](docs/architecture.md) and [docs/agent-integration.md](docs/agent-integration.md).
+- [docs] Competitive head-to-head harness (`bench/competitive/`, one command in a disposable VM) and results against eleven other open-source Apple automation tools (eight measured, three not run), losses included ([docs/competitive/results.md](docs/competitive/results.md)). New SECURITY.md threat model, CONTRIBUTING.md, [docs/architecture.md](docs/architecture.md) and [docs/agent-integration.md](docs/agent-integration.md).
 - [feat] `docs/contract.md`: what counts as a breaking change, the semver guarantee and the deprecation policy.
 - [test] The MCP tool registry is locked to the CLI by test: every tool's arguments are parsed by the real commands and checked against their definitions, and every tool is shown to return one schema-valid error envelope with a nonzero exit on a bad argument.
 
