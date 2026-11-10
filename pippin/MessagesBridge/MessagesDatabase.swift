@@ -6,6 +6,9 @@ public enum MessagesError: LocalizedError, Sendable {
     case databaseNotFound(String)
     case accessDenied(String)
     case conversationNotFound(String)
+    case conversationExcluded(String)
+    /// The id matched more than one chat; the payload lists the ones not excluded.
+    case ambiguousConversation(String, [String])
     case databaseError(String)
 
     public var errorDescription: String? {
@@ -16,6 +19,10 @@ public enum MessagesError: LocalizedError, Sendable {
             return "Messages database access denied (\(detail)). Grant Full Disk Access to your terminal in System Settings → Privacy & Security."
         case let .conversationNotFound(id):
             return "Conversation not found: \(id)"
+        case let .conversationExcluded(id):
+            return "Conversation is on the Messages exclude list and cannot be read: \(id)"
+        case let .ambiguousConversation(id, candidates):
+            return "Conversation id \(id) matches more than one thread. Use an exact id: \(candidates.joined(separator: ", "))"
         case let .databaseError(detail):
             return "Messages database error: \(detail)"
         }
@@ -28,6 +35,8 @@ extension MessagesError: RemediableError {
         case .databaseNotFound: return "database_not_found"
         case .accessDenied: return "access_denied"
         case .conversationNotFound: return "conversation_not_found"
+        case .conversationExcluded: return "conversation_excluded"
+        case .ambiguousConversation: return "ambiguous_conversation"
         case .databaseError: return "database_error"
         }
     }
@@ -37,7 +46,9 @@ extension MessagesError: RemediableError {
         case .databaseNotFound: return .human("Open the Messages app once to create its database, then retry.")
         case .accessDenied:
             return .human("Enable Full Disk Access for pippin and the app that launches it in System Settings > Privacy & Security > Full Disk Access, then relaunch that app.")
-        case .conversationNotFound: return .call(tool: "messages_list", argv: ["messages", "list"])
+        case .conversationNotFound, .ambiguousConversation:
+            return .call(tool: "messages_list", argv: ["messages", "list"])
+        case .conversationExcluded: return .none
         case .databaseError: return .call(tool: "doctor", argv: ["doctor"])
         }
     }
@@ -76,9 +87,33 @@ public final class MessagesDatabase: Sendable {
         "COALESCE(\(alias).associated_message_type, 0) NOT BETWEEN 2000 AND 3999"
     }
 
+    /// Whether the exclude list hides a chat. An entry matches the chat's guid,
+    /// or names its `chat_identifier` bare or behind any `service;-;` prefix:
+    /// every form `showConversation` resolves, so no spelling of an excluded
+    /// thread gets through, and an entry survives macOS renaming a guid's prefix.
+    static func isExcluded(guid: String, identifier: String?, by excluded: Set<String>) -> Bool {
+        if excluded.contains(guid) { return true }
+        guard let identifier, !identifier.isEmpty else { return false }
+        return excluded.contains { $0 == identifier || $0.hasSuffix(";" + identifier) }
+    }
+
+    /// ROWIDs of every chat the exclude list hides.
+    private static func excludedChatRowIds(db: Database, excluded: Set<String>) throws -> Set<Int64> {
+        guard !excluded.isEmpty else { return [] }
+        let rows = try Row.fetchAll(db, sql: "SELECT ROWID, guid, chat_identifier FROM chat")
+        return Set(rows.filter {
+            isExcluded(guid: $0["guid"] ?? "", identifier: $0["chat_identifier"], by: excluded)
+        }.compactMap { $0["ROWID"] as Int64? })
+    }
+
     private let dbQueue: DatabaseQueue
 
+    /// `PIPPIN_MESSAGES_DB` overrides the path so tests can run the commands
+    /// against a fixture instead of the live chat.db.
     public static func defaultDBPath() -> String {
+        if let override = ProcessInfo.processInfo.environment["PIPPIN_MESSAGES_DB"], !override.isEmpty {
+            return override
+        }
         let home = NSHomeDirectory()
         return "\(home)/Library/Messages/chat.db"
     }
@@ -135,6 +170,7 @@ public final class MessagesDatabase: Sendable {
         let limit = Self.clampLimit(limit)
         let cutoffNs = since.map(Self.appleNanos(from:))
         return try readWrapping { db in
+            let excludedRowIds = try Self.excludedChatRowIds(db: db, excluded: excluded)
             // Resolve each chat's last non-tapback message ROWID once, then JOIN
             // it for date + both preview columns (pippin-77t). Previously two
             // separate correlated subqueries re-seeked that same row to pull
@@ -175,18 +211,16 @@ public final class MessagesDatabase: Sendable {
                 sql += " AND lm.date >= ?"
                 args.append(cutoffNs)
             }
-            // Overshoot by the exclude-set size so we still return `limit`
-            // after post-filtering. Cheaper than a `NOT IN (?,?,…)` bind for
-            // an exclude list that's typically small.
+            // Overshoot by the number of excluded chats so we still return
+            // `limit` after post-filtering.
             sql += " ORDER BY last_date DESC LIMIT ?"
-            args.append(limit + excluded.count)
+            args.append(limit + excludedRowIds.count)
 
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
             var kept: [Row] = []
             var excludedCount = 0
             for row in rows {
-                let guid: String = row["chat_guid"] ?? ""
-                if excluded.contains(guid) {
+                if excludedRowIds.contains(row["chat_rowid"] ?? 0) {
                     excludedCount += 1
                     continue
                 }
@@ -238,11 +272,12 @@ public final class MessagesDatabase: Sendable {
         let cutoffNs = since.map(Self.appleNanos(from:))
         let needle = query.lowercased()
         return try readWrapping { db in
+            let excludedRowIds = try Self.excludedChatRowIds(db: db, excluded: excluded)
             // Shared column list + joins. Includes attributedBody so bodies that
             // live only in the blob can be decoded.
             let base = """
             m.ROWID AS msg_rowid, m.guid AS msg_guid, m.text, m.attributedBody, m.date, m.is_from_me,
-                   m.is_read, m.service, c.guid AS chat_guid, h.id AS handle_id
+                   m.is_read, m.service, c.ROWID AS chat_rowid, c.guid AS chat_guid, h.id AS handle_id
             FROM message m
             JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
             JOIN chat c ON c.ROWID = cmj.chat_id
@@ -300,8 +335,7 @@ public final class MessagesDatabase: Sendable {
             var excludedCount = 0
             var kept: [(row: Row, body: String)] = []
             for candidate in byGuid.values.sorted(by: { ($0.row["date"] as Int64? ?? 0) > ($1.row["date"] as Int64? ?? 0) }) {
-                let conversationId: String = candidate.row["chat_guid"] ?? ""
-                if excluded.contains(conversationId) {
+                if excludedRowIds.contains(candidate.row["chat_rowid"] ?? 0) {
                     excludedCount += 1
                     continue
                 }
@@ -329,50 +363,50 @@ public final class MessagesDatabase: Sendable {
     public func showConversation(
         conversationId: String,
         limit: Int = 50,
+        excluded: Set<String> = [],
         contactIndex: ContactIndex = ContactIndex()
     ) throws -> (conversation: MessageConversation, messages: [MessageItem], truncated: Bool) {
         let limit = Self.clampLimit(limit)
         return try readWrapping { db in
-            // TCC privacy masking: on newer macOS, phone numbers in the `guid`
-            // column are returned with middle digits replaced by `*` (e.g.
-            // `any;-;+151****2328` instead of `any;-;+151****2328`).  An exact
-            // `guid = ?` match then fails because the stored value has real digits.
-            // If the caller's ID contains `*`, try a LIKE match (mapping `*` → `_`).
-            // Also fall back to `chat_identifier` (which holds the bare handle,
-            // e.g. `+151****2328`) by stripping any `service;-;` prefix.
-            func makeQuery() throws -> Row? {
-                if conversationId.contains("*") {
-                    let likePattern = conversationId.replacingOccurrences(of: "*", with: "_")
-                    return try Row.fetchOne(
-                        db,
-                        sql: """
-                        SELECT ROWID, guid, chat_identifier, service_name, display_name, room_name, style
-                        FROM chat WHERE guid LIKE ? ESCAPE '\\'
-                        """,
-                        arguments: [likePattern]
-                    )
-                } else {
-                    return try Row.fetchOne(
-                        db,
-                        sql: """
-                        SELECT ROWID, guid, chat_identifier, service_name, display_name, room_name, style
-                        FROM chat WHERE guid = ?
-                        """,
-                        arguments: [conversationId]
-                    )
-                }
+            // TCC privacy masking: on newer macOS a guid can reach the caller
+            // with the middle digits of a phone number replaced by `*`, so an id
+            // containing `*` is matched with LIKE (`*` → `_`). The id is escaped
+            // first: `%` and `_` in it are literal, only `*` is a wildcard.
+            func chats(where predicate: String, _ argument: String) throws -> [Row] {
+                try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT ROWID, guid, chat_identifier, service_name, display_name, room_name, style
+                    FROM chat WHERE \(predicate)
+                    """,
+                    arguments: [argument]
+                )
             }
-            // Fallback: if still not found, try chat_identifier by stripping the
-            // `service;-;` prefix (e.g. `any;-;+151****2328` → `+151****2328`).
-            guard let chatRow: Row = try (makeQuery() ?? Row.fetchOne(
-                db,
-                sql: """
-                SELECT ROWID, guid, chat_identifier, service_name, display_name, room_name, style
-                FROM chat WHERE chat_identifier = ?
-                """,
-                arguments: [conversationId.components(separatedBy: ";").last ?? conversationId]
-            )) else {
-                throw MessagesError.conversationNotFound(conversationId)
+            var matches = try conversationId.contains("*")
+                ? chats(
+                    where: "guid LIKE ? ESCAPE '\\'",
+                    Self.escapeLike(conversationId).replacingOccurrences(of: "*", with: "_")
+                )
+                : chats(where: "guid = ?", conversationId)
+            // Fallback: the bare handle in `chat_identifier`, after stripping any
+            // `service;-;` prefix (e.g. `any;-;+15551234567` → `+15551234567`).
+            if matches.isEmpty {
+                matches = try chats(
+                    where: "chat_identifier = ?",
+                    conversationId.components(separatedBy: ";").last ?? conversationId
+                )
+            }
+            guard !matches.isEmpty else { throw MessagesError.conversationNotFound(conversationId) }
+            // Checked on the RESOLVED chats, so no spelling of an excluded
+            // thread's id (guid, bare handle, masked) reads it.
+            let readable = matches.filter {
+                !Self.isExcluded(guid: $0["guid"] ?? "", identifier: $0["chat_identifier"], by: excluded)
+            }
+            guard !readable.isEmpty else { throw MessagesError.conversationExcluded(conversationId) }
+            // Several chats can share a masked pattern or a handle (iMessage and
+            // SMS threads with one number). Never pick one arbitrarily.
+            guard matches.count == 1, let chatRow = matches.first else {
+                throw MessagesError.ambiguousConversation(conversationId, readable.map { $0["guid"] ?? "" })
             }
             let chatRowId: Int64 = chatRow["ROWID"] ?? 0
             let chatGuid: String = chatRow["guid"] ?? conversationId

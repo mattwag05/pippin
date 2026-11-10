@@ -18,6 +18,7 @@ final class NextStepTests: XCTestCase {
         // MessagesError
         MessagesError.databaseNotFound("p"), MessagesError.accessDenied("p"),
         MessagesError.conversationNotFound("c"), MessagesError.databaseError("e"),
+        MessagesError.conversationExcluded("c"), MessagesError.ambiguousConversation("c", ["a", "b"]),
         // MessagesSendError
         MessagesSendError.timeout, MessagesSendError.scriptFailed("e"), MessagesSendError.phiFiltered(["ssn"]),
         MessagesSendError.recipientNotAllowed("r"), MessagesSendError.autonomousNotAuthorized,

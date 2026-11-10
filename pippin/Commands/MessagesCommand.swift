@@ -143,11 +143,14 @@ public struct MessagesCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func execute() async throws -> AgentResult {
+            let config = AIProviderFactory.loadConfig()
+            let excluded = Set(config?.messages?.excludedThreads ?? [])
             let db = try MessagesDatabase(dbPath: MessagesDatabase.defaultDBPath())
             let (conv, messages, truncated) = try db.showConversation(
                 conversationId: conversationId,
                 limit: limit,
-                contactIndex: MessagesCommand.contactIndex(contactResolution)
+                excluded: excluded,
+                contactIndex: MessagesCommand.contactIndex(contactResolution, config: config)
             )
             let payload = MessagesShowResult(conversation: conv, messages: messages, truncated: truncated)
             MessagesAuditLog.record(
