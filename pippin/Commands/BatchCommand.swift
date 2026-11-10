@@ -51,8 +51,22 @@ public struct BatchCommand: AgentCommand {
             concurrency: concurrency,
             pippinPath: pippinPath
         )
+        return Self.result(results)
+    }
 
-        return AgentResult(results)
+    /// Entries the batch stopped (its budget, or the per-entry cap) make the
+    /// whole answer `partial`; the entries that finished are still returned.
+    static func result(_ results: [JSONValue]) -> AgentResult {
+        let unfinishedCodes: Set = [BatchEntryErrorCode.budgetExceeded.rawValue, "child_timed_out", "outcome_unknown"]
+        let unfinished = results.filter { unfinishedCodes.contains($0["error"]?["code"]?.stringValue ?? "") }.count
+        guard unfinished > 0 else { return AgentResult(results) }
+        return AgentResult(
+            results,
+            warnings: [
+                "\(unfinished) of \(results.count) entries ran out of time; each carries its own error. The other results are complete.",
+            ],
+            partial: true
+        )
     }
 
     // MARK: - Helpers
@@ -82,7 +96,8 @@ public struct BatchCommand: AgentCommand {
         entries: [BatchEntry],
         concurrency: Int,
         pippinPath: String,
-        underMCP: Bool = isMCPContext()
+        underMCP: Bool = isMCPContext(),
+        budget: BatchBudget = .forCurrentContext()
     ) async -> [JSONValue] {
         guard !entries.isEmpty else { return [] }
         let lane = max(1, min(concurrency, entries.count))
@@ -94,7 +109,7 @@ public struct BatchCommand: AgentCommand {
                 group.addTask {
                     // runChild blocks on process.waitUntilExit(); hop off the
                     // cooperative pool so N lanes don't park N cooperative threads.
-                    let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath, underMCP: underMCP) }
+                    let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath, underMCP: underMCP, budget: budget) }
                     return (index, result)
                 }
             }
@@ -107,7 +122,7 @@ public struct BatchCommand: AgentCommand {
                     let index = nextIndex
                     let entry = entries[index]
                     group.addTask {
-                        let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath, underMCP: underMCP) }
+                        let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath, underMCP: underMCP, budget: budget) }
                         return (index, result)
                     }
                     nextIndex += 1
@@ -119,15 +134,35 @@ public struct BatchCommand: AgentCommand {
         }
     }
 
-    static func runOne(entry: BatchEntry, pippinPath: String, underMCP: Bool = isMCPContext()) -> JSONValue {
+    /// `budget` bounds the whole batch (50s under MCP, where the caller is
+    /// killed at 60s): an entry gets only what is left of it, and one that
+    /// cannot start in time says so instead of taking every result down with it.
+    static func runOne(
+        entry: BatchEntry,
+        pippinPath: String,
+        underMCP: Bool = isMCPContext(),
+        budget: BatchBudget = BatchBudget(softTimeoutMs: 0)
+    ) -> JSONValue {
         let argv = entry.resolvedArgv
+        var timeoutSeconds = MCPServerRuntime.defaultChildTimeoutSeconds
+        if budget.softTimeoutMs > 0 {
+            let remainingMs = budget.softTimeoutMs - Int(Date().timeIntervalSince(budget.start) * 1000)
+            guard remainingMs >= 1000 else {
+                return entryEnvelopeError(
+                    code: .budgetExceeded,
+                    message: "Not started: the batch ran out of time. Run this entry again on its own.",
+                    nextStep: .retry()
+                )
+            }
+            timeoutSeconds = min(timeoutSeconds, remainingMs / 1000)
+        }
         var tool: MCPTool?
         do {
             // An MCP client gets the curated tool surface here too, not all of pippin.
             if underMCP { tool = try MCPCommandPolicy.check(argv) }
             // Under MCP there is no terminal, so a timeout can take the entry's whole group.
             let result = try MCPServerRuntime.runChild(
-                argv: argv, pippinPath: pippinPath, ownProcessGroup: underMCP
+                argv: argv, pippinPath: pippinPath, timeoutSeconds: timeoutSeconds, ownProcessGroup: underMCP
             )
             let stdoutText = String(data: result.stdout, encoding: .utf8) ?? ""
             let trimmed = stdoutText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -158,8 +193,8 @@ public struct BatchCommand: AgentCommand {
     /// Build an envelope-shaped JSON for a per-entry failure that happened in
     /// the parent process. Routes through `AgentErrorEnvelope` so the shape
     /// can't drift from the canonical `--format agent` envelope.
-    static func entryEnvelopeError(code: BatchEntryErrorCode, message: String) -> JSONValue {
-        let payload = AgentError(code: code.rawValue, message: message).error
+    static func entryEnvelopeError(code: BatchEntryErrorCode, message: String, nextStep: NextStep? = nil) -> JSONValue {
+        let payload = AgentError(code: code.rawValue, message: message, nextStep: nextStep).error
         let envelope = AgentErrorEnvelope(
             v: AGENT_SCHEMA_VERSION,
             status: "error",
@@ -188,6 +223,7 @@ public struct BatchCommand: AgentCommand {
 public enum BatchEntryErrorCode: String, Sendable {
     case emptyOutput = "empty_output"
     case invalidJSON = "invalid_json"
+    case budgetExceeded = "batch_budget_exceeded"
 }
 
 // MARK: - Entry decoding

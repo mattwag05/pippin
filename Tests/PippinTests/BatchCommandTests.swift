@@ -154,6 +154,39 @@ final class BatchCommandTests: XCTestCase {
         }
     }
 
+    // MARK: - Batch budget (RC-12)
+
+    func testBudgetReturnsFinishedEntriesAsPartial() async {
+        // `/bin/sh -c <script> --format agent`: the trailing tokens become $0 and $1.
+        let fast = BatchEntry(cmd: "-c", args: [#"echo '{"status":"ok"}'"#])
+        let slow = BatchEntry(cmd: "-c", args: ["sleep 30"])
+        let start = Date()
+        let results = await BatchCommand.dispatch(
+            entries: [fast, slow, fast], concurrency: 1, pippinPath: "/bin/sh",
+            underMCP: false, budget: BatchBudget(softTimeoutMs: 1900)
+        )
+        XCTAssertLessThan(Date().timeIntervalSince(start), 8, "the slow entry must be cut at the budget, not at its own 60s cap")
+        XCTAssertEqual(results[0]["status"]?.stringValue, "ok")
+        XCTAssertEqual(results[1]["error"]?["code"]?.stringValue, "child_timed_out")
+        XCTAssertEqual(results[2]["error"]?["code"]?.stringValue, "batch_budget_exceeded")
+        XCTAssertEqual(results[2]["error"]?["next_step"]?["retryable"]?.boolValue, true)
+
+        let answer = BatchCommand.result(results)
+        XCTAssertTrue(answer.partial)
+        XCTAssertEqual(answer.warnings?.count, 1)
+        XCTAssertTrue(answer.warnings?[0].hasPrefix("2 of 3 entries") == true)
+    }
+
+    func testCompleteBatchIsNotPartial() async {
+        let fast = BatchEntry(cmd: "-c", args: [#"echo '{"status":"ok"}'"#])
+        let results = await BatchCommand.dispatch(
+            entries: [fast, fast], concurrency: 2, pippinPath: "/bin/sh", underMCP: false, budget: BatchBudget(softTimeoutMs: 50000)
+        )
+        let answer = BatchCommand.result(results)
+        XCTAssertFalse(answer.partial)
+        XCTAssertNil(answer.warnings)
+    }
+
     // MARK: - MCP surface restriction (RC-03)
 
     /// Runs entries against `/bin/echo`, so an entry that is allowed through
