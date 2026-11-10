@@ -3,8 +3,33 @@
   "version": "1.1.0",
   "correctness": {
     "messages.history": {
+      "outcome": "not_machine_readable",
+      "detail": "<untrusted-mcp-output>\n[2027-03-21 05:59:00] Adaeze PBXOkafor: PB0300 are we still on for Thursday?\\n[2027-03-21 01:55:56] Adaeze PBXOkafor: Liked “PB0293 path is C:\\share\\docs”\\n[2027-03-20 22:52:53]"
+    },
+    "messages.chats": {
       "outcome": "ok",
-      "detail": "<untrusted-mcp-output>\nNo group chat found with chat_id '{chat}'. Use tool_get_chats to list available group chats.\n</untrusted-mcp-output>"
+      "chats": {
+        "chat-a": {
+          "found": false,
+          "expected_unread": 2,
+          "reported_unread": null
+        },
+        "chat-b": {
+          "found": false,
+          "expected_unread": 0,
+          "reported_unread": null
+        },
+        "chat-c": {
+          "found": false,
+          "expected_unread": 5,
+          "reported_unread": null
+        },
+        "chat-d": {
+          "found": false,
+          "expected_unread": 2,
+          "reported_unread": null
+        }
+      }
     }
   },
   "safety": {

@@ -118,9 +118,7 @@
       "expected": 25,
       "returned": 26,
       "missing": [],
-      "unexpected": [
-        "Managed via Tart"
-      ],
+      "unexpected": [],
       "duplicated": []
     },
     "contacts.search": {

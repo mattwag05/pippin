@@ -8,7 +8,7 @@
   "manifest": {
     "kind": "mcp",
     "outcome": "ok",
-    "spawn_to_tools_ms": 338.06,
+    "spawn_to_tools_ms": 225.08,
     "tool_count": 11,
     "manifest_chars": 12809,
     "manifest_tokens": 3437,
@@ -25,10 +25,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 269.06,
-        "p50_ms": 301.66,
-        "p95_ms": 332.51,
-        "max_ms": 332.51
+        "min_ms": 263.35,
+        "p50_ms": 301.33,
+        "p95_ms": 315.23,
+        "max_ms": 315.23
       },
       "warm": {
         "runs": 30,
@@ -38,10 +38,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 1.19,
-        "p50_ms": 1.35,
-        "p95_ms": 1.59,
-        "max_ms": 1.64
+        "min_ms": 1.04,
+        "p50_ms": 1.13,
+        "p95_ms": 1.38,
+        "max_ms": 1.41
       }
     },
     "messages.history": {
@@ -53,10 +53,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 255.45,
-        "p50_ms": 261.13,
-        "p95_ms": 270.22,
-        "max_ms": 270.22
+        "min_ms": 295.89,
+        "p50_ms": 370.44,
+        "p95_ms": 386.88,
+        "max_ms": 386.88
       },
       "warm": {
         "runs": 30,
@@ -66,10 +66,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 1.03,
-        "p50_ms": 1.16,
-        "p95_ms": 1.33,
-        "max_ms": 1.35
+        "min_ms": 26.12,
+        "p50_ms": 26.62,
+        "p95_ms": 27.69,
+        "max_ms": 36.42
       }
     },
     "messages.search": {
@@ -81,10 +81,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 289.34,
-        "p50_ms": 296.69,
-        "p95_ms": 303.18,
-        "max_ms": 303.18
+        "min_ms": 292.03,
+        "p50_ms": 302.09,
+        "p95_ms": 311.28,
+        "max_ms": 311.28
       },
       "warm": {
         "runs": 30,
@@ -94,10 +94,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 25.24,
-        "p50_ms": 25.5,
-        "p95_ms": 26.33,
-        "max_ms": 26.48
+        "min_ms": 25.37,
+        "p50_ms": 25.95,
+        "p95_ms": 29.35,
+        "max_ms": 32.85
       }
     }
   },
@@ -106,7 +106,7 @@
       "messages.chats": {
         "ok": 8,
         "of": 8,
-        "distinct_record_sets": null
+        "distinct_record_sets": 1
       },
       "messages.history": {
         "ok": 8,
@@ -122,7 +122,7 @@
     "bad_input": {
       "messages.history": {
         "outcome": "ok",
-        "ms": 259.99,
+        "ms": 264.29,
         "error_is_structured": false,
         "detail": "<untrusted-mcp-output>\nNo group chat found with chat_id '999999999'. Use tool_get_chats to list available group chats.\n</untrusted-mcp-output>"
       }

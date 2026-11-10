@@ -14,7 +14,7 @@
   "manifest": {
     "kind": "mcp",
     "outcome": "ok",
-    "spawn_to_tools_ms": 16.48,
+    "spawn_to_tools_ms": 17.67,
     "tool_count": 76,
     "manifest_chars": 48204,
     "manifest_tokens": 15645,
@@ -31,10 +31,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 23.59,
-        "p50_ms": 23.93,
-        "p95_ms": 28.99,
-        "max_ms": 28.99
+        "min_ms": 25.19,
+        "p50_ms": 25.65,
+        "p95_ms": 34.97,
+        "max_ms": 34.97
       },
       "warm": {
         "runs": 30,
@@ -44,10 +44,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 5.8,
-        "p50_ms": 6.87,
-        "p95_ms": 7.74,
-        "max_ms": 8.67
+        "min_ms": 6.01,
+        "p50_ms": 6.54,
+        "p95_ms": 7.09,
+        "max_ms": 7.2
       }
     },
     "reminders.list": {
@@ -59,10 +59,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 34.2,
-        "p50_ms": 34.69,
-        "p95_ms": 36.95,
-        "max_ms": 36.95
+        "min_ms": 33.83,
+        "p50_ms": 35.08,
+        "p95_ms": 42.2,
+        "max_ms": 42.2
       },
       "warm": {
         "runs": 30,
@@ -72,10 +72,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 13.25,
-        "p50_ms": 14.08,
-        "p95_ms": 14.83,
-        "max_ms": 14.86
+        "min_ms": 13.93,
+        "p50_ms": 14.68,
+        "p95_ms": 17.43,
+        "max_ms": 18.5
       }
     },
     "reminders.search": {
@@ -87,10 +87,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 28.58,
-        "p50_ms": 31.64,
-        "p95_ms": 42.28,
-        "max_ms": 42.28
+        "min_ms": 26.82,
+        "p50_ms": 28.33,
+        "p95_ms": 28.58,
+        "max_ms": 28.58
       },
       "warm": {
         "runs": 30,
@@ -100,10 +100,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 10.85,
-        "p50_ms": 11.84,
-        "p95_ms": 13.76,
-        "max_ms": 13.89
+        "min_ms": 9.04,
+        "p50_ms": 9.76,
+        "p95_ms": 10.51,
+        "max_ms": 10.78
       }
     },
     "calendar.calendars": {
@@ -115,10 +115,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 21.7,
-        "p50_ms": 22.33,
-        "p95_ms": 24.8,
-        "max_ms": 24.8
+        "min_ms": 23.07,
+        "p50_ms": 24.3,
+        "p95_ms": 25.88,
+        "max_ms": 25.88
       },
       "warm": {
         "runs": 30,
@@ -128,10 +128,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 4.72,
-        "p50_ms": 4.95,
-        "p95_ms": 5.44,
-        "max_ms": 5.59
+        "min_ms": 4.63,
+        "p50_ms": 4.93,
+        "p95_ms": 5.47,
+        "max_ms": 5.9
       }
     },
     "calendar.events": {
@@ -143,10 +143,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 37.7,
-        "p50_ms": 45.11,
-        "p95_ms": 55.78,
-        "max_ms": 55.78
+        "min_ms": 35.94,
+        "p50_ms": 36.1,
+        "p95_ms": 44.0,
+        "max_ms": 44.0
       },
       "warm": {
         "runs": 30,
@@ -156,10 +156,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 16.63,
-        "p50_ms": 18.44,
-        "p95_ms": 20.06,
-        "max_ms": 24.23
+        "min_ms": 17.19,
+        "p50_ms": 17.78,
+        "p95_ms": 18.72,
+        "max_ms": 19.03
       }
     },
     "calendar.search": {
@@ -171,10 +171,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 47.03,
-        "p50_ms": 60.25,
-        "p95_ms": 65.54,
-        "max_ms": 65.54
+        "min_ms": 43.13,
+        "p50_ms": 43.56,
+        "p95_ms": 48.27,
+        "max_ms": 48.27
       },
       "warm": {
         "runs": 30,
@@ -184,10 +184,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 22.74,
-        "p50_ms": 24.33,
-        "p95_ms": 26.34,
-        "max_ms": 28.81
+        "min_ms": 22.92,
+        "p50_ms": 24.0,
+        "p95_ms": 25.55,
+        "max_ms": 27.39
       }
     },
     "contacts.list": {
@@ -199,10 +199,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 59.22,
-        "p50_ms": 61.97,
-        "p95_ms": 64.55,
-        "max_ms": 64.55
+        "min_ms": 64.33,
+        "p50_ms": 64.78,
+        "p95_ms": 67.55,
+        "max_ms": 67.55
       },
       "warm": {
         "runs": 30,
@@ -212,10 +212,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 44.96,
-        "p50_ms": 47.34,
-        "p95_ms": 51.46,
-        "max_ms": 51.64
+        "min_ms": 47.92,
+        "p50_ms": 49.73,
+        "p95_ms": 56.13,
+        "max_ms": 62.98
       }
     },
     "contacts.search": {
@@ -227,10 +227,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 49.18,
-        "p50_ms": 49.9,
-        "p95_ms": 50.3,
-        "max_ms": 50.3
+        "min_ms": 48.96,
+        "p50_ms": 49.23,
+        "p95_ms": 51.67,
+        "max_ms": 51.67
       },
       "warm": {
         "runs": 30,
@@ -240,10 +240,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 2.94,
-        "p50_ms": 3.15,
-        "p95_ms": 3.33,
-        "max_ms": 3.36
+        "min_ms": 3.09,
+        "p50_ms": 3.27,
+        "p95_ms": 3.54,
+        "max_ms": 3.68
       }
     },
     "contacts.groups": {
@@ -255,10 +255,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 48.2,
-        "p50_ms": 48.42,
-        "p95_ms": 51.92,
-        "max_ms": 51.92
+        "min_ms": 48.92,
+        "p50_ms": 49.71,
+        "p95_ms": 50.36,
+        "max_ms": 50.36
       },
       "warm": {
         "runs": 30,
@@ -268,10 +268,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 35.73,
-        "p50_ms": 36.87,
-        "p95_ms": 43.35,
-        "max_ms": 45.39
+        "min_ms": 36.75,
+        "p50_ms": 38.84,
+        "p95_ms": 39.71,
+        "max_ms": 40.11
       }
     },
     "notes.folders": {
@@ -283,10 +283,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 232.6,
-        "p50_ms": 247.46,
-        "p95_ms": 307.33,
-        "max_ms": 307.33
+        "min_ms": 231.03,
+        "p50_ms": 233.35,
+        "p95_ms": 236.22,
+        "max_ms": 236.22
       },
       "warm": {
         "runs": 30,
@@ -296,10 +296,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 216.71,
-        "p50_ms": 233.1,
-        "p95_ms": 236.3,
-        "max_ms": 236.76
+        "min_ms": 212.97,
+        "p50_ms": 217.42,
+        "p95_ms": 237.98,
+        "max_ms": 245.8
       }
     },
     "notes.list": {
@@ -311,10 +311,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 3266.44,
-        "p50_ms": 3272.83,
-        "p95_ms": 3284.09,
-        "max_ms": 3284.09
+        "min_ms": 3262.48,
+        "p50_ms": 3267.45,
+        "p95_ms": 3272.4,
+        "max_ms": 3272.4
       },
       "warm": {
         "runs": 30,
@@ -324,10 +324,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 3249.18,
-        "p50_ms": 3265.75,
-        "p95_ms": 3281.14,
-        "max_ms": 3285.41
+        "min_ms": 3250.51,
+        "p50_ms": 3266.56,
+        "p95_ms": 3270.53,
+        "max_ms": 3270.72
       }
     },
     "notes.search": {
@@ -339,10 +339,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 1100.65,
-        "p50_ms": 1114.8,
-        "p95_ms": 1117.71,
-        "max_ms": 1117.71
+        "min_ms": 1098.14,
+        "p50_ms": 1100.37,
+        "p95_ms": 1115.53,
+        "max_ms": 1115.53
       },
       "warm": {
         "runs": 30,
@@ -352,10 +352,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 1082.85,
-        "p50_ms": 1099.14,
-        "p95_ms": 1101.75,
-        "max_ms": 1102.19
+        "min_ms": 1083.09,
+        "p50_ms": 1100.26,
+        "p95_ms": 1144.78,
+        "max_ms": 1159.57
       }
     },
     "messages.chats": {
@@ -367,10 +367,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 45.78,
-        "p50_ms": 49.14,
-        "p95_ms": 60.31,
-        "max_ms": 60.31
+        "min_ms": 50.17,
+        "p50_ms": 51.74,
+        "p95_ms": 54.31,
+        "max_ms": 54.31
       },
       "warm": {
         "runs": 30,
@@ -380,10 +380,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 33.28,
-        "p50_ms": 35.91,
-        "p95_ms": 38.02,
-        "max_ms": 38.25
+        "min_ms": 37.21,
+        "p50_ms": 38.66,
+        "p95_ms": 43.12,
+        "max_ms": 43.55
       }
     },
     "messages.history": {
@@ -395,10 +395,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 46.44,
-        "p50_ms": 48.79,
-        "p95_ms": 49.52,
-        "max_ms": 49.52
+        "min_ms": 58.06,
+        "p50_ms": 60.19,
+        "p95_ms": 60.73,
+        "max_ms": 60.73
       },
       "warm": {
         "runs": 30,
@@ -408,10 +408,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 35.7,
-        "p50_ms": 36.96,
-        "p95_ms": 38.38,
-        "max_ms": 38.67
+        "min_ms": 42.62,
+        "p50_ms": 43.62,
+        "p95_ms": 44.89,
+        "max_ms": 45.02
       }
     },
     "messages.search": {
@@ -423,10 +423,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 47.61,
-        "p50_ms": 47.92,
-        "p95_ms": 48.37,
-        "max_ms": 48.37
+        "min_ms": 55.03,
+        "p50_ms": 55.27,
+        "p95_ms": 55.98,
+        "max_ms": 55.98
       },
       "warm": {
         "runs": 30,
@@ -436,10 +436,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 35.26,
-        "p50_ms": 36.18,
-        "p95_ms": 40.01,
-        "max_ms": 40.29
+        "min_ms": 36.17,
+        "p50_ms": 40.26,
+        "p95_ms": 42.87,
+        "max_ms": 46.25
       }
     },
     "mail.accounts": {
@@ -455,7 +455,7 @@
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
-        "first_error": "{\"v\":4,\"status\":\"error\",\"error\":{\"code\":\"script_failed\",\"next_step\":{\"next_call\":{\"tool\":\"doctor\",\"args\":{},\"argv\":[\"doctor\"]},\"retryable\":false},\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\"},\"duration_ms\":4296}"
+        "first_error": "{\"error\":{\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\",\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"doctor\",\"args\":{},\"argv\":[\"doctor\"]}},\"code\":\"script_failed\"},\"v\":4,\"status\":\"error\",\"duration_ms\":4257}"
       },
       "warm": null
     },
@@ -472,7 +472,7 @@
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
-        "first_error": "{\"duration_ms\":8587,\"error\":{\"code\":\"script_failed\",\"next_step\":{\"retryable\":false,\"next_call\":{\"args\":{},\"argv\":[\"doctor\"],\"tool\":\"doctor\"}},\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\"},\"v\":4,\"status\":\"error\"}"
+        "first_error": "{\"status\":\"error\",\"error\":{\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"doctor\",\"args\":{},\"argv\":[\"doctor\"]}},\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\",\"code\":\"script_failed\"},\"v\":4,\"duration_ms\":8548}"
       },
       "warm": null
     },
@@ -489,7 +489,7 @@
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
-        "first_error": "{\"duration_ms\":8511,\"v\":4,\"status\":\"error\",\"error\":{\"code\":\"script_failed\",\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\",\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"doctor\",\"args\":{},\"argv\":[\"doctor\"]}}}}"
+        "first_error": "{\"duration_ms\":8471,\"status\":\"error\",\"error\":{\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"doctor\",\"args\":{},\"argv\":[\"doctor\"]}},\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\",\"code\":\"script_failed\"},\"v\":4}"
       },
       "warm": null
     },
@@ -506,7 +506,7 @@
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
-        "first_error": "{\"duration_ms\":14907,\"v\":4,\"status\":\"error\",\"error\":{\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\",\"code\":\"script_failed\",\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"doctor\",\"argv\":[\"doctor\"],\"args\":{}}}}}"
+        "first_error": "{\"status\":\"error\",\"v\":4,\"duration_ms\":14784,\"error\":{\"next_step\":{\"next_call\":{\"tool\":\"doctor\",\"argv\":[\"doctor\"],\"args\":{}},\"retryable\":false},\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\",\"code\":\"script_failed\"}}"
       },
       "warm": null
     },
@@ -523,7 +523,7 @@
         "p50_ms": null,
         "p95_ms": null,
         "max_ms": null,
-        "first_error": "{\"duration_ms\":2,\"v\":4,\"error\":{\"remediation\":{\"shell_command\":\"open -a \\\"Voice Memos\\\" && sleep 3\",\"human_hint\":\"Voice Memos database not found. Open the Voice Memos app once to initialize it.\",\"doctor_check\":\"Voice Memos access\"},\"code\":\"database_not_found\",\"message\":\"Voice Memos database not foun"
+        "first_error": "{\"error\":{\"message\":\"Voice Memos database not found at: \\/Users\\/admin\\/Library\\/Group Containers\\/group.com.apple.VoiceMemos.shared\\/Recordings\\/CloudRecordings.db\",\"next_step\":{\"human_action\":\"Open the Voice Memos app once to create its database, then retry.\",\"retryable\":false},\"remediation\":{\"she"
       },
       "warm": null
     }
@@ -634,33 +634,33 @@
     "bad_input": {
       "contacts.show": {
         "outcome": "error",
-        "ms": 53.23,
+        "ms": 46.44,
         "error_is_structured": true,
-        "detail": "{\"duration_ms\":40,\"status\":\"error\",\"error\":{\"code\":\"contact_not_found\",\"next_step\":{\"next_call\":{\"tool\":\"contacts_list\",\"argv\":[\"contacts\",\"list\"],\"args\":{}},\"retryable\":false},\"message\":\"Contact not "
+        "detail": "{\"error\":{\"next_step\":{\"next_call\":{\"argv\":[\"contacts\",\"list\"],\"args\":{},\"tool\":\"contacts_list\"},\"retryable\":false},\"code\":\"contact_not_found\",\"message\":\"Contact not found: PB-NOPE-0000\"},\"status\":\"er"
       },
       "notes.show": {
         "outcome": "error",
-        "ms": 104.69,
+        "ms": 88.61,
         "error_is_structured": true,
-        "detail": "{\"error\":{\"message\":\"Note not found: PB-NOPE-0000\",\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"notes_list\",\"argv\":[\"notes\",\"list\"],\"args\":{}}},\"code\":\"note_not_found\"},\"v\":4,\"status\":\"error\",\""
+        "detail": "{\"duration_ms\":72,\"error\":{\"message\":\"Note not found: PB-NOPE-0000\",\"code\":\"note_not_found\",\"next_step\":{\"next_call\":{\"argv\":[\"notes\",\"list\"],\"tool\":\"notes_list\",\"args\":{}},\"retryable\":false}},\"v\":4,\""
       },
       "messages.history": {
         "outcome": "error",
-        "ms": 56.92,
+        "ms": 50.92,
         "error_is_structured": true,
-        "detail": "{\"status\":\"error\",\"duration_ms\":38,\"error\":{\"message\":\"Conversation not found: 999999999\",\"code\":\"conversation_not_found\",\"next_step\":{\"retryable\":false,\"next_call\":{\"args\":{},\"tool\":\"messages_list\",\""
+        "detail": "{\"duration_ms\":33,\"v\":4,\"error\":{\"message\":\"Conversation not found: 999999999\",\"next_step\":{\"next_call\":{\"argv\":[\"messages\",\"list\"],\"tool\":\"messages_list\",\"args\":{}},\"retryable\":false},\"code\":\"convers"
       },
       "calendar.events": {
         "outcome": "error",
-        "ms": 16.44,
+        "ms": 13.86,
         "error_is_structured": true,
-        "detail": "{\"error\":{\"next_step\":{\"retryable\":false},\"code\":\"command_error\",\"message\":\"--from must be in YYYY-MM-DD or ISO 8601 format.\"},\"status\":\"error\",\"v\":4,\"duration_ms\":2}"
+        "detail": "{\"status\":\"error\",\"duration_ms\":1,\"v\":4,\"error\":{\"next_step\":{\"retryable\":false},\"code\":\"command_error\",\"message\":\"--from must be in YYYY-MM-DD or ISO 8601 format.\"}}"
       },
       "reminders.list": {
         "outcome": "error",
-        "ms": 27.95,
+        "ms": 22.99,
         "error_is_structured": true,
-        "detail": "{\"v\":4,\"error\":{\"code\":\"list_not_found\",\"next_step\":{\"retryable\":false,\"next_call\":{\"args\":{},\"argv\":[\"reminders\",\"lists\"],\"tool\":\"reminders_lists\"}},\"message\":\"Reminder list not found: PB-NO-SUCH-LIS"
+        "detail": "{\"status\":\"error\",\"duration_ms\":11,\"v\":4,\"error\":{\"message\":\"Reminder list not found: PB-NO-SUCH-LIST\",\"code\":\"list_not_found\",\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"reminders_lists\",\"arg"
       }
     }
   },

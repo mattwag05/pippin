@@ -9,9 +9,7 @@
       "missing": [
         "PB0140 ok"
       ],
-      "unexpected": [
-        ""
-      ],
+      "unexpected": [],
       "duplicated": [],
       "outgoing_with_recipient_as_sender": 0
     },

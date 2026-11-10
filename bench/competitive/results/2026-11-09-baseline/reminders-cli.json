@@ -21,10 +21,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 43.83,
-        "p50_ms": 45.19,
-        "p95_ms": 45.84,
-        "max_ms": 45.84
+        "min_ms": 46.89,
+        "p50_ms": 48.12,
+        "p95_ms": 62.25,
+        "max_ms": 62.25
       },
       "warm": {
         "runs": 30,
@@ -34,10 +34,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 41.28,
-        "p50_ms": 44.1,
-        "p95_ms": 47.9,
-        "max_ms": 50.12
+        "min_ms": 38.6,
+        "p50_ms": 40.55,
+        "p95_ms": 46.73,
+        "max_ms": 48.91
       }
     },
     "reminders.list": {
@@ -49,10 +49,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 50.16,
-        "p50_ms": 51.34,
-        "p95_ms": 52.67,
-        "max_ms": 52.67
+        "min_ms": 43.23,
+        "p50_ms": 44.13,
+        "p95_ms": 45.36,
+        "max_ms": 45.36
       },
       "warm": {
         "runs": 30,
@@ -62,10 +62,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 48.08,
-        "p50_ms": 50.97,
-        "p95_ms": 57.14,
-        "max_ms": 57.86
+        "min_ms": 43.54,
+        "p50_ms": 44.5,
+        "p95_ms": 48.01,
+        "max_ms": 50.26
       }
     }
   },
@@ -85,7 +85,7 @@
     "bad_input": {
       "reminders.list": {
         "outcome": "error",
-        "ms": 52.02,
+        "ms": 41.29,
         "error_is_structured": false,
         "detail": "exit 1: No reminders list matching PB-NO-SUCH-LIST\n"
       }

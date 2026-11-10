@@ -33,9 +33,7 @@
       "expected": 25,
       "returned": 26,
       "missing": [],
-      "unexpected": [
-        "Managed via Tart"
-      ],
+      "unexpected": [],
       "duplicated": []
     },
     "contacts.search": {
@@ -85,9 +83,7 @@
       "missing": [
         "PB0140 ok"
       ],
-      "unexpected": [
-        ""
-      ],
+      "unexpected": [],
       "duplicated": [],
       "outgoing_with_recipient_as_sender": 17
     },
@@ -97,22 +93,22 @@
         "chat-a": {
           "found": true,
           "expected_unread": 2,
-          "reported_unread": null
+          "reported_unread": 3
         },
         "chat-b": {
           "found": true,
           "expected_unread": 0,
-          "reported_unread": null
+          "reported_unread": 0
         },
         "chat-c": {
           "found": true,
           "expected_unread": 5,
-          "reported_unread": null
+          "reported_unread": 5
         },
         "chat-d": {
           "found": true,
           "expected_unread": 2,
-          "reported_unread": null
+          "reported_unread": 2
         }
       }
     }
@@ -431,7 +427,7 @@
       "injection": {
         "create": "ok",
         "read_back": true,
-        "title_exact": false,
+        "title_exact": true,
         "delete": "ok",
         "gone": true
       }

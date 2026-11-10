@@ -186,9 +186,10 @@
       },
       "injection": {
         "create": "ok",
-        "read_back": false,
-        "title_exact": false,
-        "gone": false
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
       }
     }
   }

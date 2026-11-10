@@ -245,22 +245,25 @@
     },
     "calendar": {
       "plain": {
-        "create": "error",
-        "read_back": false,
-        "title_exact": false,
-        "gone": false
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
       },
       "quoting": {
-        "create": "error",
-        "read_back": false,
-        "title_exact": false,
-        "gone": false
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
       },
       "injection": {
-        "create": "error",
-        "read_back": false,
-        "title_exact": false,
-        "gone": false
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
       }
     }
   }

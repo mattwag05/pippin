@@ -1,15 +1,15 @@
 {
   "apple-events": {
-    "coverage": 2,
+    "coverage": 4,
     "coverage_cells": [
-      6,
+      10,
       10
     ],
     "apps": 2,
-    "correctness": null,
+    "correctness": 4,
     "correctness_checks": [
-      0,
-      0
+      20,
+      20
     ],
     "reliability": 4,
     "reliability_checks": [
@@ -17,24 +17,24 @@
       20
     ],
     "speed": 1,
-    "safety_input": null,
+    "safety_input": 4,
     "safety_checks": [
-      0,
-      0
+      48,
+      48
     ],
     "dealbreaker": false
   },
   "apple-pim": {
-    "coverage": 2,
+    "coverage": 4,
     "coverage_cells": [
-      9,
+      15,
       15
     ],
     "apps": 3,
-    "correctness": null,
+    "correctness": 3,
     "correctness_checks": [
-      0,
-      0
+      28,
+      29
     ],
     "reliability": 4,
     "reliability_checks": [
@@ -42,10 +42,10 @@
       30
     ],
     "speed": 1,
-    "safety_input": null,
+    "safety_input": 4,
     "safety_checks": [
-      0,
-      0
+      72,
+      72
     ],
     "dealbreaker": false
   },
@@ -56,10 +56,10 @@
       3
     ],
     "apps": 1,
-    "correctness": null,
+    "correctness": 2,
     "correctness_checks": [
-      0,
-      0
+      2,
+      3
     ],
     "reliability": 3,
     "reliability_checks": [
@@ -67,10 +67,10 @@
       10
     ],
     "speed": 1,
-    "safety_input": null,
+    "safety_input": 4,
     "safety_checks": [
-      0,
-      0
+      24,
+      24
     ],
     "dealbreaker": false
   },
@@ -92,10 +92,10 @@
       10
     ],
     "speed": 4,
-    "safety_input": null,
+    "safety_input": 4,
     "safety_checks": [
-      0,
-      0
+      24,
+      24
     ],
     "dealbreaker": false
   },
@@ -106,10 +106,10 @@
       13
     ],
     "apps": 2,
-    "correctness": null,
+    "correctness": 4,
     "correctness_checks": [
-      0,
-      0
+      7,
+      7
     ],
     "reliability": 2,
     "reliability_checks": [
@@ -125,16 +125,16 @@
     "dealbreaker": false
   },
   "pippin": {
-    "coverage": 2,
+    "coverage": 4,
     "coverage_cells": [
-      15,
+      23,
       23
     ],
     "apps": 5,
-    "correctness": null,
+    "correctness": 3,
     "correctness_checks": [
-      0,
-      0
+      43,
+      46
     ],
     "reliability": 4,
     "reliability_checks": [
@@ -142,24 +142,24 @@
       50
     ],
     "speed": 3,
-    "safety_input": null,
+    "safety_input": 4,
     "safety_checks": [
-      0,
-      0
+      120,
+      120
     ],
     "dealbreaker": false
   },
   "remindctl": {
-    "coverage": 2,
+    "coverage": 4,
     "coverage_cells": [
-      3,
+      5,
       5
     ],
     "apps": 1,
-    "correctness": null,
+    "correctness": 4,
     "correctness_checks": [
-      0,
-      0
+      10,
+      10
     ],
     "reliability": 4,
     "reliability_checks": [
@@ -167,24 +167,24 @@
       10
     ],
     "speed": 1,
-    "safety_input": null,
+    "safety_input": 4,
     "safety_checks": [
-      0,
-      0
+      24,
+      24
     ],
     "dealbreaker": false
   },
   "reminders-cli": {
-    "coverage": 1,
+    "coverage": 2,
     "coverage_cells": [
-      2,
+      4,
       5
     ],
     "apps": 1,
-    "correctness": null,
+    "correctness": 4,
     "correctness_checks": [
-      0,
-      0
+      7,
+      7
     ],
     "reliability": 4,
     "reliability_checks": [
@@ -200,16 +200,16 @@
     "dealbreaker": false
   },
   "sweetrb-notes": {
-    "coverage": 2,
+    "coverage": 4,
     "coverage_cells": [
-      3,
+      5,
       5
     ],
     "apps": 1,
-    "correctness": null,
+    "correctness": 4,
     "correctness_checks": [
-      0,
-      0
+      9,
+      9
     ],
     "reliability": 4,
     "reliability_checks": [
@@ -217,10 +217,10 @@
       10
     ],
     "speed": 3,
-    "safety_input": null,
+    "safety_input": 4,
     "safety_checks": [
-      0,
-      0
+      24,
+      24
     ],
     "dealbreaker": false
   }

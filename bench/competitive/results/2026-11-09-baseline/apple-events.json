@@ -9,7 +9,7 @@
   "manifest": {
     "kind": "mcp",
     "outcome": "ok",
-    "spawn_to_tools_ms": 194.37,
+    "spawn_to_tools_ms": 82.07,
     "tool_count": 5,
     "manifest_chars": 12399,
     "manifest_tokens": 3694,
@@ -26,10 +26,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 117.59,
-        "p50_ms": 135.66,
-        "p95_ms": 139.63,
-        "max_ms": 139.63
+        "min_ms": 123.55,
+        "p50_ms": 131.58,
+        "p95_ms": 151.54,
+        "max_ms": 151.54
       },
       "warm": {
         "runs": 30,
@@ -39,10 +39,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 34.15,
-        "p50_ms": 50.28,
-        "p95_ms": 56.48,
-        "max_ms": 56.52
+        "min_ms": 39.22,
+        "p50_ms": 43.97,
+        "p95_ms": 64.06,
+        "max_ms": 64.52
       }
     },
     "reminders.list": {
@@ -54,10 +54,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 138.51,
-        "p50_ms": 143.52,
-        "p95_ms": 153.81,
-        "max_ms": 153.81
+        "min_ms": 146.22,
+        "p50_ms": 150.13,
+        "p95_ms": 162.78,
+        "max_ms": 162.78
       },
       "warm": {
         "runs": 30,
@@ -67,10 +67,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 39.86,
-        "p50_ms": 43.44,
-        "p95_ms": 60.83,
-        "max_ms": 66.96
+        "min_ms": 46.26,
+        "p50_ms": 63.95,
+        "p95_ms": 82.17,
+        "max_ms": 84.86
       }
     },
     "reminders.search": {
@@ -82,10 +82,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 133.76,
-        "p50_ms": 135.44,
-        "p95_ms": 150.01,
-        "max_ms": 150.01
+        "min_ms": 139.77,
+        "p50_ms": 161.0,
+        "p95_ms": 188.67,
+        "max_ms": 188.67
       },
       "warm": {
         "runs": 30,
@@ -95,10 +95,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 40.44,
-        "p50_ms": 45.31,
-        "p95_ms": 59.36,
-        "max_ms": 60.29
+        "min_ms": 46.88,
+        "p50_ms": 65.24,
+        "p95_ms": 78.79,
+        "max_ms": 79.93
       }
     },
     "calendar.calendars": {
@@ -110,10 +110,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 123.57,
-        "p50_ms": 139.61,
-        "p95_ms": 151.62,
-        "max_ms": 151.62
+        "min_ms": 136.76,
+        "p50_ms": 150.96,
+        "p95_ms": 172.66,
+        "max_ms": 172.66
       },
       "warm": {
         "runs": 30,
@@ -123,10 +123,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 33.0,
-        "p50_ms": 34.66,
-        "p95_ms": 49.71,
-        "max_ms": 49.75
+        "min_ms": 37.96,
+        "p50_ms": 43.08,
+        "p95_ms": 65.11,
+        "max_ms": 68.34
       }
     },
     "calendar.events": {
@@ -138,10 +138,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 171.23,
-        "p50_ms": 174.7,
-        "p95_ms": 190.16,
-        "max_ms": 190.16
+        "min_ms": 181.84,
+        "p50_ms": 199.54,
+        "p95_ms": 227.56,
+        "max_ms": 227.56
       },
       "warm": {
         "runs": 30,
@@ -151,10 +151,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 57.91,
-        "p50_ms": 60.57,
-        "p95_ms": 77.23,
-        "max_ms": 89.25
+        "min_ms": 57.2,
+        "p50_ms": 72.89,
+        "p95_ms": 93.23,
+        "max_ms": 94.51
       }
     },
     "calendar.search": {
@@ -166,10 +166,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 167.47,
-        "p50_ms": 184.4,
-        "p95_ms": 209.36,
-        "max_ms": 209.36
+        "min_ms": 162.74,
+        "p50_ms": 174.91,
+        "p95_ms": 183.73,
+        "max_ms": 183.73
       },
       "warm": {
         "runs": 30,
@@ -179,10 +179,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 63.8,
-        "p50_ms": 71.12,
-        "p95_ms": 88.68,
-        "max_ms": 92.12
+        "min_ms": 61.99,
+        "p50_ms": 78.91,
+        "p95_ms": 87.13,
+        "max_ms": 88.79
       }
     }
   },
@@ -222,13 +222,13 @@
     "bad_input": {
       "calendar.events": {
         "outcome": "error",
-        "ms": 88.19,
+        "ms": 84.4,
         "error_is_structured": false,
         "detail": "Input validation failed: startDate: Date must be in format 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601 (e.g., '2025-10-30T04:00:00Z'); startDate: Date must be a real, parseable date/time; endDate"
       },
       "reminders.list": {
         "outcome": "error",
-        "ms": 122.68,
+        "ms": 120.62,
         "error_is_structured": false,
         "detail": "Not found: List 'PB-NO-SUCH-LIST' not found"
       }

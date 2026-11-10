@@ -8,7 +8,7 @@
   "manifest": {
     "kind": "mcp",
     "outcome": "ok",
-    "spawn_to_tools_ms": 112.8,
+    "spawn_to_tools_ms": 105.82,
     "tool_count": 89,
     "manifest_chars": 174555,
     "manifest_tokens": 56023,
@@ -25,10 +25,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 462.9,
-        "p50_ms": 476.8,
-        "p95_ms": 549.4,
-        "max_ms": 549.4
+        "min_ms": 454.29,
+        "p50_ms": 472.02,
+        "p95_ms": 529.1,
+        "max_ms": 529.1
       },
       "warm": {
         "runs": 30,
@@ -38,10 +38,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 350.48,
-        "p50_ms": 364.93,
-        "p95_ms": 369.94,
-        "max_ms": 371.93
+        "min_ms": 349.72,
+        "p50_ms": 363.78,
+        "p95_ms": 374.29,
+        "max_ms": 377.83
       }
     },
     "notes.list": {
@@ -53,10 +53,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 264.56,
-        "p50_ms": 268.65,
-        "p95_ms": 298.98,
-        "max_ms": 298.98
+        "min_ms": 259.21,
+        "p50_ms": 265.47,
+        "p95_ms": 269.95,
+        "max_ms": 269.95
       },
       "warm": {
         "runs": 30,
@@ -66,10 +66,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 146.75,
-        "p50_ms": 150.17,
-        "p95_ms": 152.82,
-        "max_ms": 153.13
+        "min_ms": 147.13,
+        "p50_ms": 149.7,
+        "p95_ms": 152.93,
+        "max_ms": 168.08
       }
     },
     "notes.search": {
@@ -81,10 +81,10 @@
           "hang": 0
         },
         "n": 5,
-        "min_ms": 331.84,
-        "p50_ms": 334.2,
-        "p95_ms": 351.84,
-        "max_ms": 351.84
+        "min_ms": 334.31,
+        "p50_ms": 358.7,
+        "p95_ms": 382.17,
+        "max_ms": 382.17
       },
       "warm": {
         "runs": 30,
@@ -94,10 +94,10 @@
           "hang": 0
         },
         "n": 30,
-        "min_ms": 180.03,
-        "p50_ms": 183.59,
-        "p95_ms": 196.78,
-        "max_ms": 250.86
+        "min_ms": 181.51,
+        "p50_ms": 182.8,
+        "p95_ms": 198.95,
+        "max_ms": 200.66
       }
     }
   },
@@ -122,7 +122,7 @@
     "bad_input": {
       "notes.show": {
         "outcome": "error",
-        "ms": 104.82,
+        "ms": 95.08,
         "error_is_structured": true,
         "detail": "Error retrieving note content: Invalid note ID format: \"PB-NOPE-0000\". Expected CoreData URL (x-coredata://...) or temp ID.structuredContent: {\"code\":\"validation_error\"}"
       }
