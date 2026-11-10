@@ -1,0 +1,132 @@
+{
+  "tool": "sweetrb-mail",
+  "version": "2.20.55",
+  "kind": "mcp",
+  "apps": [
+    "mail"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 102.32,
+    "tool_count": 52,
+    "manifest_chars": 104059,
+    "manifest_tokens": 32652,
+    "tools_with_description": 52,
+    "tools_with_annotations": 52
+  },
+  "speed": {
+    "mail.accounts": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 198.24,
+        "p50_ms": 200.81,
+        "p95_ms": 217.67,
+        "max_ms": 217.67
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 50.65,
+        "p50_ms": 55.77,
+        "p95_ms": 57.89,
+        "max_ms": 58.03
+      }
+    },
+    "mail.mailboxes": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 848.0,
+        "p50_ms": 865.24,
+        "p95_ms": 924.43,
+        "max_ms": 924.43
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 487.43,
+        "p50_ms": 517.59,
+        "p95_ms": 533.35,
+        "max_ms": 533.54
+      }
+    },
+    "mail.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 3399.86,
+        "p50_ms": 3405.11,
+        "p95_ms": 3441.65,
+        "max_ms": 3441.65
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 3231.38,
+        "p50_ms": 3249.11,
+        "p95_ms": 3348.58,
+        "max_ms": 3367.38
+      }
+    },
+    "mail.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 1299.43,
+        "p50_ms": 1301.32,
+        "p95_ms": 1356.44,
+        "max_ms": 1356.44
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 1134.77,
+        "p50_ms": 1164.19,
+        "p95_ms": 1168.12,
+        "max_ms": 1282.53
+      }
+    }
+  }
+}

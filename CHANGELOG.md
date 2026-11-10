@@ -16,6 +16,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Performance
 
 - [perf] Notes reads over MCP (`notes_list`, `notes_search`, `notes_show`, `notes_folders`) run inside the server, and the list and search scripts make 7 Apple Events instead of 11. In the benchmark VM, warm list went from 232 ms to 167 ms and search from 250 ms to 183 ms, which ties sweetrb/apple-notes-mcp under the tie rule ([result](bench/competitive/results/2026-11-10-notes/summary.md)). Test: `NotesScriptBehaviorTests.testTheDefaultListMakesSevenAppleEvents`. Closes pippin-ai5s.
+- [perf] Mail reads over MCP (`mail_list`, `mail_search`, `mail_mailboxes`, `mail_accounts`) run inside the server unless they ask for bodies, semantic search or previews. `mail accounts` asks Mail for names only and takes email and id from the account cache when the names match it and it is under an hour old; an address changed without a name change can show the old address for up to that hour. In the benchmark VM, warm list went from 42.6 ms to 2.5 ms, search from 39.9 ms to 1.7 ms and accounts from 117.0 ms to 57.2 ms: Pippin now leads or ties every Mail read and scores 4 on Speed ([result](bench/competitive/results/2026-11-10-mail/summary.md)). Tests: `InProcessToolsTests.testSlowMailReadsDeclineTheInProcessPath`, `MailAccountsCacheTests.testCachedAccountsOnlyWhenMailReportsTheSameNames`. Closes pippin-k177.
 
 ### Fixed
 
@@ -24,7 +25,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [docs] The head-to-head now measures Mail and Voice Memos (methodology Amendment 4: a local IMAP server and Mail account, and the Voice Memos store, in the VM). Pippin scores 4 on Coverage (7 apps), Correctness (54/54), Reliability, Safety and Operability, and 3 on Speed, tied at the top: it loses three warm Mail reads ([results](docs/competitive/results.md)).
+- [docs] The head-to-head now measures Mail and Voice Memos (methodology Amendment 4: a local IMAP server and Mail account, and the Voice Memos store, in the VM). Pippin scores 4 on Coverage (7 apps), Correctness (54/54), Reliability, Safety and Operability, and 3 on Speed, tied at the top: it loses three warm Mail reads, since fixed (see Performance) ([results](docs/competitive/results.md)).
 - [docs] Agent tasks rerun on 2026-11-10 with grader 2 (methodology Amendment 2): Pippin 9 of 9 in both modes, with the lowest median tokens on every task when scoped with `--apps` ([results](docs/competitive/results.md#agent-tasks)).
 - [docs] The competitive results now score the Operability axis (install, self-check, docs, tests and CI, release hygiene, maintenance), under methodology Amendment 3. Pippin passes 13 of 13 checks and scores 4, tied with five other tools ([result](bench/competitive/results/2026-11-10-operability/summary.md)).
 - [docs] `docs/cli-reference.md` lists every command with its help text. `CLIReferenceTests` generates it from the command definitions and fails when it is stale. Before it, 21 commands were documented nowhere.

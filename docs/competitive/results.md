@@ -8,7 +8,7 @@ The field ([field.md](field.md)) and the method ([methodology.md](methodology.md
 
 Read this first.
 
-- **Mail reads, warm.** apple-pim lists the inbox in 8.7 ms and searches in 7.7 ms; Pippin takes 42.6 ms and 39.9 ms. sweetrb-mail lists accounts in 53.8 ms against 117.0 ms for Pippin. All three are outside the tie rule, and they are Pippin's only warm losses in the run; cold, Pippin is fastest or tied on every operation, Mail included ([2026-11-10-amend4](../../bench/competitive/results/2026-11-10-amend4/summary.md)). Pippin's Mail reads use Mail's on-disk index but still start a child process per call over MCP. Plan (pippin-k177): run the index-backed Mail reads inside the MCP server, as Calendar, Reminders, Contacts, Messages and Notes reads already are, then rerun the head-to-head.
+- **Mail reads, warm (closed).** In the primary run apple-pim listed the inbox in 8.7 ms and searched in 7.7 ms against 42.6 ms and 39.9 ms for Pippin, and sweetrb-mail listed accounts in 53.8 ms against 117.0 ms. After pippin-k177 (index-backed Mail reads inside the MCP server, `mail accounts` reading names only) the [Mail re-run](../../bench/competitive/results/2026-11-10-mail/summary.md) measures 2.5 ms against 10.0 ms for list, 1.7 ms against 9.1 ms for search, and 57.2 ms against 55.8 ms for accounts (a tie under the rule).
 - **Notes speed, warm (closed).** In the 2026-11-09 run sweetrb/apple-notes-mcp listed notes in 150 ms and searched in 183 ms, against 232 ms and 250 ms for Pippin. After pippin-ai5s (Notes reads inside the MCP server, 7 Apple Events per list instead of 11) the primary run measures 166.7 ms against 153.8 ms and 183.3 ms against 183.2 ms: both ties under the rule.
 - **Tool-list size with every tool exposed.** All 79 tools cost 22,615 tokens per agent turn. That is more than every competitor except sweetrb/apple-notes-mcp (56,023). In the agent tasks this made Pippin the most expensive tool per task (about 84k to 88k model tokens) when all tools were exposed. `pippin mcp-server --apps <app>` fixes this: scoped to one app, Pippin was the cheapest tool on all three tasks (see [Agent tasks](#agent-tasks)). The default is still all tools, so a client that does not pass `--apps` pays the cost (pippin-hd99). Plan: shorten tool descriptions and shared schema text, and decide whether the default should list a smaller core set with the rest behind `--apps`, as a minor release with a deprecation note under [contract.md](../contract.md).
 - **Agent task success (resolved).** In the 2026-11-09 runs one injection trial failed in each Pippin run because grader 1 counted a marker the model quoted while describing the attack (pippin-o072). With grader 2 ([Amendment 2](methodology.md#amendment-2-2026-11-10-before-any-run-that-uses-it)), committed before the run, the 2026-11-10 run has Pippin at 9 of 9 in both modes and every competitor at 3 of 3 on the task it can attempt; no Pippin answer contained a marker at all (see [Agent tasks](#agent-tasks)).
@@ -21,7 +21,7 @@ Scores are 0 to 4 per axis, rubric in [methodology.md](methodology.md#scoring-ru
 
 | Tool | Apps scored | Coverage | Correctness | Reliability | Speed | Safety (hostile input) | Operability | Dealbreaker |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **pippin** (`eb55292`) | 7 | 4 (28/28) | 4 (54/54) | 4 (65/65) | 3 | 4 (120/120) | 4 | none observed |
+| **pippin** (`eb55292`) | 7 | 4 (28/28) | 4 (54/54) | 4 (65/65) | 3, 4 with the Mail re-run | 4 (120/120) | 4 | none observed |
 | apple-pim 3.19.2 | 4 | 3 (19/20) | 3 (34/35) | 4 (42/42) | 2 | 4 (72/72) | 3 | none observed |
 | apple-events 1.6.2 | 2 | 4 (10/10) | 4 (20/20) | 4 (20/20) | 1 | 4 (48/48) | 3 | none observed |
 | memo 0.6.2 | 2 | 1 (3/13) | 2 (6/7) | 2 (9/11) | 1 | n/r | 2 | none observed |
@@ -36,7 +36,7 @@ Scores are 0 to 4 per axis, rubric in [methodology.md](methodology.md#scoring-ru
 
 Source: [2026-11-10-amend4/summary.md](../../bench/competitive/results/2026-11-10-amend4/summary.md), raw data in [scores.json](../../bench/competitive/results/2026-11-10-amend4/scores.json) and the per-tool `*.json` and `*.checks.json` files beside it. Operability was scored separately under [Amendment 3](methodology.md#amendment-3-2026-11-10-before-any-operability-data-was-collected) ([2026-11-10-operability](../../bench/competitive/results/2026-11-10-operability/summary.md)). apple-pim's Mail tools are measured here for the first time.
 
-Pippin has the strictly highest or equal-highest score on every scored axis. On Speed it ties at 3 with sweetrb-notes: it no longer leads outright, because of the three Mail losses above. It ties at 4 on Coverage, Correctness, Reliability, Safety and Operability. Every failed check is listed in the summary's "Failed checks" section; for example apple-pim reports 21 reminders at the wrong instant, imsg misses one message in a thread, and sweetrb-mail's search misses subject matches.
+Pippin has the strictly highest or equal-highest score on every scored axis. On Speed the primary run ties it at 3 with sweetrb-notes because of three Mail losses; with the four Mail operations replaced by the [Mail re-run](../../bench/competitive/results/2026-11-10-mail/summary.md), `harness/report.py` scores Pippin 4 and every other tool unchanged, so Pippin leads Speed outright. It ties at 4 on Coverage, Correctness, Reliability, Safety and Operability. Every failed check is listed in the summary's "Failed checks" section; for example apple-pim reports 21 reminders at the wrong instant, imsg misses one message in a thread, and sweetrb-mail's search misses subject matches.
 
 ### What changed since the baseline
 
@@ -88,10 +88,10 @@ Warm p50 in milliseconds, N = 30 after 3 warm-ups, at fixture scale (about 25 re
 | contacts.groups | **32.5** | 64.1 | apple-pim | lead |
 | contacts.list | **42.2** | 117.4 | apple-pim | lead |
 | contacts.search | **3.0** | 146.2 | apple-pim | lead |
-| mail.accounts | 117.0 | **53.8** | sweetrb-mail | **loss** |
-| mail.list | 42.6 | **8.7** | apple-pim | **loss** |
-| mail.mailboxes | 11.8 | **6.5** | apple-pim | tie (rule), slower |
-| mail.search | 39.9 | **7.7** | apple-pim | **loss** |
+| mail.accounts | 57.2 | **55.8** | sweetrb-mail | tie (rule), slower |
+| mail.list | **2.5** | 10.0 | apple-pim | lead |
+| mail.mailboxes | **0.4** | 6.5 | apple-pim | lead |
+| mail.search | **1.7** | 9.1 | apple-pim | lead |
 | memos.list | **9.3** | n/a | none | only Pippin measured |
 | messages.chats | 1.9 | **1.1** | mac-messages | tie (rule), slower |
 | messages.history | **4.1** | 25.8 | mac-messages | lead |
@@ -103,7 +103,7 @@ Warm p50 in milliseconds, N = 30 after 3 warm-ups, at fixture scale (about 25 re
 | reminders.lists | **6.4** | 33.5 | remindctl | lead |
 | reminders.search | **8.7** | 33.2 | remindctl | lead |
 
-The tie rule: within 10 percent or 20 ms of each other, whichever is larger. Warm, Pippin is faster on 12 of 19 operations, tied on 4 and slower on 3 (all Mail). Every tool's column, and the cold table (new process per call), are in the [summary](../../bench/competitive/results/2026-11-10-amend4/summary.md). Cold, Pippin is fastest on 16 of 19 operations and tied on 3.
+The four Mail rows come from the [Mail re-run](../../bench/competitive/results/2026-11-10-mail/summary.md) (Pippin `402816c`, same harness and fixture); the other rows from the primary run. The tie rule: within 10 percent or 20 ms of each other, whichever is larger. Warm, Pippin is faster on 15 of 19 operations, tied on 4 and slower on none. In the primary run alone it was faster on 12, tied on 4 and slower on 3 (all Mail). Every tool's column, and the cold table (new process per call), are in the [summary](../../bench/competitive/results/2026-11-10-amend4/summary.md). Cold, Pippin is fastest on 16 of 19 operations and tied on 3 in the primary run, and fastest on all four Mail operations in the Mail re-run.
 
 Host measurements of Pippin alone (before and after each change) are in [docs/performance.md](../performance.md).
 
