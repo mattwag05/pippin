@@ -50,8 +50,21 @@ public struct DoctorCommand: AgentCommand {
             return checks
         }
 
-        let hasCriticalFailure = checks.contains { $0.status == .fail }
-        return AgentResult(checks, exitCode: hasCriticalFailure ? 1 : 0)
+        return Self.result(for: checks, underMCP: isMCPContext())
+    }
+
+    /// The doctor contract: the checks always arrive in an `ok` envelope, and
+    /// failed checks are named in `warnings`. The CLI also exits 1 so scripts
+    /// can branch on it. Under MCP the exit status stays 0, because a nonzero
+    /// child is reported as a tool error and a finished diagnosis is not one.
+    static func result(for checks: [DiagnosticCheck], underMCP: Bool) -> AgentResult {
+        let failed = checks.filter { $0.status == .fail }.map(\.name)
+        guard !failed.isEmpty else { return AgentResult(checks) }
+        return AgentResult(
+            checks,
+            warnings: ["\(failed.count) check(s) failed: \(failed.joined(separator: ", "))"],
+            exitCode: underMCP ? 0 : 1
+        )
     }
 }
 
