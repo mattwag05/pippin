@@ -1538,7 +1538,8 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfInt(args, "sinceHours", flagName: "--since-hours")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.execute
         ),
         MCPTool(
             name: "messages_search",
@@ -1559,7 +1560,8 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.execute
         ),
         MCPTool(
             name: "messages_show",
@@ -1577,7 +1579,8 @@ enum MCPToolRegistry {
                 try argv.append(ArgHelpers.positional(args, "conversationId"))
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.execute
         ),
         MCPTool(
             name: "messages_send",

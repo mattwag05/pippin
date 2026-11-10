@@ -80,6 +80,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Performance
 
+- [perf] `messages_list`, `messages_search` and `messages_show` run inside the MCP server process instead of a child `pippin`, like the Calendar, Reminders and Contacts reads.
 - [perf] `notes list`, `notes search` and `notes folders` read Notes in bulk: on one 50-note vault a default list went from about 12.8 s to 0.3 s, a no-match search from 22 s (partial) to 0.3 s (complete), and folders from 1.6 s to 0.2 s. Closes pippin-f8p6.
 - [perf] `mail list`, `mail search` and `mail activity` read the Envelope Index snapshot ahead: a list went from 220 ms to 65 ms (median of 5 cold runs, [docs/performance.md](docs/performance.md)).
 - [perf] `mail accounts` reads all accounts in 4 Apple Events instead of 3 per account: 344 ms to 200 ms.

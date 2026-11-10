@@ -2,7 +2,7 @@ import ArgumentParser
 import Foundation
 
 /// In-process execution for the safe (non-JXA) read-only MCP tools: EventKit
-/// (Calendar/Reminders) and CNContactStore (Contacts) reads. These run the same
+/// (Calendar/Reminders), CNContactStore (Contacts) and chat.db (Messages) reads. These run the same
 /// `AgentCommand` the CLI runs, parsed from the same argv a child would get, so
 /// the two paths cannot drift. Everything wedge-prone (JXA, AI, browser, audio)
 /// and all writes stay on the child path, where a hard kill exists: a blocking
@@ -12,7 +12,7 @@ enum MCPInProcessTools {
     private struct InProcessRoot: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "pippin",
-            subcommands: [CalendarCommand.self, RemindersCommand.self, ContactsCommand.self]
+            subcommands: [CalendarCommand.self, RemindersCommand.self, ContactsCommand.self, MessagesCommand.self]
         )
     }
 

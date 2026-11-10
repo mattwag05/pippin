@@ -17,6 +17,7 @@ final class InProcessToolsTests: XCTestCase {
         "calendar_remaining", "calendar_upcoming", "calendar_search",
         "reminders_lists", "reminders_list", "reminders_show", "reminders_search",
         "contacts_search", "contacts_show",
+        "messages_list", "messages_search", "messages_show",
     ]
 
     // MARK: - Registry wiring
@@ -210,6 +211,8 @@ final class InProcessToolsTests: XCTestCase {
         "reminders_search": #"{"query":"zz-no-such-reminder"}"#,
         "contacts_search": #"{"query":"zz-no-such-contact"}"#,
         "contacts_show": #"{"identifier":"zz-no-such-contact"}"#,
+        "messages_search": #"{"query":"zz-no-such-message","sinceHours":1}"#,
+        "messages_show": #"{"conversationId":"zz-no-such-chat"}"#,
     ]
 
     private func inProcessArgvs() throws -> [(name: String, argv: [String])] {
@@ -247,7 +250,9 @@ final class InProcessToolsTests: XCTestCase {
     func testCLIAndInProcessEnvelopesAreEquivalent() async throws {
         CLIIntegrationTests.setUp()
         let binary = try XCTUnwrap(CLIIntegrationTests.binaryURL, "pippin binary not found; run `swift build` first")
-        for (name, argv) in try inProcessArgvs() {
+        // Messages is left out: its live chat.db changes between the two calls and
+        // a failure would print the user's conversations. The VM fixture run covers it.
+        for (name, argv) in try inProcessArgvs() where !name.hasPrefix("messages_") {
             let cli = CLIIntegrationTests.runProcess(binary.path, args: argv)
             let inProcess: String
             if name.hasPrefix("contacts_") {
