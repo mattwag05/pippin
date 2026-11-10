@@ -94,6 +94,113 @@ final class MailMessageScriptBehaviorTests: XCTestCase {
         let log: [String]
     }
 
+    // MARK: - Identity check before mutating (RC-19)
+
+    private let rows = "[{id: 7, messageId: 'm7@example.com', attachments: [{name: 'a.txt'}]}]"
+
+    /// The three scripts that act on a bare compound id, built with `expect`.
+    private func mutatingScripts(expect: String?) -> [(name: String, script: String, mutation: String)] {
+        [
+            ("mark", MailBridge.buildMarkScript(
+                account: "A", mailbox: "INBOX", messageId: "7", read: true, dryRun: false, expectMessageId: expect
+            ), "mark:7:true"),
+            ("move", MailBridge.buildMoveScript(
+                account: "A", mailbox: "INBOX", messageId: "7", toMailbox: "Archive", dryRun: false,
+                expectMessageId: expect
+            ), "move:7:Archive"),
+            ("attachments", MailBridge.buildSaveAttachmentsScript(
+                account: "A", mailbox: "INBOX", messageId: "7", saveDir: "/stage", expectMessageId: expect
+            ), "save:/stage/0"),
+        ]
+    }
+
+    func testMismatchedExpectationAbortsBeforeAnyMutation() throws {
+        for (name, script, _) in mutatingScripts(expect: "someone-else@example.com") {
+            XCTAssertThrowsError(try run(script, rows: rows), name) { error in
+                let failed = error as? FailedRun
+                XCTAssertEqual(failed?.log, [], "\(name) acted on the wrong message")
+                guard case .messageIdentityMismatch = MailBridge.mapScriptFailure(failed?.message ?? "") else {
+                    return XCTFail("\(name): expected message_identity_mismatch, got \(String(describing: failed?.message))")
+                }
+            }
+        }
+    }
+
+    func testMatchingExpectationActsWithOrWithoutAngleBrackets() throws {
+        for expect in ["m7@example.com", "<m7@example.com>", " <m7@example.com>\n"] {
+            for (name, script, mutation) in mutatingScripts(expect: expect) {
+                XCTAssertTrue(try run(script, rows: rows).log.contains(mutation), "\(name) with \(expect.debugDescription)")
+            }
+        }
+    }
+
+    func testNoExpectationKeepsTheOldBehavior() throws {
+        for (name, script, mutation) in mutatingScripts(expect: nil) {
+            XCTAssertTrue(try run(script, rows: rows).log.contains(mutation), name)
+        }
+    }
+
+    func testExpectationFailsClosedWhenTheMessageIdCannotBeRead() throws {
+        for (name, script, _) in mutatingScripts(expect: "m7@example.com") {
+            XCTAssertThrowsError(try run(script, rows: "[{id: 7, noMessageId: true}]"), name) { error in
+                XCTAssertEqual((error as? FailedRun)?.log, [])
+            }
+        }
+    }
+
+    func testDryRunStillChecksIdentity() {
+        let script = MailBridge.buildMoveScript(
+            account: "A", mailbox: "INBOX", messageId: "7", toMailbox: "Archive", dryRun: true,
+            expectMessageId: "someone-else@example.com"
+        )
+        XCTAssertThrowsError(try run(script, rows: rows))
+    }
+
+    func testReadScriptEmitsTheMessageId() throws {
+        let result = try run(MailBridge.buildReadScript(account: "A", mailbox: "INBOX", messageId: "7"), rows: rows)
+        XCTAssertEqual((result.output as? [String: Any])?["messageIdHeader"] as? String, "m7@example.com")
+    }
+
+    func testReplyAndForwardIdentityCheck() throws {
+        func message(id: String?, headers: [String: String]? = nil) -> MailMessage {
+            MailMessage(
+                id: "A||INBOX||7", account: "A", mailbox: "INBOX", subject: "s", from: "a@b.c", to: [],
+                date: "2026-01-01T00:00:00Z", read: true, headers: headers, messageIdHeader: id
+            )
+        }
+        XCTAssertNoThrow(try MailBridge.requireIdentity(of: message(id: nil), expectMessageId: nil))
+        XCTAssertNoThrow(try MailBridge.requireIdentity(of: message(id: "m7@example.com"), expectMessageId: "<m7@example.com>"))
+        // A cached read from before the field existed still has the header.
+        XCTAssertNoThrow(try MailBridge.requireIdentity(
+            of: message(id: nil, headers: ["Message-Id": "<m7@example.com>"]), expectMessageId: "m7@example.com"
+        ))
+        for wrong in [message(id: "other@example.com"), message(id: nil)] {
+            XCTAssertThrowsError(try MailBridge.requireIdentity(of: wrong, expectMessageId: "m7@example.com")) { error in
+                XCTAssertEqual((error as? MailBridgeError)?.agentCode, "message_identity_mismatch")
+            }
+        }
+    }
+
+    func testCommandsAndToolsCarryTheExpectation() throws {
+        XCTAssertEqual(try MailCommand.Mark.parse(["A||INBOX||7", "--read", "--expect-message-id", "m7@x"]).expectMessageId, "m7@x")
+        XCTAssertNil(try MailCommand.Move.parse(["A||INBOX||7", "--to", "Archive"]).expectMessageId)
+        let required: [String: [String: JSONValue]] = [
+            "mail_mark": ["read": .bool(true)],
+            "mail_move": ["to": .string("Archive")],
+            "mail_attachments": [:],
+            "mail_reply": ["body": .string("hi")],
+            "mail_forward": ["to": .array([.string("a@b.co")])],
+        ]
+        for (name, extra) in required {
+            let tool = try XCTUnwrap(MCPToolRegistry.tool(named: name))
+            var args = extra
+            args["messageId"] = .string("A||INBOX||7")
+            XCTAssertFalse(try tool.buildArgs(.object(args)).contains { $0.contains("expect-message-id") }, name)
+            args["expectMessageId"] = .string("m7@example.com")
+            XCTAssertTrue(try tool.buildArgs(.object(args)).contains("--expect-message-id=m7@example.com"), name)
+        }
+    }
+
     // MARK: - Attachment saving (RC-07)
 
     func testSaveScriptNeverPutsTheSenderChosenNameInAPath() throws {

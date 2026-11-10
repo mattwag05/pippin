@@ -220,6 +220,8 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertEqual(msgs[0].size, 1000)
         XCTAssertEqual(msgs[0].date, iso(Self.jul10 + 3 * Self.hour))
         XCTAssertEqual(msgs[0].to, []) // list rows don't populate to (JXA parity)
+        // Stored with angle brackets; emitted the way JXA's messageId() reports it (RC-19).
+        XCTAssertEqual(msgs[0].messageIdHeader, "build-1@ci.example.com")
     }
 
     func testListLimitAndOffset() throws {

@@ -37,6 +37,7 @@ extension MailBridge {
     /// `MAILBRIDGE_ERR_TARGET_NOT_FOUND` / `_ACCT_NOT_FOUND` are different
     /// resources and deliberately stay `scriptFailed`.
     static func mapScriptFailure(_ msg: String) -> MailBridgeError {
+        if msg.contains("MAILBRIDGE_ERR_IDENTITY_MISMATCH") { return .messageIdentityMismatch }
         let notFoundSignatures = ["MAILBRIDGE_ERR_MSG_NOT_FOUND", "MAILBRIDGE_ERR_NOT_FOUND", "Message not found"]
         if notFoundSignatures.contains(where: msg.contains) {
             return .messageNotFound(msg)

@@ -8,6 +8,46 @@ extension MailBridge {
         return "[\(escaped)]"
     }
 
+    // MARK: - Message identity (RC-19)
+
+    /// An RFC Message-ID in the one form pippin compares and emits: trimmed,
+    /// without the angle brackets (the Envelope Index stores them, JXA's
+    /// `messageId()` does not).
+    static func normalizeMessageId(_ raw: String) -> String {
+        var id = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if id.hasPrefix("<") { id.removeFirst() }
+        if id.hasSuffix(">") { id.removeLast() }
+        return id
+    }
+
+    /// JXA declaring `requireIdentity(msg)`. A compound id is a row number Mail
+    /// can hand to another message, so a mutating script calls this on the
+    /// message it resolved, before acting. No expectation means no check.
+    static func jsRequireIdentity(expectMessageId: String?) -> String {
+        """
+        var expectedMessageId = \(jsEscapeOptional(expectMessageId.map(normalizeMessageId)));
+        function requireIdentity(msg) {
+            if (expectedMessageId === null) return;
+            var actual = '';
+            try { actual = String(msg.messageId() || ''); } catch(e) {}
+            if (actual.trim().replace(/^</, '').replace(/>$/, '') !== expectedMessageId) {
+                throw new Error('MAILBRIDGE_ERR_IDENTITY_MISMATCH');
+            }
+        }
+        """
+    }
+
+    /// The Swift-side check for reply and forward, whose action is a send built
+    /// from `message`: the message that was read is the one that is quoted.
+    static func requireIdentity(of message: MailMessage, expectMessageId: String?) throws {
+        guard let expectMessageId else { return }
+        let actual = message.messageIdHeader
+            ?? message.headers?.first { $0.key.caseInsensitiveCompare("Message-ID") == .orderedSame }?.value
+        guard let actual, normalizeMessageId(actual) == normalizeMessageId(expectMessageId) else {
+            throw MailBridgeError.messageIdentityMismatch
+        }
+    }
+
     // MARK: - JXA Snippet Generators
 
     static func jsMailReadyPoll(
@@ -129,9 +169,13 @@ extension MailBridge {
         var msgSize = null;
         try { msgSize = msg.messageSize(); } catch(e) {}
 
+        var rfcMessageId = null;
+        try { rfcMessageId = msg.messageId() || null; } catch(e) {}
+
         var dates = mailDates(msg);
         var rowDate = dates.sentDate || dates.operationalDate;
         var __row = {
+            messageIdHeader: rfcMessageId,
             id: acct.name() + '||' + mb.name() + '||' + String(msg.id()),
             account: acct.name(),
             mailbox: mb.name(),

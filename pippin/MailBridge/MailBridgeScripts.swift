@@ -192,6 +192,7 @@ extension MailBridge {
                     _meta.timedOut = true;
                 } else {
                     try { row.hasAttachment = row.__msg.mailAttachments().length > 0; } catch (e) {}
+                    try { row.messageIdHeader = row.__msg.messageId() || null; } catch (e) {}
                     if (previewChars > 0) {
                         try {
                             var raw = row.__msg.content();
@@ -431,8 +432,9 @@ extension MailBridge {
                 }
             }
             // Gmail lists the same message in both INBOX and [Gmail]/All Mail.
-            var dedupKey = null;
-            if (msg !== null) { try { dedupKey = msg.messageId(); } catch(e) {} }
+            var rfcId = null;
+            if (msg !== null) { try { rfcId = msg.messageId() || null; } catch(e) {} }
+            var dedupKey = rfcId;
             if (!dedupKey) dedupKey = subject2 + '\\x00' + sender2 + '\\x00' + opDate.toISOString();
             if (seenMsgKeys[dedupKey]) continue;
             seenMsgKeys[dedupKey] = true;
@@ -451,7 +453,8 @@ extension MailBridge {
                 body: null,
                 bodyPreview: c2.bodyPrev,
                 size: c2.b.size[c2.i],
-                hasAttachment: msgHasAtt
+                hasAttachment: msgHasAtt,
+                messageIdHeader: rfcId
             });
         }
         results = results.slice(offset, offset + limit);
@@ -557,8 +560,9 @@ extension MailBridge {
                 if (msg === null) _meta.timedOut = true; // Mailbox changed; the bulk row is still right.
             }
             // INBOX and Sent can overlap on labeled accounts such as Gmail.
-            var dedupKey = null;
-            if (msg !== null) { try { dedupKey = msg.messageId(); } catch(e) {} }
+            var rfcId = null;
+            if (msg !== null) { try { rfcId = msg.messageId() || null; } catch(e) {} }
+            var dedupKey = rfcId;
             if (!dedupKey) dedupKey = subject + '\\x00' + sender + '\\x00' + opDate.toISOString();
             if (seenMsgKeys[dedupKey]) continue;
             seenMsgKeys[dedupKey] = true;
@@ -581,6 +585,7 @@ extension MailBridge {
                 body: null,
                 size: c.b.size[c.i],
                 hasAttachment: msgHasAtt,
+                messageIdHeader: rfcId,
                 __msg: msg
             });
         }
@@ -613,7 +618,8 @@ extension MailBridge {
         mailbox: String,
         messageId: String,
         toMailbox: String,
-        dryRun: Bool
+        dryRun: Bool,
+        expectMessageId: String? = nil
     ) -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
@@ -625,6 +631,7 @@ extension MailBridge {
         \(jsMailReadyPoll(maxAttempts: 20, errorMessage: "MAILBRIDGE_ERR_NOT_READY"))
         \(jsFindMailboxByName())
         \(jsResolveMailbox())
+        \(jsRequireIdentity(expectMessageId: expectMessageId))
         var isDryRun = \(dryRun ? "true" : "false");
         var sourceMsg = null;
         var targetMb = null;
@@ -644,6 +651,7 @@ extension MailBridge {
                     var msgs = mb.messages.whose({id: \(safeMsgId)})();
                     if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
                     sourceMsg = msgs[0];
+                    requireIdentity(sourceMsg);
                     break;
                 }
             }
@@ -785,7 +793,8 @@ extension MailBridge {
         account: String,
         mailbox: String,
         messageId: String,
-        saveDir: String?
+        saveDir: String?,
+        expectMessageId: String? = nil
     ) -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
@@ -798,6 +807,7 @@ extension MailBridge {
         \(jsFindMailboxByName())
         \(jsCollectAllMailboxes())
         \(jsResolveMailbox())
+        \(jsRequireIdentity(expectMessageId: expectMessageId))
         var saveDir = \(safeSaveDir);
         var result = [];
 
@@ -839,6 +849,7 @@ extension MailBridge {
 
             var msg = findMessageById(acct, '\(safeMailbox)', \(safeMsgId));
             if (msg === null) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
+            requireIdentity(msg);
 
             // Reading .source() forces Mail to fetch the full RFC822 body from IMAP, which pulls
             // in attachment binaries. .content() only guarantees the text body — mail attachments
@@ -891,7 +902,8 @@ extension MailBridge {
         mailbox: String,
         messageId: String,
         read: Bool,
-        dryRun: Bool
+        dryRun: Bool,
+        expectMessageId: String? = nil
     ) -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
@@ -901,6 +913,7 @@ extension MailBridge {
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 20, errorMessage: "MAILBRIDGE_ERR_NOT_READY"))
+        \(jsRequireIdentity(expectMessageId: expectMessageId))
         var targetRead = \(read ? "true" : "false");
         var isDryRun = \(dryRun ? "true" : "false");
         var found = false;
@@ -917,6 +930,7 @@ extension MailBridge {
 
                 var msgs = mb.messages.whose({id: \(safeMsgId)})();
                 if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
+                requireIdentity(msgs[0]);
 
                 if (!isDryRun) {
                     msgs[0].readStatus = targetRead;

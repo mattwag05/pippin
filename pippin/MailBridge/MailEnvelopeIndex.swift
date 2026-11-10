@@ -646,7 +646,8 @@ final class MailEnvelopeIndex: Sendable {
                 read: raw.read,
                 body: nil,
                 size: raw.size,
-                hasAttachment: raw.hasAttachment
+                hasAttachment: raw.hasAttachment,
+                messageIdHeader: raw.header.map(MailBridge.normalizeMessageId).flatMap { $0.isEmpty ? nil : $0 }
             )
         }
     }

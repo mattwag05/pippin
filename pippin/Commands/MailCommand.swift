@@ -35,6 +35,9 @@ public struct MailCommand: AsyncParsableCommand {
         }
     }
 
+    static let expectMessageIdHelp: ArgumentHelp =
+        "Act only if the id still names the message with this RFC Message-ID (a row's messageIdHeader); otherwise fail with message_identity_mismatch. Mail can reassign ids."
+
     /// Suffix for soft-timeout hints listing the configured account names, so
     /// an agent can narrow with `--account` without a follow-up `mail accounts`
     /// call. Reads only the on-disk accounts cache (zero Apple Events); empty
@@ -804,6 +807,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Argument(help: "Message id from `pippin mail list` output.")
         public var messageId: String
 
+        @Option(name: .customLong("expect-message-id"), help: MailCommand.expectMessageIdHelp)
+        public var expectMessageId: String?
+
         @Flag(name: .long, help: "Mark as read.")
         public var read: Bool = false
 
@@ -827,7 +833,8 @@ public struct MailCommand: AsyncParsableCommand {
             let result = try MailBridge.markMessage(
                 compoundId: messageId,
                 read: read,
-                dryRun: dryRun
+                dryRun: dryRun,
+                expectMessageId: expectMessageId
             )
             return AgentResult(result)
         }
@@ -844,6 +851,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Argument(help: "Message id from `pippin mail list` output.")
         public var messageId: String
 
+        @Option(name: .customLong("expect-message-id"), help: MailCommand.expectMessageIdHelp)
+        public var expectMessageId: String?
+
         @Option(name: .long, help: "Destination mailbox name.")
         public var to: String
 
@@ -858,7 +868,8 @@ public struct MailCommand: AsyncParsableCommand {
             let result = try MailBridge.moveMessage(
                 compoundId: messageId,
                 toMailbox: to,
-                dryRun: dryRun
+                dryRun: dryRun,
+                expectMessageId: expectMessageId
             )
             return AgentResult(result)
         }
@@ -939,6 +950,9 @@ public struct MailCommand: AsyncParsableCommand {
         @Argument(help: "Message id from `pippin mail list` output.")
         public var messageId: String
 
+        @Option(name: .customLong("expect-message-id"), help: MailCommand.expectMessageIdHelp)
+        public var expectMessageId: String?
+
         @Option(name: .long, help: "Save attachments to this directory.")
         public var saveDir: String?
 
@@ -971,8 +985,13 @@ public struct MailCommand: AsyncParsableCommand {
                 ? Attachments.resolveCacheDir(for: messageId)
                 : saveDir
             let msgId = messageId
+            let expectMessageId = self.expectMessageId
             // listAttachments spawns a blocking osascript subprocess; hop off the pool.
-            let attachments = try await detachBlocking { try MailBridge.listAttachments(compoundId: msgId, saveDir: effectiveSaveDir) }
+            let attachments = try await detachBlocking {
+                try MailBridge.listAttachments(
+                    compoundId: msgId, saveDir: effectiveSaveDir, expectMessageId: expectMessageId
+                )
+            }
             let unsaved = attachments.filter { $0.saveError != nil }.count
             guard unsaved > 0 else { return AgentResult(attachments) }
             return AgentResult(
@@ -1014,6 +1033,9 @@ public struct MailCommand: AsyncParsableCommand {
 
         @Argument(help: "Message id from `pippin mail list` output.")
         public var messageId: String
+
+        @Option(name: .customLong("expect-message-id"), help: MailCommand.expectMessageIdHelp)
+        public var expectMessageId: String?
 
         @Option(name: .long, help: "Reply body text.")
         public var body: String
@@ -1059,7 +1081,8 @@ public struct MailCommand: AsyncParsableCommand {
                 bcc: bcc,
                 from: from,
                 attachmentPaths: attach,
-                dryRun: dryRun || !confirm
+                dryRun: dryRun || !confirm,
+                expectMessageId: expectMessageId
             )
             return AgentResult(result)
         }
@@ -1078,6 +1101,9 @@ public struct MailCommand: AsyncParsableCommand {
 
         @Option(name: .customLong("to"), parsing: .unconditionalSingleValue, help: "Recipient address (repeatable).")
         public var to: [String] = []
+
+        @Option(name: .customLong("expect-message-id"), help: MailCommand.expectMessageIdHelp)
+        public var expectMessageId: String?
 
         @Option(name: .long, help: "Additional body text (prepended before forwarded content).")
         public var body: String = ""
@@ -1123,7 +1149,8 @@ public struct MailCommand: AsyncParsableCommand {
                 bcc: bcc,
                 from: from,
                 attachmentPaths: attach,
-                dryRun: dryRun || !confirm
+                dryRun: dryRun || !confirm,
+                expectMessageId: expectMessageId
             )
             return AgentResult(result)
         }

@@ -473,10 +473,14 @@ enum MailBridge {
     static func markMessage(
         compoundId: String,
         read: Bool,
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        expectMessageId: String? = nil
     ) throws -> BridgeActionResult {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
-        let script = buildMarkScript(account: account, mailbox: mailboxName, messageId: msgId, read: read, dryRun: dryRun)
+        let script = buildMarkScript(
+            account: account, mailbox: mailboxName, messageId: msgId, read: read, dryRun: dryRun,
+            expectMessageId: expectMessageId
+        )
         // Write operation: use 20s timeout to accommodate cold Mail launch + IMAP round-trip
         let json = try runScript(script, timeoutSeconds: 20)
         return try decode(BridgeActionResult.self, from: json)
@@ -485,13 +489,17 @@ enum MailBridge {
     static func moveMessage(
         compoundId: String,
         toMailbox: String,
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        expectMessageId: String? = nil
     ) throws -> BridgeActionResult {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         guard toMailbox.count <= 256, toMailbox.unicodeScalars.allSatisfy({ $0.value >= 0x20 }) else {
             throw MailBridgeError.invalidMailbox(toMailbox)
         }
-        let script = buildMoveScript(account: account, mailbox: mailboxName, messageId: msgId, toMailbox: toMailbox, dryRun: dryRun)
+        let script = buildMoveScript(
+            account: account, mailbox: mailboxName, messageId: msgId, toMailbox: toMailbox, dryRun: dryRun,
+            expectMessageId: expectMessageId
+        )
         // Move triggers IMAP MOVE server-side — use 45s timeout for slow servers
         let json = try runScript(script, timeoutSeconds: 45)
         return try decode(BridgeActionResult.self, from: json)
@@ -522,7 +530,9 @@ enum MailBridge {
         return try decode(BridgeActionResult.self, from: json)
     }
 
-    static func listAttachments(compoundId: String, saveDir: String? = nil) throws -> [Attachment] {
+    static func listAttachments(
+        compoundId: String, saveDir: String? = nil, expectMessageId: String? = nil
+    ) throws -> [Attachment] {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         // Mail saves into a staging directory under index names. The sender's
         // file names only ever reach `finalizeSavedAttachments`, in Swift.
@@ -533,7 +543,8 @@ enum MailBridge {
         // Also removes the zero-byte placeholder of any save that failed.
         defer { if let staging { try? FileManager.default.removeItem(at: staging) } }
         let script = buildSaveAttachmentsScript(
-            account: account, mailbox: mailboxName, messageId: msgId, saveDir: staging?.path
+            account: account, mailbox: mailboxName, messageId: msgId, saveDir: staging?.path,
+            expectMessageId: expectMessageId
         )
         // Gmail label fallback scans every mailbox for the id + IMAP body download for
         // attachment enumeration; 30s was insufficient on large accounts.
@@ -601,9 +612,11 @@ enum MailBridge {
         bcc: [String] = [],
         from accountName: String? = nil,
         attachmentPaths: [String] = [],
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        expectMessageId: String? = nil
     ) throws -> BridgeActionResult {
         let original = try readMessage(compoundId: compoundId)
+        try requireIdentity(of: original, expectMessageId: expectMessageId)
         let replyTo = overrideTo ?? [original.from]
         let replySubject = buildReplySubject(original.subject)
         let quotedBody = buildReplyQuote(date: original.date, from: original.from, body: original.body ?? "")
@@ -630,9 +643,11 @@ enum MailBridge {
         bcc: [String] = [],
         from accountName: String? = nil,
         attachmentPaths: [String] = [],
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        expectMessageId: String? = nil
     ) throws -> BridgeActionResult {
         let original = try readMessage(compoundId: compoundId)
+        try requireIdentity(of: original, expectMessageId: expectMessageId)
         let fwdSubject = buildForwardSubject(original.subject)
         let prefix = buildForwardPrefix(from: original.from, date: original.date, subject: original.subject, to: original.to, body: original.body ?? "")
         let fullBody = body.isEmpty ? prefix : body + "\n\n" + prefix

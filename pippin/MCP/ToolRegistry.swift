@@ -447,6 +447,7 @@ enum MCPToolRegistry {
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list or mail_show output."),
                     "saveDir": Schema.string("Optional directory to save attachments into. If omitted, a pippin cache directory is used."),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId"]
             ),
@@ -459,6 +460,7 @@ enum MCPToolRegistry {
                 } else {
                     argv.append("--save-to-cache")
                 }
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
@@ -514,6 +516,7 @@ enum MCPToolRegistry {
                     "messageId": Schema.string("Compound message ID from mail_list output."),
                     "read": Schema.boolean("true marks the message read; false marks it unread."),
                     "dryRun": Schema.boolean("Report what would change without touching the message.", default: false),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId", "read"]
             ),
@@ -526,6 +529,7 @@ enum MCPToolRegistry {
                 // `mail mark` validate() rejects both-or-neither, so emit exactly one.
                 argv.append(read ? "--read" : "--unread")
                 argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
@@ -537,6 +541,7 @@ enum MCPToolRegistry {
                     "messageId": Schema.string("Compound message ID from mail_list output."),
                     "to": Schema.string("Destination mailbox name, exactly as reported by mail_mailboxes (names differ per account, e.g. '[Gmail]/Trash')."),
                     "dryRun": Schema.boolean("Report what would move without touching the message.", default: false),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId", "to"]
             ),
@@ -545,6 +550,7 @@ enum MCPToolRegistry {
                 try argv.append(ArgHelpers.requiredString(args, "messageId"))
                 try argv.append(ArgHelpers.option("--to", ArgHelpers.requiredString(args, "to")))
                 argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
@@ -593,6 +599,7 @@ enum MCPToolRegistry {
                     "from": Schema.string("Sending account name (from mail_accounts)."),
                     "attach": Schema.stringArray("Absolute paths of files to attach."),
                     "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId", "body"]
             ),
@@ -606,6 +613,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
                 argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
                 argv += ArgHelpers.dryRunUnlessConfirmed(args)
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
@@ -622,6 +630,7 @@ enum MCPToolRegistry {
                     "from": Schema.string("Sending account name (from mail_accounts)."),
                     "attach": Schema.stringArray("Absolute paths of files to attach."),
                     "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId", "to"]
             ),
@@ -638,6 +647,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
                 argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
                 argv += ArgHelpers.dryRunUnlessConfirmed(args)
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
