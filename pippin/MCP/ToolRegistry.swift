@@ -589,19 +589,19 @@ enum MCPToolRegistry {
 
         // MARK: Notes
 
-        MCPToolSpec("notes_list", .readOnly, "List Apple Notes, defaulting to 50 most recently modified.", properties: [
+        MCPToolSpec("notes_list", .readOnly, "List Apple Notes, defaulting to 50 most recently modified.", inProcess: MCPInProcessTools.execute, properties: [
             .arg("folder", "--folder"),
             .arg("limit", "--limit", "Max notes (default: 50).", as: .integer),
         ]),
-        MCPToolSpec("notes_search", .readOnly, "Search notes by title or body content.", properties: [
+        MCPToolSpec("notes_search", .readOnly, "Search notes by title or body content.", inProcess: MCPInProcessTools.execute, properties: [
             .arg("query", .trailing),
             .arg("folder", "--folder"),
             .arg("limit", "--limit", "Max results (default: 50).", as: .integer),
         ]),
-        MCPToolSpec("notes_show", .readOnly, "Show full details of a note by ID (returns plainText, not HTML).", properties: [
+        MCPToolSpec("notes_show", .readOnly, "Show full details of a note by ID (returns plainText, not HTML).", inProcess: MCPInProcessTools.execute, properties: [
             .arg("id", .positional, "Note ID from notes_list."),
         ]),
-        MCPToolSpec("notes_folders", .readOnly, "List all Apple Notes folders."),
+        MCPToolSpec("notes_folders", .readOnly, "List all Apple Notes folders.", inProcess: MCPInProcessTools.execute),
         MCPToolSpec("notes_create", .mutating(verifyWith: "notes_list"), "Create a new Apple Note.", properties: [
             .arg("title", .trailing),
             .arg("body", "--body", "Note body. Plain text; newlines become formatted HTML unless html=true."),

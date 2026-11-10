@@ -18,6 +18,7 @@ final class InProcessToolsTests: XCTestCase {
         "reminders_lists", "reminders_list", "reminders_show", "reminders_search",
         "contacts_search", "contacts_show",
         "messages_list", "messages_search", "messages_show",
+        "notes_list", "notes_search", "notes_show", "notes_folders",
     ]
 
     // MARK: - Registry wiring
@@ -213,6 +214,8 @@ final class InProcessToolsTests: XCTestCase {
         "contacts_show": #"{"identifier":"zz-no-such-contact"}"#,
         "messages_search": #"{"query":"zz-no-such-message","sinceHours":1}"#,
         "messages_show": #"{"conversationId":"zz-no-such-chat"}"#,
+        "notes_search": #"{"query":"zz-no-such-note"}"#,
+        "notes_show": #"{"id":"x-coredata://zz-no-such-note"}"#,
     ]
 
     private func inProcessArgvs() throws -> [(name: String, argv: [String])] {
@@ -227,6 +230,12 @@ final class InProcessToolsTests: XCTestCase {
         let tools = try inProcessArgvs()
         XCTAssertEqual(Set(tools.map(\.name)), Self.migratedTools)
         for (name, argv) in tools {
+            if name.hasPrefix("notes_") {
+                // Parse only: running it would read this Mac's notes and could
+                // raise an Automation prompt. LiveConformanceTests runs them in the VM.
+                XCTAssertNoThrow(try MCPInProcessTools.parse(argv), "\(name) argv \(argv)")
+                continue
+            }
             do {
                 _ = try await MCPInProcessTools.withDeadline(seconds: 5) {
                     try await MCPInProcessTools.execute(argv)
@@ -250,9 +259,10 @@ final class InProcessToolsTests: XCTestCase {
     func testCLIAndInProcessEnvelopesAreEquivalent() async throws {
         CLIIntegrationTests.setUp()
         let binary = try XCTUnwrap(CLIIntegrationTests.binaryURL, "pippin binary not found; run `swift build` first")
-        // Messages is left out: its live chat.db changes between the two calls and
-        // a failure would print the user's conversations. The VM fixture run covers it.
-        for (name, argv) in try inProcessArgvs() where !name.hasPrefix("messages_") {
+        // Messages and Notes are left out: live data changes between the two
+        // calls and a failure would print the user's conversations or notes.
+        // The VM fixture run covers them.
+        for (name, argv) in try inProcessArgvs() where !name.hasPrefix("messages_") && !name.hasPrefix("notes_") {
             let cli = CLIIntegrationTests.runProcess(binary.path, args: argv)
             let inProcess: String
             if name.hasPrefix("contacts_") {

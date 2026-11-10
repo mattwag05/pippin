@@ -132,6 +132,9 @@ enum NotesBridge {
     /// so a mismatch is retried once and then fails (DAT-09). `optional`
     /// columns that Notes refuses come back null for the caller to handle.
     ///
+    /// An empty collection, or a folder that does not exist, answers the first
+    /// read with -1728, so no separate length read is spent on it.
+    ///
     /// `_folderIndex` reads every folder's id and name in two events and, when
     /// asked, every folder's note ids in a third through the chained specifier.
     /// Plural getters throw -1728 on an empty collection, hence the length
@@ -139,13 +142,16 @@ enum NotesBridge {
     static let jsBulkNotes = """
     function _bulkRead(spec, columns, optional) {
         var all = columns.concat(optional);
-        if (!spec || spec.length === 0) {
-            var none = {id: []};
-            all.forEach(function(c) { none[c] = []; });
-            return none;
-        }
+        var none = {id: []};
+        all.forEach(function(c) { none[c] = []; });
+        if (!spec) { return none; }
         for (var attempt = 0; attempt < 2; attempt++) {
-            var out = {id: spec.id()};
+            var ids;
+            try { ids = spec.id(); } catch (e) {
+                if (e.errorNumber === -1728 || /\\(-1728\\)/.test(String(e))) { return none; }
+                throw e;
+            }
+            var out = {id: ids};
             var aligned = true;
             all.forEach(function(c) {
                 try { out[c] = spec[c](); } catch (e) {
@@ -161,8 +167,12 @@ enum NotesBridge {
     }
     function _folderIndex(withNotes) {
         var spec = app.folders;
-        if (spec.length === 0) { return {id: [], name: [], notes: []}; }
-        var out = {id: spec.id(), name: spec.name(), notes: null};
+        var ids;
+        try { ids = spec.id(); } catch (e) {
+            if (e.errorNumber === -1728 || /\\(-1728\\)/.test(String(e))) { return {id: [], name: [], notes: []}; }
+            throw e;
+        }
+        var out = {id: ids, name: spec.name(), notes: null};
         if (!withNotes) {
             if (out.name.length !== out.id.length) { throw new Error('Notes folders changed while they were being read. Retry.'); }
             return out;
@@ -192,21 +202,24 @@ enum NotesBridge {
     /// list is NOT a substitute: on a real vault one folder listed notes whose
     /// container was a different folder. `_folderOfNote` asks the note itself
     /// (three events), for the rows the bulk read could not place.
+    /// The folder filter is a `byName` specifier, which costs no event (it
+    /// matches case-insensitively, as `whose` did): a missing folder answers
+    /// the first column read with -1728, which `_bulkRead` returns as no
+    /// notes. The folder index is read only once a row needs it, so an empty
+    /// result costs one event. A chained `notes.container.name` read would
+    /// save the index, but Notes answers it with nulls (pippin-ai5s).
     /// Expects `folderFilter` and `jsBulkNotes`.
     static let jsResolveNotes = """
-    var _notesRef = null;
-    if (folderFilter !== null) {
-        var _matched = app.folders.whose({name: folderFilter})();
-        if (_matched.length > 0) { _notesRef = _matched[0].notes; }
-    } else {
-        _notesRef = app.notes;
-    }
-    var _folderName = {};
-    var _fi = _folderIndex(false);
-    for (var _f = 0; _f < _fi.id.length; _f++) { _folderName[_fi.id[_f]] = _fi.name[_f]; }
+    var _notesRef = folderFilter !== null ? app.folders.byName(folderFilter).notes : app.notes;
+    var _folderName = null;
     function _folderAt(cols, j) {
         var spec = cols.container ? cols.container[j] : null;
         if (!spec) { return null; }
+        if (_folderName === null) {
+            _folderName = {};
+            var _fi = _folderIndex(false);
+            for (var _f = 0; _f < _fi.id.length; _f++) { _folderName[_fi.id[_f]] = _fi.name[_f]; }
+        }
         var m = /byId\\("([^"]+)"\\)$/.exec(Automation.getDisplayString(spec));
         if (!m || _folderName[m[1]] === undefined) { return null; }
         return {id: m[1], name: _folderName[m[1]]};
