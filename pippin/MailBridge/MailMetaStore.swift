@@ -320,7 +320,8 @@ struct MailMetaReader {
             id: row.compoundId, account: row.account, mailbox: row.mailbox,
             subject: row.subject, from: row.sender, to: [],
             date: row.dateSent ?? row.dateReceived ?? "",
-            receivedAt: row.dateReceived, read: read, size: row.size, hasAttachment: hasAttachment
+            receivedAt: row.dateReceived, read: read, size: row.size, hasAttachment: hasAttachment,
+            messageIdHeader: row.rfcMessageId.map(MailBridge.normalizeMessageId).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 }

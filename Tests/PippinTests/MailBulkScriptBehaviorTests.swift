@@ -155,6 +155,18 @@ final class MailBulkScriptBehaviorTests: XCTestCase {
         )
     }
 
+    // MARK: - Message-ID on rows (RC-19)
+
+    func testEveryScanScriptEmitsTheRFCMessageIdOnItsRows() throws {
+        for script in [listScript(), activityScript(), searchScript()] {
+            let run = try execute(script, accounts: oneAccount("__rows"))
+            XCTAssertEqual(run.results.count, 2)
+            XCTAssertEqual(
+                Set(run.results.compactMap { $0["messageIdHeader"] as? String }), ["mid-1", "mid-2"]
+            )
+        }
+    }
+
     // MARK: - bulkMailbox
 
     func testBulkMailboxReturnsPopulatedObjectForAlignedArrays() throws {

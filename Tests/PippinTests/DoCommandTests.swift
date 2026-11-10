@@ -123,6 +123,60 @@ final class DoCommandTests: XCTestCase {
         XCTAssertEqual(output.executedSteps.first?.tool, "status")
     }
 
+    // MARK: - Partial results (RC-11)
+
+    private func threeStepPlan() -> IntentPlanner.Plan {
+        IntentPlanner.Plan(
+            steps: ["status", "reminders_lists", "calendar_list"].map { IntentPlanner.PlannedStep(tool: $0, args: nil) },
+            finalAnswer: nil
+        )
+    }
+
+    func testThrowingStepKeepsEarlierStepsAndStops() async throws {
+        let counter = CallCounter()
+        let output = try await DoExecutor.execute(
+            plan: threeStepPlan(), tools: MCPToolRegistry.tools, maxSteps: 5, dryRun: false,
+            runTool: { tool, _ in
+                counter.count += 1
+                if tool.name == "reminders_lists" { throw MailBridgeError.timeout }
+                return .object(["status": .string("ok"), "data": .string(tool.name)])
+            }
+        )
+        XCTAssertEqual(counter.count, 2, "the step after the failure must not run")
+        XCTAssertEqual(output.executedSteps.map(\.tool), ["status", "reminders_lists"])
+        XCTAssertEqual(output.executedSteps[0].result, .object(["status": .string("ok"), "data": .string("status")]))
+        XCTAssertEqual(output.failure?.step, 1)
+        XCTAssertEqual(output.failure?.tool, "reminders_lists")
+        XCTAssertEqual(output.failure?.code, "timeout")
+        XCTAssertNotNil(DoExecutor.stepError(output.executedSteps[1].result))
+    }
+
+    func testErrorEnvelopeStepStopsTheRun() async throws {
+        let counter = CallCounter()
+        let output = try await DoExecutor.execute(
+            plan: threeStepPlan(), tools: MCPToolRegistry.tools, maxSteps: 5, dryRun: false,
+            runTool: { _, _ in
+                counter.count += 1
+                return DoExecutor.errorEnvelope(code: "access_denied", message: "no")
+            }
+        )
+        XCTAssertEqual(counter.count, 1)
+        XCTAssertEqual(output.failure, StepFailure(step: 0, tool: "status", code: "access_denied", message: "no"))
+    }
+
+    func testSuccessfulRunHasNoFailure() async throws {
+        let output = try await DoExecutor.execute(
+            plan: threeStepPlan(), tools: MCPToolRegistry.tools, maxSteps: 5, dryRun: false,
+            runTool: { _, _ in .object(["status": .string("ok")]) }
+        )
+        XCTAssertEqual(output.executedSteps.count, 3)
+        XCTAssertNil(output.failure)
+        let data = try JSONEncoder().encode(ExecutedResult(
+            steps: output.executedSteps, finalAnswer: nil, excludedData: [], dryRun: false, executed: true
+        ))
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("failure"), "omitted when nothing failed")
+    }
+
     func testDoOutputsExposeDryRunAndExecutedFlags() throws {
         let dryData = try JSONEncoder().encode(
             DryRunResult(

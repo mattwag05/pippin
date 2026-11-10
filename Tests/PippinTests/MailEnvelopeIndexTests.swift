@@ -220,6 +220,8 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertEqual(msgs[0].size, 1000)
         XCTAssertEqual(msgs[0].date, iso(Self.jul10 + 3 * Self.hour))
         XCTAssertEqual(msgs[0].to, []) // list rows don't populate to (JXA parity)
+        // Stored with angle brackets; emitted the way JXA's messageId() reports it (RC-19).
+        XCTAssertEqual(msgs[0].messageIdHeader, "build-1@ci.example.com")
     }
 
     func testListLimitAndOffset() throws {
@@ -322,6 +324,19 @@ final class MailEnvelopeIndexTests: XCTestCase {
             limit: 50, offset: 0, after: nil, before: "2026-07-10"
         )
         XCTAssertEqual(msgs.map(\.id), ["Personal||INBOX||105"])
+    }
+
+    func testBeforeIncludesItsOwnDayOnceTheBridgeResolvesIt() throws {
+        // What `MailBridge.listMessages` passes down for that day (DAT-11).
+        // The fixture's `jul10` epoch is 2026-07-14T00:00:00Z.
+        let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let bounds = MailBridge.dayFilterInstants(after: "2026-07-14", before: "2026-07-14", timeZone: utc)
+        let idx = try makeIndex()
+        let msgs = try idx.listMessages(
+            account: "Personal", mailbox: "INBOX", unread: false,
+            limit: 50, offset: 0, after: bounds.after, before: bounds.before
+        )
+        XCTAssertEqual(msgs.map(\.id), ["Personal||INBOX||101", "Personal||INBOX||102"])
     }
 
     func testFromComposition() throws {
@@ -436,6 +451,41 @@ final class MailEnvelopeIndexTests: XCTestCase {
             limit: 10, offset: 0, after: nil, before: nil, to: nil, from: nil
         )
         XCTAssertEqual(byAddr.map(\.id), ["Work||Inbox||201"])
+    }
+
+    // MARK: - Candidate cap is reported, not silent (RC-20, DAT-14)
+
+    private func scan(_ idx: MailEnvelopeIndex, limit: Int, offset: Int = 0, cap: Int) throws -> MailEnvelopeIndex.Scan {
+        try idx.searchScan(
+            query: "e", account: nil, mailbox: nil, limit: limit, offset: offset,
+            after: nil, before: nil, to: nil, from: nil, candidateCap: cap
+        )
+    }
+
+    func testSearchReportsWhenTheCandidateCapCutTheAnswerShort() throws {
+        let idx = try makeIndex()
+        let everything = try scan(idx, limit: 50, cap: MailEnvelopeIndex.candidateCap)
+        XCTAssertGreaterThan(everything.messages.count, 2, "fixture must hold more matches than the test cap")
+        XCTAssertFalse(everything.hitCandidateCap, "an uncapped scan is complete")
+
+        let capped = try scan(idx, limit: 50, cap: 2)
+        XCTAssertLessThan(capped.messages.count, everything.messages.count)
+        XCTAssertTrue(capped.hitCandidateCap, "rows were dropped, so the caller must be told")
+
+        XCTAssertFalse(try scan(idx, limit: 1, cap: 2).hitCandidateCap, "a filled request lost nothing")
+        XCTAssertTrue(try scan(idx, limit: 2, offset: 1, cap: 2).hitCandidateCap, "a later page that runs off the cap")
+    }
+
+    func testActivityReportsWhenTheCandidateCapCutTheAnswerShort() throws {
+        let idx = try makeIndex()
+        let capped = try idx.activityScan(
+            account: "Personal", mailboxes: ["INBOX"], since: nil, limit: 50, candidateCap: 2
+        )
+        XCTAssertEqual(capped.messages.count, 2)
+        XCTAssertTrue(capped.hitCandidateCap)
+        let whole = try idx.activityScan(account: "Personal", mailboxes: ["INBOX"], since: nil, limit: 50)
+        XCTAssertEqual(whole.messages.count, 3)
+        XCTAssertFalse(whole.hitCandidateCap)
     }
 
     func testSearchDedupsAcrossMailboxesByHeader() throws {

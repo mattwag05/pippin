@@ -51,6 +51,9 @@ public final class MailBodyCache: Sendable {
 
     private let dbQueue: DatabaseQueue
 
+    /// Bump to discard every cached message when the cached shape changes meaning.
+    static let schemaVersion = 1
+
     public init(dbPath: String? = nil) throws {
         dbQueue = try openCacheQueue(path: dbPath ?? Self.defaultStorePath())
         try migrate()
@@ -68,6 +71,13 @@ public final class MailBodyCache: Sendable {
             try db.execute(sql: """
             CREATE INDEX IF NOT EXISTS idx_mail_cache_cached_at ON message_bodies(cached_at)
             """)
+            // Rows cached before version 1 kept the LAST value of a repeated
+            // header, so their anomaly verdicts read the sender's own
+            // Authentication-Results. Drop them once; they refetch on demand.
+            if try (Int.fetchOne(db, sql: "PRAGMA user_version") ?? 0) < Self.schemaVersion {
+                try db.execute(sql: "DELETE FROM message_bodies")
+                try db.execute(sql: "PRAGMA user_version = \(Self.schemaVersion)")
+            }
         }
     }
 

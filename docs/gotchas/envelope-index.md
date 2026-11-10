@@ -58,10 +58,14 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   (sent/{Sent, Sent Messages, Sent Mail, Sent Items}, trash/{…Deleted Items…},
   junk, drafts, inbox). Localized names may not match → `mailboxUnresolved` →
   JXA fallback (its `acct.sent()` accessors are locale-proof).
-- **Date filters are UTC-midnight**: JXA's `new Date('YYYY-MM-DD')` parses as
-  UTC. The fast path mirrors that (`parseFilterDateUTC`), NOT
-  `MailBridge.parseFilterDate` (local, display-only) — using local midnight
-  drops rows near day boundaries that JXA keeps.
+- **Date filters are whole local days, resolved once**: `MailBridge.dayFilterInstants`
+  turns `--after`/`--before` into UTC instants (first second of the `after`
+  day, last second of the `before` day, in the user's time zone) before any
+  path runs, so the index, the store and JXA compare the same bounds. A bare
+  `YYYY-MM-DD` that reaches a path directly still parses as UTC midnight
+  (`parseFilterDateUTC`, JXA `new Date`), which is what dropped the `--before`
+  day itself until the bridge resolved it (DAT-11). Keep the paths on one
+  shared instant; do not parse the day separately in each.
 - **Operational sort and filter dates use `COALESCE(NULLIF(date_received,0), NULLIF(date_sent,0))`**.
   The emitted `date` remains `date_sent` with a sent-time fallback, and optional
   `receivedAt` carries `date_received`. Apple leaves either column NULL or 0.

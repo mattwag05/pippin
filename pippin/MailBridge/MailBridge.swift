@@ -23,7 +23,29 @@ enum MailBridge {
         /// instead of milliseconds. `nil` when the fast path succeeded or was
         /// intentionally skipped (disabled, `--body`, preview fetch).
         var fastPathNote: String? = nil
+        /// Non-nil when the answer may be missing rows for a reason other than
+        /// a timeout (the index candidate cap). Callers surface it as a warning
+        /// and mark the envelope partial.
+        var truncationNote: String? = nil
     }
+
+    /// Most rows one list, search or activity call returns. A paginated caller
+    /// passes `pageSentinel: true` to fetch one row more, which only tells it
+    /// whether another page exists.
+    static let rowCap = 500
+
+    static func clampScanLimit(_ limit: Int, pageSentinel: Bool) -> Int {
+        max(1, min(limit, rowCap + (pageSentinel ? 1 : 0)))
+    }
+
+    /// Advisory for a caller that asked for more than `rowCap` rows and got
+    /// exactly the cap back: more may exist.
+    static func rowCapNote(requested: Int, returned: Int) -> String? {
+        guard requested > rowCap, returned == rowCap else { return nil }
+        return "--limit \(requested) is above the \(rowCap)-row cap, so only \(rowCap) rows were returned and more may exist; page through them with --page-size \(rowCap) and --cursor"
+    }
+
+    static let candidateCapNote = "the index scan stopped at \(MailEnvelopeIndex.candidateCap) candidate rows before filling this request, so older matches may be missing; narrow with --after, --before, --since, --account or --mailbox"
 
     /// Single-line advisory for `ScanOutcome.fastPathNote`.
     static func fastPathFallbackNote(_ error: Error) -> String {
@@ -184,11 +206,14 @@ enum MailBridge {
         after: String? = nil,
         before: String? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
-        fastPath: Bool = true
+        fastPath: Bool = true,
+        pageSentinel: Bool = false
     ) throws -> ListOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil)
-        let clampedLimit = max(1, min(limit, 500))
+        let requestedBefore = before
+        let (after, before) = dayFilterInstants(after: after, before: before)
+        let clampedLimit = clampScanLimit(limit, pageSentinel: pageSentinel)
         let clampedOffset = max(0, offset)
         // Envelope Index fast path (pippin-60x): metadata-only scans answer from
         // Mail's on-disk SQLite in ~ms instead of a 10–100s JXA enumeration.
@@ -244,7 +269,7 @@ enum MailBridge {
             windowHint: beforeShortfallHint(
                 resultsEmpty: wrapper.results.isEmpty,
                 timedOut: wrapper.meta.timedOut,
-                before: before,
+                before: requestedBefore,
                 reachedMailboxEnd: wrapper.meta.reachedMailboxEnd,
                 oldestExaminedMs: wrapper.meta.oldestExaminedMs
             ),
@@ -276,6 +301,37 @@ enum MailBridge {
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone.current
         return "scan window did not reach \(before): scanned the newest messages back to \(f.string(from: oldest)) but not as far as \(before) — increase --limit, or use `mail search --before` (which binary-searches the window) for older mail"
+    }
+
+    /// `--after` and `--before` each name a whole calendar day in the user's
+    /// time zone, both inclusive, as their help text says. Returns the two
+    /// bounds as UTC instants every read path (Envelope Index, store, JXA)
+    /// parses alike: the first second of the `after` day and the last second of
+    /// the `before` day. Anything that is not `YYYY-MM-DD` passes through.
+    ///
+    /// The paths used to read the bare day as UTC midnight, so `--before`
+    /// dropped its own day and both bounds were hours off local time (DAT-11).
+    static func dayFilterInstants(
+        after: String?, before: String?, timeZone: TimeZone = .current
+    ) -> (after: String?, before: String?) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.calendar = calendar
+        parser.timeZone = timeZone
+        parser.dateFormat = "yyyy-MM-dd"
+        let iso = ISO8601DateFormatter()
+        func dayStart(_ day: String) -> Date? {
+            day.count == 10 ? parser.date(from: day) : nil
+        }
+        let lower = after.map { day in dayStart(day).map(iso.string(from:)) ?? day }
+        let upper = before.map { day in
+            dayStart(day)
+                .flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
+                .map { iso.string(from: $0.addingTimeInterval(-1)) } ?? day
+        }
+        return (lower, upper)
     }
 
     /// Parse a `--before`/`--after` filter (`YYYY-MM-DD`, local midnight) the
@@ -333,12 +389,15 @@ enum MailBridge {
         // index failure.
         var fastPathNote: String?
         var indexed: (index: MailEnvelopeIndex, metadata: [MailMessage])?
+        var truncationNote: String?
         if fastPath, fastPathEnabled() {
             do {
                 let index = try makeFastPathIndex(accountName: account)
-                indexed = try (index, index.listActivity(
+                let scan = try index.activityScan(
                     account: account, mailboxes: mailboxes, since: since, limit: limit
-                ))
+                )
+                indexed = (index, scan.messages)
+                truncationNote = scan.hitCandidateCap ? candidateCapNote : nil
             } catch {
                 fastPathNote = fastPathFallbackNote(error)
             }
@@ -346,7 +405,9 @@ enum MailBridge {
         if let (index, metadata) = indexed {
             let previewChars = (preview ?? 0) > 0 ? max(1, min(preview ?? 0, 4000)) : 0
             guard previewChars > 0 else {
-                return ActivityOutcome(messages: attachCachedAnomalies(metadata), timedOut: false)
+                return ActivityOutcome(
+                    messages: attachCachedAnomalies(metadata), timedOut: false, truncationNote: truncationNote
+                )
             }
             let assembled = try assemblePreviews(
                 metadata: metadata,
@@ -357,7 +418,10 @@ enum MailBridge {
                     try batchFetchBodies(ids: ids, crossAccount: crossAccount, softTimeoutMs: softTimeoutMs)
                 }
             )
-            return ActivityOutcome(messages: attachCachedAnomalies(assembled.messages), timedOut: assembled.fetchTimedOut)
+            return ActivityOutcome(
+                messages: attachCachedAnomalies(assembled.messages), timedOut: assembled.fetchTimedOut,
+                truncationNote: truncationNote
+            )
         }
         let script = buildActivityScript(
             account: account, mailboxes: mailboxes, since: since,
@@ -392,10 +456,12 @@ enum MailBridge {
         verbose: Bool = false,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         fastPath: Bool = true,
-        preview: Int? = nil
+        preview: Int? = nil,
+        pageSentinel: Bool = false
     ) throws -> SearchOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil) && (mailbox == nil)
+        let (after, before) = dayFilterInstants(after: after, before: before)
         let clampedOffset = max(0, offset)
         // Envelope Index fast path (pippin-60x): subject/sender LIKE across the
         // whole index in ~ms (measured 31ms over 28k messages) vs a 45–95s JXA
@@ -404,7 +470,7 @@ enum MailBridge {
         var fastPathNote: String?
         if fastPath, !searchBody, fastPathEnabled() {
             do {
-                let messages = try makeFastPathIndex(accountName: account).searchMessages(
+                let scan = try makeFastPathIndex(accountName: account).searchScan(
                     query: query, account: account, mailbox: mailbox,
                     limit: limit, offset: clampedOffset, after: after, before: before,
                     to: to, from: from
@@ -413,7 +479,10 @@ enum MailBridge {
                     let line = "[search] fast path: envelope index (full-index scan, JXA bypassed)\n"
                     FileHandle.standardError.write(Data(line.utf8))
                 }
-                return SearchOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
+                return SearchOutcome(
+                    messages: attachCachedAnomalies(scan.messages), timedOut: false,
+                    truncationNote: scan.hitCandidateCap ? candidateCapNote : nil
+                )
             } catch {
                 fastPathNote = fastPathFallbackNote(error)
             }
@@ -428,7 +497,7 @@ enum MailBridge {
         let script = buildSearchScript(
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
             limit: limit, offset: clampedOffset, after: after, before: before, to: to,
-            from: from, softTimeoutMs: softTimeoutMs, preview: preview
+            from: from, softTimeoutMs: softTimeoutMs, preview: preview, pageSentinel: pageSentinel
         )
         // Cross-account (no --account, no --mailbox) iterates 5 accounts ×
         // ~21 mailboxes = 100+ mailbox scans.  When --body is on, each match
@@ -473,10 +542,14 @@ enum MailBridge {
     static func markMessage(
         compoundId: String,
         read: Bool,
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        expectMessageId: String? = nil
     ) throws -> BridgeActionResult {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
-        let script = buildMarkScript(account: account, mailbox: mailboxName, messageId: msgId, read: read, dryRun: dryRun)
+        let script = buildMarkScript(
+            account: account, mailbox: mailboxName, messageId: msgId, read: read, dryRun: dryRun,
+            expectMessageId: expectMessageId
+        )
         // Write operation: use 20s timeout to accommodate cold Mail launch + IMAP round-trip
         let json = try runScript(script, timeoutSeconds: 20)
         return try decode(BridgeActionResult.self, from: json)
@@ -485,13 +558,17 @@ enum MailBridge {
     static func moveMessage(
         compoundId: String,
         toMailbox: String,
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        expectMessageId: String? = nil
     ) throws -> BridgeActionResult {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         guard toMailbox.count <= 256, toMailbox.unicodeScalars.allSatisfy({ $0.value >= 0x20 }) else {
             throw MailBridgeError.invalidMailbox(toMailbox)
         }
-        let script = buildMoveScript(account: account, mailbox: mailboxName, messageId: msgId, toMailbox: toMailbox, dryRun: dryRun)
+        let script = buildMoveScript(
+            account: account, mailbox: mailboxName, messageId: msgId, toMailbox: toMailbox, dryRun: dryRun,
+            expectMessageId: expectMessageId
+        )
         // Move triggers IMAP MOVE server-side — use 45s timeout for slow servers
         let json = try runScript(script, timeoutSeconds: 45)
         return try decode(BridgeActionResult.self, from: json)
@@ -522,13 +599,78 @@ enum MailBridge {
         return try decode(BridgeActionResult.self, from: json)
     }
 
-    static func listAttachments(compoundId: String, saveDir: String? = nil) throws -> [Attachment] {
+    static func listAttachments(
+        compoundId: String, saveDir: String? = nil, expectMessageId: String? = nil
+    ) throws -> [Attachment] {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
-        let script = buildSaveAttachmentsScript(account: account, mailbox: mailboxName, messageId: msgId, saveDir: saveDir)
+        // Mail saves into a staging directory under index names. The sender's
+        // file names only ever reach `finalizeSavedAttachments`, in Swift.
+        let staging = saveDir.map { URL(fileURLWithPath: $0).appendingPathComponent(".pippin-saving-\(UUID().uuidString)") }
+        if let staging {
+            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
+        }
+        // Also removes the zero-byte placeholder of any save that failed.
+        defer { if let staging { try? FileManager.default.removeItem(at: staging) } }
+        let script = buildSaveAttachmentsScript(
+            account: account, mailbox: mailboxName, messageId: msgId, saveDir: staging?.path,
+            expectMessageId: expectMessageId
+        )
         // Gmail label fallback scans every mailbox for the id + IMAP body download for
         // attachment enumeration; 30s was insufficient on large accounts.
         let json = try runScript(script, timeoutSeconds: 90)
-        return try decode([Attachment].self, from: json)
+        let staged = try decode([Attachment].self, from: json)
+        guard let saveDir else { return staged }
+        return finalizeSavedAttachments(staged, saveDir: saveDir)
+    }
+
+    /// Move each staged attachment to a safe, unused name directly inside
+    /// `saveDir`. Never overwrites: a taken name gets " (1)", " (2)", and so on.
+    /// A row that could not be saved keeps `savedPath` nil and says why.
+    static func finalizeSavedAttachments(_ staged: [Attachment], saveDir: String) -> [Attachment] {
+        let fm = FileManager.default
+        let dir = URL(fileURLWithPath: saveDir).standardizedFileURL
+        return staged.enumerated().map { index, row in
+            func result(path: String? = nil, error: String? = nil) -> Attachment {
+                Attachment(name: row.name, mimeType: row.mimeType, size: row.size, savedPath: path, saveError: error)
+            }
+            guard let stagedPath = row.savedPath, fm.fileExists(atPath: stagedPath) else {
+                return result(error: row.saveError ?? "Mail did not write the file")
+            }
+            let name = safeAttachmentName(row.name, index: index)
+            let stem = (name as NSString).deletingPathExtension
+            let ext = (name as NSString).pathExtension
+            var destination = dir.appendingPathComponent(name)
+            var suffix = 0
+            // attributesOfItem does not follow links, so a dangling link counts as taken.
+            while (try? fm.attributesOfItem(atPath: destination.path)) != nil {
+                suffix += 1
+                destination = dir.appendingPathComponent(ext.isEmpty ? "\(stem) (\(suffix))" : "\(stem) (\(suffix)).\(ext)")
+            }
+            guard destination.standardizedFileURL.deletingLastPathComponent().path == dir.path else {
+                return result(error: "refused: the file name would leave the save directory")
+            }
+            do {
+                // moveItem fails rather than replace, so a name taken since the check is not overwritten.
+                try fm.moveItem(atPath: stagedPath, toPath: destination.path)
+                return result(path: destination.path)
+            } catch {
+                return result(error: error.localizedDescription)
+            }
+        }
+    }
+
+    /// A sender-chosen attachment name reduced to a plain file name: last path
+    /// component only, no control or invisible formatting characters (NUL,
+    /// newlines, bidi overrides), no leading dots. `attachment-<n>` when
+    /// nothing is left.
+    static func safeAttachmentName(_ raw: String, index: Int) -> String {
+        let base = raw.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
+        let hidden: Set<Unicode.GeneralCategory> = [.control, .format, .lineSeparator, .paragraphSeparator]
+        var kept = String.UnicodeScalarView()
+        kept.append(contentsOf: base.unicodeScalars.filter { !hidden.contains($0.properties.generalCategory) })
+        let name = String(String(kept).drop(while: { $0 == "." || $0 == " " }))
+            .trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? "attachment-\(index + 1)" : name
     }
 
     static func replyToMessage(
@@ -539,9 +681,11 @@ enum MailBridge {
         bcc: [String] = [],
         from accountName: String? = nil,
         attachmentPaths: [String] = [],
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        expectMessageId: String? = nil
     ) throws -> BridgeActionResult {
         let original = try readMessage(compoundId: compoundId)
+        try requireIdentity(of: original, expectMessageId: expectMessageId)
         let replyTo = overrideTo ?? [original.from]
         let replySubject = buildReplySubject(original.subject)
         let quotedBody = buildReplyQuote(date: original.date, from: original.from, body: original.body ?? "")
@@ -568,9 +712,11 @@ enum MailBridge {
         bcc: [String] = [],
         from accountName: String? = nil,
         attachmentPaths: [String] = [],
-        dryRun: Bool = false
+        dryRun: Bool = false,
+        expectMessageId: String? = nil
     ) throws -> BridgeActionResult {
         let original = try readMessage(compoundId: compoundId)
+        try requireIdentity(of: original, expectMessageId: expectMessageId)
         let fwdSubject = buildForwardSubject(original.subject)
         let prefix = buildForwardPrefix(from: original.from, date: original.date, subject: original.subject, to: original.to, body: original.body ?? "")
         let fullBody = body.isEmpty ? prefix : body + "\n\n" + prefix
@@ -800,7 +946,8 @@ enum MailBridge {
         after: String? = nil,
         before: String? = nil,
         cache: MailBodyCache? = MailBodyCache.shared,
-        softTimeoutMs: Int = SoftTimeout.defaultMs
+        softTimeoutMs: Int = SoftTimeout.defaultMs,
+        pageSentinel: Bool = false
     ) throws -> ListOutcome {
         // Match buildListScript's previewChars clamp ([1, 4000]).
         let previewChars = max(1, min(preview, 4000))
@@ -808,7 +955,7 @@ enum MailBridge {
         let pass1 = try listMessages(
             account: account, mailbox: mailbox, unread: unread,
             limit: limit, offset: offset, preview: nil,
-            after: after, before: before, softTimeoutMs: softTimeoutMs
+            after: after, before: before, softTimeoutMs: softTimeoutMs, pageSentinel: pageSentinel
         )
         // pippin-521: opt-in summary previews. Config-gated BEFORE the index
         // build — the snapshot copy isn't free, so the default-off path never
@@ -958,7 +1105,9 @@ enum MailBridge {
             throw MailBridgeError.invalidMessageId(id)
         }
         let msgId = parts[2]
-        guard !msgId.isEmpty, msgId.allSatisfy({ $0.isNumber }) else {
+        // ASCII digits only: `isNumber` also accepts other scripts' digits and
+        // characters like "½", and this value is written into the script unquoted.
+        guard !msgId.isEmpty, msgId.utf8.allSatisfy({ $0 >= 0x30 && $0 <= 0x39 }) else {
             throw MailBridgeError.invalidMessageId(id)
         }
         return (parts[0], parts[1], msgId)
