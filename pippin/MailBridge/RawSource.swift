@@ -1,7 +1,7 @@
 import Foundation
 
 /// Full auth chain parsed from a message's raw RFC822 source (pippin-fwa).
-/// The Mail.app `allHeaders()` dict is flat and last-value-wins, which destroys
+/// The Mail.app `allHeaders()` dict is flat (one value per name), which destroys
 /// header SETS — a message has one Received per hop, and forwarded mail carries
 /// multiple Authentication-Results / a whole ARC set. `mail verify` fetches
 /// `msg.source()` and parses the ordered headers to recover them.
@@ -64,7 +64,7 @@ enum RawHeaders {
 
     /// Warnings only the full chain can surface: an explicit auth failure in ANY
     /// Authentication-Results / ARC-Authentication-Results instance (the flat
-    /// dict only ever saw the last one), and a broken ARC chain (cv=fail).
+    /// dict only ever sees the topmost one), and a broken ARC chain (cv=fail).
     /// Auth-failure phrasing matches `HeaderAnomalies.detect` exactly so the
     /// caller can string-dedup against the flat-path warnings.
     static func deepWarnings(_ chain: MailAuthChain) -> [String] {

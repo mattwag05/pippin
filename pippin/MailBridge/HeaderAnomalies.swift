@@ -16,8 +16,10 @@ import Foundation
 /// bead.
 enum HeaderAnomalies {
     /// Returns human/agent-readable warning strings, or nil when nothing is
-    /// anomalous. `headers` is the Mail.app `allHeaders()` dict (folded,
-    /// last-value-wins); lookups are case-insensitive.
+    /// anomalous. `headers` is the Mail.app `allHeaders()` dict (folded; a
+    /// repeated header keeps its first, topmost value, which is the receiving
+    /// server's); lookups are case-insensitive. Failures in later instances are
+    /// reported by `RawHeaders.deepWarnings` (`mail verify`).
     static func detect(from: String, to: [String], headers: [String: String]?) -> [String]? {
         guard let headers, !headers.isEmpty else { return nil }
         var lower: [String: String] = [:]

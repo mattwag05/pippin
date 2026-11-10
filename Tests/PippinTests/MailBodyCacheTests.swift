@@ -1,3 +1,4 @@
+import GRDB
 @testable import PippinLib
 import XCTest
 
@@ -34,6 +35,16 @@ final class MailBodyCacheTests: XCTestCase {
         XCTAssertEqual(fetched?.body, "cached content")
         XCTAssertEqual(fetched?.htmlBody, "<p>cached content</p>")
         XCTAssertEqual(fetched?.headers?["X-Test"], "1")
+    }
+
+    func testOpeningAnOlderCacheDropsItsRowsOnce() throws {
+        // Rows from before schema version 1 hold last-wins headers (RC-31).
+        cache.put(makeMessage(id: "id1"))
+        try DatabaseQueue(path: dbPath).write { db in try db.execute(sql: "PRAGMA user_version = 0") }
+        let reopened = try MailBodyCache(dbPath: dbPath)
+        XCTAssertEqual(reopened.count(), 0)
+        reopened.put(makeMessage(id: "id1"))
+        XCTAssertEqual(try MailBodyCache(dbPath: dbPath).count(), 1, "a current cache must survive reopening")
     }
 
     func testMissReturnsNil() {

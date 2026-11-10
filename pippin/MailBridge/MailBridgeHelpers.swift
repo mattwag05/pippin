@@ -88,13 +88,21 @@ extension MailBridge {
             var allHeaders = msg.allHeaders() || '';
             var lines = allHeaders.split('\\n');
             var currentKey = '';
+            // First occurrence wins, compared case-insensitively. Each server
+            // prepends its headers, so the topmost Authentication-Results is the
+            // receiving server's and any later one came with the message.
+            var seenHeaders = {};
+            var keepHeader = false;
             for (var h = 0; h < lines.length; h++) {
                 var line = lines[h];
                 if (/^[A-Za-z0-9-]+:/.test(line)) {
                     var colonIdx = line.indexOf(':');
                     currentKey = line.substring(0, colonIdx);
-                    headerDict[currentKey] = line.substring(colonIdx + 1).trim();
-                } else if (currentKey && /^[ \\t]/.test(line)) {
+                    var seenKey = currentKey.toLowerCase();
+                    keepHeader = seenHeaders[seenKey] !== true;
+                    seenHeaders[seenKey] = true;
+                    if (keepHeader) headerDict[currentKey] = line.substring(colonIdx + 1).trim();
+                } else if (currentKey && keepHeader && /^[ \\t]/.test(line)) {
                     headerDict[currentKey] += ' ' + line.trim();
                 }
             }

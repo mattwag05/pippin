@@ -721,8 +721,8 @@ public struct MailCommand: AsyncParsableCommand {
             // this message's fingerprint.
             let message = try await detachBlocking { try MailBridge.readMessage(compoundId: id, cache: useCache) }
 
-            // Deep auth-chain parse (pippin-fwa): the flat allHeaders dict is
-            // last-value-wins, destroying Received/Authentication-Results/ARC
+            // Deep auth-chain parse (pippin-fwa): the flat allHeaders dict keeps
+            // one value per name, destroying Received/Authentication-Results/ARC
             // header SETS. Fetch raw RFC822 source and recover them; best-effort
             // (nil chain on any failure, verify still reports the flat view).
             let authChain = (try? await detachBlocking { try MailBridge.readRawSource(compoundId: id) })
