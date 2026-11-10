@@ -56,7 +56,7 @@ Pippin lets an AI agent read and change your Mail, Messages, Notes, Contacts, Ca
 
 ## Data handling
 
-Everything runs on your machine. Pippin has no server and no account. The only network code in the source is the AI provider clients and the experimental `browser fetch` command.
+Everything runs on your machine. Pippin has no server and no account. The only network code in the Swift source is the AI provider and embedding clients (`pippin/AIProvider/`, `pippin/MailAIBridge/EmbeddingProvider.swift`), the `doctor` checks that probe the configured provider, and the experimental `browser fetch` command. Helper processes pippin starts are separate programs with their own behavior: `mlx-audio` may download model weights on first use, and the experimental browser runs Playwright.
 
 ### Files pippin writes
 
