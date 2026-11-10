@@ -1,7 +1,7 @@
 ---
 name: pippin
 description: macOS CLI toolkit for Apple app automation — Mail, Calendar, Reminders, Notes, Contacts, Messages, Voice Memos, plus daily digest, action extraction, background jobs, plan-and-execute, and an MCP server.
-version: 0.24.0
+version: 0.41.1
 platform: macOS 15+
 runtime: native (Swift)
 install: brew install mattwag05/tap/pippin
@@ -199,7 +199,7 @@ pippin actions extract --provider claude        # use Claude instead of Ollama
 `pippin job` detaches long-running work (`mail index`, `memos summarize`, `actions extract`) so the caller doesn't block. State lives under `~/.cache/pippin/jobs/<id>/`. IDs are 16-char hex and accept unambiguous prefix matches.
 
 ```bash
-pippin job run -- mail index                  # fork; prints {job_id, pid, "running"}
+pippin job run -- mail index                  # fork; prints {id, pid, status: "running", ...}
 pippin job show <id>                          # status + stdout/stderr tails
 pippin job list --status running              # recent jobs (running|done|error|killed)
 pippin job wait <id> --timeout 600            # block until terminal state
@@ -283,18 +283,21 @@ Run pippin as a [Model Context Protocol](https://modelcontextprotocol.io) server
 ```bash
 pippin mcp-server                             # run the server (stdin/stdout JSON-RPC)
 pippin mcp-server --list-tools                # dump the registered tools as JSON
+pippin mcp-server --apps calendar,reminders   # expose only these tool groups (less context per turn)
 ```
 
-Ships with 79 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch`, and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+Ships with 79 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + draft only), status, doctor, `digest`, `batch`, `job_*` (background work with poll-or-wait), and the safety tools `policy_show`, `action_log` and `undo`. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions and [`docs/agent-integration.md`](docs/agent-integration.md) for how an agent should use the results.
+
+Over MCP, every tool that changes something goes through a safety gate. Under the default policy, sends (`mail_send`, `mail_reply`, `mail_forward`, `messages_send`) and every `*_delete` tool first return `confirmation_required` with `error.details.confirmToken`; repeat the call with the same arguments plus `confirmToken` to carry it out. Every mutating tool also takes `dryRun` and `idempotencyKey`. The gate does not apply to the plain CLI. See [`docs/safety-model.md`](docs/safety-model.md).
 
 ## Agent Integration
 
-### Envelope v1
+### Envelope v4
 
 Every response is wrapped in a versioned envelope:
 
 - **Success:** `{"v":4,"status":"ok","duration_ms":N,"data":<payload>}`
-- **Error:** `{"v":4,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","next_step":{…},"remediation":{…}?}}`. Act on `next_step`: `retryable` with `retry_after_seconds` (same call can work again), `next_call` as `{tool, args, argv}` (make this call instead), `human_action` (only a person can do this; tell them). `send_outcome_unknown` means a send timed out and may have gone out, so check before sending again.
+- **Error:** `{"v":4,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","next_step":{…},"remediation":{…}?}}`. Act on `next_step`: `retryable` with `retry_after_seconds` (same call can work again), `next_call` as `{tool, args, argv}` (make this call instead), `human_action` (only a person can do this; tell them). `send_outcome_unknown` (CLI) and `outcome_unknown` (MCP, any write that timed out) mean the change may have happened, so read the current state before trying again.
 
 `pippin mail accounts --format agent` →
 ```json
@@ -316,7 +319,7 @@ On failure, `pippin` sets a typed process exit code so a calling shell can branc
 | `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
 | `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
 
-Argument validation and parse failures (bad flags, missing required args, unknown subcommands) map to `2` (usage) with an error envelope. `--help` and `--version` print plain text and exit `0`.
+Argument validation and parse failures (bad flags, missing required args, unknown subcommands) map to `2` (usage) with an error envelope. `--help` and `--version` print plain text and exit `0`. The MCP server does not forward exit codes: an MCP client sees `isError` and the envelope, and `error.code` carries the class.
 
 ### Pagination
 
@@ -368,4 +371,4 @@ pippin mail list --limit 20 --fields id,subject,from --format agent   # → [{id
 {"ai":{"provider":"ollama","ollama":{"model":"gemma4:latest","url":"http://localhost:11434"},"claude":{"model":"claude-sonnet-4-6"}}}
 ```
 
-Supported providers: `ollama` (local, default — Gemma 4 recommended) and `claude` (API, requires `ANTHROPIC_API_KEY`). Override per-command with `--provider` / `--model`.
+Supported providers: `ollama` (local, default; Gemma 4 recommended), `claude` (API, requires `ANTHROPIC_API_KEY`) and `openai` (any OpenAI-compatible endpoint; set `ai.openai.baseURL`). Override per-command with `--provider` / `--model`. `claude` sends the text it works on to `api.anthropic.com`; see [SECURITY.md](SECURITY.md#data-handling).

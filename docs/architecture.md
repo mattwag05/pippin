@@ -43,7 +43,7 @@ Commands that return data conform to `AgentCommand` in [AgentCommand.swift](../p
 
 ### MCP server
 
-`pippin mcp-server` ([McpServerCommand](../pippin/Commands/McpServerCommand.swift)) reads newline-delimited JSON-RPC from stdin and handles one request at a time. It writes responses to stdout through `MCPStdioWriter`. It never uses `print`, because stdout carries the protocol. Diagnostics go to stderr.
+`pippin mcp-server` ([McpServerCommand](../pippin/Commands/McpServerCommand.swift)) reads newline-delimited JSON-RPC from stdin and handles one request at a time. It writes responses to stdout through `MCPStdioWriter`. It never uses `print`, because stdout carries the protocol. Diagnostics go to stderr. `--apps mail,calendar` lists and accepts only the tool groups named (a group is a tool name up to its first underscore), which cuts the context a client spends on tool schemas (`MCPDispatcher.exposed`, `AppFilterTests`).
 
 `MCPDispatcher.handle` in [MCPServerRuntime.swift](../pippin/MCP/MCPServerRuntime.swift) answers `initialize`, `tools/list`, `tools/call` and `ping`. Notifications get no reply. An unknown method or tool is a JSON-RPC error (`-32601`). Everything that goes wrong inside a known tool is a normal tool result with `isError: true` and an error envelope as text. JSON-RPC errors are for protocol faults only ([gotchas/mcp.md](gotchas/mcp.md)).
 
@@ -77,7 +77,7 @@ MCPInProcessTools.execute            MCPServerRuntime.runChild
 
 ### The registry
 
-[ToolRegistry.swift](../pippin/MCP/ToolRegistry.swift) holds `MCPToolRegistry.tools`, one `MCPTool` per tool (76 at the time of writing; `InProcessToolsTests.testRegistryToolCount` pins the number). An `MCPTool` has:
+[ToolRegistry.swift](../pippin/MCP/ToolRegistry.swift) holds `MCPToolRegistry.tools`, one `MCPTool` per tool (79 at the time of writing; `InProcessToolsTests.testRegistryToolCount` pins the number). An `MCPTool` has:
 
 - `name`, `description` and `inputSchema` (JSON Schema built with the `Schema` helpers).
 - `effect`: `.readOnly` or `.mutating(verifyWith:)`. A tool with no effect is treated as mutating. `ToolEffectTests` fails on an unclassified tool. The effect also feeds the `readOnlyHint` and `destructiveHint` annotations in `tools/list` (`MCPTool.descriptor`).
@@ -127,7 +127,24 @@ Both tools take raw argv. [MCPCommandPolicy.check](../pippin/MCP/MCPCommandPolic
 
 The plain CLI `pippin batch` and `pippin job run` do not go through the policy. `BatchCommand` applies it when it runs under MCP.
 
-<!-- safety model section goes here -->
+## The safety gate
+
+Every mutating MCP tool call passes through one function, `SafetyGate.run` in [SafetyGate.swift](../pippin/Safety/SafetyGate.swift). The chokepoint is `MCPDispatcher.makeToolCallResponse`: any tool whose `effect` is not `.readOnly` (an unclassified tool included) goes to the gate, and nothing else starts a child for it. `SafetyDispatcherTests.testEveryMutatingToolIsLoggedAtTheOneChokepoint`. Reads skip the gate, except that `checkRead` still enforces a `deny` rule.
+
+Inside `run`, the order is:
+
+1. Pull the reserved arguments (`confirmToken`, `idempotencyKey`, and a gate-answered `dryRun`) off the call.
+2. Load the policy and write the `intent` line to the action log. If the line cannot be written, the call is refused (`audit_log_unavailable`).
+3. Check `deny`, then validate the arguments against the tool's schema and build the argv.
+4. Dry run: run the tool's own preview, or answer from the gate. No token, no rate count.
+5. Idempotency: replay the stored result, or refuse a conflicting key.
+6. Rate limit, checked before a token is issued.
+7. Confirm token: issue one and return `confirmation_required`, or redeem the one presented.
+8. Record the call in the rate limiter and the idempotency store, snapshot the prior state for undo, run the child, then write the `outcome` line and the undo record.
+
+State lives in memory (confirm tokens) and in files under `~/.local/share/pippin/` (action log, `rate-limits.json`, `idempotency.json`, `undo/`). The policy is `~/.config/pippin/policy.json`. `PIPPIN_STATE_DIR` and `PIPPIN_POLICY` move them (`SafetyPaths`).
+
+The plain CLI does not go through the gate. A command typed in a terminal has no policy, token, rate limit or action log entry. `batch` and `job_run` run commands without the dispatcher's gate, so `MCPCommandPolicy` refuses under MCP any command the policy denies, confirms or rate limits. The full model, with the test behind each claim, is in [safety-model.md](safety-model.md).
 
 ## The envelope
 

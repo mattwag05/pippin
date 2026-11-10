@@ -19,7 +19,7 @@ public let AGENT_SCHEMA_VERSION = 4
 // MARK: - Envelope types
 
 /// Success envelope — wraps the original payload under `data`.
-/// Shape: {"v":3,"status":"ok","duration_ms":234,"data":<payload>}
+/// Shape: {"v":4,"status":"ok","duration_ms":234,"data":<payload>}
 /// Optional `warnings` array surfaces non-fatal advisories (e.g. "scan exceeded
 /// soft timeout, returning partial results"). Optional `partial: true` marks a
 /// result set that is incomplete (soft timeout / scan-window shortfall) so
@@ -246,7 +246,7 @@ public struct AgentError: Encodable {
 }
 
 /// Print a structured JSON error to stdout for agent consumers, wrapped in
-/// envelope v1.
+/// the current envelope (`AGENT_SCHEMA_VERSION`).
 ///
 /// - Parameters:
 ///   - error: the underlying Swift error.
