@@ -59,7 +59,7 @@ extension ScriptRunnerError: LocalizedError {
 
 /// Shared osascript runner used by NotesBridge and MailBridge. Extracted to
 /// centralize the concurrent pipe-drain + SIGTERM/SIGKILL timeout pattern and
-/// to add a single auto-relaunch fallback when the host app is not running.
+/// the launch of a host app that is not running.
 public enum ScriptRunner {
     public typealias AppLauncher = @Sendable (String) -> Void
 
@@ -87,10 +87,26 @@ public enum ScriptRunner {
         Thread.sleep(forTimeInterval: 0.5)
     }
 
-    /// Run a JXA script via `osascript -l JavaScript`. The script runs once
-    /// unless the caller passes `idempotent: true` (a read, or a write that is
-    /// safe to repeat): then a timeout with a non-nil `appName` invokes the
-    /// launcher (typically `open -gja`) and re-runs the script exactly once.
+    /// Under MCP the server kills the whole command at 60s
+    /// (`MCPServerRuntime.defaultChildTimeoutSeconds`), so every script the
+    /// process runs shares one deadline 5s short of that.
+    static let mcpCommandBudgetSeconds: TimeInterval = 55
+
+    private static let processStart = ProcessTable.startTime(of: getpid()) ?? Date()
+
+    /// Seconds a script may run: the caller's cap, and under MCP no more than
+    /// what is left of the command's budget.
+    static func budget(requested: Int, underMCP: Bool, elapsed: TimeInterval) -> TimeInterval {
+        let requested = TimeInterval(requested)
+        return underMCP ? min(requested, mcpCommandBudgetSeconds - elapsed) : requested
+    }
+
+    /// Run a JXA script via `osascript -l JavaScript`, exactly once, within
+    /// `timeoutSeconds`. With `idempotent: true` (a read, or a write that is
+    /// safe to repeat) and a non-nil `appName`, an app that is not running is
+    /// launched first (typically `open -gja`), inside the same deadline. That
+    /// replaces the old run, time out, relaunch, run again sequence, which
+    /// took twice the timeout and ran the script twice.
     /// A caller whose script is not idempotent must report its `.timeout` as
     /// `.outcomeUnknown`, never as retryable.
     ///
@@ -107,22 +123,27 @@ public enum ScriptRunner {
         idempotent: Bool = false,
         automationBundleID: String? = nil,
         launcher: AppLauncher = defaultAppLauncher,
-        automationCheck: AutomationCheck = AutomationPermission.liveCheck
+        automationCheck: AutomationCheck = AutomationPermission.liveCheck,
+        isAppRunning: @Sendable (String) -> Bool = ProcessTable.isRunning(named:),
+        underMCP: Bool = isMCPContext()
     ) throws -> String {
         if let automationBundleID,
            automationCheck(automationBundleID, PermissionPriming.canRequestAccess()) == .deny {
             throw ScriptRunnerError.automationDenied(automationBundleID)
         }
-        do {
-            return try runOsascript(script: script, timeoutSeconds: timeoutSeconds)
-        } catch ScriptRunnerError.timeout {
-            guard idempotent, let appName else { throw ScriptRunnerError.timeout }
+        let started = Date()
+        let total = budget(
+            requested: timeoutSeconds, underMCP: underMCP, elapsed: started.timeIntervalSince(processStart)
+        )
+        if idempotent, let appName, total > 0, !isAppRunning(appName) {
             launcher(appName)
-            return try runOsascript(script: script, timeoutSeconds: timeoutSeconds)
         }
+        let remaining = total - Date().timeIntervalSince(started)
+        guard remaining > 0 else { throw ScriptRunnerError.timeout }
+        return try runOsascript(script: script, timeout: remaining)
     }
 
-    private static func runOsascript(script: String, timeoutSeconds: Int) throws -> String {
+    private static func runOsascript(script: String, timeout: TimeInterval) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-l", "JavaScript", "-e", script]
@@ -165,7 +186,7 @@ public enum ScriptRunner {
                 if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             }
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds), execute: timeoutItem)
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutItem)
 
         process.waitUntilExit()
         timeoutItem.cancel()
