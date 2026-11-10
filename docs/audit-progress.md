@@ -34,7 +34,7 @@ Running log for the mission in [MISSION.md](MISSION.md). Branch: `claude/pippin-
 ### Waves 4 to 7 (2026-11-09 and 2026-11-10)
 
 - Wave 4: every P0 and P1 is fixed and closed, including pippin-pvak and pippin-lzuv. Performance pass merged ([performance.md](performance.md)): Notes reads in bulk, Mail Envelope Index read-ahead, concurrent doctor, digest and status probes, and Messages reads in the MCP server process.
-- Wave 5: safety gate merged ([safety-model.md](safety-model.md)): policy file, confirm tokens, rate limits, append-only action log, undo for edits, `dryRun` on every mutating tool, untrusted-content marking, `pippin undo`, `pippin log`, `pippin policy show`, and `mcp-server --apps`. Versioned JSON schemas in [schemas/v4/](schemas/v4) with golden and conformance tests. The CLI and MCP definitions are held together by drift tests, not generated from one source; that exception is documented in [architecture.md](architecture.md) (pippin-kkik).
+- Wave 5: safety gate merged ([safety-model.md](safety-model.md)): policy file, confirm tokens, rate limits, append-only action log, undo for edits, `dryRun` on every mutating tool, untrusted-content marking, `pippin undo`, `pippin log`, `pippin policy show`, and `mcp-server --apps`. Versioned JSON schemas in [schemas/v4/](schemas/v4) with golden and conformance tests. The MCP registry is generated from the ArgumentParser definitions, so the CLI and MCP share one source ([architecture.md](architecture.md), pippin-kkik).
 - Wave 6: final head-to-head run from a fresh clone of commit `d91a21a` with one command ([results.md](competitive/results.md)). Pippin scores 4 on every scored axis and leads outright on Speed. It loses warm Notes list and search to sweetrb/apple-notes-mcp (pippin-ai5s), costs the most tokens per task when all tools are exposed (pippin-hd99), and had one injection trial flagged by the grader for quoting a marker (pippin-o072). Operability is not scored (pippin-0ifz).
 - Wave 7: README, SECURITY.md (threat model), CONTRIBUTING.md, [architecture.md](architecture.md), [agent-integration.md](agent-integration.md), CHANGELOG and SKILL.md rewritten or updated. Every em and en dash removed from the Markdown docs.
 
@@ -46,7 +46,6 @@ Running log for the mission in [MISSION.md](MISSION.md). Branch: `claude/pippin-
 | pippin-o190 | P2 | Argument edge cases (a positional that starts with `-`, `2.5` for an integer); schema validation already refuses most of them. |
 | pippin-xr89 | P2 | Hardening bundle (notarization, file modes, argv secrets and others), each small and independent. |
 | pippin-ai5s, pippin-hd99, pippin-o072, pippin-0ifz | P2, P3 | Competitive follow-ups from the results page. |
-| pippin-kkik | P3 | Generating the registry from ArgumentParser needs its experimental dump-help format; drift tests hold the two together for now. |
 | pippin-oqq9 | P3 | A CLI-mode child can outlive its deadline when a grandchild holds its output; the MCP path is not affected. |
 
 ### In flight (as of the first entry, now finished)
