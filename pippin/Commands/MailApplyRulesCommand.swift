@@ -64,8 +64,10 @@ public struct MailApplyRules: AgentCommand {
 
         // listMessages spawns osascript and each move/mark is its own blocking
         // AppleScript round trip; hop off the cooperative pool.
-        let (scanOutcome, result) = try await detachBlocking {
-            () -> (MailBridge.ListOutcome, RuleApplyResult) in
+        // Started before the scan so the whole command fits the MCP child cap.
+        let budget = BatchBudget.forCurrentContext()
+        let (scanOutcome, result, notAttempted) = try await detachBlocking {
+            () -> (MailBridge.ListOutcome, RuleApplyResult, Int) in
             let scanOutcome = try MailBridge.listMessages(
                 account: account,
                 mailbox: mailbox,
@@ -85,78 +87,111 @@ public struct MailApplyRules: AgentCommand {
                 maxActions: maxActions
             )
 
-            var actions: [RuleApplyAction] = []
-            var appliedCount = 0
-            var failedCount = 0
-
-            for match in plan.planned {
-                let moveTo = match.rule.action.moveTo
-                let markRead = match.rule.action.markRead
-                var applied = false
-                var failure: String?
-
-                if live {
-                    var marked = false
-                    do {
-                        // Mark before move: moving rewrites the message's
-                        // mailbox, which invalidates the compound id the mark
-                        // would need.
-                        if let markRead {
-                            _ = try MailBridge.markMessage(compoundId: match.message.id, read: markRead)
-                            marked = true
-                        }
-                        if let moveTo {
-                            _ = try MailBridge.moveMessage(compoundId: match.message.id, toMailbox: moveTo)
-                        }
-                        applied = true
-                        appliedCount += 1
-                    } catch {
-                        // One unreachable message must not abandon the rest of
-                        // the run. Say so when the mark landed and only the move
-                        // failed — the message is half-actuated, and a rerun
-                        // will re-mark an already-marked message.
-                        failure = marked
-                            ? "marked, but the move failed: \(error.localizedDescription)"
-                            : error.localizedDescription
-                        failedCount += 1
-                    }
-                }
-
-                actions.append(RuleApplyAction(
-                    messageId: match.message.id,
-                    subject: match.message.subject,
-                    from: match.message.from,
-                    date: match.message.date,
-                    operationalDate: match.message.operationalDate,
-                    rule: match.rule.name,
-                    moveTo: moveTo,
-                    markRead: markRead,
-                    applied: applied,
-                    error: failure
-                ))
-            }
+            let run = MailApplyRules.actuate(
+                plan.planned, live: live, budget: budget,
+                mark: { _ = try MailBridge.markMessage(compoundId: $0, read: $1) },
+                move: { _ = try MailBridge.moveMessage(compoundId: $0, toMailbox: $1) }
+            )
+            let actions = run.actions
 
             let result = RuleApplyResult(
                 dryRun: !live,
                 scanned: messages.count,
                 matched: matches.count,
                 planned: actions.count,
-                applied: appliedCount,
-                failed: failedCount,
+                applied: run.applied,
+                failed: run.failed,
                 heldTooNew: plan.heldTooNew,
                 heldUnread: plan.heldUnread,
                 heldOverCap: plan.heldOverCap,
                 bySender: MailApplyRules.groupBySender(actions)
             )
-            return (scanOutcome, result)
+            return (scanOutcome, result, run.notAttempted)
         }
 
-        return .emit(
-            result,
-            timedOut: scanOutcome.timedOut,
-            timedOutHint: "mailbox scan timed out — some matching messages were not seen this run",
-            extraWarnings: scanOutcome.fastPathNote.map { [$0] } ?? []
+        var warnings: [String] = []
+        if scanOutcome.timedOut {
+            warnings.append("mailbox scan timed out — some matching messages were not seen this run")
+        }
+        if notAttempted > 0 {
+            warnings.append(
+                "stopped at the time budget: \(notAttempted) planned message(s) were not attempted and are listed with applied: false. Run again to continue."
+            )
+        }
+        warnings += scanOutcome.fastPathNote.map { [$0] } ?? []
+        return AgentResult(
+            result, warnings: warnings.isEmpty ? nil : warnings,
+            partial: scanOutcome.timedOut || notAttempted > 0
         )
+    }
+
+    static let notAttemptedNote = "not attempted: the run stopped at its time budget"
+
+    /// Apply each planned match in order, stopping once `budget` is spent so a
+    /// long run under MCP answers with its per-message report instead of being
+    /// killed mid-loop. Messages past the stop are reported, not counted as failed.
+    static func actuate(
+        _ planned: [RuleMatch],
+        live: Bool,
+        budget: BatchBudget,
+        mark: (_ compoundId: String, _ read: Bool) throws -> Void,
+        move: (_ compoundId: String, _ toMailbox: String) throws -> Void
+    ) -> (actions: [RuleApplyAction], applied: Int, failed: Int, notAttempted: Int) {
+        var actions: [RuleApplyAction] = []
+        var appliedCount = 0
+        var failedCount = 0
+        var notAttempted = 0
+
+        for match in planned {
+            let moveTo = match.rule.action.moveTo
+            let markRead = match.rule.action.markRead
+            var applied = false
+            var failure: String?
+
+            if live, budget.exceeded {
+                failure = notAttemptedNote
+                notAttempted += 1
+            } else if live {
+                var marked = false
+                do {
+                    // Mark before move: moving rewrites the message's
+                    // mailbox, which invalidates the compound id the mark
+                    // would need.
+                    if let markRead {
+                        try mark(match.message.id, markRead)
+                        marked = true
+                    }
+                    if let moveTo {
+                        try move(match.message.id, moveTo)
+                    }
+                    applied = true
+                    appliedCount += 1
+                } catch {
+                    // One unreachable message must not abandon the rest of
+                    // the run. Say so when the mark landed and only the move
+                    // failed — the message is half-actuated, and a rerun
+                    // will re-mark an already-marked message.
+                    failure = marked
+                        ? "marked, but the move failed: \(error.localizedDescription)"
+                        : error.localizedDescription
+                    failedCount += 1
+                }
+            }
+
+            actions.append(RuleApplyAction(
+                messageId: match.message.id,
+                subject: match.message.subject,
+                from: match.message.from,
+                date: match.message.date,
+                operationalDate: match.message.operationalDate,
+                rule: match.rule.name,
+                moveTo: moveTo,
+                markRead: markRead,
+                applied: applied,
+                error: failure
+            ))
+        }
+        return (actions, appliedCount, failedCount, notAttempted)
     }
 
     // MARK: - Private
