@@ -167,7 +167,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- [ci] The CLI integration test helper now drains a child's stdout/stderr concurrently instead of reading them after `waitUntilExit()`. The old order deadlocked as soon as a child wrote more than the ~64KB pipe buffer (the child blocks writing, the parent blocks waiting) which is exactly what happened when `mcp-server --list-tools` crossed that threshold at 76 tools (66,752 bytes): `make ci` wedged indefinitely with no failure and no output, and the last flushed log line pointed at an unrelated suite. Production spawn paths (`MCPServerRuntime.runChild`, `AIProviderFactory`) already drained concurrently and were never affected.
+- [ci] The CLI integration test helper now drains a child's stdout/stderr concurrently instead of reading them after `waitUntilExit()`. The old order deadlocked as soon as a child wrote more than the ~64KB pipe buffer (the child blocks writing, the parent blocks waiting), which is exactly what happened when `mcp-server --list-tools` crossed that threshold at 76 tools (66,752 bytes): `make ci` wedged indefinitely with no failure and no output, and the last flushed log line pointed at an unrelated suite. Production spawn paths (`MCPServerRuntime.runChild`, `AIProviderFactory`) already drained concurrently and were never affected.
 
 ## [0.38.1] - 2026-08-13
 
