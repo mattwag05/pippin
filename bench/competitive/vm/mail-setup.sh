@@ -11,7 +11,7 @@
 #   Mail > Add Account > choose from a list > Other Mail Account; Email bench@pippinbench.invalid, any password;
 #   Sign In; Incoming and Outgoing Mail Server 127.0.0.1; Continue past the plaintext warning; Next;
 #   leave only Mail ticked (untick Notes, so the Notes fixture keeps one account); Done;
-#   "Don't protect Mail activity"; Continue. This script then renames the account to PippinBench.
+#   "Don't protect Mail activity"; Continue. Mail names the account Pippinbench.
 # Voice Memos: opened once so it creates its own CloudRecordings.db; fixtures/make_memos.py fills it.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -29,12 +29,12 @@ sed "s#/Users/admin#$HOME#g; s#= admin\$#= $(id -un)#" "$HERE/dovecot.conf" > "$
 pgrep -f "[s]bin/dovecot -c" >/dev/null || sudo -n /opt/homebrew/opt/dovecot/sbin/dovecot -c "$HOME/bench-mail/dovecot.conf" </dev/null >/dev/null 2>&1
 sleep 5
 
-accounts=$(limit 30 osascript -e 'tell application "Mail" to name of every account' || true)
-case "$accounts" in
-  *PippinBench*) ;;
-  *Pippinbench*) limit 30 osascript -e 'tell application "Mail" to set name of account "Pippinbench" to "PippinBench"' ;;
-  *) echo "mail-setup.sh: add the Mail account by hand as described at the top of this file, then run it again" >&2; exit 1 ;;
-esac
+# Mail names the account after the address's domain, Pippinbench; a scripted rename does not survive a restart,
+# and AppleScript matches account names without regard to case, so the fixture uses Mail's own name.
+if ! limit 30 osascript -e 'tell application "Mail" to name of every account' | grep -qi PippinBench; then
+  echo "mail-setup.sh: add the Mail account by hand as described at the top of this file, then run it again" >&2
+  exit 1
+fi
 
 R="$HOME/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings"
 if [ ! -f "$R/CloudRecordings.db" ]; then

@@ -6406,7 +6406,7 @@
   ]
  },
  "mail": {
-  "account": "PippinBench",
+  "account": "Pippinbench",
   "mailbox": "INBOX",
   "server": "Dovecot on 127.0.0.1 (ports 143 and 1143) inside the VM, no TLS, any password",
   "search_word": "Quarterly",

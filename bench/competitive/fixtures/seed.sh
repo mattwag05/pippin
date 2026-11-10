@@ -55,7 +55,7 @@ fi
 limit 120 python3 "$HERE/make_chatdb.py" install "$MANIFEST" --pb-seed "$BIN" > "$PARTS/messages.json"
 
 echo "seed: mail (local IMAP server) and voice memos, when vm/mail-setup.sh has run"
-if limit 30 osascript -e 'tell application "Mail" to name of every account' 2>/dev/null | grep -q PippinBench; then
+if limit 30 osascript -e 'tell application "Mail" to name of every account' 2>/dev/null | grep -qi PippinBench; then
   limit 240 python3 "$HERE/make_mail.py" install "$MANIFEST" > "$PARTS/mail.json"
 else
   echo '{"mail": null}' > "$PARTS/mail.json"; echo "seed: no PippinBench Mail account; mail not seeded (run vm/mail-setup.sh)" >&2
