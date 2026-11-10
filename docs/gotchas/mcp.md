@@ -68,7 +68,7 @@ The MCP layer SIGKILLs any child exceeding ~60s. A tool whose command runs per-i
 
 ## Adding a tool: one test hardcodes the count, three don't
 
-`JSONRPCTests` and `CLIIntegrationTests` compare against `MCPToolRegistry.tools.count` (no edit needed), but **`InProcessToolsTests.testRegistryToolCount` hardcodes the literal** — it is the one that fails, and it is not in the MCP test file you'd think to check. Also update `docs/mcp-server.md` (the "N tools" line + tool table), `README.md`, and the pippin `CLAUDE.md` ToolRegistry row. Do NOT touch `AgentInfoCommandTests.testEnvelopeEncodesSnakeCaseKeys` — its `toolCount: 44` is a snake_case *encoding fixture*, not the real count.
+`JSONRPCTests` and `CLIIntegrationTests` compare against `MCPToolRegistry.tools.count` (no edit needed), but **`InProcessToolsTests.testRegistryToolCount` hardcodes the literal** — it is the one that fails, and it is not in the MCP test file you'd think to check. Also update `docs/mcp-server.md` (the "N tools" line + tool table), `README.md`, and your local (gitignored) `CLAUDE.md` if you keep one. Do NOT touch `AgentInfoCommandTests.testEnvelopeEncodesSnakeCaseKeys` — its `toolCount: 44` is a snake_case *encoding fixture*, not the real count.
 
 ## Every tool's argv is parsed against its real command group
 

@@ -134,10 +134,10 @@ gateway, launchd — everywhere.** Notes:
 - **One-time migration cost:** because consent now attaches to pippin's identity
   (not the launcher's), every permission must be re-granted once after upgrading —
   run `pippin permissions` from a terminal and approve. Until then, EventKit
-  commands fail fast (see below) and Mail/Notes **Automation** calls block to their
-  soft-timeout when un-granted in a non-interactive context (pippin-qjf tracks a
-  fast-fail for that; interactive Terminal use self-heals because the automation
-  prompt appears on first call).
+  commands fail fast (see below) and Mail/Notes **Automation** calls fail fast as
+  `automation_denied` when un-granted (`AutomationPermission` pre-check in
+  `ScriptRunner.run`, covered by `AutomationPermissionTests`; interactive Terminal
+  use self-heals because the automation prompt appears on first call).
 - Bridges only block on `requestFullAccess*` when a user can answer the dialog
   (`PermissionPriming.canRequestAccess()` = interactive TTY && not MCP); otherwise
   they throw `accessDenied` immediately instead of hanging on an un-showable prompt
