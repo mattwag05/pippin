@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import importlib.util
+import importlib
 import json
 import os
 import re
@@ -29,17 +29,16 @@ sys.path.insert(0, HERE)
 from core import McpSession, ToolError, ToolHang, environment, run_cli, summarize, timed  # noqa: E402
 
 WARM_N, WARMUP_N, COLD_N, CONCURRENCY = 30, 3, 5, 8  # methodology: Reliability and Speed
+FIXTURE_CHAT = "+15555550101"
 
 
 def load_adapters(only: set[str] | None) -> list:
+    sys.path.insert(0, ROOT)
     adapters = []
-    folder = os.path.join(ROOT, "adapters")
-    for filename in sorted(os.listdir(folder)):
+    for filename in sorted(os.listdir(os.path.join(ROOT, "adapters"))):
         if not filename.endswith(".py") or filename.startswith("_"):
             continue
-        spec = importlib.util.spec_from_file_location("adapter_" + filename[:-3], os.path.join(folder, filename))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        module = importlib.import_module("adapters." + filename[:-3])
         if only is None or module.NAME in only:
             adapters.append(module)
     return adapters
@@ -79,6 +78,30 @@ class Driver:
         if self.session is not None:
             self.session.close()
             self.session = None
+
+
+def resolve(driver: Driver, ops: dict, state: dict) -> dict:
+    """Fills {list_id}, {calendar_id} from the fixture state and {chat} from the
+    tool's own chat listing. An op whose placeholder cannot be filled is dropped."""
+    known = {
+        "{list_id}": (state.get("reminder_list") or {}).get("id"),
+        "{calendar_id}": (state.get("calendar") or {}).get("id"),
+    }
+    uses_chat = any("{chat}" in map(str, args.values()) for args in ops.values())
+    if uses_chat and "messages.chats" in driver.adapter.OPS and "messages.chats" in getattr(driver.adapter, "PARSE", {}):
+        _, outcome, text = timed(lambda: driver.call("messages.chats", {"limit": 20}))
+        if outcome == "ok":
+            chats = driver.adapter.PARSE["messages.chats"](text)
+            match = [c for c in chats if FIXTURE_CHAT in json.dumps(c)] or chats
+            if match:
+                known["{chat}"] = match[0].get("id")
+    out = {}
+    for op, args in ops.items():
+        filled = {k: known.get(v, v) if isinstance(v, str) and v.startswith("{") else v for k, v in args.items()}
+        if any(v is None for v in filled.values()):
+            continue
+        out[op] = filled
+    return out
 
 
 def token_count(text: str) -> int:
@@ -208,12 +231,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tools-dir", default=os.path.expanduser("~/bench-tools"))
     parser.add_argument("--out", required=True)
+    parser.add_argument("--state", default=os.path.expanduser("~/bench/state.json"))
     parser.add_argument("--only", default="")
     parser.add_argument("--stages", default="manifest,speed,reliability,coverage")
     options = parser.parse_args()
 
     with open(os.path.join(ROOT, "ops_args.json")) as handle:
         ops_args = json.load(handle)
+    with open(options.state) as handle:
+        state = json.load(handle)
     stages = set(options.stages.split(","))
     os.makedirs(options.out, exist_ok=True)
     with open(os.path.join(options.out, "environment.json"), "w") as handle:
@@ -223,12 +249,13 @@ def main():
         driver = Driver(adapter, options.tools_dir)
         record = {"tool": adapter.NAME, "version": adapter.VERSION, "kind": adapter.KIND, "apps": adapter.APPS}
         try:
+            read_args = resolve(driver, ops_args["read"], state)
             if "manifest" in stages:
                 record["manifest"] = stage_manifest(driver)
             if "speed" in stages or "coverage" in stages:
-                record["speed"] = stage_speed(driver, ops_args["read"])
+                record["speed"] = stage_speed(driver, read_args)
             if "reliability" in stages:
-                record["reliability"] = stage_reliability(driver, ops_args["read"], ops_args["bad"])
+                record["reliability"] = stage_reliability(driver, read_args, ops_args["bad"])
             if "coverage" in stages:
                 record["coverage"] = stage_coverage(driver, ops_args["canonical"], record.get("speed", {}))
         except (ToolError, ToolHang, OSError) as error:

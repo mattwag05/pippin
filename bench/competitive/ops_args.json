@@ -1,0 +1,33 @@
+{
+  "comment": "Canonical arguments for every tool. {list_id} and {calendar_id} come from the fixture state file; {chat} is the id each tool itself reports for the fixture chat +15555550101.",
+  "read": {
+    "reminders.lists": {},
+    "reminders.list": {"list": "PippinBench", "list_id": "{list_id}"},
+    "reminders.search": {"query": "Renew", "list": "PippinBench", "list_id": "{list_id}"},
+    "calendar.calendars": {},
+    "calendar.events": {"start": "2027-02-01T00:00:00Z", "end": "2027-04-01T00:00:00Z", "calendar": "PippinBench", "calendar_id": "{calendar_id}"},
+    "calendar.search": {"query": "Review", "start": "2027-02-01T00:00:00Z", "end": "2027-04-01T00:00:00Z"},
+    "contacts.list": {},
+    "contacts.search": {"query": "PBX"},
+    "contacts.groups": {},
+    "notes.folders": {},
+    "notes.list": {"folder": "PippinBench"},
+    "notes.search": {"query": "Sourdough", "folder": "PippinBench"},
+    "messages.chats": {"limit": 20},
+    "messages.history": {"chat": "{chat}", "limit": 50},
+    "messages.search": {"query": "the", "limit": 20},
+    "mail.accounts": {},
+    "mail.mailboxes": {},
+    "mail.list": {"limit": 20},
+    "mail.search": {"query": "the", "limit": 20},
+    "memos.list": {"limit": 20}
+  },
+  "bad": {
+    "contacts.show": {"id": "PB-NOPE-0000"},
+    "notes.show": {"id": "PB-NOPE-0000"},
+    "messages.history": {"chat": "999999999", "limit": 5},
+    "calendar.events": {"start": "not-a-date", "end": "also-not-a-date"},
+    "reminders.list": {"list": "PB-NO-SUCH-LIST", "list_id": "PB-NO-SUCH-LIST"}
+  },
+  "canonical": ["reminders.lists","reminders.list","reminders.search","reminders.create","reminders.edit","reminders.complete","reminders.delete","calendar.calendars","calendar.events","calendar.search","calendar.create","calendar.edit","calendar.delete","contacts.list","contacts.search","contacts.show","contacts.create","contacts.edit","contacts.delete","contacts.groups","notes.folders","notes.list","notes.search","notes.show","notes.create","notes.edit","notes.delete","messages.chats","messages.history","messages.search","messages.send","mail.accounts","mail.mailboxes","mail.list","mail.search","mail.show","mail.send","mail.move","mail.mark","mail.attachments","memos.list","memos.show","memos.transcribe","memos.delete"]
+}

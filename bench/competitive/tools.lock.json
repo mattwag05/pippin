@@ -1,0 +1,93 @@
+{
+  "locked": "2026-11-10",
+  "field": "docs/competitive/field.md",
+  "environment": {
+    "vm": "Tart pippin-bench",
+    "macos": "26.6.2 (25G83)",
+    "arch": "arm64",
+    "xcode": "26.5 (17F42)",
+    "swift": "6.3.2",
+    "node": "24.21.0",
+    "npm": "11.19.0",
+    "python": "3.14.7 (venvs); 3.9.6 (/usr/bin/python3, harness)"
+  },
+  "tools": [
+    {
+      "name": "imcp", "repo": "https://github.com/mattt/iMCP", "tag": "1.8.3",
+      "commit": "6284060d73a554a19dfb31af2fccbc1650fd94f3", "license": "MIT",
+      "install_method": "release asset iMCP.zip, unpacked into the tools directory (not /Applications)",
+      "artifact": {"url": "https://github.com/mattt/iMCP/releases/download/1.8.3/iMCP.zip", "sha256": "f8539ccdecff75b1e0db12300c29a19393ab1a82f7432fa52a646095786f48ec"},
+      "version_reported": "1.8.3 (CFBundleShortVersionString); notarized Developer ID, team TTY35UM57S",
+      "runtime": "macOS 15.3 or later, GUI app",
+      "status": "installed; not run: needs interactive approval"
+    },
+    {
+      "name": "imsg", "repo": "https://github.com/openclaw/imsg", "tag": "v0.21.0",
+      "commit": "1bc0679663bf3978a744a61a5a9161d9ba518764", "license": "MIT",
+      "install_method": "release asset imsg-macos.zip, verified against the release SHA256SUMS",
+      "artifact": {"url": "https://github.com/openclaw/imsg/releases/download/v0.21.0/imsg-macos.zip", "sha256": "0da64a1c2c125eba033c4092ea17a6997f1ccc51dbd8be68ce77aa43df6d8885"},
+      "version_reported": "0.21.0", "runtime": "native binary (Developer ID, team Y5PE65HELJ)", "status": "installed"
+    },
+    {
+      "name": "remindctl", "repo": "https://github.com/openclaw/remindctl", "tag": "v0.3.9",
+      "commit": "1ae0c5dbc607c9c682b0f8d895c7138de603e615", "license": "MIT",
+      "install_method": "release asset remindctl-macos.zip, verified against the release checksums.txt",
+      "artifact": {"url": "https://github.com/openclaw/remindctl/releases/download/v0.3.9/remindctl-macos.zip", "sha256": "6db69578bef36c83d5c40560103a10026b1fd2ecfc45c4ef695eee0ade5527ad"},
+      "version_reported": "0.3.9", "runtime": "native binary (Developer ID, team FWJYW4S8P8)", "status": "installed"
+    },
+    {
+      "name": "reminders-cli", "repo": "https://github.com/keith/reminders-cli", "tag": "2.5.1",
+      "commit": "7bd86247be7e0fc41b08ef20d0d3491228a67d57", "license": "MIT",
+      "install_method": "release asset reminders.tar.gz (the project publishes no checksum)",
+      "artifact": {"url": "https://github.com/keith/reminders-cli/releases/download/2.5.1/reminders.tar.gz", "sha256": "f37ca92c580c87081d8daa354f42a46c2fa46a5173b6029c45f317d6f67c431c"},
+      "version_reported": "none (no --version flag); release tag 2.5.1", "runtime": "native binary (ad hoc signed)", "status": "installed"
+    },
+    {
+      "name": "memo", "repo": "https://github.com/antoniorodr/memo", "tag": "v0.6.2",
+      "commit": "959f47fbec6c9f129705431b710e1a2448e07c32", "license": "Apache-2.0",
+      "install_method": "python3.14 venv, pip install git+https://github.com/antoniorodr/memo@v0.6.2 (pip recorded the commit above)",
+      "version_reported": "memo, version 0.6.2", "runtime": "Python 3.14.7", "status": "installed"
+    },
+    {
+      "name": "sweetrb-mail", "repo": "https://github.com/sweetrb/apple-mail-mcp", "tag": "v2.20.55",
+      "commit": "c054b058cf0e241185c330111a2e68dcddf91179", "license": "MIT",
+      "install_method": "npm install --prefix, apple-mail-mcp@2.20.55",
+      "artifact": {"npm": "apple-mail-mcp@2.20.55", "shasum": "18c127c9e62d6fcec73ac73cba5c3ad2b799cbd8", "note": "the npm metadata carries no gitHead, so the package is tied to the tag by version only"},
+      "version_reported": "2.20.55 (serverInfo)", "runtime": "Node 24.21.0", "status": "installed"
+    },
+    {
+      "name": "pf-mail", "repo": "https://github.com/patrickfreyer/apple-mail-mcp", "tag": "v3.3.0",
+      "commit": "daaf963e4b051e8cea02a456b149750de45edd03", "license": "MIT",
+      "install_method": "python3.14 venv, pip install mcp-apple-mail==3.3.0",
+      "artifact": {"pypi": "mcp-apple-mail==3.3.0", "note": "tied to the tag by version only; resolved dependencies are not pinned (fastmcp 4.1.7, mcp 2.3.0 on 2026-11-10)"},
+      "version_reported": "pip: 3.3.0; serverInfo: 'Apple Mail MCP' 4.1.7 (the FastMCP version)", "runtime": "Python 3.14.7", "status": "installed"
+    },
+    {
+      "name": "sweetrb-notes", "repo": "https://github.com/sweetrb/apple-notes-mcp", "tag": "v2.16.1",
+      "commit": "fb5ef5bcfedf9103449aac116bda6585c572e98b", "license": "MIT",
+      "install_method": "npm install --prefix, apple-notes-mcp@2.16.1",
+      "artifact": {"npm": "apple-notes-mcp@2.16.1", "shasum": "30cddeece833111c9dbc945985494a6bcb939eb4", "note": "the npm metadata carries no gitHead, so the package is tied to the tag by version only"},
+      "version_reported": "2.16.1 (serverInfo)", "runtime": "Node 24.21.0", "status": "installed"
+    },
+    {
+      "name": "apple-events", "repo": "https://github.com/FradSer/mcp-server-apple-events", "tag": "v1.6.2",
+      "commit": "a80e04b48d2f80957dc7ac1b35702a7c35ec0591", "license": "MIT",
+      "install_method": "npm install --prefix, mcp-server-apple-events@1.6.2 (ships a prebuilt bin/event helper, ad hoc signed)",
+      "artifact": {"npm": "mcp-server-apple-events@1.6.2", "shasum": "c81e9ca098b4145771950581c34543d64d9e182e", "note": "npm gitHead equals the tag commit"},
+      "version_reported": "1.6.2 (serverInfo)", "runtime": "Node 24.21.0", "status": "installed"
+    },
+    {
+      "name": "mac-messages", "repo": "https://github.com/carterlasalle/mac_messages_mcp", "tag": "v1.1.0",
+      "commit": "ec4de8d379583c7fa7224728d6de3891d97533ba", "license": "MIT",
+      "install_method": "python3.14 venv, pip install mac-messages-mcp==1.1.0 (the README route is uvx after brew install uv; pip in a venv installs the same PyPI package without brew)",
+      "artifact": {"pypi": "mac-messages-mcp==1.1.0", "note": "tied to the tag by version only; resolved dependencies are not pinned (mcp 1.30.0 on 2026-11-10)"},
+      "version_reported": "pip: 1.1.0; serverInfo: 'MessageBridge' 1.30.0 (the MCP SDK version)", "runtime": "Python 3.14.7", "status": "installed"
+    },
+    {
+      "name": "apple-pim", "repo": "https://github.com/omarshahine/apple-pim", "tag": "v3.19.2",
+      "commit": "36a406328ebe7de92cf37d408d6064d3cbce44e5", "license": "MIT",
+      "install_method": "git clone at the tag, then ./setup.sh without --install (swift build -c release plus two npm installs, all inside the checkout; ad hoc signed CLIs)",
+      "version_reported": "3.19.2 (serverInfo)", "runtime": "Swift 6.3.2, Node 24.21.0", "status": "installed"
+    }
+  ]
+}
