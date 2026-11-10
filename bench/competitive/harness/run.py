@@ -202,6 +202,7 @@ def stage_reliability(driver: Driver, read_args: dict, bad_args: dict) -> dict:
             "ok": sum(1 for _, outcome, _ in results if outcome == "ok"),
             "of": CONCURRENCY,
             "distinct_record_sets": len(shapes) if parse else None,  # reads of fixed state should agree
+            "failures": [str(value)[:300] for _, outcome, value in results if outcome != "ok"],  # diagnosis only, not scored
         }
     for op, args in bad_args.items():
         if op not in driver.adapter.OPS:
