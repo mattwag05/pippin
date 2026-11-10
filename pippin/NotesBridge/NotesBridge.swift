@@ -31,13 +31,13 @@ enum NotesBridge {
         let script = buildListScript(
             folder: folder, limit: clampedLimit, offset: max(0, offset), fields: fields, softTimeoutMs: softTimeoutMs
         )
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try decode(Outcome<[NoteInfo]>.self, from: json)
     }
 
     static func showNote(id: String) throws -> NoteInfo {
         let script = buildShowScript(id: id)
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try decode(NoteInfo.self, from: json)
     }
 
@@ -48,13 +48,13 @@ enum NotesBridge {
         let script = buildSearchScript(
             query: query, folder: folder, limit: clampedLimit, fields: fields, softTimeoutMs: softTimeoutMs
         )
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try decode(Outcome<[NoteInfo]>.self, from: json)
     }
 
     static func listFolders(softTimeoutMs: Int = 22000) throws -> Outcome<[NoteFolder]> {
         let script = buildListFoldersScript(softTimeoutMs: softTimeoutMs)
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try decode(Outcome<[NoteFolder]>.self, from: json)
     }
 
@@ -63,7 +63,7 @@ enum NotesBridge {
     /// Event; `app.notes().length` materialized every note specifier first.
     static func countNotes(folder: String? = nil) throws -> Int {
         let script = buildCountScript(folder: folder)
-        let json = try runScript(script, timeoutSeconds: 10)
+        let json = try runScript(script, timeoutSeconds: 10, idempotent: true)
         return try decode(NoteCount.self, from: json).count
     }
 
@@ -596,17 +596,19 @@ enum NotesBridge {
 
     // MARK: - Process Runner
 
-    private static func runScript(_ script: String, timeoutSeconds: Int = 35) throws -> String {
+    private static func runScript(_ script: String, timeoutSeconds: Int = 35, idempotent: Bool = false) throws -> String {
         do {
             return try ScriptRunner.run(
                 script,
                 timeoutSeconds: timeoutSeconds,
                 appName: "Notes",
+                idempotent: idempotent,
                 automationBundleID: "com.apple.Notes"
             )
         } catch ScriptRunnerError.automationDenied {
             throw NotesBridgeError.accessDenied
         } catch ScriptRunnerError.timeout {
+            guard idempotent else { throw ScriptRunnerError.outcomeUnknown(app: "Notes") }
             throw NotesBridgeError.timeout
         } catch let ScriptRunnerError.nonZeroExit(msg) {
             throw mapScriptFailure(msg)

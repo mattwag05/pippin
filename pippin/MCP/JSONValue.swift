@@ -70,7 +70,11 @@ enum JSONValue: Codable, Equatable, Sendable {
             // only when it fits, otherwise treat the arg as absent (nil).
             // Compare with `< Double(Int64.max)`: Int64.max isn't exactly
             // representable as a Double and rounds up to Int64.max + 1.
-            guard value.isFinite, value >= Double(Int64.min), value < Double(Int64.max) else { return nil }
+            // A fractional value is not an integer either: `limit: 2.5` used to
+            // pass an integer check and run as 2.
+            guard value.isFinite, value == value.rounded(), value >= Double(Int64.min), value < Double(Int64.max) else {
+                return nil
+            }
             return Int64(value)
         default: return nil
         }

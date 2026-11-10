@@ -29,7 +29,8 @@ final class JobStoreTests: XCTestCase {
             startedAt: Date()
         )
         try store.write(job)
-        let loaded = try store.read(id)
+        // pid 42 is not this job's runner; read the record as written.
+        let loaded = try store.readCanonical(id, reconcile: false)
         XCTAssertEqual(loaded.id, job.id)
         XCTAssertEqual(loaded.argv, job.argv)
         XCTAssertEqual(loaded.pid, 42)

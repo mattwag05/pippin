@@ -38,6 +38,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] Concurrent `notes create`/`edit`/`delete` calls from pippin are serialized, so parallel appends no longer overwrite each other. Closes pippin-bm9s.
 - [bug] `memos delete` moves the audio file to the Trash before removing the recording, refuses while Voice Memos is running, and no longer matches wildcard or empty IDs. Closes pippin-cdv0.
 - [feat] `memos delete --dry-run` shows which recording an ID names without changing anything.
+- [bug] An MCP write that hits the 60s cap now returns `outcome_unknown` (not retryable, with a call that checks state) instead of a retryable `child_timed_out`, and the timeout kills the whole child process group so a stray `osascript` can no longer finish a send afterwards. Closes pippin-psba.
+- [feat] Every MCP tool now carries `readOnlyHint` / `destructiveHint` annotations.
+- [bug] Notes create/edit/delete, `mail move` and attachment saves are no longer run twice after a timeout; they report `outcome_unknown`. An osascript crash is reported as `script_crashed`, not as a timeout. Closes pippin-z84j.
+- [bug] A script timeout no longer doubles (launch of a closed app now happens inside the same deadline), and under MCP all scripts in one command share a 55s budget, including Notes and attachment calls. Closes pippin-yswv.
+- [bug] MCP `batch` and `job_run` only run commands that have an MCP tool; nested batch/job run, `--autonomous` and `messages send` without `--draft` are refused with a typed per-entry error. `job_run` can no longer run `mail index`. The CLI `batch` and `job run` are unchanged. Closes pippin-fy00.
+- [bug] MCP `batch` returns finished entries with `partial: true` and a warning when it runs out of time, instead of losing every result. Closes pippin-qpt5.
+- [bug] A job whose runner process died is reported as `status: error` with `error_code: "runner_lost"`, and `job wait` returns instead of waiting out its timeout. Closes pippin-zc0i.
+- [bug] `job` commands emit `started_at` / `ended_at` (and `job gc` `cutoff`, `memos summarize` `createdAt`) as ISO 8601 strings instead of seconds since 2001. Closes pippin-l4i8.
+- [bug] A NUL character in an MCP argument or a `batch` entry returns `invalid_argument` instead of aborting the server. Closes pippin-l8d1.
+- [bug] An MCP id that starts with `-` (such as `--version`) is refused instead of being parsed as a flag, and a fractional number for an integer MCP argument (`limit: 2.5`) is rejected instead of being truncated. Refs pippin-o190.
 
 ### Performance
 

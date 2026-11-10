@@ -52,39 +52,68 @@ enum MCPServerRuntime {
     /// hanging the JSON-RPC loop forever.
     static let defaultChildTimeoutSeconds = 60
 
+    /// `ownProcessGroup` puts the child in a process group of its own and aims
+    /// the timeout at the whole group, so grandchildren (the `osascript` a
+    /// bridge spawned) die with it instead of finishing a send after the caller
+    /// was told the call timed out. Off for terminal use, where the child must
+    /// stay in the foreground group to receive Ctrl-C.
     static func runChild(
         argv: [String],
         pippinPath: String,
-        timeoutSeconds: Int = defaultChildTimeoutSeconds
+        timeoutSeconds: Int = defaultChildTimeoutSeconds,
+        ownProcessGroup: Bool = false
     ) throws -> ChildResult {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: pippinPath)
-        process.arguments = argv
-
+        // An argv string ends at its first NUL, so one inside an argument would
+        // silently run a different command (and aborted Foundation.Process).
+        guard !argv.contains(where: { $0.contains("\0") }) else {
+            throw MCPServerRuntimeError.nulInArgument
+        }
         // Mark the child so AI providers and other MCP-sensitive code paths
         // can shorten budgets / run preflight pings to stay under the
         // `defaultChildTimeoutSeconds` hard cap.
         var env = ProcessInfo.processInfo.environment
         env["PIPPIN_MCP"] = "1"
-        process.environment = env
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-        // The child must not read anything from us — stdin would contend with our JSON-RPC loop.
-        process.standardInput = FileHandle.nullDevice
 
-        do {
-            try process.run()
-        } catch {
-            throw MCPServerRuntimeError.processLaunchFailed(pippinPath, underlying: error)
+        // posix_spawn, not Foundation.Process: Process cannot set a process group.
+        var fileActions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&fileActions)
+        defer { posix_spawn_file_actions_destroy(&fileActions) }
+        // The child must not read anything from us: stdin would contend with our JSON-RPC loop.
+        posix_spawn_file_actions_addopen(&fileActions, STDIN_FILENO, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_adddup2(&fileActions, stdoutPipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
+        posix_spawn_file_actions_adddup2(&fileActions, stderrPipe.fileHandleForWriting.fileDescriptor, STDERR_FILENO)
+
+        var attributes: posix_spawnattr_t?
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        // Every descriptor but the three above closes in the child.
+        var flags = POSIX_SPAWN_CLOEXEC_DEFAULT
+        if ownProcessGroup {
+            flags |= POSIX_SPAWN_SETPGROUP
+            posix_spawnattr_setpgroup(&attributes, 0)
+        }
+        posix_spawnattr_setflags(&attributes, Int16(flags))
+
+        let cArgv: [UnsafeMutablePointer<CChar>?] = ([pippinPath] + argv).map { strdup($0) } + [nil]
+        let cEnv: [UnsafeMutablePointer<CChar>?] = env.map { strdup("\($0.key)=\($0.value)") } + [nil]
+        defer { (cArgv + cEnv).forEach { free($0) } }
+
+        var spawned: pid_t = 0
+        let spawnError = posix_spawn(&spawned, pippinPath, &fileActions, &attributes, cArgv, cEnv)
+        let pid = spawned
+        // Our copies of the write ends, so the readers below see EOF when the child's close.
+        try? stdoutPipe.fileHandleForWriting.close()
+        try? stderrPipe.fileHandleForWriting.close()
+        guard spawnError == 0 else {
+            throw MCPServerRuntimeError.processLaunchFailed(
+                pippinPath, underlying: NSError(domain: NSPOSIXErrorDomain, code: Int(spawnError))
+            )
         }
 
-        // Drain pipes concurrently so a large stdout doesn't deadlock on a full
-        // buffer. Started only AFTER a successful launch: readers spawned before
-        // a throwing run() block forever on pipes whose write ends never close
-        // (their captured Pipe refs keep the write FDs alive), leaking threads.
+        // Drain pipes concurrently so a large stdout doesn't deadlock on a full buffer.
         nonisolated(unsafe) var outBytes = Data()
         nonisolated(unsafe) var errBytes = Data()
         let drainGroup = DispatchGroup()
@@ -100,38 +129,59 @@ enum MCPServerRuntime {
             drainGroup.leave()
         }
 
-        // Hard timeout: SIGTERM, then SIGKILL after a 2s grace, mirroring
-        // ScriptRunner's pattern. Without this the JSON-RPC loop blocks forever
-        // if the child wedges (e.g. osascript stuck on an unresponsive Mail.app).
+        // Hard timeout: SIGTERM, then SIGKILL after a 2s grace. Without this
+        // the JSON-RPC loop blocks forever if the child wedges (e.g. osascript
+        // stuck on an unresponsive Mail.app).
+        let signalChild: @Sendable (Int32) -> Void = { signal in
+            _ = ownProcessGroup ? killpg(pid, signal) : kill(pid, signal)
+        }
         let killedByTimeout = ConcurrentSlot<Bool>()
+        let killItem = DispatchWorkItem { signalChild(SIGKILL) }
         let timeoutItem = DispatchWorkItem {
-            guard process.isRunning else { return }
             killedByTimeout.set(true)
-            process.terminate()
-            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            }
+            signalChild(SIGTERM)
+            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2), execute: killItem)
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds), execute: timeoutItem)
 
-        process.waitUntilExit()
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) == -1, errno == EINTR {}
         timeoutItem.cancel()
+        killItem.cancel()
+        // The leader is gone; anything it left in the group still holds our
+        // pipes and may still be doing the work we just reported as timed out.
+        if ownProcessGroup, killedByTimeout.get() == true { killpg(pid, SIGKILL) }
         drainGroup.wait()
 
         // A signal death is a timeout only if our own timer sent it. Anything
         // else is a crash, which must not read as a retryable timeout.
-        if process.terminationReason == .uncaughtSignal {
+        let signal = status & 0x7F
+        if signal != 0, signal != 0x7F {
             if killedByTimeout.get() == true {
                 throw MCPServerRuntimeError.childTimedOut(seconds: timeoutSeconds)
             }
-            throw MCPServerRuntimeError.childCrashed(signal: process.terminationStatus)
+            throw MCPServerRuntimeError.childCrashed(signal: signal)
         }
 
         return ChildResult(
-            exitCode: process.terminationStatus,
+            exitCode: (status >> 8) & 0xFF,
             stdout: outBytes,
             stderr: errBytes
         )
+    }
+
+    /// A timeout on a tool that can change something says nothing about
+    /// whether the change happened, so it must not read as "retry".
+    static func outcomeUnknownIfMutating(_ error: Error, tool: MCPTool, tools: [MCPTool]) -> Error {
+        guard case let MCPServerRuntimeError.childTimedOut(seconds) = error, tool.effect != .readOnly else {
+            return error
+        }
+        var verify = NextStep.none
+        if case let .mutating(name?) = tool.effect,
+           let argv = try? tools.first(where: { $0.name == name })?.buildArgs(nil) {
+            verify = .call(tool: name, argv: Array(argv.dropLast(2))) // minus `--format agent`
+        }
+        return MCPServerRuntimeError.outcomeUnknown(tool: tool.name, seconds: seconds, verify: verify)
     }
 }
 
@@ -140,7 +190,9 @@ enum MCPServerRuntime {
 enum MCPServerRuntimeError: LocalizedError, RemediableError {
     case processLaunchFailed(String, underlying: Error)
     case childTimedOut(seconds: Int)
+    case outcomeUnknown(tool: String, seconds: Int, verify: NextStep)
     case childCrashed(signal: Int32)
+    case nulInArgument
     case childNoOutput(exitCode: Int32)
     case inProcessTimedOut(seconds: Int)
     case notInProcessCapable(String)
@@ -149,7 +201,9 @@ enum MCPServerRuntimeError: LocalizedError, RemediableError {
         switch self {
         case .processLaunchFailed: return "child_launch_failed"
         case .childTimedOut: return "child_timed_out"
+        case .outcomeUnknown: return "outcome_unknown"
         case .childCrashed: return "child_crashed"
+        case .nulInArgument: return "invalid_argument"
         case .childNoOutput: return "child_no_output"
         case .inProcessTimedOut: return "in_process_timed_out"
         case .notInProcessCapable: return "not_in_process_capable"
@@ -162,7 +216,9 @@ enum MCPServerRuntimeError: LocalizedError, RemediableError {
             return .call(tool: "doctor", argv: ["doctor"])
         case .childTimedOut, .inProcessTimedOut:
             return .retry(after: 5)
-        case .notInProcessCapable:
+        case let .outcomeUnknown(_, _, verify):
+            return verify
+        case .notInProcessCapable, .nulInArgument:
             return .none
         }
     }
@@ -173,6 +229,10 @@ enum MCPServerRuntimeError: LocalizedError, RemediableError {
             return "Failed to launch child pippin at \(path): \(error.localizedDescription)"
         case let .childTimedOut(seconds):
             return "pippin child exceeded \(seconds)s and was terminated. Narrow the request (--account, --mailbox, --limit) or rerun with a more specific query."
+        case let .outcomeUnknown(tool, seconds, _):
+            return "\(tool) was stopped after \(seconds)s and may or may not have taken effect. Check the current state before calling it again; do not repeat it blindly."
+        case .nulInArgument:
+            return "An argument contains a NUL character (U+0000), which no pippin argument can hold."
         case let .childCrashed(signal):
             return "pippin child crashed with signal \(signal)."
         case let .childNoOutput(exitCode):
@@ -215,7 +275,8 @@ enum MCPDispatcher {
         _ request: JSONRPCRequest,
         pippinPath: String,
         tools: [MCPTool] = MCPToolRegistry.tools,
-        inProcessDeadline: Double = Double(MCPInProcessTools.deadlineSeconds)
+        inProcessDeadline: Double = Double(MCPInProcessTools.deadlineSeconds),
+        childTimeoutSeconds: Int = MCPServerRuntime.defaultChildTimeoutSeconds
     ) async -> JSONRPCResponse? {
         // Notifications (no id) never get a response, even on error.
         if request.isNotification {
@@ -235,7 +296,8 @@ enum MCPDispatcher {
                 params: request.params,
                 pippinPath: pippinPath,
                 tools: tools,
-                inProcessDeadline: inProcessDeadline
+                inProcessDeadline: inProcessDeadline,
+                childTimeoutSeconds: childTimeoutSeconds
             )
         case "ping":
             return JSONRPCResponse(id: id, result: .object([:]))
@@ -281,7 +343,8 @@ enum MCPDispatcher {
         params: JSONValue?,
         pippinPath: String,
         tools: [MCPTool],
-        inProcessDeadline: Double
+        inProcessDeadline: Double,
+        childTimeoutSeconds: Int
     ) async -> JSONRPCResponse {
         guard let toolName = params?["name"]?.stringValue else {
             return JSONRPCResponse(
@@ -335,12 +398,17 @@ enum MCPDispatcher {
             // runChild blocks on waitUntilExit — hop off the cooperative pool
             // (mirrors DoCommand's call site).
             childResult = try await detachBlocking {
-                try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath)
+                try MCPServerRuntime.runChild(
+                    argv: argv, pippinPath: pippinPath, timeoutSeconds: childTimeoutSeconds, ownProcessGroup: true
+                )
             }
         } catch {
             // Every failure to run the child is tool-level: the caller can act
             // on it, and the envelope says how.
-            return errorResult(id: id, error, startedAt: toolStartedAt)
+            return errorResult(
+                id: id, MCPServerRuntime.outcomeUnknownIfMutating(error, tool: tool, tools: tools),
+                startedAt: toolStartedAt
+            )
         }
 
         let stdoutString = String(data: childResult.stdout, encoding: .utf8) ?? ""

@@ -5,6 +5,8 @@ import Foundation
 
 /// Lifecycle of a detached `pippin job`. Terminal states are `done`, `error`,
 /// `killed` — once set, the status file is never overwritten except by `gc`.
+/// A `running` job whose runner process is gone is rewritten on read as
+/// `error` with `error_code: "runner_lost"` (see `JobStore.readCanonical`).
 public enum JobStatus: String, Codable, Sendable, CaseIterable, ExpressibleByArgument {
     case running
     case done
@@ -29,6 +31,8 @@ public struct Job: Codable, Sendable, Equatable {
     public var exitCode: Int32?
     public let startedAt: Date
     public var endedAt: Date?
+    /// Why a job is `error` when no exit code explains it (`runner_lost`).
+    public var errorCode: String?
 
     /// Derived from `endedAt - startedAt`. Serialized as `duration_ms` on
     /// terminal states; nil while the job is still running.
@@ -40,6 +44,7 @@ public struct Job: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case v, id, argv, pid, status
         case exitCode = "exit_code"
+        case errorCode = "error_code"
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case durationMs = "duration_ms"
@@ -72,6 +77,7 @@ public struct Job: Codable, Sendable, Equatable {
         try container.encodeIfPresent(pid, forKey: .pid)
         try container.encode(status, forKey: .status)
         try container.encodeIfPresent(exitCode, forKey: .exitCode)
+        try container.encodeIfPresent(errorCode, forKey: .errorCode)
         try container.encode(startedAt, forKey: .startedAt)
         try container.encodeIfPresent(endedAt, forKey: .endedAt)
         try container.encodeIfPresent(durationMs, forKey: .durationMs)
@@ -85,6 +91,7 @@ public struct Job: Codable, Sendable, Equatable {
         pid = try c.decodeIfPresent(Int32.self, forKey: .pid)
         status = try c.decode(JobStatus.self, forKey: .status)
         exitCode = try c.decodeIfPresent(Int32.self, forKey: .exitCode)
+        errorCode = try c.decodeIfPresent(String.self, forKey: .errorCode)
         startedAt = try c.decode(Date.self, forKey: .startedAt)
         endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
         // duration_ms is derived from endedAt; ignore any persisted value.

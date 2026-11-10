@@ -39,8 +39,22 @@ enum SchemaValidator {
         }
 
         for (name, value) in argsObject {
+            // A process argument cannot hold NUL; before this check one such
+            // string aborted the whole server (RT-20).
+            if name.contains("\0") || containsNUL(value) {
+                throw SchemaValidatorError.nulCharacter(name.replacingOccurrences(of: "\0", with: ""))
+            }
             guard let propSchema = properties[name] else { continue }
             try checkScalarType(field: name, value: value, schema: propSchema)
+        }
+    }
+
+    private static func containsNUL(_ value: JSONValue) -> Bool {
+        switch value {
+        case let .string(text): return text.contains("\0")
+        case let .array(items): return items.contains(where: containsNUL)
+        case let .object(dict): return dict.contains { $0.key.contains("\0") || containsNUL($0.value) }
+        default: return false
         }
     }
 
@@ -106,6 +120,7 @@ enum SchemaValidatorError: LocalizedError, Equatable {
     case missingRequired(String)
     case unexpectedArgument(String)
     case wrongType(field: String, expected: String, got: String)
+    case nulCharacter(String)
 
     var errorDescription: String? {
         switch self {
@@ -115,6 +130,8 @@ enum SchemaValidatorError: LocalizedError, Equatable {
             return "Unexpected argument: '\(name)'."
         case let .wrongType(field, expected, got):
             return "Argument '\(field)' must be \(expected), got \(got)."
+        case let .nulCharacter(field):
+            return "Argument '\(field)' contains a NUL character (U+0000), which no pippin argument can hold."
         }
     }
 }
@@ -125,12 +142,13 @@ extension SchemaValidatorError: RemediableError {
         case .missingRequired: return "missing_required"
         case .unexpectedArgument: return "unexpected_argument"
         case .wrongType: return "wrong_type"
+        case .nulCharacter: return "invalid_argument"
         }
     }
 
     var nextStep: NextStep {
         switch self {
-        case .missingRequired, .unexpectedArgument, .wrongType: return .none
+        case .missingRequired, .unexpectedArgument, .wrongType, .nulCharacter: return .none
         }
     }
 }

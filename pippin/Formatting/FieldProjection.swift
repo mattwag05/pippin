@@ -45,7 +45,7 @@ public enum FieldProjection {
     /// Encode `value`, then project — the entry point most callers want.
     /// Returns a `JSONSerialization`-compatible object ready to re-serialize.
     public static func projectedObject(_ value: some Encodable, fields: [String]) throws -> Any {
-        let encoder = JSONEncoder()
+        let encoder = agentPayloadEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(value)
         let json = try JSONSerialization.jsonObject(with: data)
@@ -55,7 +55,7 @@ public enum FieldProjection {
     /// Requested fields present on no row, so a typo is visible rather than
     /// silently producing empty objects. An empty result names nothing.
     static func fieldsInNoRow(_ value: some Encodable, fields: [String]) throws -> [String] {
-        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
+        let json = try JSONSerialization.jsonObject(with: agentPayloadEncoder().encode(value))
         let rows: [[String: Any]]
         if let dict = json as? [String: Any] {
             rows = (dict["items"] as? [[String: Any]]) ?? [dict]

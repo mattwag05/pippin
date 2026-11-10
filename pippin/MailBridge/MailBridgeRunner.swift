@@ -6,18 +6,21 @@ extension MailBridge {
     /// `sending` marks a script that delivers mail. A timeout there cannot say
     /// whether delivery happened, so the runner must not re-run it (a nil
     /// `appName` disables its relaunch-and-retry) and the failure is not retryable.
-    static func runScript(_ script: String, timeoutSeconds: Int = 10, sending: Bool = false) throws -> String {
+    static func runScript(_ script: String, timeoutSeconds: Int = 10, sending: Bool = false, idempotent: Bool = false) throws -> String {
         do {
             return try ScriptRunner.run(
                 script,
                 timeoutSeconds: timeoutSeconds,
                 appName: sending ? nil : "Mail",
+                idempotent: idempotent && !sending,
                 automationBundleID: "com.apple.mail"
             )
         } catch ScriptRunnerError.automationDenied {
             throw MailBridgeError.accessDenied
         } catch ScriptRunnerError.timeout {
-            throw sending ? MailBridgeError.sendOutcomeUnknown : MailBridgeError.timeout
+            if sending { throw MailBridgeError.sendOutcomeUnknown }
+            guard idempotent else { throw ScriptRunnerError.outcomeUnknown(app: "Mail") }
+            throw MailBridgeError.timeout
         } catch let ScriptRunnerError.nonZeroExit(msg) {
             throw mapScriptFailure(msg)
         } catch let ScriptRunnerError.stderrOnSuccess(msg) {
