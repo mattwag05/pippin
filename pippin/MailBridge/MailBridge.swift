@@ -211,6 +211,8 @@ enum MailBridge {
     ) throws -> ListOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil)
+        let requestedBefore = before
+        let (after, before) = dayFilterInstants(after: after, before: before)
         let clampedLimit = clampScanLimit(limit, pageSentinel: pageSentinel)
         let clampedOffset = max(0, offset)
         // Envelope Index fast path (pippin-60x): metadata-only scans answer from
@@ -267,7 +269,7 @@ enum MailBridge {
             windowHint: beforeShortfallHint(
                 resultsEmpty: wrapper.results.isEmpty,
                 timedOut: wrapper.meta.timedOut,
-                before: before,
+                before: requestedBefore,
                 reachedMailboxEnd: wrapper.meta.reachedMailboxEnd,
                 oldestExaminedMs: wrapper.meta.oldestExaminedMs
             ),
@@ -299,6 +301,37 @@ enum MailBridge {
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone.current
         return "scan window did not reach \(before): scanned the newest messages back to \(f.string(from: oldest)) but not as far as \(before) — increase --limit, or use `mail search --before` (which binary-searches the window) for older mail"
+    }
+
+    /// `--after` and `--before` each name a whole calendar day in the user's
+    /// time zone, both inclusive, as their help text says. Returns the two
+    /// bounds as UTC instants every read path (Envelope Index, store, JXA)
+    /// parses alike: the first second of the `after` day and the last second of
+    /// the `before` day. Anything that is not `YYYY-MM-DD` passes through.
+    ///
+    /// The paths used to read the bare day as UTC midnight, so `--before`
+    /// dropped its own day and both bounds were hours off local time (DAT-11).
+    static func dayFilterInstants(
+        after: String?, before: String?, timeZone: TimeZone = .current
+    ) -> (after: String?, before: String?) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.calendar = calendar
+        parser.timeZone = timeZone
+        parser.dateFormat = "yyyy-MM-dd"
+        let iso = ISO8601DateFormatter()
+        func dayStart(_ day: String) -> Date? {
+            day.count == 10 ? parser.date(from: day) : nil
+        }
+        let lower = after.map { day in dayStart(day).map(iso.string(from:)) ?? day }
+        let upper = before.map { day in
+            dayStart(day)
+                .flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
+                .map { iso.string(from: $0.addingTimeInterval(-1)) } ?? day
+        }
+        return (lower, upper)
     }
 
     /// Parse a `--before`/`--after` filter (`YYYY-MM-DD`, local midnight) the
@@ -428,6 +461,7 @@ enum MailBridge {
     ) throws -> SearchOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil) && (mailbox == nil)
+        let (after, before) = dayFilterInstants(after: after, before: before)
         let clampedOffset = max(0, offset)
         // Envelope Index fast path (pippin-60x): subject/sender LIKE across the
         // whole index in ~ms (measured 31ms over 28k messages) vs a 45–95s JXA

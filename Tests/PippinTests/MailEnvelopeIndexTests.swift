@@ -326,6 +326,19 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertEqual(msgs.map(\.id), ["Personal||INBOX||105"])
     }
 
+    func testBeforeIncludesItsOwnDayOnceTheBridgeResolvesIt() throws {
+        // What `MailBridge.listMessages` passes down for that day (DAT-11).
+        // The fixture's `jul10` epoch is 2026-07-14T00:00:00Z.
+        let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let bounds = MailBridge.dayFilterInstants(after: "2026-07-14", before: "2026-07-14", timeZone: utc)
+        let idx = try makeIndex()
+        let msgs = try idx.listMessages(
+            account: "Personal", mailbox: "INBOX", unread: false,
+            limit: 50, offset: 0, after: bounds.after, before: bounds.before
+        )
+        XCTAssertEqual(msgs.map(\.id), ["Personal||INBOX||101", "Personal||INBOX||102"])
+    }
+
     func testFromComposition() throws {
         let idx = try makeIndex()
         let msgs = try idx.listMessages(

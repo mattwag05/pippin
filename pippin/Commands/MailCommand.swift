@@ -130,10 +130,10 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Include message body in search (slower).")
         public var body: Bool = false
 
-        @Option(name: .long, help: "Only include messages on or after this date (YYYY-MM-DD).")
+        @Option(name: .long, help: "Only include messages on or after this day (YYYY-MM-DD, your local time zone).")
         public var after: String?
 
-        @Option(name: .long, help: "Only include messages on or before this date (YYYY-MM-DD).")
+        @Option(name: .long, help: "Only include messages on or before this day, the whole day included (YYYY-MM-DD, your local time zone).")
         public var before: String?
 
         @Option(name: .long, help: "Filter by recipient email address.")
@@ -402,10 +402,10 @@ public struct MailCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Only show unread messages.")
         public var unread: Bool = false
 
-        @Option(name: .long, help: "Only include messages on or after this date (YYYY-MM-DD).")
+        @Option(name: .long, help: "Only include messages on or after this day (YYYY-MM-DD, your local time zone).")
         public var after: String?
 
-        @Option(name: .long, help: "Only include messages on or before this date (YYYY-MM-DD).")
+        @Option(name: .long, help: "Only include messages on or before this day, the whole day included (YYYY-MM-DD, your local time zone).")
         public var before: String?
 
         @Option(name: .long, help: "Maximum number of messages to return (default: 20; values above 500 are capped).")

@@ -529,6 +529,8 @@ final class MailEnvelopeIndex: Sendable {
     /// shortfall-hint display — using local here would drop rows near day
     /// boundaries that the JXA path keeps.
     static func parseFilterDateUTC(_ s: String) -> Date? {
+        // The bridge resolves a day to an instant first (`dayFilterInstants`).
+        if let date = ISO8601DateFormatter().date(from: s) { return date }
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "UTC")
