@@ -1,0 +1,34 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List Voice Memos recordings (most recent first).",
+  "properties" : {
+    "cursor" : {
+      "description" : "Opaque next_cursor from a previous response.",
+      "type" : "string"
+    },
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 20,
+      "description" : "Maximum number of results (default: 20).",
+      "type" : "integer"
+    },
+    "page" : {
+      "description" : "1-based page number. Ignored when cursor is set.",
+      "type" : "integer"
+    },
+    "pageSize" : {
+      "description" : "Rows per page when paginating.",
+      "type" : "integer"
+    },
+    "since" : {
+      "description" : "Only recordings on or after YYYY-MM-DD.",
+      "type" : "string"
+    }
+  },
+  "title" : "memos_list: arguments",
+  "type" : "object"
+}

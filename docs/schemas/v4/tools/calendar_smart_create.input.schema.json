@@ -1,0 +1,38 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Create an event from a natural-language description using AI (resolves calendar names, unlike calendar_create which needs an EventKit ID). Reports scheduling conflicts unless allowConflicts is set.",
+  "properties" : {
+    "allowConflicts" : {
+      "default" : false,
+      "description" : "Create even if it overlaps an existing event.",
+      "type" : "boolean"
+    },
+    "calendar" : {
+      "description" : "Target calendar name (resolved for you).",
+      "type" : "string"
+    },
+    "description" : {
+      "description" : "Natural-language event description, e.g. 'lunch with Sam next Tuesday at noon'.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Show the parsed event without creating it.",
+      "type" : "boolean"
+    },
+    "model" : {
+      "description" : "Model name.",
+      "type" : "string"
+    },
+    "provider" : {
+      "description" : "AI provider: ollama, claude, or openai.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "description"
+  ],
+  "title" : "calendar_smart_create: arguments",
+  "type" : "object"
+}

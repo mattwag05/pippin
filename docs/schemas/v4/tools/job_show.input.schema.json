@@ -1,0 +1,21 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Show a job's status + stdout/stderr tails. Use prefix match (e.g. first 6 chars) to save tokens. status error with error_code runner_lost means the job's process died without recording a result.",
+  "properties" : {
+    "id" : {
+      "description" : "Job id or unambiguous prefix.",
+      "type" : "string"
+    },
+    "tail" : {
+      "default" : 4096,
+      "description" : "Bytes of stdout/stderr to include (default: 4096).",
+      "type" : "integer"
+    }
+  },
+  "required" : [
+    "id"
+  ],
+  "title" : "job_show: arguments",
+  "type" : "object"
+}

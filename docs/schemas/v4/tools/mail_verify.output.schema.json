@@ -1,0 +1,118 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "anomalies" : {
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "authChain" : {
+      "properties" : {
+        "arcAuthenticationResults" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "arcSeals" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "authenticationResults" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "dkimSignatures" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "received" : {
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [
+        "arcAuthenticationResults",
+        "arcSeals",
+        "authenticationResults",
+        "dkimSignatures",
+        "received"
+      ],
+      "type" : "object"
+    },
+    "date" : {
+      "type" : "string"
+    },
+    "dimensions" : {
+      "items" : {
+        "properties" : {
+          "current" : {
+            "type" : "string"
+          },
+          "deviation" : {
+            "type" : "boolean"
+          },
+          "dimension" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "prior" : {
+            "properties" : {
+
+            },
+            "type" : "object"
+          }
+        },
+        "required" : [
+          "current",
+          "deviation",
+          "dimension",
+          "name",
+          "prior"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    },
+    "from" : {
+      "type" : "string"
+    },
+    "id" : {
+      "type" : "string"
+    },
+    "priorMessages" : {
+      "type" : "integer"
+    },
+    "sender" : {
+      "type" : "string"
+    },
+    "subject" : {
+      "type" : "string"
+    },
+    "verdict" : {
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "date",
+    "dimensions",
+    "from",
+    "id",
+    "priorMessages",
+    "subject",
+    "verdict"
+  ],
+  "title" : "mail_verify: data",
+  "type" : "object"
+}

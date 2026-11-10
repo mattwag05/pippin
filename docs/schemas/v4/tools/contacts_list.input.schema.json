@@ -1,0 +1,17 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List all contacts with their primary email and phone. Read-only. Prefer contacts_search when you know who you're looking for.",
+  "properties" : {
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "group" : {
+      "description" : "Restrict to a contact group name (from contacts_groups).",
+      "type" : "string"
+    }
+  },
+  "title" : "contacts_list: arguments",
+  "type" : "object"
+}

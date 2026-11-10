@@ -1,0 +1,106 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "account" : {
+        "type" : "string"
+      },
+      "attachments" : {
+        "items" : {
+          "properties" : {
+            "mimeType" : {
+              "type" : "string"
+            },
+            "name" : {
+              "type" : "string"
+            },
+            "saveError" : {
+              "type" : "string"
+            },
+            "savedPath" : {
+              "type" : "string"
+            },
+            "size" : {
+              "type" : "integer"
+            }
+          },
+          "required" : [
+            "mimeType",
+            "name",
+            "saveError",
+            "savedPath",
+            "size"
+          ],
+          "type" : "object"
+        },
+        "type" : "array"
+      },
+      "body" : {
+        "type" : [
+          "null",
+          "string"
+        ]
+      },
+      "bodyPreview" : {
+        "type" : "string"
+      },
+      "date" : {
+        "type" : "string"
+      },
+      "from" : {
+        "type" : "string"
+      },
+      "fromContact" : {
+        "type" : "string"
+      },
+      "hasAttachment" : {
+        "type" : "boolean"
+      },
+      "headerAnomalies" : {
+        "items" : {
+          "type" : "string"
+        },
+        "type" : "array"
+      },
+      "headers" : {
+        "properties" : {
+
+        },
+        "type" : "object"
+      },
+      "htmlBody" : {
+        "type" : "string"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "mailbox" : {
+        "type" : "string"
+      },
+      "messageIdHeader" : {
+        "type" : "string"
+      },
+      "read" : {
+        "type" : "boolean"
+      },
+      "receivedAt" : {
+        "type" : "string"
+      },
+      "size" : {
+        "type" : "integer"
+      },
+      "subject" : {
+        "type" : "string"
+      },
+      "to" : {
+        "items" : {
+          "type" : "string"
+        },
+        "type" : "array"
+      }
+    },
+    "type" : "object"
+  },
+  "title" : "mail_list: data",
+  "type" : "array"
+}

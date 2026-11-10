@@ -1,0 +1,30 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Move a message to another mailbox in the same account: this is how you archive, trash, or file a message (pass the destination mailbox name from mail_mailboxes, e.g. Archive, Trash, Junk). Reversible by moving it back.",
+  "properties" : {
+    "dryRun" : {
+      "default" : false,
+      "description" : "Report what would move without touching the message.",
+      "type" : "boolean"
+    },
+    "expectMessageId" : {
+      "description" : "Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch.",
+      "type" : "string"
+    },
+    "messageId" : {
+      "description" : "Compound message ID from mail_list output.",
+      "type" : "string"
+    },
+    "to" : {
+      "description" : "Destination mailbox name, exactly as reported by mail_mailboxes (names differ per account, e.g. '[Gmail]/Trash').",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "messageId",
+    "to"
+  ],
+  "title" : "mail_move: arguments",
+  "type" : "object"
+}

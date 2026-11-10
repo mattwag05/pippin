@@ -1,0 +1,59 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List reminders, defaulting to incomplete items.",
+  "properties" : {
+    "completed" : {
+      "default" : false,
+      "description" : "Include completed reminders.",
+      "type" : "boolean"
+    },
+    "createdAfter" : {
+      "description" : "Only reminders created on or after this date (YYYY-MM-DD or ISO 8601).",
+      "type" : "string"
+    },
+    "cursor" : {
+      "description" : "Opaque next_cursor from a previous response.",
+      "type" : "string"
+    },
+    "dueAfter" : {
+      "description" : "Due after date (YYYY-MM-DD or ISO 8601).",
+      "type" : "string"
+    },
+    "dueBefore" : {
+      "description" : "Due before date (YYYY-MM-DD or ISO 8601).",
+      "type" : "string"
+    },
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Max reminders (default: 50).",
+      "type" : "integer"
+    },
+    "list" : {
+      "description" : "Reminder list ID from reminders_lists.",
+      "type" : "string"
+    },
+    "modifiedAfter" : {
+      "description" : "Only reminders modified on or after this date (YYYY-MM-DD or ISO 8601).",
+      "type" : "string"
+    },
+    "page" : {
+      "description" : "1-based page number. Ignored when cursor is set.",
+      "type" : "integer"
+    },
+    "pageSize" : {
+      "description" : "Rows per page when paginating.",
+      "type" : "integer"
+    },
+    "priority" : {
+      "description" : "Filter by priority: high, medium, low, none.",
+      "type" : "string"
+    }
+  },
+  "title" : "reminders_list: arguments",
+  "type" : "object"
+}

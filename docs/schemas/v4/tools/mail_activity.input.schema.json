@@ -1,0 +1,35 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default). Use this for scan workflows instead of N calls to mail_list. Default is metadata-only (preview 0, sub-second); pass preview > 0 for body snippets, which force per-message body fetches (~30-40s).",
+  "properties" : {
+    "account" : {
+      "description" : "Mail account name.",
+      "type" : "string"
+    },
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Maximum messages to return (default: 50; capped at 500).",
+      "type" : "integer"
+    },
+    "mailboxes" : {
+      "description" : "Comma-separated mailbox names (default: INBOX,Sent).",
+      "type" : "string"
+    },
+    "preview" : {
+      "default" : 0,
+      "description" : "Plain-text preview length in chars (default: 0 = metadata-only, sub-second). Values > 0 force per-message body fetches (~30-40s).",
+      "type" : "integer"
+    },
+    "since" : {
+      "description" : "Only include messages on or after this date: YYYY-MM-DD or ISO 8601.",
+      "type" : "string"
+    }
+  },
+  "title" : "mail_activity: arguments",
+  "type" : "object"
+}

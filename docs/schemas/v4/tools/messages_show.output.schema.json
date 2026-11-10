@@ -1,0 +1,130 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "conversation" : {
+      "properties" : {
+        "display_name" : {
+          "type" : "string"
+        },
+        "id" : {
+          "type" : "string"
+        },
+        "is_group" : {
+          "type" : "boolean"
+        },
+        "last_message_at" : {
+          "type" : "string"
+        },
+        "last_message_preview" : {
+          "type" : "string"
+        },
+        "participants" : {
+          "items" : {
+            "properties" : {
+              "display_name" : {
+                "type" : "string"
+              },
+              "handle" : {
+                "type" : "string"
+              },
+              "service" : {
+                "type" : "string"
+              }
+            },
+            "required" : [
+              "handle",
+              "service"
+            ],
+            "type" : "object"
+          },
+          "type" : "array"
+        },
+        "service" : {
+          "type" : "string"
+        },
+        "unread_count" : {
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "id",
+        "is_group",
+        "participants",
+        "service",
+        "unread_count"
+      ],
+      "type" : "object"
+    },
+    "messages" : {
+      "items" : {
+        "properties" : {
+          "attachments" : {
+            "items" : {
+              "properties" : {
+                "filename" : {
+                  "type" : "string"
+                },
+                "mime_type" : {
+                  "type" : "string"
+                }
+              },
+              "required" : [
+                "filename",
+                "mime_type"
+              ],
+              "type" : "object"
+            },
+            "type" : "array"
+          },
+          "conversation_id" : {
+            "type" : "string"
+          },
+          "date" : {
+            "type" : "string"
+          },
+          "from_display_name" : {
+            "type" : "string"
+          },
+          "from_handle" : {
+            "type" : "string"
+          },
+          "id" : {
+            "type" : "string"
+          },
+          "is_from_me" : {
+            "type" : "boolean"
+          },
+          "is_read" : {
+            "type" : "boolean"
+          },
+          "service" : {
+            "type" : "string"
+          },
+          "text" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "conversation_id",
+          "date",
+          "id",
+          "is_from_me",
+          "is_read",
+          "service"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    },
+    "truncated" : {
+      "type" : "boolean"
+    }
+  },
+  "required" : [
+    "conversation",
+    "messages",
+    "truncated"
+  ],
+  "title" : "messages_show: data",
+  "type" : "object"
+}

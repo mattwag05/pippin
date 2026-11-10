@@ -1,0 +1,42 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Search contacts by name (default), email, or phone.",
+  "properties" : {
+    "cursor" : {
+      "description" : "Opaque next_cursor from a previous response.",
+      "type" : "string"
+    },
+    "email" : {
+      "default" : false,
+      "description" : "Treat the query as an email address.",
+      "type" : "boolean"
+    },
+    "fields" : {
+      "description" : "Comma-separated fields to include (e.g. id,fullName,emails).",
+      "type" : "string"
+    },
+    "page" : {
+      "description" : "1-based page number. Ignored when cursor is set.",
+      "type" : "integer"
+    },
+    "pageSize" : {
+      "description" : "Rows per page when paginating.",
+      "type" : "integer"
+    },
+    "phone" : {
+      "default" : false,
+      "description" : "Treat the query as a phone number (digits-only match, last-10 fallback).",
+      "type" : "boolean"
+    },
+    "query" : {
+      "description" : "Search query (a name, an email, or a phone number).",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "query"
+  ],
+  "title" : "contacts_search: arguments",
+  "type" : "object"
+}

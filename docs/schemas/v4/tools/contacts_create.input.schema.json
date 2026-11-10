@@ -1,0 +1,33 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Create a new contact. Every field is optional, but supply at least a name or an email so the card is identifiable.",
+  "properties" : {
+    "email" : {
+      "description" : "Email address.",
+      "type" : "string"
+    },
+    "first" : {
+      "description" : "First name.",
+      "type" : "string"
+    },
+    "jobTitle" : {
+      "description" : "Job title.",
+      "type" : "string"
+    },
+    "last" : {
+      "description" : "Last name.",
+      "type" : "string"
+    },
+    "organization" : {
+      "description" : "Organization.",
+      "type" : "string"
+    },
+    "phone" : {
+      "description" : "Phone number.",
+      "type" : "string"
+    }
+  },
+  "title" : "contacts_create: arguments",
+  "type" : "object"
+}

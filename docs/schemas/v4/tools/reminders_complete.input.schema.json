@@ -1,0 +1,16 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Mark a reminder as completed.",
+  "properties" : {
+    "id" : {
+      "description" : "Reminder ID or prefix.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id"
+  ],
+  "title" : "reminders_complete: arguments",
+  "type" : "object"
+}

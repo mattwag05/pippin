@@ -1,0 +1,40 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Edit an existing contact. Only the fields you pass are changed.",
+  "properties" : {
+    "email" : {
+      "description" : "New email address.",
+      "type" : "string"
+    },
+    "first" : {
+      "description" : "New first name.",
+      "type" : "string"
+    },
+    "identifier" : {
+      "description" : "Contact identifier from contacts_search / contacts_show.",
+      "type" : "string"
+    },
+    "jobTitle" : {
+      "description" : "New job title.",
+      "type" : "string"
+    },
+    "last" : {
+      "description" : "New last name.",
+      "type" : "string"
+    },
+    "organization" : {
+      "description" : "New organization.",
+      "type" : "string"
+    },
+    "phone" : {
+      "description" : "New phone number.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "identifier"
+  ],
+  "title" : "contacts_edit: arguments",
+  "type" : "object"
+}

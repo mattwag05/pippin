@@ -1,0 +1,44 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "createdAt" : {
+      "type" : "string"
+    },
+    "durationSeconds" : {
+      "type" : "number"
+    },
+    "filePath" : {
+      "type" : "string"
+    },
+    "hasTranscript" : {
+      "type" : "boolean"
+    },
+    "id" : {
+      "type" : "string"
+    },
+    "isEvicted" : {
+      "type" : "boolean"
+    },
+    "title" : {
+      "type" : "string"
+    },
+    "transcription" : {
+      "type" : [
+        "null",
+        "string"
+      ]
+    }
+  },
+  "required" : [
+    "createdAt",
+    "durationSeconds",
+    "filePath",
+    "hasTranscript",
+    "id",
+    "isEvicted",
+    "title",
+    "transcription"
+  ],
+  "title" : "memos_info: data",
+  "type" : "object"
+}

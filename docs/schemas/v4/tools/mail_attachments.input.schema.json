@@ -1,0 +1,24 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List and download attachments for a message. When saveDir is omitted, attachments are written to pippin's cache directory (~/Library/Caches/pippin/attachments/<msg>/) and the paths are returned in `savedPath`; the agent can then read the files with its file tools.",
+  "properties" : {
+    "expectMessageId" : {
+      "description" : "Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch.",
+      "type" : "string"
+    },
+    "messageId" : {
+      "description" : "Compound message ID from mail_list or mail_show output.",
+      "type" : "string"
+    },
+    "saveDir" : {
+      "description" : "Optional directory to save attachments into. If omitted, a pippin cache directory is used.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "messageId"
+  ],
+  "title" : "mail_attachments: arguments",
+  "type" : "object"
+}

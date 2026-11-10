@@ -1,0 +1,75 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Search messages by subject or sender. Use `from` for sender-only searches without body scanning. `body: true` performs the slower content scan; body-matched hits return a bodyPreview snippet.",
+  "properties" : {
+    "account" : {
+      "description" : "Restrict to a single account.",
+      "type" : "string"
+    },
+    "after" : {
+      "description" : "Only messages on/after YYYY-MM-DD.",
+      "type" : "string"
+    },
+    "before" : {
+      "description" : "Only messages on/before YYYY-MM-DD.",
+      "type" : "string"
+    },
+    "body" : {
+      "default" : false,
+      "description" : "Search message body too (slower). Hits matched via the body include a bodyPreview snippet.",
+      "type" : "boolean"
+    },
+    "cursor" : {
+      "description" : "Opaque next_cursor from a previous response.",
+      "type" : "string"
+    },
+    "fields" : {
+      "description" : "Comma-separated JSON field names to include (e.g. id,subject,from). Trims the payload to fewer tokens.",
+      "type" : "string"
+    },
+    "from" : {
+      "description" : "Filter by sender email/name substring.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 10,
+      "description" : "Maximum results (default: 10; capped at 500).",
+      "type" : "integer"
+    },
+    "mailbox" : {
+      "description" : "Restrict to a single mailbox.",
+      "type" : "string"
+    },
+    "page" : {
+      "description" : "1-based page number. Ignored when cursor is set.",
+      "type" : "integer"
+    },
+    "pageSize" : {
+      "description" : "Rows per page when paginating.",
+      "type" : "integer"
+    },
+    "preview" : {
+      "description" : "Include a plain-text bodyPreview of up to N chars on every hit. Uncached hits cost one batched body fetch (slower).",
+      "type" : "integer"
+    },
+    "query" : {
+      "description" : "Search query (case-insensitive).",
+      "type" : "string"
+    },
+    "semantic" : {
+      "default" : false,
+      "description" : "Use embedding-based semantic search (requires prior `mail index`).",
+      "type" : "boolean"
+    },
+    "to" : {
+      "description" : "Filter by recipient email.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "query"
+  ],
+  "title" : "mail_search: arguments",
+  "type" : "object"
+}

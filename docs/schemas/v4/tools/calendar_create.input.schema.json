@@ -1,0 +1,50 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Create a new calendar event.",
+  "properties" : {
+    "alert" : {
+      "description" : "Alert before event (e.g. '15m', '1h', '2d').",
+      "type" : "string"
+    },
+    "allDay" : {
+      "default" : false,
+      "description" : "Create as all-day event.",
+      "type" : "boolean"
+    },
+    "calendar" : {
+      "description" : "Calendar ID to create in.",
+      "type" : "string"
+    },
+    "end" : {
+      "description" : "End date/time (default: start + 1 hour).",
+      "type" : "string"
+    },
+    "location" : {
+      "description" : "Event location.",
+      "type" : "string"
+    },
+    "notes" : {
+      "description" : "Event notes.",
+      "type" : "string"
+    },
+    "start" : {
+      "description" : "Start date/time (YYYY-MM-DD or ISO 8601).",
+      "type" : "string"
+    },
+    "title" : {
+      "description" : "Event title.",
+      "type" : "string"
+    },
+    "url" : {
+      "description" : "Event URL.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "title",
+    "start"
+  ],
+  "title" : "calendar_create: arguments",
+  "type" : "object"
+}

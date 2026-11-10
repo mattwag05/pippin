@@ -1,0 +1,21 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Show messages in a conversation thread by GUID. Read-only.",
+  "properties" : {
+    "conversationId" : {
+      "description" : "Conversation GUID from messages_list.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Maximum messages (default: 50).",
+      "type" : "integer"
+    }
+  },
+  "required" : [
+    "conversationId"
+  ],
+  "title" : "messages_show: arguments",
+  "type" : "object"
+}

@@ -1,0 +1,16 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Show full details of a note by ID (returns plainText, not HTML).",
+  "properties" : {
+    "id" : {
+      "description" : "Note ID from notes_list.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id"
+  ],
+  "title" : "notes_show: arguments",
+  "type" : "object"
+}

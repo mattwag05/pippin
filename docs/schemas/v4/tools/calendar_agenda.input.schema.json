@@ -1,0 +1,22 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "AI-generated briefing of upcoming events. Read-only.",
+  "properties" : {
+    "days" : {
+      "default" : 1,
+      "description" : "Days to cover, 1-7 (default: 1).",
+      "type" : "integer"
+    },
+    "model" : {
+      "description" : "Model name.",
+      "type" : "string"
+    },
+    "provider" : {
+      "description" : "AI provider: ollama, claude, or openai.",
+      "type" : "string"
+    }
+  },
+  "title" : "calendar_agenda: arguments",
+  "type" : "object"
+}

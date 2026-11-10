@@ -553,7 +553,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_mark",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Mark a message as read or unread. Reversible — call again with the opposite `read` value.",
+            description: "Mark a message as read or unread. Reversible: call again with the opposite `read` value.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
@@ -579,7 +579,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_move",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Move a message to another mailbox in the same account — this is how you archive, trash, or file a message (pass the destination mailbox name from mail_mailboxes, e.g. Archive, Trash, Junk). Reversible by moving it back.",
+            description: "Move a message to another mailbox in the same account: this is how you archive, trash, or file a message (pass the destination mailbox name from mail_mailboxes, e.g. Archive, Trash, Junk). Reversible by moving it back.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
@@ -601,7 +601,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_send",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Send an email. Returns a preview and sends NOTHING unless confirm=true — review the preview, then call again with confirm=true to deliver.",
+            description: "Send an email. Returns a preview and sends NOTHING unless confirm=true: review the preview, then call again with confirm=true to deliver.",
             inputSchema: Schema.object(
                 properties: [
                     "to": Schema.stringArray("Recipient email addresses."),
@@ -634,7 +634,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_reply",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Reply to a message. Returns a preview and sends NOTHING unless confirm=true — review the preview, then call again with confirm=true to deliver.",
+            description: "Reply to a message. Returns a preview and sends NOTHING unless confirm=true: review the preview, then call again with confirm=true to deliver.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
@@ -666,7 +666,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_forward",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Forward a message. Returns a preview and sends NOTHING unless confirm=true — review the preview, then call again with confirm=true to deliver.",
+            description: "Forward a message. Returns a preview and sends NOTHING unless confirm=true: review the preview, then call again with confirm=true to deliver.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
@@ -729,7 +729,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_apply_rules",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true — review the plan first. Messages newer than minAgeDays are never touched.",
+            description: "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true: review the plan first. Messages newer than minAgeDays are never touched.",
             inputSchema: Schema.object(
                 properties: [
                     "account": Schema.string("Filter by account name."),
@@ -983,7 +983,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "calendar_delete",
             effect: .mutating(verifyWith: "calendar_upcoming"),
-            description: "Delete a calendar event. IRREVERSIBLE — fails unless confirm=true.",
+            description: "Delete a calendar event. IRREVERSIBLE: fails unless confirm=true.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Event ID from calendar_events / calendar_search."),
@@ -1219,7 +1219,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "reminders_delete",
             effect: .mutating(verifyWith: "reminders_list"),
-            description: "Delete a reminder. IRREVERSIBLE — fails unless confirm=true. To just tick one off, use reminders_complete instead.",
+            description: "Delete a reminder. IRREVERSIBLE: fails unless confirm=true. To just tick one off, use reminders_complete instead.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Reminder ID from reminders_list / reminders_search."),
@@ -1379,7 +1379,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "contacts_delete",
             effect: .mutating(verifyWith: "contacts_list"),
-            description: "Delete a contact. IRREVERSIBLE — fails unless confirm=true.",
+            description: "Delete a contact. IRREVERSIBLE: fails unless confirm=true.",
             inputSchema: Schema.object(
                 properties: [
                     "identifier": Schema.string("Contact identifier from contacts_search / contacts_show."),
@@ -1579,7 +1579,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "messages_send",
             effect: .mutating(verifyWith: "messages_list"),
-            description: "Draft a message (DRAFT ONLY — MCP clients cannot trigger autonomous delivery).",
+            description: "Draft a message (DRAFT ONLY: MCP clients cannot trigger autonomous delivery).",
             inputSchema: Schema.object(
                 properties: [
                     "to": Schema.string("Recipient handle or chat GUID."),
@@ -1601,7 +1601,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "messages_exclude_list",
             effect: .readOnly,
-            description: "Show the thread exclude list — conversations hidden from every messages_* read. Read-only.",
+            description: "Show the thread exclude list: conversations hidden from every messages_* read. Read-only.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("messages", "exclude", "list") }
         ),
@@ -1811,7 +1811,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "actions_extract",
             effect: .mutating(verifyWith: "reminders_list"),
-            description: "Scan recent Sent mail and recently-modified Notes for commitments you made (\"I'll send you…\", \"I'll follow up…\") and emit draft reminders with a confidence score. Read-only by default; set create=true to also create the reminders in a list. Slow (per-batch AI calls): under MCP the AI pass is bounded to ~50s and returns partial results with a timedOut warning — lower limit/days or run via job_run for an exhaustive scan.",
+            description: "Scan recent Sent mail and recently-modified Notes for commitments you made (\"I'll send you…\", \"I'll follow up…\") and emit draft reminders with a confidence score. Read-only by default; set create=true to also create the reminders in a list. Slow (per-batch AI calls): under MCP the AI pass is bounded to ~50s and returns partial results with a timedOut warning: lower limit/days or run via job_run for an exhaustive scan.",
             inputSchema: Schema.object(properties: [
                 "days": Schema.integer("Days back to scan (1-90, default 7).", default: 7),
                 "mail": Schema.boolean("Include Sent mail as a source.", default: true),
@@ -1864,7 +1864,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "job_run",
             effect: .mutating(verifyWith: "job_list"),
-            description: "Fork a detached pippin sub-command as a background job. Returns {job_id, pid, status: \"running\"} immediately; poll via job_show or block via job_wait. Use this for slow work (memos summarize, actions extract) so the caller isn't blocked. The argv must be a command that has an MCP tool of its own; batch and job run cannot be nested.",
+            description: "Fork a detached pippin sub-command as a background job. Returns {id, pid, status: \"running\"} immediately; poll via job_show or block via job_wait. Use this for slow work (memos summarize, actions extract) so the caller isn't blocked. The argv must be a command that has an MCP tool of its own; batch and job run cannot be nested.",
             inputSchema: Schema.object(
                 properties: [
                     "argv": .object([
@@ -1916,7 +1916,11 @@ enum MCPToolRegistry {
             description: "List recent background jobs. Filter by status to find only running/failed jobs.",
             inputSchema: Schema.object(properties: [
                 "limit": Schema.integer("Maximum jobs to return (default: 20).", default: 20),
-                "status": Schema.string("Filter: running, done, error, killed."),
+                "status": .object([
+                    "type": .string("string"),
+                    "description": .string("Filter: running, done, error, killed."),
+                    "enum": .array(["running", "done", "error", "killed"].map { .string($0) }),
+                ]),
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("job", "list")
@@ -1955,7 +1959,7 @@ enum MCPToolRegistry {
                 properties: [
                     "entries": .object([
                         "type": .string("array"),
-                        "description": .string("Array of {cmd, args} entries — each runs as `pippin <cmd> [args...] --format agent`."),
+                        "description": .string("Array of {cmd, args} entries: each runs as `pippin <cmd> [args...] --format agent`."),
                         "items": Schema.object(
                             properties: [
                                 "cmd": Schema.string("Top-level pippin subcommand (e.g. mail, calendar, reminders)."),

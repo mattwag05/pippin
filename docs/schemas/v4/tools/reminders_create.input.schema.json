@@ -1,0 +1,36 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Create a new reminder.",
+  "properties" : {
+    "due" : {
+      "description" : "Due date/time (YYYY-MM-DD or ISO 8601).",
+      "type" : "string"
+    },
+    "list" : {
+      "description" : "Target list ID (default: default list).",
+      "type" : "string"
+    },
+    "notes" : {
+      "description" : "Reminder notes.",
+      "type" : "string"
+    },
+    "priority" : {
+      "description" : "Priority: high, medium, low, none.",
+      "type" : "string"
+    },
+    "title" : {
+      "description" : "Reminder title.",
+      "type" : "string"
+    },
+    "url" : {
+      "description" : "Reminder URL.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "title"
+  ],
+  "title" : "reminders_create: arguments",
+  "type" : "object"
+}

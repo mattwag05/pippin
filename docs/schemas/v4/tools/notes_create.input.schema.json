@@ -1,0 +1,29 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Create a new Apple Note.",
+  "properties" : {
+    "body" : {
+      "description" : "Note body. Plain text; newlines become formatted HTML unless html=true.",
+      "type" : "string"
+    },
+    "folder" : {
+      "description" : "Folder name to create the note in.",
+      "type" : "string"
+    },
+    "html" : {
+      "default" : false,
+      "description" : "Treat body as raw HTML (skip plain-text-to-HTML conversion).",
+      "type" : "boolean"
+    },
+    "title" : {
+      "description" : "Note title.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "title"
+  ],
+  "title" : "notes_create: arguments",
+  "type" : "object"
+}

@@ -1,0 +1,40 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "action" : {
+      "type" : "string"
+    },
+    "details" : {
+      "properties" : {
+
+      },
+      "type" : "object"
+    },
+    "dryRun" : {
+      "type" : "boolean"
+    },
+    "newBodyLength" : {
+      "type" : "integer"
+    },
+    "previousBodyLength" : {
+      "type" : "integer"
+    },
+    "success" : {
+      "type" : "boolean"
+    },
+    "title" : {
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "action",
+    "details",
+    "dryRun",
+    "newBodyLength",
+    "previousBodyLength",
+    "success",
+    "title"
+  ],
+  "title" : "notes_edit: data",
+  "type" : "object"
+}

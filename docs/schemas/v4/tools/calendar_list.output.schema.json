@@ -1,0 +1,32 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "account" : {
+        "type" : "string"
+      },
+      "color" : {
+        "type" : "string"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "title" : {
+        "type" : "string"
+      },
+      "type" : {
+        "type" : "string"
+      }
+    },
+    "required" : [
+      "account",
+      "color",
+      "id",
+      "title",
+      "type"
+    ],
+    "type" : "object"
+  },
+  "title" : "calendar_list: data",
+  "type" : "array"
+}

@@ -1,0 +1,59 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Send an email. Returns a preview and sends NOTHING unless confirm=true: review the preview, then call again with confirm=true to deliver.",
+  "properties" : {
+    "attach" : {
+      "description" : "Absolute paths of files to attach.",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "bcc" : {
+      "description" : "BCC recipients.",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "body" : {
+      "description" : "Message body text.",
+      "type" : "string"
+    },
+    "cc" : {
+      "description" : "CC recipients.",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "confirm" : {
+      "default" : false,
+      "description" : "Must be true to actually send. Omitted or false returns a dry-run preview.",
+      "type" : "boolean"
+    },
+    "from" : {
+      "description" : "Sending account name (from mail_accounts). Defaults to the primary account.",
+      "type" : "string"
+    },
+    "subject" : {
+      "description" : "Message subject.",
+      "type" : "string"
+    },
+    "to" : {
+      "description" : "Recipient email addresses.",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    }
+  },
+  "required" : [
+    "to",
+    "subject",
+    "body"
+  ],
+  "title" : "mail_send: arguments",
+  "type" : "object"
+}
