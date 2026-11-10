@@ -217,7 +217,13 @@ extension MailBridge {
     static func buildAccountsScript() -> String {
         return """
         var mail = Application('Mail');
-        \(jsMailReadyPoll(maxAttempts: 8))
+        // A running Mail answers the first read, so the readiness poll (one more
+        // event per attempt) runs only when it comes back empty (pippin-k177).
+        var _early = [];
+        try { _early = mail.accounts.name(); } catch(e) { _early = []; }
+        if (_early.length === 0) {
+            \(jsMailReadyPoll(maxAttempts: 8))
+        }
         // One Apple Event per property for every account, instead of three
         // per account (measured with 6 accounts: 125 ms against 357 ms).
         // The three lists line up by position only if they are the same
@@ -225,7 +231,7 @@ extension MailBridge {
         // per-account loop.
         var results = null;
         try {
-            var names = mail.accounts.name();
+            var names = _early.length > 0 ? _early : mail.accounts.name();
             var emailLists = mail.accounts.emailAddresses();
             var ids = mail.accounts.id();
             if (names.length === emailLists.length && names.length === ids.length) {
@@ -259,6 +265,11 @@ extension MailBridge {
         }
         JSON.stringify(results);
         """
+    }
+
+    /// Names only: one Apple Event. `listAccounts` compares it with the account cache.
+    static func buildAccountNamesScript() -> String {
+        "JSON.stringify(Application('Mail').accounts.name());"
     }
 
     // MARK: - Mailboxes Script

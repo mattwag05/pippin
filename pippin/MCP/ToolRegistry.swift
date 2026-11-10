@@ -264,11 +264,11 @@ enum MCPToolRegistry {
     private static let specs: [MCPToolSpec] = [
         // MARK: Mail
 
-        MCPToolSpec("mail_accounts", .readOnly, "List configured Apple Mail accounts."),
-        MCPToolSpec("mail_mailboxes", .readOnly, "List mailboxes, optionally filtered to one account.", properties: [
+        MCPToolSpec("mail_accounts", .readOnly, "List configured Apple Mail accounts.", inProcess: MCPInProcessTools.executeMailRead),
+        MCPToolSpec("mail_mailboxes", .readOnly, "List mailboxes, optionally filtered to one account.", inProcess: MCPInProcessTools.executeMailRead, properties: [
             .arg("account", "--account", "Mail account name."),
         ]),
-        MCPToolSpec("mail_list", .readOnly, "List messages in a mailbox. Defaults to INBOX, limit 20. Set preview to ~200 for agent scan workflows to avoid N+1 mail_show calls.", properties: [
+        MCPToolSpec("mail_list", .readOnly, "List messages in a mailbox. Defaults to INBOX, limit 20. Set preview to ~200 for agent scan workflows to avoid N+1 mail_show calls.", inProcess: MCPInProcessTools.executeMailRead, properties: [
             .arg("account", "--account", "Mail account name."),
             .arg("mailbox", "--mailbox"),
             .arg("unread", "--unread", "Only return unread messages."),
@@ -318,7 +318,7 @@ enum MCPToolRegistry {
             }),
             .expectMessageId,
         ]),
-        MCPToolSpec("mail_search", .readOnly, "Search messages by subject or sender. Use `from` for sender-only searches without body scanning. `body: true` performs the slower content scan; body-matched hits return a bodyPreview snippet.", properties: [
+        MCPToolSpec("mail_search", .readOnly, "Search messages by subject or sender. Use `from` for sender-only searches without body scanning. `body: true` performs the slower content scan; body-matched hits return a bodyPreview snippet.", inProcess: MCPInProcessTools.executeMailRead, properties: [
             .arg("query", .trailing, "Search query (case-insensitive)."),
             .arg("account", "--account", "Restrict to a single account."),
             .arg("mailbox", "--mailbox", "Restrict to a single mailbox."),

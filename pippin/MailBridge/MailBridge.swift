@@ -750,10 +750,27 @@ enum MailBridge {
         return try decode(BridgeActionResult.self, from: json)
     }
 
-    static func listAccounts() throws -> [MailAccount] {
-        let script = buildAccountsScript()
-        let json = try runScript(script, idempotent: true)
-        return try decode([MailAccount].self, from: json)
+    /// Asks Mail for the account names (one Apple Event, about 15 ms per extra event) and takes
+    /// email and id from the account cache when the names match it and the cache is under an hour
+    /// old. Otherwise the full script runs and refreshes the cache (pippin-k177).
+    static func listAccounts(cachePath: String = MailAccountsCache.defaultPath()) throws -> [MailAccount] {
+        let (cached, fetchedAt) = MailAccountsCache.load(path: cachePath)
+        if !cached.isEmpty, !MailAccountsCache.isStale(fetchedAt: fetchedAt) {
+            let names = try decode([String].self, from: runScript(buildAccountNamesScript(), idempotent: true))
+            if let hit = cachedAccounts(names: names, cached: cached) { return hit }
+        }
+        let rows = try decode([AccountScriptRow].self, from: runScript(buildAccountsScript(), idempotent: true))
+        let records = rows.compactMap { row in
+            row.id.flatMap { $0.isEmpty ? nil : MailAccountRecord(name: row.name, email: row.email, uuid: $0) }
+        }
+        if records.count == rows.count { MailAccountsCache.save(records, fetchedAt: Date(), path: cachePath) }
+        return rows.map { MailAccount(name: $0.name, email: $0.email) }
+    }
+
+    /// The cached accounts, in Mail's order, when Mail reports exactly the cached names.
+    static func cachedAccounts(names: [String], cached: [MailAccountRecord]) -> [MailAccount]? {
+        guard !names.isEmpty, names == cached.map(\.name) else { return nil }
+        return cached.map { MailAccount(name: $0.name, email: $0.email) }
     }
 
     /// Per-mailbox message/unread counts. Envelope Index fast path first

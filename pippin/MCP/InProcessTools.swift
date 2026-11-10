@@ -17,7 +17,7 @@ enum MCPInProcessTools {
     private struct InProcessRoot: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "pippin",
-            subcommands: [CalendarCommand.self, RemindersCommand.self, ContactsCommand.self, MessagesCommand.self, NotesCommand.self]
+            subcommands: [CalendarCommand.self, RemindersCommand.self, ContactsCommand.self, MessagesCommand.self, NotesCommand.self, MailCommand.self]
         )
     }
 
@@ -25,6 +25,20 @@ enum MCPInProcessTools {
     /// caps; Contacts name and id fetches have no cap of their own, so this is
     /// what bounds a stalled contactsd.
     static let deadlineSeconds = 25
+
+    /// Thrown by an in-process handler for a call it should not take; the
+    /// dispatcher runs the child instead.
+    struct UseChildPath: Error {}
+
+    /// Mail reads answer from Mail's on-disk index in milliseconds, and the
+    /// accounts list is one short script (pippin-k177). Calls that fetch or
+    /// scan bodies, or ask an embedding provider, can run for many seconds,
+    /// so they keep the child path and its hard kill.
+    static func executeMailRead(_ argv: [String]) async throws -> String {
+        let slow = argv.contains { $0 == "--body" || $0 == "--semantic" || ($0.hasPrefix("--preview=") && $0 != "--preview=0") }
+        if slow { throw UseChildPath() }
+        return try await execute(argv)
+    }
 
     /// The command `argv` names, if it is one that runs in-process.
     static func parse(_ argv: [String]) throws -> any AgentCommand {
