@@ -212,6 +212,29 @@ final class NextStepTests: XCTestCase {
         XCTAssertEqual(step["retryable"] as? Bool, false)
     }
 
+    /// A misspelled or mistyped safety key must stop the call, not be dropped
+    /// (the write would otherwise run for real). `/usr/bin/false` stands in
+    /// for pippin so a call that slipped through would fail differently.
+    func testToolsCallRejectsUnknownAndMistypedArguments() async throws {
+        let cases = [
+            (#"{"messageId":"a||b||1","read":true,"dry_run":true}"#, "unexpected_argument"),
+            (#"{"messageId":"a||b||1","read":true,"dryRun":"true"}"#, "wrong_type"),
+        ]
+        for (arguments, expectedCode) in cases {
+            let json = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"mail_mark","arguments":"# + arguments + "}}"
+            let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(json.utf8))
+            let response = await MCPDispatcher.handle(request, pippinPath: "/usr/bin/false")
+            let encoded = try JSONEncoder().encode(XCTUnwrap(response))
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+            let result = try XCTUnwrap(root["result"] as? [String: Any])
+            XCTAssertEqual(result["isError"] as? Bool, true)
+            let text = try XCTUnwrap((result["content"] as? [[String: Any]])?.first?["text"] as? String)
+            let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+            let error = try XCTUnwrap(envelope["error"] as? [String: Any])
+            XCTAssertEqual(error["code"] as? String, expectedCode, arguments)
+        }
+    }
+
     func testTimeoutEncodesRetryableWithDelay() throws {
         let payload = try encodedError(MailBridgeError.timeout)
         let step = try XCTUnwrap(payload["next_step"] as? [String: Any])

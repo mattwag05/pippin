@@ -97,7 +97,7 @@ final class InProcessToolsTests: XCTestCase {
         XCTAssertTrue(isError)
         let error = try XCTUnwrap(decodeObject(text)["error"] as? [String: Any])
         XCTAssertEqual(error["code"] as? String, "missing_required")
-        XCTAssertEqual(error["message"] as? String, "Missing required argument: id")
+        XCTAssertEqual(error["message"] as? String, "Missing required argument: 'id'.")
     }
 
     // MARK: - Live-store envelope parity (ok or access_denied, both envelope v1)

@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [bug] MCP tool calls now reject unknown or wrongly typed arguments (`unexpected_argument`, `wrong_type`) before anything runs. A misspelled `dry_run`, or `dryRun` passed as a string, used to be dropped and the real write ran.
+
 ---
 
 ## [0.41.1] - 2026-11-08

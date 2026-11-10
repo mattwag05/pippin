@@ -304,6 +304,10 @@ enum MCPDispatcher {
         let toolStartedAt = Date()
         let argv: [String]
         do {
+            // buildArgs reads only the keys it knows, so without this an
+            // unknown or mistyped safety key (`dry_run`, `dryRun: "true"`)
+            // is dropped and the real write runs.
+            try SchemaValidator.validate(args: toolArguments, against: tool.inputSchema)
             argv = try tool.buildArgs(toolArguments)
         } catch {
             return errorResult(id: id, error, startedAt: toolStartedAt)
