@@ -1,0 +1,283 @@
+{
+  "tool": "apple-events",
+  "version": "1.6.2",
+  "kind": "mcp",
+  "apps": [
+    "reminders",
+    "calendar"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 77.77,
+    "tool_count": 5,
+    "manifest_chars": 12399,
+    "manifest_tokens": 3694,
+    "tools_with_description": 5,
+    "tools_with_annotations": 0
+  },
+  "speed": {
+    "reminders.lists": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 126.76,
+        "p50_ms": 146.66,
+        "p95_ms": 173.16,
+        "max_ms": 173.16
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 30.5,
+        "p50_ms": 38.37,
+        "p95_ms": 48.63,
+        "max_ms": 54.94
+      }
+    },
+    "reminders.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 131.61,
+        "p50_ms": 154.73,
+        "p95_ms": 194.55,
+        "max_ms": 194.55
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 35.39,
+        "p50_ms": 37.86,
+        "p95_ms": 57.39,
+        "max_ms": 59.02
+      }
+    },
+    "reminders.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 129.51,
+        "p50_ms": 132.44,
+        "p95_ms": 135.86,
+        "max_ms": 135.86
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 36.07,
+        "p50_ms": 39.53,
+        "p95_ms": 51.04,
+        "max_ms": 51.68
+      }
+    },
+    "calendar.calendars": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 120.17,
+        "p50_ms": 128.92,
+        "p95_ms": 146.55,
+        "max_ms": 146.55
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 28.91,
+        "p50_ms": 31.97,
+        "p95_ms": 51.7,
+        "max_ms": 58.35
+      }
+    },
+    "calendar.events": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 142.43,
+        "p50_ms": 150.92,
+        "p95_ms": 165.06,
+        "max_ms": 165.06
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 51.74,
+        "p50_ms": 64.93,
+        "p95_ms": 68.27,
+        "max_ms": 93.57
+      }
+    },
+    "calendar.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 153.56,
+        "p50_ms": 163.12,
+        "p95_ms": 181.41,
+        "max_ms": 181.41
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 57.81,
+        "p50_ms": 85.32,
+        "p95_ms": 142.37,
+        "max_ms": 185.97
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "reminders.lists": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "reminders.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "reminders.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "calendar.calendars": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "calendar.events": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "calendar.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      }
+    },
+    "bad_input": {
+      "calendar.events": {
+        "outcome": "error",
+        "ms": 109.71,
+        "error_is_structured": false,
+        "detail": "Input validation failed: startDate: Date must be in format 'YYYY-MM-DD', 'YYYY-MM-DD HH:mm:ss', or ISO 8601 (e.g., '2025-10-30T04:00:00Z'); startDate: Date must be a real, parseable date/time; endDate"
+      },
+      "reminders.list": {
+        "outcome": "error",
+        "ms": 229.67,
+        "error_is_structured": false,
+        "detail": "Not found: List 'PB-NO-SUCH-LIST' not found"
+      }
+    }
+  },
+  "coverage": {
+    "reminders.lists": "yes",
+    "reminders.list": "yes",
+    "reminders.search": "yes",
+    "reminders.create": "claimed",
+    "reminders.edit": "claimed",
+    "reminders.complete": "claimed",
+    "reminders.delete": "claimed",
+    "calendar.calendars": "yes",
+    "calendar.events": "yes",
+    "calendar.search": "yes",
+    "calendar.create": "claimed",
+    "calendar.edit": "claimed",
+    "calendar.delete": "claimed",
+    "contacts.list": "no",
+    "contacts.search": "no",
+    "contacts.show": "no",
+    "contacts.create": "no",
+    "contacts.edit": "no",
+    "contacts.delete": "no",
+    "contacts.groups": "no",
+    "notes.folders": "no",
+    "notes.list": "no",
+    "notes.search": "no",
+    "notes.show": "no",
+    "notes.create": "no",
+    "notes.edit": "no",
+    "notes.delete": "no",
+    "messages.chats": "no",
+    "messages.history": "no",
+    "messages.search": "no",
+    "messages.send": "no",
+    "mail.accounts": "no",
+    "mail.mailboxes": "no",
+    "mail.list": "no",
+    "mail.search": "no",
+    "mail.show": "no",
+    "mail.send": "no",
+    "mail.move": "no",
+    "mail.mark": "no",
+    "mail.attachments": "no",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}

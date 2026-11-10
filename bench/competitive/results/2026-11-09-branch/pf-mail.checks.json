@@ -1,0 +1,9 @@
+{
+  "tool": "pf-mail",
+  "version": "3.3.0",
+  "correctness": {},
+  "safety": {
+    "not_run": "no search operation to carry a hostile query"
+  },
+  "writes": {}
+}
