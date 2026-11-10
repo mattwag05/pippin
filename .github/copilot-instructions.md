@@ -7,11 +7,11 @@ Pippin is a macOS CLI toolkit (single `arm64` binary) that bridges Apple's sandb
 **Language/Runtime:** Swift 6.0, macOS 15+, SPM (Swift Package Manager)
 **Key dependencies:** `swift-argument-parser` 1.7.0, `GRDB.swift` 7.10.0 (see `Package.resolved` for exact pins)
 
-> `CLAUDE.md` (repo root) and `README.md` are the authoritative, continuously-maintained references for the command surface and architecture. This file is a Copilot-specific summary — when in doubt, defer to those.
+> `CLAUDE.md` (repo root) and `README.md` are the authoritative, continuously-maintained references for the command surface and architecture. This file is a Copilot-specific summary, when in doubt, defer to those.
 
 ### Subcommands (top-level)
 
-`mail`, `memos`, `calendar`, `contacts`, `reminders`, `notes`, `messages`, `actions`, `digest`, `doctor`, `status`, `init`, `completions`, `shell`, `mcp-server`, `batch`, `job`, `do`. `audio` and `browser` are **experimental** and only registered when `PIPPIN_EXPERIMENTAL=1` is set. The MCP tool surface (`pippin mcp-server`) is generated from `pippin/MCP/ToolRegistry.swift` — currently 44 tools.
+`mail`, `memos`, `calendar`, `contacts`, `reminders`, `notes`, `messages`, `actions`, `digest`, `doctor`, `status`, `init`, `completions`, `shell`, `mcp-server`, `batch`, `job`, `do`. `audio` and `browser` are **experimental** and only registered when `PIPPIN_EXPERIMENTAL=1` is set. The MCP tool surface (`pippin mcp-server`) is generated from `pippin/MCP/ToolRegistry.swift`: currently 44 tools.
 
 ---
 
@@ -20,7 +20,7 @@ Pippin is a macOS CLI toolkit (single `arm64` binary) that bridges Apple's sandb
 ```
 Package.swift               # SPM manifest (swift-tools-version: 6.0)
 Makefile                    # build/test/lint/ci/install helpers
-pippin/                     # PippinLib target — all application logic
+pippin/                     # PippinLib target: all application logic
   Commands/                 # ArgumentParser subcommand structs (one file per command group)
   Formatting/               # AgentOutput (envelope v4), FieldProjection, TextFormatter (truncate/duration helpers), BridgeOutcome, Remediation
   MailBridge/               # osascript JXA runner + script builders (+ cross-account timeout scaling)
@@ -50,7 +50,7 @@ Tests/PippinTests/          # XCTest suite (1,700+ tests)
 
 ## Build, Test, and Lint
 
-> Validated for macOS with the Xcode/Swift toolchain installed. `make build`/`make test` route through `xcrun --sdk macosx`; on a CommandLineTools-only host, `swift test` fails with `no such module XCTest` — install Xcode or set `DEVELOPER_DIR`.
+> Validated for macOS with the Xcode/Swift toolchain installed. `make build`/`make test` route through `xcrun --sdk macosx`; on a CommandLineTools-only host, `swift test` fails with `no such module XCTest`: install Xcode or set `DEVELOPER_DIR`.
 
 ```bash
 make build        # swift build -c release
@@ -61,13 +61,13 @@ make ci-vm        # same gates in an isolated ephemeral macOS VM (Tart)
 make install      # release build + completions + install to ~/.local/bin/pippin
 ```
 
-**Always lint all three directories together** (`pippin/ pippin-entry/ Tests/`) — linting one dir can miss cross-dir issues and won't match the gate. Auto-fix with `swiftformat pippin/ pippin-entry/ Tests/` (no `--lint`) before pushing.
+**Always lint all three directories together** (`pippin/ pippin-entry/ Tests/`): linting one dir can miss cross-dir issues and won't match the gate. Auto-fix with `swiftformat pippin/ pippin-entry/ Tests/` (no `--lint`) before pushing.
 
 ---
 
 ## CI
 
-The GitHub `ci.yml` build/test workflow is **disabled** — CI runs **locally** via `make ci` (fast, native) or `make ci-vm` (full parity in a Tart VM). There is no push-time GitHub gate for build/test/format anymore, so `make ci` is mandatory before every push. The detach-blocking lint (`python3 scripts/lint-detach-blocking.py`) is part of `make ci` and a real gate — don't skip it.
+The GitHub `ci.yml` build/test workflow is **disabled**: CI runs **locally** via `make ci` (fast, native) or `make ci-vm` (full parity in a Tart VM). There is no push-time GitHub gate for build/test/format anymore, so `make ci` is mandatory before every push. The detach-blocking lint (`python3 scripts/lint-detach-blocking.py`) is part of `make ci` and a real gate: don't skip it.
 
 `codeql.yml`, `unicode-scan.yml`, and `release.yml` remain active on GitHub.
 
@@ -76,16 +76,16 @@ The GitHub `ci.yml` build/test workflow is **disabled** — CI runs **locally** 
 ## Architecture Notes
 
 ### Swift Concurrency (Swift 6 strict mode)
-- `.swiftLanguageMode(.v6)` is enforced across all targets — strict concurrency is on.
+- `.swiftLanguageMode(.v6)` is enforced across all targets: strict concurrency is on.
 - All model structs and error enums must conform to `Sendable`.
 - **`detachBlocking { ... }` is load-bearing:** any sync, thread-blocking work (subprocess waits, `DispatchSemaphore.wait`, `sendSynchronousRequest`) called from an async command MUST be hopped off the cooperative pool via `detachBlocking`, or `pippin mcp-server` wedges under fanout. `scripts/lint-detach-blocking.py` enforces this.
-- Mutable GCD output buffers use `nonisolated(unsafe) var` — safe because each is written once before `group.wait()`. Mutable `static var` in `XCTestCase` requires `nonisolated(unsafe)` under Swift 6.
+- Mutable GCD output buffers use `nonisolated(unsafe) var`: safe because each is written once before `group.wait()`. Mutable `static var` in `XCTestCase` requires `nonisolated(unsafe)` under Swift 6.
 
 ### mail (JXA via osascript)
 - All JXA calls go through `pippin/Scripting/ScriptRunner.swift`; uses `osascript -l JavaScript` (not AppleScript).
 - Message ID: `account||mailbox||messageId` (compound, round-trip safe).
 - `jsEscape()` escapes in order: `\`, `\0`, `"`, `'`, `` ` ``, `\n`, `\r`, `U+2028`, `U+2029`.
-- Use `mb.messages()` for unfiltered fetch — `mb.messages.whose({})()` is **invalid JXA**.
+- Use `mb.messages()` for unfiltered fetch: `mb.messages.whose({})()` is **invalid JXA**.
 - **Timeouts are not fixed constants.** Single-account caps scale up for cross-account scans, and under MCP (`PIPPIN_MCP=1`) all caps are clamped to 55s by `MailBridge.clampHardTimeout`. The 22s soft cap (`SoftTimeout.defaultMs`) fires first in normal operation. See `TIMEOUT_ANALYSIS.md` and `pippin/MailBridge/MailBridge.swift` for the current numbers.
 
 ### Agent output (envelope v4)
@@ -97,16 +97,16 @@ The GitHub `ci.yml` build/test workflow is **disabled** — CI runs **locally** 
 - Use `COUNT(*) WHERE col IS NOT NULL` instead of `fetchOne` on a nullable column to avoid `Optional<Optional<T>>` ambiguity.
 
 ### New optional fields on models
-Always add an explicit `public init(...)` with `= nil` defaults — Swift's synthesized memberwise init does NOT default `Optional` properties to `nil`. Use `encodeIfPresent` for new optional fields.
+Always add an explicit `public init(...)` with `= nil` defaults: Swift's synthesized memberwise init does NOT default `Optional` properties to `nil`. Use `encodeIfPresent` for new optional fields.
 
 ---
 
 ## Test Notes
 
-- `CLIIntegrationTests` resolves the built binary in `setUp()` — run `make build` (or `swift build`) before `swift test`.
+- `CLIIntegrationTests` resolves the built binary in `setUp()`: run `make build` (or `swift build`) before `swift test`.
 - Use `#filePath` (not `#file`) for the `XCTFail` file parameter under Swift 6.
-- Assert on `lastPathComponent` when checking export paths — UUID-based temp dir names can contain `-2`.
+- Assert on `lastPathComponent` when checking export paths: UUID-based temp dir names can contain `-2`.
 
 ## SourceKit / IDE
 
-SourceKit can't always resolve SPM dependencies or cross-file types — ignore red squiggles and run `make build` to verify correctness.
+SourceKit can't always resolve SPM dependencies or cross-file types: ignore red squiggles and run `make build` to verify correctness.

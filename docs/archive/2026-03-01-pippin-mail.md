@@ -1,4 +1,4 @@
-# Pippin Mail CLI — Implementation Plan
+# Pippin Mail CLI: Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -18,7 +18,7 @@ The `id` field in all output uses the compound format `account||mailbox||message
 
 We use JXA (`osascript -l JavaScript`) instead of AppleScript because:
 - JXA `Date.toISOString()` gives reliable ISO 8601 dates with no locale issues
-- JXA can `JSON.stringify()` results directly — no tab-delimited parsing in Swift
+- JXA can `JSON.stringify()` results directly: no tab-delimited parsing in Swift
 - Same TCC permissions as AppleScript
 
 ## JXA Performance Pattern
@@ -139,7 +139,7 @@ Then run `reminders show` and `contacts list` interactively once to trigger any 
 **Step 5: Commit**
 
 ```bash
-# Nothing to commit for tools — they install into brew/gem/pipx
+# Nothing to commit for tools: they install into brew/gem/pipx
 # Just note completion
 ```
 
@@ -191,7 +191,7 @@ Expected: Downloads ArgumentParser, creates `.build/` and `Package.resolved`.
 
 **Step 3: Update the xcodebuild hook to use swift build**
 
-Edit `.claude/hooks/xcodebuild-check.py` — replace the `xcodebuild` command with `swift build`:
+Edit `.claude/hooks/xcodebuild-check.py`: replace the `xcodebuild` command with `swift build`:
 
 Find:
 ```python
@@ -248,11 +248,11 @@ struct Pippin: AsyncParsableCommand {
 swift build 2>&1
 ```
 
-Expected: Compile error about missing `MailCommand` — that's fine, it's our next task.
+Expected: Compile error about missing `MailCommand`: that's fine, it's our next task.
 
-> Note: The PostToolUse hook will run `swift build` automatically after you save this file. If the error output confuses the hook, it's expected — `MailCommand` isn't defined yet.
+> Note: The PostToolUse hook will run `swift build` automatically after you save this file. If the error output confuses the hook, it's expected: `MailCommand` isn't defined yet.
 
-**Step 3: Don't commit yet** — wait until `MailCommand` compiles cleanly.
+**Step 3: Don't commit yet**: wait until `MailCommand` compiles cleanly.
 
 ---
 
@@ -281,7 +281,7 @@ struct MailMessage: Codable {
 
 **Step 2: Note on JSON encoding**
 
-The JSON encoder used in the commands will use default key encoding (camelCase). No custom encoding strategy is needed — all fields are already String/Bool/Array.
+The JSON encoder used in the commands will use default key encoding (camelCase). No custom encoding strategy is needed: all fields are already String/Bool/Array.
 
 ---
 
@@ -345,7 +345,7 @@ struct MailBridge {
         unread: Bool,
         limit: Int
     ) -> String {
-        // Safely embed parameters — escape single quotes in JS strings
+        // Safely embed parameters: escape single quotes in JS strings
         let acctFilter = account.map { "'" + $0.replacingOccurrences(of: "'", with: "\\'") + "'" } ?? "null"
         let mbName = mailbox.replacingOccurrences(of: "'", with: "\\'")
 
@@ -511,8 +511,8 @@ struct MailBridge {
 **Step 2: Invoke security review agents (required)**
 
 After writing this file, invoke:
-- `applescript-security-reviewer` agent — checks for injection, privilege creep, error leakage, headless safety
-- `headless-compatibility-checker` agent — checks TCC assumptions, Mail launch behavior, blocking ops, timeout handling
+- `applescript-security-reviewer` agent: checks for injection, privilege creep, error leakage, headless safety
+- `headless-compatibility-checker` agent: checks TCC assumptions, Mail launch behavior, blocking ops, timeout handling
 
 Address any NEEDS REVISION or UNSAFE findings before continuing.
 
@@ -631,7 +631,7 @@ swift build --show-bin-path
 
 Expected: ArgumentParser-generated help text for each level.
 
-**Step 3: Live test — list**
+**Step 3: Live test: list**
 
 Make sure Mail.app has the Automation permission for Terminal (System Settings → Privacy → Automation → Terminal → Mail).
 
@@ -646,7 +646,7 @@ If you get `osascript error: Not authorized to send Apple events to Mail.`:
 - Enable Mail for Terminal.app
 - Re-run
 
-**Step 4: Live test — read**
+**Step 4: Live test: read**
 
 Copy an `id` field from the `list` output (format: `account||INBOX||12345`):
 
@@ -671,11 +671,11 @@ git commit -m "feat: verified pippin mail list and read end-to-end"
 
 ## Verification Checklist
 
-- [ ] `swift build` — clean, no warnings
-- [ ] `pippin --help` — shows `mail` subcommand
-- [ ] `pippin mail list` — returns valid JSON array
-- [ ] `pippin mail list --unread --limit 5` — filtered correctly
-- [ ] `pippin mail read <id>` — returns JSON with `body` field
+- [ ] `swift build`: clean, no warnings
+- [ ] `pippin --help`: shows `mail` subcommand
+- [ ] `pippin mail list`: returns valid JSON array
+- [ ] `pippin mail list --unread --limit 5`: filtered correctly
+- [ ] `pippin mail read <id>`: returns JSON with `body` field
 - [ ] JSON matches schema: `id, account, mailbox, subject, from, to[], date, read, body?`
 - [ ] applescript-security-reviewer: APPROVED
 - [ ] headless-compatibility-checker: HEADLESS-SAFE

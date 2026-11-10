@@ -10,7 +10,7 @@
 
 ## 1. Pre-Fix Failure Summary (ARCHIVED)
 
-### Hard Timeouts — FIXED
+### Hard Timeouts: FIXED
 
 | Command | Original Cap | Post-Fix | Result |
 |---------|-------------|-----------|--------|
@@ -20,7 +20,7 @@
 
 All previously-hard-crashing commands now return partial results gracefully via the JXA soft timeout (22s) and return before the ScriptRunner hard cap.
 
-### Soft Timeouts (partial results — working as designed)
+### Soft Timeouts (partial results: working as designed)
 
 | Command | Soft Timeout | System |
 |---------|-------------|--------|
@@ -79,24 +79,24 @@ All MailBridge methods shared a single `timeoutSeconds` value, but cross-account
 
 ### File: `pippin/MailBridge/MailBridge.swift`
 
-#### `listMessages` — 3 changes
+#### `listMessages`: 3 changes
 1. Added `crossAccount: Bool` computed from `(account == nil)`
 2. Single-account stays 10s; cross-account bumped to 60s
 3. With preview: single 50s, cross 100s
 
-#### `listActivity` — 2 changes
+#### `listActivity`: 2 changes
 1. Added `crossAccount: Bool` computed from `(account == nil)`
 2. Single-account: 30s (unchanged); cross-account: 75s
 3. With preview: single 50s (unchanged), cross 115s
 
-#### `searchMessages` — 1 change
+#### `searchMessages`: 1 change
 1. Added `crossAccount: Bool` computed from `(account == nil) && (mailbox == nil)`
 2. Base: cross 50s, single 30s
 3. `searchBody ? base + 45 : base + 15` → with `--body`: cross 95s (50+45), single **75s** (30+45); no `--body`: cross 65s (50+15), single 45s (30+15)
 
 ## 4. Testing
 
-- **Unit tests:** full suite passes (run `make test` for the current count) — no changes needed, script generation is agnostic to runtime
+- **Unit tests:** full suite passes (run `make test` for the current count): no changes needed, script generation is agnostic to runtime
 - **Integration:** All 3 previously-failing commands now return partial results gracefully
 - **Targeted commands** (with `--account`): Unchanged, still fast (<3s)
 
@@ -104,4 +104,4 @@ All MailBridge methods shared a single `timeoutSeconds` value, but cross-account
 
 1. **Search --body across all accounts** returns partial results at 22s but needs ~2min+ for full scan. Users should use `--account` or `--mailbox` for complete results.
 2. **Activity without `--account`** has 115s timeout (with preview) which is generous but still may not cover all messages for very large accounts. The soft timeout at 22s gives users partial results quickly.
-3. **MCP runChild cap** (60s) — RESOLVED. `MailBridge.clampHardTimeout` now clamps all three hard caps to 55s when `PIPPIN_MCP=1`, keeping them below the 60s `runChild` cap so a wedged osascript self-reaps with partial results instead of being SIGKILLed. The 22s soft cap fires first in normal operation, so the clamp only matters in the pathological wedge case.
+3. **MCP runChild cap** (60s): RESOLVED. `MailBridge.clampHardTimeout` now clamps all three hard caps to 55s when `PIPPIN_MCP=1`, keeping them below the 60s `runChild` cap so a wedged osascript self-reaps with partial results instead of being SIGKILLed. The 22s soft cap fires first in normal operation, so the clamp only matters in the pathological wedge case.

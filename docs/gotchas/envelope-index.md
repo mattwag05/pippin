@@ -1,8 +1,8 @@
-# Mail Envelope Index (pippin-60x — IMPLEMENTED 2026-07-15)
+# Mail Envelope Index (pippin-60x: IMPLEMENTED 2026-07-15)
 
 The fast path lives in `pippin/MailBridge/MailEnvelopeIndex.swift`, hooked at
 the top of `MailBridge.listMessages`/`searchMessages`/`listActivity`/`listMailboxes` (metadata
-only; any failure falls back to JXA automatically — and since pippin-1son
+only; any failure falls back to JXA automatically, and since pippin-1son
 (2026-07-30) the failure reason is captured in `ScanOutcome.fastPathNote` and
 surfaced as an envelope `warnings` entry, so a seconds-instead-of-milliseconds scan is self-diagnosing rather than
 silent; a fast path *disabled* by env/config intentionally emits no note).
@@ -11,12 +11,12 @@ Kill switches:
 `mail.fastPath: false` in `~/.config/pippin/config.json` > default ON.
 `doctor --latency` passes `fastPath: false` so its probes still measure the
 real JXA/Mail.app path. Measured live: cross-account list 360 ms (JXA budget
-60 s), warm activity 90 ms, search 74 ms — and a forced-JXA comparison search
+60 s), warm activity 90 ms, search 74 ms, and a forced-JXA comparison search
 soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
 
 - **`msg.id()` == Envelope Index ROWID.** Mail's AppleScript message id IS the
   index ROWID (verified live both directions 2026-07-15), so fast-path compound
-  ids (`account||mailboxLeaf||ROWID`) are byte-compatible with JXA ids —
+  ids (`account||mailboxLeaf||ROWID`) are byte-compatible with JXA ids ,
   `show`/`mark`/`move` and MailBodyCache keys work unchanged across paths.
   Caveat: an index REBUILD (observed across a June→July macOS beta update)
   renumbers BOTH spaces together; ids cached across a rebuild (e.g. old
@@ -36,14 +36,14 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
 - **`acct.id()` == the account UUID** prefixing every `mailboxes.url`
   (`scheme://UUID/percent-encoded/path`; schemes: imap, ews, local). Name→UUID
   map comes from one JXA accounts call cached at
-  `~/.config/pippin/mail-accounts.json` (`MailAccountsCache`) — refreshed only
+  `~/.config/pippin/mail-accounts.json` (`MailAccountsCache`): refreshed only
   on empty cache, `--account` name miss, or TTL-limited when the index
   references an unknown UUID. `local://` ("On My Mac") is invisible to JXA
   `accounts()` and is excluded on both paths.
 - **WAL snapshot is mandatory for freshness**: an `immutable=1` open of the
   live file silently misses everything still in the WAL (verified: a
   minutes-old message was absent). `MailEnvelopeIndex.init(dbPath:)` copies
-  db + `-wal` + `-shm` to a temp dir and opens the COPY (writable config — a
+  db + `-wal` + `-shm` to a temp dir and opens the COPY (writable config: a
   readonly open can refuse WAL recovery; it's our copy). Freshness observed
   live: three separate inbound arrivals were visible through the fast path
   within ~2 minutes of delivery (Mail writes the index continuously while
@@ -63,10 +63,10 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   `atexit` hook releases the snapshot, because a static is never
   deinitialized and the temp dir would otherwise outlive the process.
 - **Version guard**: `properties` table `version`=4 (`minor_version`=90006 on
-  macOS 27 beta / V10) — `MailEnvelopeIndex.knownVersions` gates the fast path;
+  macOS 27 beta / V10): `MailEnvelopeIndex.knownVersions` gates the fast path;
   unknown version → JXA fallback + a `doctor` `.skip` notice. The V-number dir
   (`~/Library/Mail/V<N>`) is scanned, not hardcoded.
-- **Mailbox names**: no type flags in the DB — special mailboxes resolve by
+- **Mailbox names**: no type flags in the DB: special mailboxes resolve by
   decoded URL leaf against the same alias groups as JXA `resolveMailbox`
   (sent/{Sent, Sent Messages, Sent Mail, Sent Items}, trash/{…Deleted Items…},
   junk, drafts, inbox). Localized names may not match → `mailboxUnresolved` →
@@ -92,11 +92,11 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   (`mailboxes.source` → the backing mailbox) whose membership lives in
   `labels(message_id, mailbox_id)`. `messages.mailbox` NEVER points at them, so
   the original `m.mailbox IN (...)` matched zero rows and reported a real inbox
-  as **`status: ok, data: []`** — 5,422 inbox messages across three accounts,
+  as **`status: ok, data: []`**: 5,422 inbox messages across three accounts,
   invisible, for the life of the fast path. `MailboxTargets` now splits a
   resolved target set by `source` and queries both models in one statement.
   Notes:
-  - **Only All Mail / Trash / Spam / Drafts are real mailboxes on Gmail** —
+  - **Only All Mail / Trash / Spam / Drafts are real mailboxes on Gmail** ,
     labels and real mailboxes coexist under one account, so this is per-mailbox,
     not per-account.
   - **A label hit's `m.mailbox` is the BACKING mailbox**, so the compound id
@@ -105,7 +105,7 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
     wrong mailbox. A row matching both a real and a label target prefers the
     real one, keeping unfiltered ("all mailboxes") scans naming All Mail as
     before.
-  - **A non-Gmail target set generates byte-identical SQL** to pre-fix — the
+  - **A non-Gmail target set generates byte-identical SQL** to pre-fix: the
     labels join only appears when a label target is present.
   - **`--mailbox All Mail` is not a substitute for INBOX**: All Mail holds
     inbox and archived mail indistinguishably, which is why "just query All
@@ -113,27 +113,27 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
   - The pippin-60x e2e parity check samples ONE account and passed throughout;
     the pippin-z0f6 check asserts per-account that a fast-path empty inbox is
     matched by an empty JXA inbox.
-- **🛑 JXA `mb.unreadCount()` under-reports badly — never trust it (pippin-zxsq).** Mail's own cached per-mailbox property disagreed with the per-message `read` flags by more than an order of magnitude on every large mailbox measured (Exchange Inbox 8 vs 140, Yahoo INBOX 34 vs 468, Gmail INBOX 64 vs 396, iCloud 30 vs 315), and it is always wrong in the REASSURING direction — an inbox looks handled when it isn't. `mail mailboxes` now counts from the index instead (`mailboxSummaries`), which agrees exactly with `mail list --unread` on every account and takes ~15ms for the whole index versus ~5.4s for the JXA enumeration it replaced. Notes:
-  - The index's per-message `read` flags are the ground truth, confirmed against JXA on a small mailbox (6 == 6) — the drift is purely in the cached property, not in Mail's message state.
+- **🛑 JXA `mb.unreadCount()` under-reports badly: never trust it (pippin-zxsq).** Mail's own cached per-mailbox property disagreed with the per-message `read` flags by more than an order of magnitude on every large mailbox measured (Exchange Inbox 8 vs 140, Yahoo INBOX 34 vs 468, Gmail INBOX 64 vs 396, iCloud 30 vs 315), and it is always wrong in the REASSURING direction: an inbox looks handled when it isn't. `mail mailboxes` now counts from the index instead (`mailboxSummaries`), which agrees exactly with `mail list --unread` on every account and takes ~15ms for the whole index versus ~5.4s for the JXA enumeration it replaced. Notes:
+  - The index's per-message `read` flags are the ground truth, confirmed against JXA on a small mailbox (6 == 6): the drift is purely in the cached property, not in Mail's message state.
   - The stored `mailboxes.unread_count` column happens to be correct too (SQL triggers maintain it), but the counts are computed from the message rows anyway: a derived count can't drift from the rows it's derived from.
-  - Label mailboxes count through `labels`, same as queries — a `messages.mailbox` count reports 0 for a full Gmail inbox.
+  - Label mailboxes count through `labels`, same as queries: a `messages.mailbox` count reports 0 for a full Gmail inbox.
   - This makes the fast path a CORRECTNESS dependency for `mail mailboxes`, not just an accelerator, so the JXA fallback carries an explicit "these numbers under-report" warning rather than falling back silently.
 - **Dedup mirrors JXA**: the same message can appear under more than one
-  mailbox row (across accounts, or Gmail All Mail vs Trash) — key on
+  mailbox row (across accounts, or Gmail All Mail vs Trash): key on
   `message_id_header`, fallback subject+sender+date; offset applies after dedup
   (search). Label matching does NOT duplicate rows: `labels` is only ever an
   `IN`-subquery, so one `messages` row yields one result row even when it
   satisfies both the real and the label branch.
-- **Bodies are NOT in this DB** — `show`, previews-on-cache-miss, and all
+- **Bodies are NOT in this DB**: `show`, previews-on-cache-miss, and all
   writes stay JXA. Fast-path activity/list previews reuse
   `assemblePreviews` + `buildBatchBodiesScript` + MailBodyCache (ids match, so
   cache keys line up).
-- **`summaries` table (pippin-521, opt-in `mail.previewFromIndex`)** — Mail's
+- **`summaries` table (pippin-521, opt-in `mail.previewFromIndex`)**: Mail's
   own snippet text (`messages.summary` → `summaries.ROWID`, `summary` column).
   Three invariants from the deferral review, all still true: (1) the snippet is
-  Mail's SEMANTIC summary, not the body's first N chars — preview-text
+  Mail's SEMANTIC summary, not the body's first N chars: preview-text
   consumers see drift, which is why the key defaults off; (2) only a fraction
-  of messages carry one (~23% measured 2026-07-28, 6.3k of 27k) — absent rows
+  of messages carry one (~23% measured 2026-07-28, 6.3k of 27k): absent rows
   MUST fall back to the batch body fetch (`assemblePreviews` treats them as
   ordinary misses); (3) a summary-served preview bypasses the MailBodyCache
   write-through, so a later `mail show` of that message pays a cold fetch.
@@ -143,7 +143,7 @@ soft-timed-out at 22 s with 0 results for a query the index answered in 74 ms.
 - **FDA required** (same class as Messages `chat.db`): the snapshot copy fails
   with EPERM → `accessDenied` → JXA fallback (reason in `warnings`). `doctor`
   reports fast-path availability as an informational check (`.skip`, never
-  `.fail` — mail works either way).
+  `.fail`: mail works either way).
 
 ## Without Full Disk Access: Pippin's own store (pippin-e154)
 

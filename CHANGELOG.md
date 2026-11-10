@@ -163,42 +163,42 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] Triage rules can now act on mail, not just label it. A rule's `action` accepts `moveTo` (destination mailbox) and `markRead`, and the new `pippin mail apply-rules` (MCP: `mail_apply_rules`) executes them — previously the rules engine could classify a message but every actual mailbox change still needed a human or an agent in the loop per message, so callers reimplemented the matching externally and shelled out to `mail move` one message at a time. `mail triage` stays read-only and ignores both fields, so adding actuation to a rules file never makes triage mutate. Guardrails, all default-on: dry run unless `--live`; `--min-age-days` (default 14) never touches newer mail and holds any message whose date won't parse; `--max-actions` (default 200) caps a run and acts oldest-first so a capped run drains the oldest backlog instead of skimming; and the plan prints grouped by sender rather than as a count, which is what makes an over-broad rule visible before it runs. `--skip-unread` spares unread mail. Closes pippin-8viw.
+- [feat] Triage rules can now act on mail, not just label it. A rule's `action` accepts `moveTo` (destination mailbox) and `markRead`, and the new `pippin mail apply-rules` (MCP: `mail_apply_rules`) executes them, previously the rules engine could classify a message but every actual mailbox change still needed a human or an agent in the loop per message, so callers reimplemented the matching externally and shelled out to `mail move` one message at a time. `mail triage` stays read-only and ignores both fields, so adding actuation to a rules file never makes triage mutate. Guardrails, all default-on: dry run unless `--live`; `--min-age-days` (default 14) never touches newer mail and holds any message whose date won't parse; `--max-actions` (default 200) caps a run and acts oldest-first so a capped run drains the oldest backlog instead of skimming; and the plan prints grouped by sender rather than as a count, which is what makes an over-broad rule visible before it runs. `--skip-unread` spares unread mail. Closes pippin-8viw.
 
 ### Changed
 
-- [ci] The CLI integration test helper now drains a child's stdout/stderr concurrently instead of reading them after `waitUntilExit()`. The old order deadlocked as soon as a child wrote more than the ~64KB pipe buffer — the child blocks writing, the parent blocks waiting — which is exactly what happened when `mcp-server --list-tools` crossed that threshold at 76 tools (66,752 bytes): `make ci` wedged indefinitely with no failure and no output, and the last flushed log line pointed at an unrelated suite. Production spawn paths (`MCPServerRuntime.runChild`, `AIProviderFactory`) already drained concurrently and were never affected.
+- [ci] The CLI integration test helper now drains a child's stdout/stderr concurrently instead of reading them after `waitUntilExit()`. The old order deadlocked as soon as a child wrote more than the ~64KB pipe buffer (the child blocks writing, the parent blocks waiting) which is exactly what happened when `mcp-server --list-tools` crossed that threshold at 76 tools (66,752 bytes): `make ci` wedged indefinitely with no failure and no output, and the last flushed log line pointed at an unrelated suite. Production spawn paths (`MCPServerRuntime.runChild`, `AIProviderFactory`) already drained concurrently and were never affected.
 
 ## [0.38.1] - 2026-08-13
 
 ### Fixed
 
-- [bug] `mail mailboxes` now reports the real unread count. It read Mail's own cached per-mailbox property, which under-reported by more than an order of magnitude on large mailboxes and always in the reassuring direction — Exchange Inbox showed 8 unread against 140 actual, Yahoo 34 against 468, Gmail INBOX 64 against 396, iCloud 30 against 315 — so anything sizing triage or digest work off it was silently wrong. Counts now come from the per-message read flags via the Envelope Index and agree exactly with `mail list --unread` on every account; the command also drops from ~5.4s to ~0.25s. When the index is unavailable the command still answers from JXA, but now warns that those numbers under-report. Closes pippin-zxsq.
+- [bug] `mail mailboxes` now reports the real unread count. It read Mail's own cached per-mailbox property, which under-reported by more than an order of magnitude on large mailboxes and always in the reassuring direction: Exchange Inbox showed 8 unread against 140 actual, Yahoo 34 against 468, Gmail INBOX 64 against 396, iCloud 30 against 315, so anything sizing triage or digest work off it was silently wrong. Counts now come from the per-message read flags via the Envelope Index and agree exactly with `mail list --unread` on every account; the command also drops from ~5.4s to ~0.25s. When the index is unavailable the command still answers from JXA, but now warns that those numbers under-report. Closes pippin-zxsq.
 
 ## [0.38.0] - 2026-08-12
 
 ### Added
 
-- [feat] MCP tool surface reaches curated parity with the CLI — 27 new tools (48 → 75). Mail gains `mail_mark`, `mail_move` (archive/trash/file a message), `mail_send`, `mail_reply`, `mail_forward`, `mail_triage`, `mail_sanitize`, `mail_extract`; Calendar gains `show`, `edit`, `delete`, `smart_create`, `agenda`, `conflicts`; Reminders gains `edit`, `delete`, `smart_create`; plus `notes_delete`, `contacts_list`/`groups`/`create`/`edit`/`delete`, `memos_delete`, and `messages_exclude_list`/`add`/`remove`. Agents could previously read mail but not mark it read or file it. Closes pippin-9urs.
-- [feat] MCP write safety: `mail_send`/`mail_reply`/`mail_forward` return a dry-run preview and send nothing unless `confirm: true`, and every delete tool fails the call outright without `confirm: true`. The delete gate is enforced before the child process spawns — `contacts delete` blocks on an interactive prompt without `--force`, which would otherwise hang the tool call until the 60s timeout. Closes pippin-9urs.
+- [feat] MCP tool surface reaches curated parity with the CLI: 27 new tools (48 → 75). Mail gains `mail_mark`, `mail_move` (archive/trash/file a message), `mail_send`, `mail_reply`, `mail_forward`, `mail_triage`, `mail_sanitize`, `mail_extract`; Calendar gains `show`, `edit`, `delete`, `smart_create`, `agenda`, `conflicts`; Reminders gains `edit`, `delete`, `smart_create`; plus `notes_delete`, `contacts_list`/`groups`/`create`/`edit`/`delete`, `memos_delete`, and `messages_exclude_list`/`add`/`remove`. Agents could previously read mail but not mark it read or file it. Closes pippin-9urs.
+- [feat] MCP write safety: `mail_send`/`mail_reply`/`mail_forward` return a dry-run preview and send nothing unless `confirm: true`, and every delete tool fails the call outright without `confirm: true`. The delete gate is enforced before the child process spawns: `contacts delete` blocks on an interactive prompt without `--force`, which would otherwise hang the tool call until the 60s timeout. Closes pippin-9urs.
 
 ### Changed
 
-- **BREAKING (envelope v3):** [bug] The agent envelope's `data` no longer changes TYPE under pagination. `--page`/`--page-size`/`--cursor` previously switched `data` from `[…]` to `{items, next_cursor}` while `v` stayed `2`, so a consumer doing the documented `for m in payload["data"]` iterated the dict's KEYS and silently yielded the string `"items"` — no exception, no error status, just wrong data. `data` is now the payload array in both cases and the cursor moves to a top-level `next_cursor` (omitted, not null, when exhausted), where transport metadata belongs. `AGENT_SCHEMA_VERSION` is `3`. `--format json` is unchanged. Migration: read `.next_cursor` instead of `.data.next_cursor`, and drop any `.data.items` unwrapping. Closes pippin-37az.
+- **BREAKING (envelope v3):** [bug] The agent envelope's `data` no longer changes TYPE under pagination. `--page`/`--page-size`/`--cursor` previously switched `data` from `[…]` to `{items, next_cursor}` while `v` stayed `2`, so a consumer doing the documented `for m in payload["data"]` iterated the dict's KEYS and silently yielded the string `"items"`: no exception, no error status, just wrong data. `data` is now the payload array in both cases and the cursor moves to a top-level `next_cursor` (omitted, not null, when exhausted), where transport metadata belongs. `AGENT_SCHEMA_VERSION` is `3`. `--format json` is unchanged. Migration: read `.next_cursor` instead of `.data.next_cursor`, and drop any `.data.items` unwrapping. Closes pippin-37az.
 - [ci] Every MCP tool's generated argv is now asserted to parse as a real CLI command. Nothing previously verified that a tool's subcommand name or flags existed, so a typo reached agents at runtime instead of failing the suite. Closes pippin-9urs.
 
 ### Fixed
 
-- [bug] Gmail-family accounts no longer report an empty inbox. `mail list`/`search`/`activity` returned `status: ok` with zero rows for `INBOX`, `Important`, `Starred` and every custom label on Gmail accounts, because Mail's Envelope Index stores those as label *views* over `[Gmail]/All Mail` rather than as mailboxes — 5,422 real inbox messages across three accounts were invisible, and an unreachable inbox was indistinguishable from an empty one. Label membership is now read from the index's `labels` table, so Gmail inboxes and labels list, search, and show activity at full fast-path speed (176 ms vs 1.3 s via the fallback) with ids naming the requested mailbox. Closes pippin-z0f6.
+- [bug] Gmail-family accounts no longer report an empty inbox. `mail list`/`search`/`activity` returned `status: ok` with zero rows for `INBOX`, `Important`, `Starred` and every custom label on Gmail accounts, because Mail's Envelope Index stores those as label *views* over `[Gmail]/All Mail` rather than as mailboxes: 5,422 real inbox messages across three accounts were invisible, and an unreachable inbox was indistinguishable from an empty one. Label membership is now read from the index's `labels` table, so Gmail inboxes and labels list, search, and show activity at full fast-path speed (176 ms vs 1.3 s via the fallback) with ids naming the requested mailbox. Closes pippin-z0f6.
 
 ## [0.37.0] - 2026-07-31
 
 ### Added
 
-- [feat] Agent envelopes now carry `partial: true` (omitted when complete) whenever a scan soft-timed-out or under-reached, so a timed-out empty `mail search`/`list`/`activity` is machine-distinguishable from a genuine zero-match — previously both returned the identical `{"data": []}` shape. Closes pippin-1son.
-- [feat] When the Envelope Index fast path fails and a mail scan silently falls back to the slow JXA path (seconds instead of milliseconds), the reason now surfaces as a `warnings` entry in agent mode (stderr `Warning:` in text/json) — e.g. missing Full Disk Access or an unreadable index no longer look like Mail being slow. Closes pippin-1son.
+- [feat] Agent envelopes now carry `partial: true` (omitted when complete) whenever a scan soft-timed-out or under-reached, so a timed-out empty `mail search`/`list`/`activity` is machine-distinguishable from a genuine zero-match, previously both returned the identical `{"data": []}` shape. Closes pippin-1son.
+- [feat] When the Envelope Index fast path fails and a mail scan silently falls back to the slow JXA path (seconds instead of milliseconds), the reason now surfaces as a `warnings` entry in agent mode (stderr `Warning:` in text/json): e.g. missing Full Disk Access or an unreadable index no longer look like Mail being slow. Closes pippin-1son.
 - [feat] Mail soft-timeout hints now list the configured account names inline (from the on-disk accounts cache, zero Apple Events), so "narrow with --account" is actionable without a follow-up `mail accounts` call. Closes pippin-1son.
-- [feat] `mail search --body` hits matched via the body now return a `bodyPreview` snippet — the body was already fetched for the match test and was previously discarded (`body: null`), forcing a `mail show` round-trip per hit. Closes pippin-1son.
+- [feat] `mail search --body` hits matched via the body now return a `bodyPreview` snippet: the body was already fetched for the match test and was previously discarded (`body: null`), forcing a `mail show` round-trip per hit. Closes pippin-1son.
 - [feat] `mail search --preview N` (and a `preview` param on the `mail_search` MCP tool) inlines a body snippet on every hit via the cache-first batch assembly used by `mail list --preview` (cached body > body-match snippet > opt-in index summary > one batched fetch, write-through cache). Closes pippin-1son.
 - [feat] `mail show` accepts multiple message IDs: bodies for cache misses are fetched in ONE batched Mail pass and the output becomes an array (single-ID calls keep the original single-object shape). The `mail_show` MCP tool gains a `messageIds` array param. Closes pippin-1son.
 
@@ -208,23 +208,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Documentation
 
-- [docs] Gotcha docs updated for pippin-1son: envelope `partial` field + `extraWarnings` emit path and the "MCP schema `default:` is advisory" trap (docs/gotchas/mcp.md); fast-path fallback no longer silent (docs/gotchas/envelope-index.md); measured pippin-17rq result — concurrent osascripts into Mail.app parallelize (concurrent ≈ max, not sum) but per-account fan-out isn't worth building (docs/gotchas/jxa.md).
+- [docs] Gotcha docs updated for pippin-1son: envelope `partial` field + `extraWarnings` emit path and the "MCP schema `default:` is advisory" trap (docs/gotchas/mcp.md); fast-path fallback no longer silent (docs/gotchas/envelope-index.md); measured pippin-17rq result: concurrent osascripts into Mail.app parallelize (concurrent ≈ max, not sum) but per-account fan-out isn't worth building (docs/gotchas/jxa.md).
 
 ## [0.36.1] - 2026-07-28
 
 ### Added
 
-- [feat] `mail verify` now parses the message's raw RFC822 source into a full auth chain (`authChain` in agent/JSON output; a summary block in text output): every Received hop, every Authentication-Results instance, ARC set, and DKIM signatures — sets the flat last-wins header dict destroyed. Failures found in ANY chain instance (including ARC-Authentication-Results) and a broken ARC chain (`cv=fail`) now count toward the SUSPICIOUS verdict. Degrades gracefully (chain omitted) when Mail can't produce the source. Closes pippin-fwa.
-- [feat] `mail list`/`search`/`activity` now surface `headerAnomalies` for messages whose headers are already cached from a prior `mail show`/preview fetch — stateless checks plus a compare-only baseline check, at zero Apple-Event cost (uncached rows stay unflagged; the baseline store is never mutated from scan paths). Text list tables mark flagged rows with `⚠` on the subject. Closes pippin-fwa.
-- [feat] Opt-in `mail.previewFromIndex` config key: `mail list --preview`/`mail activity` fill snippets from the Envelope Index `summaries` table (Mail's own preview text) where available, skipping the JXA body fetch for those messages entirely; messages without a summary row (~3 in 4) still use the batch body fetch. OFF by default — the summary is Mail's semantic snippet, not the body's first N chars, and summary-served previews bypass the body-cache write-through. Closes pippin-521.
+- [feat] `mail verify` now parses the message's raw RFC822 source into a full auth chain (`authChain` in agent/JSON output; a summary block in text output): every Received hop, every Authentication-Results instance, ARC set, and DKIM signatures: sets the flat last-wins header dict destroyed. Failures found in ANY chain instance (including ARC-Authentication-Results) and a broken ARC chain (`cv=fail`) now count toward the SUSPICIOUS verdict. Degrades gracefully (chain omitted) when Mail can't produce the source. Closes pippin-fwa.
+- [feat] `mail list`/`search`/`activity` now surface `headerAnomalies` for messages whose headers are already cached from a prior `mail show`/preview fetch: stateless checks plus a compare-only baseline check, at zero Apple-Event cost (uncached rows stay unflagged; the baseline store is never mutated from scan paths). Text list tables mark flagged rows with `⚠` on the subject. Closes pippin-fwa.
+- [feat] Opt-in `mail.previewFromIndex` config key: `mail list --preview`/`mail activity` fill snippets from the Envelope Index `summaries` table (Mail's own preview text) where available, skipping the JXA body fetch for those messages entirely; messages without a summary row (~3 in 4) still use the batch body fetch. OFF by default: the summary is Mail's semantic snippet, not the body's first N chars, and summary-served previews bypass the body-cache write-through. Closes pippin-521.
 
 ## [0.36.0] - 2026-07-28
 
 ### Added
 
-- [feat] Per-sender header baselining (pippin-0pk phase 2): `mail show` now also flags deviations from the sender's OWN history — DKIM signing domain/selector, Message-ID domain, Date TZ offset, and SPF/DKIM/DMARC results are fingerprinted into `~/.config/pippin/mail-baseline.db` on every read, and a value diverging from an invariant baseline (≥3 prior messages) adds a `headerAnomalies` warning. Catches what absolute rules can't: the 2026-07-27 phish passed every auth check but diverged on TZ offset (-0500 vs the contact's invariant -0400). New `mail verify <id>` command + `mail_verify` MCP tool report the full per-dimension baseline comparison with a verdict. Closes pippin-ml9 (deep raw-source auth-chain parse and list/search surfacing remain follow-ons).
+- [feat] Per-sender header baselining (pippin-0pk phase 2): `mail show` now also flags deviations from the sender's OWN history: DKIM signing domain/selector, Message-ID domain, Date TZ offset, and SPF/DKIM/DMARC results are fingerprinted into `~/.config/pippin/mail-baseline.db` on every read, and a value diverging from an invariant baseline (≥3 prior messages) adds a `headerAnomalies` warning. Catches what absolute rules can't: the 2026-07-27 phish passed every auth check but diverged on TZ offset (-0500 vs the contact's invariant -0400). New `mail verify <id>` command + `mail_verify` MCP tool report the full per-dimension baseline comparison with a verdict. Closes pippin-ml9 (deep raw-source auth-chain parse and list/search surfacing remain follow-ons).
 
-- [feat] `mail show` now surfaces structural header anomalies in a `headerAnomalies` field (agent/JSON) and a `⚠ Anomalies` card line (text): Reply-To on a different domain than the sender, hidden recipients (undisclosed-recipients / Bcc delivery), and explicit SPF/DKIM/DMARC failures. Auth passes never suppress a warning — a compromised account signs its phish with valid DKIM (real 2026-07-27 incident). Flows to the `mail_show` MCP tool automatically. Closes pippin-0pk (stateless checks; per-contact baselining tracked separately).
+- [feat] `mail show` now surfaces structural header anomalies in a `headerAnomalies` field (agent/JSON) and a `⚠ Anomalies` card line (text): Reply-To on a different domain than the sender, hidden recipients (undisclosed-recipients / Bcc delivery), and explicit SPF/DKIM/DMARC failures. Auth passes never suppress a warning: a compromised account signs its phish with valid DKIM (real 2026-07-27 incident). Flows to the `mail_show` MCP tool automatically. Closes pippin-0pk (stateless checks; per-contact baselining tracked separately).
 
 ### Changed
 
@@ -239,7 +239,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - [refactor] Repo-wide over-engineering cleanup (ponytail audit): removed never-written REPL session-context tracking (`shell`'s `context` now shows account + history only; `session.json` drops the always-null mailbox/last-id fields), dead API (`EmbeddingStore.get`/`needsReindex`, `VoiceMemosDB.checkAccess`/`defaultRecordingsDir`, never-thrown `TranscriberError` cases, never-constructed MCP error cases), and deduplicated shared helpers (bridge JSON decode, projected-envelope frame, cache DB open, injection-scanner rule table, redundant ISO8601 formatter options). No behavior change outside the REPL `context` display.
-- [ci] Deleted the disabled GitHub `ci.yml`/`release.yml` workflows — superseded by Forgejo Tart CI and the local release procedure since 2026-06; CodeQL and unicode-scan remain on the GitHub mirror.
+- [ci] Deleted the disabled GitHub `ci.yml`/`release.yml` workflows: superseded by Forgejo Tart CI and the local release procedure since 2026-06; CodeQL and unicode-scan remain on the GitHub mirror.
 - [ci] Added the shared-workflows gitleaks full-history secret scan (test fixtures allowlisted); repo sanitized of personal/homelab references ahead of public visibility.
 
 ### Documentation
@@ -252,84 +252,84 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - [feat] BREAKING (envelope v2, `AGENT_SCHEMA_VERSION` 1 → 2): a full-module E2E audit drove four `--format agent` payload-shape changes. `messages list` returns a bare `data:[…]` array (was `data:{excluded_count, conversations}`; the excluded count moved to `warnings`); notes `creationDate`/`modificationDate` renamed `createdAt`/`modifiedAt`; all-day calendar events and date-only reminder due dates serialize as `YYYY-MM-DD` (local day) instead of a misleading UTC instant; memos dates gained `.000Z` fractional seconds. The envelope frame is otherwise identical to v1. Consumers that iterate `messages` `.data.conversations` or read the old notes date keys must adapt. Closes pippin-a2a.
-- [feat] `contacts search --phone <number>` finds contacts by phone number — digits-only match with a last-10-digit fallback (a bare 10-digit query matches a stored `+1…` number), reusing the same normalization as mail/messages contact resolution. Exposed as `phone` on the `contacts_search` MCP tool. Closes pippin-wom.
+- [feat] `contacts search --phone <number>` finds contacts by phone number: digits-only match with a last-10-digit fallback (a bare 10-digit query matches a stored `+1…` number), reusing the same normalization as mail/messages contact resolution. Exposed as `phone` on the `contacts_search` MCP tool. Closes pippin-wom.
 - [feat] `calendar events`/`search`/`conflicts` accept `--after`/`--before` as canonical cross-module aliases for `--from`/`--to` (dates); `calendar search` now takes a positional `<query>` like every other search command (`--query` still works). Closes pippin-xoi.
 - [feat] `messages show`/`search` now include attachment metadata (`attachments: [{filename, mime_type}]`) on message rows, so attachment-only messages are no longer empty; `memos list`/`info` surface `hasTranscript` and `isEvicted`, and `memos info` returns the cached transcript text. Closes pippin-4ke, pippin-wom.
-- [perf] `mail list`/`search`/`activity` now read Mail's on-disk Envelope Index SQLite directly for metadata (~1000x: cross-account list 360 ms vs a 60 s JXA budget, search 74 ms vs 45–95 s, warm activity 90 ms) — and search scans the FULL index, finding old matches the JXA newest-N window physically cannot reach. Message ids are unchanged (`account||mailbox||id` — Mail's AppleScript id IS the index ROWID), so `show`/`mark`/`move` and the body cache work identically across paths. Requires Full Disk Access; without it (or on an unknown macOS schema version) every command falls back to the JXA path silently — zero regression for Automation-only setups. `pippin doctor` reports fast-path availability; disable via `mail.fastPath: false` in config or `PIPPIN_MAIL_FASTPATH=0`. Bodies, previews-on-cache-miss, and all writes stay on JXA. Closes pippin-60x.
+- [perf] `mail list`/`search`/`activity` now read Mail's on-disk Envelope Index SQLite directly for metadata (~1000x: cross-account list 360 ms vs a 60 s JXA budget, search 74 ms vs 45 to 95 s, warm activity 90 ms), and search scans the FULL index, finding old matches the JXA newest-N window physically cannot reach. Message ids are unchanged (`account||mailbox||id`: Mail's AppleScript id IS the index ROWID), so `show`/`mark`/`move` and the body cache work identically across paths. Requires Full Disk Access; without it (or on an unknown macOS schema version) every command falls back to the JXA path silently: zero regression for Automation-only setups. `pippin doctor` reports fast-path availability; disable via `mail.fastPath: false` in config or `PIPPIN_MAIL_FASTPATH=0`. Bodies, previews-on-cache-miss, and all writes stay on JXA. Closes pippin-60x.
 
-- [feat] `mail search --from <sender>` filters results by sender address/name substring, mirroring the existing `--to` recipient filter — no more imprecise positional-query matching for sender searches. Exposed as `from` on the `mail_search` MCP tool. Closes GitHub #21.
+- [feat] `mail search --from <sender>` filters results by sender address/name substring, mirroring the existing `--to` recipient filter: no more imprecise positional-query matching for sender searches. Exposed as `from` on the `mail_search` MCP tool. Closes GitHub #21.
 - [feat] `mail list --after/--before` date filters, matching `mail search`'s existing flags, so a date-bounded listing no longer requires going through search. Applied on the cached `--preview` path too. Exposed on the `mail_list` MCP tool. Closes GitHub #25.
 - [feat] `notes create`/`notes edit` gained an `--html` flag to pass raw HTML through to the note body unconverted (for callers that already produce Notes-style HTML). Closes GitHub #26.
-- [feat] New `notes_create` and `notes_edit` MCP tools (with `html`, `folder`, `append` args) give MCP clients the note write surface the CLI already had — previously the notes MCP surface was read-only. Tool count 45 → 47. Closes pippin-6k7.
-- [feat] Numbered `--page N` pagination now works on every list command (`calendar events`/`upcoming`, `reminders list`, `notes list`, `memos list`, `contacts search`), not just `mail` — it's now a field of the shared `--cursor`/`--page-size` option group, computing the offset as `(N-1)*page-size`. A `--cursor` still wins when both are given. BREAKING for `mail`: `mail list`/`search --page N` previously returned a flat `data:[…]` array; it now switches to the cursor response shape `data:{items, next_cursor}` like the other paginated flags (a plain `mail list` with no pagination flag is unchanged). `--page` range (≥1) is now validated at request time rather than parse time. Closes pippin-77t.
-- [feat] `pippin templates …` is now a top-level command (still also reachable as `pippin memos templates …`) — summarization templates aren't memo-specific. Closes pippin-77t.
+- [feat] New `notes_create` and `notes_edit` MCP tools (with `html`, `folder`, `append` args) give MCP clients the note write surface the CLI already had, previously the notes MCP surface was read-only. Tool count 45 → 47. Closes pippin-6k7.
+- [feat] Numbered `--page N` pagination now works on every list command (`calendar events`/`upcoming`, `reminders list`, `notes list`, `memos list`, `contacts search`), not just `mail`: it's now a field of the shared `--cursor`/`--page-size` option group, computing the offset as `(N-1)*page-size`. A `--cursor` still wins when both are given. BREAKING for `mail`: `mail list`/`search --page N` previously returned a flat `data:[…]` array; it now switches to the cursor response shape `data:{items, next_cursor}` like the other paginated flags (a plain `mail list` with no pagination flag is unchanged). `--page` range (≥1) is now validated at request time rather than parse time. Closes pippin-77t.
+- [feat] `pippin templates …` is now a top-level command (still also reachable as `pippin memos templates …`): summarization templates aren't memo-specific. Closes pippin-77t.
 
 ### Fixed
 
-- [bug] Not-found errors on JXA-backed bridges are now typed: `notes show`/`edit`/`delete` and `mail show`/`mark`/`move`/`attachments` on a missing item return `note_not_found`/`message_not_found` (exit 3) instead of a generic `script_failed` (exit 5) — and mail drops the raw doubled "Error: Error: … (-2700)" JXA dump for a clean message. Closes pippin-83x.
+- [bug] Not-found errors on JXA-backed bridges are now typed: `notes show`/`edit`/`delete` and `mail show`/`mark`/`move`/`attachments` on a missing item return `note_not_found`/`message_not_found` (exit 3) instead of a generic `script_failed` (exit 5), and mail drops the raw doubled "Error: Error: … (-2700)" JXA dump for a clean message. Closes pippin-83x.
 - [bug] `calendar events --calendar-name` misses now exit 3 (`calendar_not_found`) and ambiguous matches exit 2 (`invalid_calendar_name`) instead of the generic exit 5, on both the CLI and the in-process MCP path; an exact case-insensitive name is preferred over substring, so a calendar named "Family" is reachable when "Family Calendar" also exists. Closes pippin-xoi.
-- [bug] `mail list/search/activity --account <unknown>` now fail with `account_not_found` (exit 3) listing the real account names, instead of an empty-ok result indistinguishable from an empty mailbox — identical on the Envelope Index fast path and JXA. `mail list`/`search` also reject `--limit 0` (previously silently returned one message). Closes pippin-1qw.
-- [bug] `messages list`/`show`/`search` no longer surface tapback reactions ("Loved …", "Liked …") as ordinary messages — previews, unread counts, threads, and search all skip them; `messages show` reports the conversation's real unread count instead of a hardcoded 0. Closes pippin-4ke.
+- [bug] `mail list/search/activity --account <unknown>` now fail with `account_not_found` (exit 3) listing the real account names, instead of an empty-ok result indistinguishable from an empty mailbox: identical on the Envelope Index fast path and JXA. `mail list`/`search` also reject `--limit 0` (previously silently returned one message). Closes pippin-1qw.
+- [bug] `messages list`/`show`/`search` no longer surface tapback reactions ("Loved …", "Liked …") as ordinary messages: previews, unread counts, threads, and search all skip them; `messages show` reports the conversation's real unread count instead of a hardcoded 0. Closes pippin-4ke.
 - [bug] Error-mode `--format agent` envelopes now report the true `duration_ms` instead of always 0 (the top-level error path had no start time to measure from). Closes pippin-83x.
 - [bug] A bogus `--provider` now fails as a usage/config error (exit 2) rather than a retryable `network_error` (exit 5); an OpenAI-compatible model-not-found (HTTP 404) surfaces as a typed `model_not_found` with a "set ai.openai.model / curl …/models" remediation, mirroring the Ollama path, instead of a raw `api_error`. Closes pippin-83x.
 - [bug] memos `filePath` is now the resolved absolute path to the recording instead of the bare database filename. Closes pippin-wom.
-- [bug] `calendar events` and `calendar conflicts` no longer silently drop events on wide date ranges. `EKEventStore.predicateForEvents` returns incomplete results for windows spanning more than a few years — non-recurring and weekly/daily-recurring events vanished first, with no error or `timedOut` warning, leaving only some yearly-recurring events at the widest ranges. Both commands now split the requested range into ≤366-day chunks internally and merge the results, deduping recurring occurrences at chunk boundaries. Closes pippin-5nj.
-- [bug] `notes create`/`notes edit --body` no longer collapse all formatting: plain-text bodies are now converted to Notes-style HTML (`&<>` escaped, lines wrapped in `<div>`, blank lines as `<div><br></div>`) before assignment to `note.body`, which Notes.app renders as HTML — previously every newline flattened to a space. Closes GitHub #26.
-- [bug] Mail scan windows (`mail list`, `mail search`, `mail activity`) no longer assume `mailbox.messages()` is index-ordered oldest-first. Each script now probes the collection's actual direction (two cheap `dateSent()` reads) and walks the true newest-N window newest→oldest — on accounts where the assumption was inverted, `mail activity` returned the oldest mail first (GitHub #24) and date-filtered searches over large mailboxes returned empty (part of GitHub #23).
+- [bug] `calendar events` and `calendar conflicts` no longer silently drop events on wide date ranges. `EKEventStore.predicateForEvents` returns incomplete results for windows spanning more than a few years: non-recurring and weekly/daily-recurring events vanished first, with no error or `timedOut` warning, leaving only some yearly-recurring events at the widest ranges. Both commands now split the requested range into ≤366-day chunks internally and merge the results, deduping recurring occurrences at chunk boundaries. Closes pippin-5nj.
+- [bug] `notes create`/`notes edit --body` no longer collapse all formatting: plain-text bodies are now converted to Notes-style HTML (`&<>` escaped, lines wrapped in `<div>`, blank lines as `<div><br></div>`) before assignment to `note.body`, which Notes.app renders as HTML, previously every newline flattened to a space. Closes GitHub #26.
+- [bug] Mail scan windows (`mail list`, `mail search`, `mail activity`) no longer assume `mailbox.messages()` is index-ordered oldest-first. Each script now probes the collection's actual direction (two cheap `dateSent()` reads) and walks the true newest-N window newest→oldest: on accounts where the assumption was inverted, `mail activity` returned the oldest mail first (GitHub #24) and date-filtered searches over large mailboxes returned empty (part of GitHub #23).
 - [bug] `mail search --body` date filters now bound the scan instead of merely filtering results: `--after` early-breaks once the walk passes the cutoff (everything further is older), and `--before` binary-searches `dateSent()` probes (no body fetches) to shift the scan window into the requested range instead of pinning it to the newest 500. A `windowsShifted` count surfaces in `--verbose`. Closes GitHub #23, #24.
-- [bug] Ollama model-not-found (HTTP 404) now surfaces as a typed error with remediation — `ollama pull <model>`, the `ai.ollama.model` config key, and the models actually available on the server (fetched best-effort from `/api/tags`) — instead of a bare "API error 404". Applies to every Ollama consumer (`do`, `memos summarize`, `actions extract`, mail triage). Closes GitHub #22.
-- [bug] `OllamaEmbeddingProvider` (mail semantic-search embeddings) now throws the same typed model-not-found error with `ollama pull` remediation as the completion provider, instead of a generic "HTTP 404" — parity with the GitHub #22 fix. Closes pippin-050.
+- [bug] Ollama model-not-found (HTTP 404) now surfaces as a typed error with remediation: `ollama pull <model>`, the `ai.ollama.model` config key, and the models actually available on the server (fetched best-effort from `/api/tags`), instead of a bare "API error 404". Applies to every Ollama consumer (`do`, `memos summarize`, `actions extract`, mail triage). Closes GitHub #22.
+- [bug] `OllamaEmbeddingProvider` (mail semantic-search embeddings) now throws the same typed model-not-found error with `ollama pull` remediation as the completion provider, instead of a generic "HTTP 404": parity with the GitHub #22 fix. Closes pippin-050.
 - [bug] `mail list --before <date>` now emits a "scan window did not reach <date>" advisory when an empty result is caused by the newest-N scan window bottoming out before reaching the cutoff (rather than a genuine no-match). The hint names how far back the scan actually got and suggests a larger `--limit` or `mail search --before`, so an empty result is no longer ambiguous. `--after` is exempt (newest-first scanning makes an empty `--after` a true no-match). Closes pippin-xz6.
-- [bug] Contacts commands no longer hang indefinitely in non-interactive contexts (MCP server, background agents) when Contacts permission is undetermined — the contactsd XPC connection can block forever instead of failing there. `ContactsBridge` now fails fast with `access_denied` when no user can answer the prompt, matching Calendar/Reminders' existing pippin-0vr behavior; interactive first-use prompting is unchanged.
-- [bug] `notes delete` now actually removes a note from `notes list`/`show`/`search`. Apple Notes' `delete` only moves a note to the "Recently Deleted" folder (there is no scriptable hard-delete), but pippin enumerated every folder including trash — so a "deleted" note still resolved and still listed. The Recently Deleted folder is now excluded from list/show/search (and from `notes folders`); the note stays in trash and auto-purges after 30 days, exactly like the Notes UI. Closes pippin-cxd.
+- [bug] Contacts commands no longer hang indefinitely in non-interactive contexts (MCP server, background agents) when Contacts permission is undetermined: the contactsd XPC connection can block forever instead of failing there. `ContactsBridge` now fails fast with `access_denied` when no user can answer the prompt, matching Calendar/Reminders' existing pippin-0vr behavior; interactive first-use prompting is unchanged.
+- [bug] `notes delete` now actually removes a note from `notes list`/`show`/`search`. Apple Notes' `delete` only moves a note to the "Recently Deleted" folder (there is no scriptable hard-delete), but pippin enumerated every folder including trash, so a "deleted" note still resolved and still listed. The Recently Deleted folder is now excluded from list/show/search (and from `notes folders`); the note stays in trash and auto-purges after 30 days, exactly like the Notes UI. Closes pippin-cxd.
 - [bug] The full `swift test` suite runs again: `CLIIntegrationTests`/`JobE2ETests` located the built binary by invoking a nested `swift build` that deadlocked on (or crashed against) the SwiftPM workspace lock held by the outer `swift test`, and a bare `ContactResolutionOptions()` init in a test fatalError'd the whole test binary on ArgumentParser property access, hiding every later suite. Binaries are now located lock-free via the xctest bundle's products dir (override: `PIPPIN_TEST_BINARY`), and the test constructs options via the parser. Closes pippin-eai.
 
 ### Changed
 
 - [perf] `notes list`/`search` no longer fetch each note's HTML body or resolve the folder container twice per note (search also reuses the reads from its match test), dropping a large-vault `notes list` from ~14 s / 560 MB peak RSS to metadata speed. The agent/JSON list output is now body-less (`plainText` only; use `notes show <id>` for HTML) and honors the soft-timeout partial-results warning in every format. Closes pippin-jum.
 - [perf] `pippin status` reads per-account mailbox counts from the Envelope Index in one SQLite scan (fast path, with silent per-account JXA fallback) instead of N serial Apple Events, cutting the dominant cost of a `status` call when Full Disk Access is available. Closes pippin-je1.
-- [docs] `mail` `--limit` help documents the 500-row cap; `mail activity` help and the `mail_activity` MCP tool description note that the default `--preview 200` costs ~30–40 s (per-message body fetch) versus sub-second `--preview 0`. The `64` argument-parse exit code is now documented in `agent-info` and `docs/mcp-server.md`; README tool count corrected 45 → 47 and the `audio`/`browser` examples now show they need `PIPPIN_EXPERIMENTAL=1`. Closes pippin-1qw.
+- [docs] `mail` `--limit` help documents the 500-row cap; `mail activity` help and the `mail_activity` MCP tool description note that the default `--preview 200` costs ~30 to 40 s (per-message body fetch) versus sub-second `--preview 0`. The `64` argument-parse exit code is now documented in `agent-info` and `docs/mcp-server.md`; README tool count corrected 45 → 47 and the `audio`/`browser` examples now show they need `PIPPIN_EXPERIMENTAL=1`. Closes pippin-1qw.
 - [perf] `messages list` resolves each conversation's last-message preview with one indexed seek plus a primary-key join instead of two separate correlated subqueries that each re-found the same row to pull `text` and `attributedBody` independently; the `MAX`/`GROUP BY` collapse out too. No behavior change. Closes pippin-77t.
-- [perf] `pippin do` runs its planner call off the cooperative thread pool (`detachBlocking`), matching the execution loop — a slow/blocking provider request during planning no longer ties up a cooperative thread. Closes pippin-77t.
+- [perf] `pippin do` runs its planner call off the cooperative thread pool (`detachBlocking`), matching the execution loop: a slow/blocking provider request during planning no longer ties up a cooperative thread. Closes pippin-77t.
 - [test] `scripts/e2e-smoke.sh` gained an `mcp-server` stdio smoke (initialize → tools/list → read tools/call → unknown-tool `-32601`), typed not-found/usage exit-code assertions, an error-envelope `duration_ms > 0` check, and body-less-notes-list / no-tapback-messages regression checks. Closes pippin-c6r.
-- [perf] Contact name resolution now caches the address-book index (GRDB, `~/.config/pippin/contact-index.db`) keyed on `CNContactStore.currentHistoryToken` — the full `CNContactStore` enumeration only re-runs when contacts actually changed, instead of once per `mail`/`messages` command. Fan-out workflows (morning briefing) drop their N+1 enumerations; partial (timed-out) enumerations are never cached. Closes pippin-wi9.
-- [perf] `pippin mcp-server` now dispatches the 12 read-only EventKit/Contacts tools (calendar_*, reminders_ reads, contacts_search/show) in-process instead of spawning a `pippin` child per call — same envelope-v1 output byte-for-byte, minus a process spawn and cold-store init per call. JXA-backed and write tools stay on the child path for subprocess isolation. `PIPPIN_MCP=1` budget clamps now apply in-process too. Closes pippin-dd3.
+- [perf] Contact name resolution now caches the address-book index (GRDB, `~/.config/pippin/contact-index.db`) keyed on `CNContactStore.currentHistoryToken`: the full `CNContactStore` enumeration only re-runs when contacts actually changed, instead of once per `mail`/`messages` command. Fan-out workflows (morning briefing) drop their N+1 enumerations; partial (timed-out) enumerations are never cached. Closes pippin-wi9.
+- [perf] `pippin mcp-server` now dispatches the 12 read-only EventKit/Contacts tools (calendar_*, reminders_ reads, contacts_search/show) in-process instead of spawning a `pippin` child per call: same envelope-v1 output byte-for-byte, minus a process spawn and cold-store init per call. JXA-backed and write tools stay on the child path for subprocess isolation. `PIPPIN_MCP=1` budget clamps now apply in-process too. Closes pippin-dd3.
 - [build] Pinned swiftformat lint behavior with a committed `.swiftformat` (disables rules newer releases enable by default) and reformatted the drift that accumulated while the lint gate was silently skipped (swiftformat missing post-wipe, `make lint` falls back to a no-op). Whitespace/brace-level only.
-- [build] `make lint` now fails loudly (exit 1) when swiftformat isn't installed instead of silently no-opping — a missing formatter can no longer let format drift pass the `make ci` gate unnoticed. Closes pippin-9j4.
+- [build] `make lint` now fails loudly (exit 1) when swiftformat isn't installed instead of silently no-opping: a missing formatter can no longer let format drift pass the `make ci` gate unnoticed. Closes pippin-9j4.
 - [build] `make install` now signs `~/.local/bin/pippin` with a stable code-signing identity, falling back to the everyday **Apple Development** cert when no Developer ID Application cert is present (`scripts/sign.sh`). This gives a content-independent Designated Requirement (`identifier + team`), so a TCC permission grant given once survives rebuilds instead of orphaning on every `make install` (ad-hoc signatures key TCC on the ever-changing CDHash). Closes pippin-ink.
 
 ### Documentation
 
-- [docs] README now advises pairing `mail search --from`/`--body` with `--account` (or a date filter) on large multi-account mailboxes — an unscoped cross-account scan can hit the soft timeout and return partial/empty results. Documents the existing honest-timeout behavior. Closes pippin-kgt.
-- [docs] README's code-signing persistence note now spells out the identity tiers: a **Developer ID Application** cert (team-based requirement, survives cert renewal) is preferred over an **Apple Development** cert (leaf-pinned, resets grants on renewal), both over ad-hoc — plus the one-time `pippin permissions` re-grant needed after any identity switch. Refreshed the `graphify-out/` knowledge graph (5854 nodes) for the session's code changes.
+- [docs] README now advises pairing `mail search --from`/`--body` with `--account` (or a date filter) on large multi-account mailboxes: an unscoped cross-account scan can hit the soft timeout and return partial/empty results. Documents the existing honest-timeout behavior. Closes pippin-kgt.
+- [docs] README's code-signing persistence note now spells out the identity tiers: a **Developer ID Application** cert (team-based requirement, survives cert renewal) is preferred over an **Apple Development** cert (leaf-pinned, resets grants on renewal), both over ad-hoc, plus the one-time `pippin permissions` re-grant needed after any identity switch. Refreshed the `graphify-out/` knowledge graph (5854 nodes) for the session's code changes.
 
 ## [0.33.0] - 2026-06-12
 
 ### Added
 
-- [feat] AI provider calls (Ollama / Claude / OpenAI-compatible) now retry transient failures — HTTP 429 + 5xx and connection-level network blips — up to twice with short backoff, instead of failing on the first hiccup. Retries share the original request's time budget (so total wall-clock stays under the MCP 60s child cap) and each attempt gets the remaining budget as its timeout; timeouts and non-transient errors (4xx, bad API key, unreachable server, unparseable body) are never retried. Closes pippin-cfg.
-- [feat] The JSON-extraction AI features (`actions extract`, `do`, mail triage / data-extract / injection-scan, calendar & reminders `smart-create`) now request **native JSON output** where the backend supports it: Ollama gets `format: "json"` (on by default — safe for the default `gemma4`), and the OpenAI-compatible path sends `response_format: {"type":"json_object"}` only when you opt in via the new `ai.openai.structuredOutputs: true` config key **and** the prompt mentions "json" (OpenAI 400s otherwise). The opt-in defaults OFF because `response_format` support varies across OpenAI-compatible servers (older vLLM/llama.cpp and similar local servers) — enable it only against a backend you've verified. Claude is unchanged (no native JSON mode; the existing prompt-based extraction + fence-stripping already handle it). Closes pippin-us2.
-- [feat] New `resolveContacts` config key (top-level in `~/.config/pippin/config.json`) sets a global default for Apple Contacts name resolution on `mail`/`messages` output. Set it to `false` to skip the per-command address-book enumeration everywhere — useful for fan-out callers like the morning briefing (which runs `mail list` per account + `messages list`) that would otherwise pay an N+1 `CNContactStore` enumeration per command. A new per-command `--contacts` flag force-enables resolution over a disabling config; precedence is `--no-contacts`/`--contacts` flag > `resolveContacts` config > built-in default (ON, unchanged). Closes pippin-1jm.
+- [feat] AI provider calls (Ollama / Claude / OpenAI-compatible) now retry transient failures, HTTP 429 + 5xx and connection-level network blips, up to twice with short backoff, instead of failing on the first hiccup. Retries share the original request's time budget (so total wall-clock stays under the MCP 60s child cap) and each attempt gets the remaining budget as its timeout; timeouts and non-transient errors (4xx, bad API key, unreachable server, unparseable body) are never retried. Closes pippin-cfg.
+- [feat] The JSON-extraction AI features (`actions extract`, `do`, mail triage / data-extract / injection-scan, calendar & reminders `smart-create`) now request **native JSON output** where the backend supports it: Ollama gets `format: "json"` (on by default: safe for the default `gemma4`), and the OpenAI-compatible path sends `response_format: {"type":"json_object"}` only when you opt in via the new `ai.openai.structuredOutputs: true` config key **and** the prompt mentions "json" (OpenAI 400s otherwise). The opt-in defaults OFF because `response_format` support varies across OpenAI-compatible servers (older vLLM/llama.cpp and similar local servers): enable it only against a backend you've verified. Claude is unchanged (no native JSON mode; the existing prompt-based extraction + fence-stripping already handle it). Closes pippin-us2.
+- [feat] New `resolveContacts` config key (top-level in `~/.config/pippin/config.json`) sets a global default for Apple Contacts name resolution on `mail`/`messages` output. Set it to `false` to skip the per-command address-book enumeration everywhere: useful for fan-out callers like the morning briefing (which runs `mail list` per account + `messages list`) that would otherwise pay an N+1 `CNContactStore` enumeration per command. A new per-command `--contacts` flag force-enables resolution over a disabling config; precedence is `--no-contacts`/`--contacts` flag > `resolveContacts` config > built-in default (ON, unchanged). Closes pippin-1jm.
 
 ### Fixed
 
-- [bug] `messages search` now surfaces a `scan_truncated` flag (plus `scanned_attributed_cap`) in the agent envelope, so a rich-text-only message older than the most-recent 1500 scanned isn't mistaken for "no match" — when `scan_truncated` is true, an empty/partial result is not authoritative. Fields are additive (non-breaking). Closes pippin-wve.
+- [bug] `messages search` now surfaces a `scan_truncated` flag (plus `scanned_attributed_cap`) in the agent envelope, so a rich-text-only message older than the most-recent 1500 scanned isn't mistaken for "no match", when `scan_truncated` is true, an empty/partial result is not authoritative. Fields are additive (non-breaking). Closes pippin-wve.
 - [bug] `--fields` now projects on **every** command that emits structured output, not just the list/search commands that wired it explicitly. It was accepted everywhere (it lives in the shared `OutputOptions`) but silently ignored at direct-`printAgent` sites like `mail accounts`, `mail mailboxes`, `reminders lists`, `contacts groups`, `calendar list`, `job list`, and `agent-info`. `OutputOptions.printAgent`/`emit` now default the projection list to the parsed `--fields`, so `pippin agent-info --format agent --fields version` returns just `{version}` instead of the full payload. Closes pippin-sq6.
 
 ### Changed
 
-- [refactor] De-duplicated two sets of byte-identical code (from `/ponytail-audit`, no behavior change): the six per-bridge `*ActionResult` structs (Mail/Notes/Reminders/Calendar/Contacts/Memos — all `{success, action, details}`) collapse into one `BridgeActionResult`, and the three copies of the JXA-escaping `jsEscape`/`jsEscapeOptional` helpers become shared free functions in `Scripting/JSEscape.swift`. Agent JSON output is unchanged (same fields). Net −71 lines. Closes pippin-c7f.
-- [refactor] The `--no-contacts` / `--contacts` flags are now declared once in a shared `ContactResolutionOptions` group (mirroring `OutputOptions`/`PaginationOptions`) instead of being copy-pasted across all six `mail`/`messages` subcommands, and the resolution-precedence rule now lives with them. No behavior change — the flags parse identically; their `--help` text is now a single consistent line ("…resolve handles to Apple Contacts names"). Closes pippin-wyn.
+- [refactor] De-duplicated two sets of byte-identical code (from `/ponytail-audit`, no behavior change): the six per-bridge `*ActionResult` structs (Mail/Notes/Reminders/Calendar/Contacts/Memos: all `{success, action, details}`) collapse into one `BridgeActionResult`, and the three copies of the JXA-escaping `jsEscape`/`jsEscapeOptional` helpers become shared free functions in `Scripting/JSEscape.swift`. Agent JSON output is unchanged (same fields). Net −71 lines. Closes pippin-c7f.
+- [refactor] The `--no-contacts` / `--contacts` flags are now declared once in a shared `ContactResolutionOptions` group (mirroring `OutputOptions`/`PaginationOptions`) instead of being copy-pasted across all six `mail`/`messages` subcommands, and the resolution-precedence rule now lives with them. No behavior change: the flags parse identically; their `--help` text is now a single consistent line ("…resolve handles to Apple Contacts names"). Closes pippin-wyn.
 
 ### Documentation
 
-- [docs] Documented the phone-number matching heuristic: handles are matched on digits only with a last-10-digit fallback (drops a leading country code), so two numbers sharing the same last 10 digits collide — resolved first-write-wins and shown as a confident contact name with no fuzzy-match signal. README § Contact Name Resolution. Closes pippin-1jm.
+- [docs] Documented the phone-number matching heuristic: handles are matched on digits only with a last-10-digit fallback (drops a leading country code), so two numbers sharing the same last 10 digits collide: resolved first-write-wins and shown as a confident contact name with no fuzzy-match signal. README § Contact Name Resolution. Closes pippin-1jm.
 
 ## [0.32.1] - 2026-06-10
 
 ### Added
 
-- [feat] New MCP tool `actions_extract` surfaces `pippin actions extract` to agents — scan recent Sent mail and recently-modified Notes for commitments you made and emit draft reminders with confidence scores (or, with `create=true`, create them in a list). The AI extraction pass is now budget-aware (`BatchBudget`): under MCP it's bounded to ~50s and returns partial results with a `timedOut` warning instead of being SIGKILLed at the 60s child cap, so a large scan degrades gracefully rather than failing. CLI behavior is unchanged (unbounded, fail-fast on a malformed AI response). Closes pippin-hzg.
+- [feat] New MCP tool `actions_extract` surfaces `pippin actions extract` to agents: scan recent Sent mail and recently-modified Notes for commitments you made and emit draft reminders with confidence scores (or, with `create=true`, create them in a list). The AI extraction pass is now budget-aware (`BatchBudget`): under MCP it's bounded to ~50s and returns partial results with a `timedOut` warning instead of being SIGKILLed at the 60s child cap, so a large scan degrades gracefully rather than failing. CLI behavior is unchanged (unbounded, fail-fast on a malformed AI response). Closes pippin-hzg.
 
 ### Fixed
 
@@ -348,13 +348,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- [bug] `messages show`/`messages search` now return message body text. Modern macOS leaves the `message.text` column NULL and stores the body in `attributedBody` as a typedstream (NSArchiver) blob, which pippin wasn't decoding — so `messages show` returned metadata with no text and `search` couldn't match recent messages. pippin now decodes `attributedBody` (via `NSUnarchiver` in a crash-safe ObjC shim) when `text` is empty, and `search` decode-scans recent attributedBody-only messages. Conversation last-message previews are decoded too. Closes pippin-cc1.
+- [bug] `messages show`/`messages search` now return message body text. Modern macOS leaves the `message.text` column NULL and stores the body in `attributedBody` as a typedstream (NSArchiver) blob, which pippin wasn't decoding, so `messages show` returned metadata with no text and `search` couldn't match recent messages. pippin now decodes `attributedBody` (via `NSUnarchiver` in a crash-safe ObjC shim) when `text` is empty, and `search` decode-scans recent attributedBody-only messages. Conversation last-message previews are decoded too. Closes pippin-cc1.
 
 ## [0.31.0] - 2026-06-09
 
 ### Changed
 
-- [feat] **pippin now runs as its own macOS TCC "responsible process."** At startup it re-execs itself disclaimed (via `responsibility_spawnattrs_setdisclaim`), so Reminders/Calendar/Contacts/Automation consent keys on pippin's own signed identity instead of whichever app launched it (Terminal, an agent gateway, launchd). This fixes agent/background callers being denied even though the same binary worked from a terminal: grant pippin **once** (interactively, `pippin permissions`) and it works under every launcher. **One-time migration:** because grants now attach to pippin's identity, existing permissions must be re-granted once after upgrading — run `pippin permissions` from a terminal and approve the prompts. Opt out with `PIPPIN_NO_DISCLAIM=1`. Closes pippin-0vr.
+- [feat] **pippin now runs as its own macOS TCC "responsible process."** At startup it re-execs itself disclaimed (via `responsibility_spawnattrs_setdisclaim`), so Reminders/Calendar/Contacts/Automation consent keys on pippin's own signed identity instead of whichever app launched it (Terminal, an agent gateway, launchd). This fixes agent/background callers being denied even though the same binary worked from a terminal: grant pippin **once** (interactively, `pippin permissions`) and it works under every launcher. **One-time migration:** because grants now attach to pippin's identity, existing permissions must be re-granted once after upgrading: run `pippin permissions` from a terminal and approve the prompts. Opt out with `PIPPIN_NO_DISCLAIM=1`. Closes pippin-0vr.
 
 ### Fixed
 
@@ -364,7 +364,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `--fields` is now a universal option on every structured command. It was lifted into the shared output option group, so commands that previously lacked field projection — **`mail search`**, **`mail activity`**, and **`calendar search`** — now support `--fields` for projecting JSON/agent output to just the requested keys (e.g. `pippin mail search invoice --fields id,subject --format agent`). Existing per-command `--fields` behavior and output formatting are unchanged. Closes pippin-yux.
+- [feat] `--fields` is now a universal option on every structured command. It was lifted into the shared output option group, so commands that previously lacked field projection (**`mail search`**, **`mail activity`**, and **`calendar search`**) now support `--fields` for projecting JSON/agent output to just the requested keys (e.g. `pippin mail search invoice --fields id,subject --format agent`). Existing per-command `--fields` behavior and output formatting are unchanged. Closes pippin-yux.
 
 ### Changed
 
@@ -372,46 +372,46 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- [perf] `pippin status` no longer times out on multi-account setups. The dashboard's seven sections (Mail, Calendar, Reminders, Voice Memos, Notes, Contacts, Permissions) were gathered sequentially with no overall deadline, so their times summed — on a multi-account Mail setup the N+1 mailbox enumeration alone could push the total past the 60s MCP `runChild` cap and the whole call was SIGKILLed (works fine with narrow queries). The sections now run concurrently (total cost ≈ the single slowest section) under a wall-clock budget (50s under MCP, unbounded in CLI); a section that exceeds the budget is dropped to `nil` and the report's new top-level `timedOut` flag marks the dashboard partial instead of returning nothing. Closes pippin-0nk.
+- [perf] `pippin status` no longer times out on multi-account setups. The dashboard's seven sections (Mail, Calendar, Reminders, Voice Memos, Notes, Contacts, Permissions) were gathered sequentially with no overall deadline, so their times summed: on a multi-account Mail setup the N+1 mailbox enumeration alone could push the total past the 60s MCP `runChild` cap and the whole call was SIGKILLed (works fine with narrow queries). The sections now run concurrently (total cost ≈ the single slowest section) under a wall-clock budget (50s under MCP, unbounded in CLI); a section that exceeds the budget is dropped to `nil` and the report's new top-level `timedOut` flag marks the dashboard partial instead of returning nothing. Closes pippin-0nk.
 
 ## [0.29.0] - 2026-06-08
 
 ### Added
 
-- [build] Stable-identity code signing so macOS TCC permission grants persist across rebuilds/upgrades. SwiftPM ad-hoc/linker-signs by default — the code identity is the CDHash, which changes every build, so TCC orphaned the prior grant on every `make install` / `brew upgrade` (and the two install paths got separate grants). `make install`/`make release` and the Homebrew formula now run `scripts/sign.sh`, which signs with a Developer ID Application identity + a fixed `com.mattwag05.pippin` identifier (guarded: ad-hoc fallback when no identity is present, so CI/other machines still build). `pippin doctor` gained a **Code signing** row reporting whether grants will persist. Notarization is not required for TCC (only for distributing downloaded binaries to other Macs; `PIPPIN_SIGN_HARDENED=1` enables it). Closes pippin-xzu.
-- [feat] New `pippin permissions` command + proactive permission priming during `pippin init`, so each app integration's macOS privacy permission is resolved once (interactively) instead of being deferred to "first use" — which silently fails when first use is a background agent (e.g. an agent LaunchAgent) that can't show a TCC dialog. Run interactively, `pippin permissions` triggers each promptable prompt up front (EventKit Reminders/Calendar, Contacts, and the Mail/Notes Automation prompt), then reports the status of all seven integrations including the two Full Disk Access ones (Voice Memos, Messages) that have no prompt and must be granted manually. Priming is automatically skipped when nothing can answer a dialog — under MCP, `--format agent|json`, a non-TTY pipe, or `--status` — where it's a pure read-only report (`[{integration, mechanism, state, promptable, detail, remediation?}]`). Re-runnable any time (e.g. after a macOS upgrade or reinstall resets TCC). Closes pippin-uu3, pippin-dkf.
-- [build] The pippin binary now embeds an Info.plist (`__TEXT,__info_plist`) with the EventKit/Contacts/AppleEvents usage-description strings and a stable bundle identifier. Without these, `requestFullAccess*` is unreliable (or crashes) outside an interactive terminal — the root cause behind background launches hitting unexpected/silent permission failures. Closes pippin-1zv.
+- [build] Stable-identity code signing so macOS TCC permission grants persist across rebuilds/upgrades. SwiftPM ad-hoc/linker-signs by default: the code identity is the CDHash, which changes every build, so TCC orphaned the prior grant on every `make install` / `brew upgrade` (and the two install paths got separate grants). `make install`/`make release` and the Homebrew formula now run `scripts/sign.sh`, which signs with a Developer ID Application identity + a fixed `com.mattwag05.pippin` identifier (guarded: ad-hoc fallback when no identity is present, so CI/other machines still build). `pippin doctor` gained a **Code signing** row reporting whether grants will persist. Notarization is not required for TCC (only for distributing downloaded binaries to other Macs; `PIPPIN_SIGN_HARDENED=1` enables it). Closes pippin-xzu.
+- [feat] New `pippin permissions` command + proactive permission priming during `pippin init`, so each app integration's macOS privacy permission is resolved once (interactively) instead of being deferred to "first use", which silently fails when first use is a background agent (e.g. an agent LaunchAgent) that can't show a TCC dialog. Run interactively, `pippin permissions` triggers each promptable prompt up front (EventKit Reminders/Calendar, Contacts, and the Mail/Notes Automation prompt), then reports the status of all seven integrations including the two Full Disk Access ones (Voice Memos, Messages) that have no prompt and must be granted manually. Priming is automatically skipped when nothing can answer a dialog (under MCP, `--format agent|json`, a non-TTY pipe, or `--status`) where it's a pure read-only report (`[{integration, mechanism, state, promptable, detail, remediation?}]`). Re-runnable any time (e.g. after a macOS upgrade or reinstall resets TCC). Closes pippin-uu3, pippin-dkf.
+- [build] The pippin binary now embeds an Info.plist (`__TEXT,__info_plist`) with the EventKit/Contacts/AppleEvents usage-description strings and a stable bundle identifier. Without these, `requestFullAccess*` is unreliable (or crashes) outside an interactive terminal: the root cause behind background launches hitting unexpected/silent permission failures. Closes pippin-1zv.
 
 ### Fixed
 
-- [bug] `pippin doctor` now checks **Messages** (Full Disk Access) access, which was previously uncovered, and the Calendar/Reminders/Contacts "not determined" rows now point at `pippin permissions` (the interactive grant) with full remediation instead of the misleading "grant on first use" — which is exactly the path that silently fails for background agents. Closes pippin-0jx.
+- [bug] `pippin doctor` now checks **Messages** (Full Disk Access) access, which was previously uncovered, and the Calendar/Reminders/Contacts "not determined" rows now point at `pippin permissions` (the interactive grant) with full remediation instead of the misleading "grant on first use", which is exactly the path that silently fails for background agents. Closes pippin-0jx.
 
-- [bug] The Reminders/Calendar/Contacts permission remediation fix above now also applies in **human (non-agent) CLI mode**, not just `--format agent`. The interactive error path resolved its hint via the code-only catalog lookup, so `pippin reminders create …` with denied access still printed the Voice Memos "Full Disk Access" guidance under the (correct) Reminders error header. Agent and human paths now share one `RemediationCatalog.resolve(for:)` resolver — a regression test asserts they can't diverge again. Closes pippin-oxy.
+- [bug] The Reminders/Calendar/Contacts permission remediation fix above now also applies in **human (non-agent) CLI mode**, not just `--format agent`. The interactive error path resolved its hint via the code-only catalog lookup, so `pippin reminders create …` with denied access still printed the Voice Memos "Full Disk Access" guidance under the (correct) Reminders error header. Agent and human paths now share one `RemediationCatalog.resolve(for:)` resolver: a regression test asserts they can't diverge again. Closes pippin-oxy.
 - [bug] Foreign/bridged errors (`NSError`, `URLError`, `CocoaError`) that reach the agent-mode envelope no longer emit a junk `error.code`. The code was derived by snake-casing `String(describing: error)`, which for these turns the whole error *sentence* into a per-instance string like `error _domain=_n_s_u_r_l_error_domain _code=-1001 "…"` in a field agents/MCP clients branch on. Such errors now collapse to a stable, classifiable `unknown_error` (exit code 5), while the human-readable detail is preserved in `error.message`. Typed pippin error codes are unchanged. Closes pippin-2tg.
-- [bug] Permission-denied errors for **Reminders**, **Calendar**, and **Contacts** now return the correct fix-it guidance. All three (and Voice Memos) derive the same agent error code `access_denied`, and the structured `remediation.human_hint` was looked up purely by that code — so a Reminders/Calendar/Contacts permission failure (e.g. an MCP `reminders_create` call from a background agent) was told to "grant **Full Disk Access** for **Voice Memos**", the wrong System Settings pane and wrong permission entirely. Each error now carries its own permission-specific remediation pointing at the right pane (Privacy & Security > Reminders/Calendars/Contacts), explaining that the grant attaches to the launching app (terminal or MCP/agent client) rather than the pippin binary, and noting that a background agent that can't show the first-use prompt should run `pippin <area> list` once interactively. The `access_denied` code is unchanged, so exit-code classification and MCP branching are unaffected. The `doctor` Calendar/Reminders/Contacts hints were updated to match. Closes pippin-ci2.
+- [bug] Permission-denied errors for **Reminders**, **Calendar**, and **Contacts** now return the correct fix-it guidance. All three (and Voice Memos) derive the same agent error code `access_denied`, and the structured `remediation.human_hint` was looked up purely by that code, so a Reminders/Calendar/Contacts permission failure (e.g. an MCP `reminders_create` call from a background agent) was told to "grant **Full Disk Access** for **Voice Memos**", the wrong System Settings pane and wrong permission entirely. Each error now carries its own permission-specific remediation pointing at the right pane (Privacy & Security > Reminders/Calendars/Contacts), explaining that the grant attaches to the launching app (terminal or MCP/agent client) rather than the pippin binary, and noting that a background agent that can't show the first-use prompt should run `pippin <area> list` once interactively. The `access_denied` code is unchanged, so exit-code classification and MCP branching are unaffected. The `doctor` Calendar/Reminders/Contacts hints were updated to match. Closes pippin-ci2.
 
 ## [0.28.0] - 2026-06-03
 
 ### Added
 
-- [feat] Calendar date options now accept a **space** between date and time, not just strict `T`-separated ISO 8601. `calendar create --start '2026-06-04 14:30'` (and `--end`, plus `agenda`/`list`'s `--from`/`--to`) parse the natural `'YYYY-MM-DD HH:MM'` / `'YYYY-MM-DD HH:MM:SS'` forms agents and humans reach for, interpreting them at local time — the same instant as the `T`-separated form. Minute-precision `T` forms (`2026-06-04T14:30`, previously rejected for lacking seconds) now parse too. Strict ISO stays canonical; date-only and timezone-qualified inputs are unchanged. Closes pippin-3gp.
+- [feat] Calendar date options now accept a **space** between date and time, not just strict `T`-separated ISO 8601. `calendar create --start '2026-06-04 14:30'` (and `--end`, plus `agenda`/`list`'s `--from`/`--to`) parse the natural `'YYYY-MM-DD HH:MM'` / `'YYYY-MM-DD HH:MM:SS'` forms agents and humans reach for, interpreting them at local time: the same instant as the `T`-separated form. Minute-precision `T` forms (`2026-06-04T14:30`, previously rejected for lacking seconds) now parse too. Strict ISO stays canonical; date-only and timezone-qualified inputs are unchanged. Closes pippin-3gp.
 
 ### Changed
 
-- [refactor] `AudioBridge.STTEntry` now carries its mlx-audio argument contract as a typed `STTContract` (`.generate`/`.legacy`) enum, set once by `resolveSTTEntry` where the entry point is chosen. `buildSTTArgs`/`transcribe` branch on `entry.contract` instead of re-deriving it by string-matching the executable path and prefix args at each call site — removing the duplicated string-match and making a future third contract a compile-checked change. No behavior change. Closes pippin-dzf.
+- [refactor] `AudioBridge.STTEntry` now carries its mlx-audio argument contract as a typed `STTContract` (`.generate`/`.legacy`) enum, set once by `resolveSTTEntry` where the entry point is chosen. `buildSTTArgs`/`transcribe` branch on `entry.contract` instead of re-deriving it by string-matching the executable path and prefix args at each call site: removing the duplicated string-match and making a future third contract a compile-checked change. No behavior change. Closes pippin-dzf.
 - [build] `doctor`'s mlx-audio probe now validates the STT CLI's argument contract, not just that it's importable and responds to `--help`. It captures `mlx_audio.stt.generate --help` and asserts every flag pippin will actually pass (`--model`, `--audio`, `--output-path`, `--format`) is advertised, failing with a named-flag remediation when one is missing. Previously the probe only checked `--help` exit 0, so a version skew that renamed or dropped a required flag (the class of break behind pippin-8ik) reported all-green while `memos transcribe`/`summarize`/`capture` failed. The expected-flag list is derived from the same `buildSTTArgs` the real invocation uses, so the probe and the call path can't drift. Closes pippin-xua.
 
 ### Fixed
 
 - [bug] In `--format agent` mode, argument validation and parse failures (a malformed `--start`, a missing required flag, an unknown flag) now exit `2` (usage / bad input) instead of `5` (tool/bridge failure), so an agent branching on the exit class can tell "fix my arguments and retry" apart from "the tool broke." Outside agent mode, ArgumentParser keeps its own `64` so its formatted usage help is preserved. Closes pippin-3sy.
 - [bug] `--format agent` (and therefore every MCP tool call) now surfaces ArgumentParser validation messages instead of an opaque envelope. A malformed flag like `calendar create --start "2026-06-04 12:00"` returned `error.message: "The operation couldn’t be completed. (ArgumentParser.CommandError error 1.)"` in agent mode while default (human) mode showed the actionable "`--start must be in YYYY-MM-DD or ISO 8601 format.`" The agent error path now recovers ArgumentParser's real text via the root command's `message(for:)`, so agents/MCP clients get the same guidance humans do (covers validation errors, missing required args, and unknown flags). Closes pippin-kzi.
-- [bug] `notes list` / `notes search` no longer return zero results on large Notes libraries. The newest-first sort materialized each note's `modificationDate` with one Apple Event *per note* — O(n) round-trips that, on a big vault, spent the entire 22s soft-timeout before the sort, so the page came back empty (only `--folder <name>` worked, because that collection was small enough to scan in time). The dates are now bulk-fetched off the collection specifier in a single Apple Event, so the sort loop fires zero Apple Events and the default listing returns a non-empty newest-first prefix that agents can chain `notes show` from. Closes pippin-mo7.
+- [bug] `notes list` / `notes search` no longer return zero results on large Notes libraries. The newest-first sort materialized each note's `modificationDate` with one Apple Event *per note*: O(n) round-trips that, on a big vault, spent the entire 22s soft-timeout before the sort, so the page came back empty (only `--folder <name>` worked, because that collection was small enough to scan in time). The dates are now bulk-fetched off the collection specifier in a single Apple Event, so the sort loop fires zero Apple Events and the default listing returns a non-empty newest-first prefix that agents can chain `notes show` from. Closes pippin-mo7.
 
 ## [0.27.0] - 2026-06-03
 
 ### Added
 
-- [feat] Configurable OpenAI-compatible AI backend. A new `openai` provider talks to any OpenAI-compatible Chat Completions endpoint (`POST {baseURL}/chat/completions`) — OpenAI, OpenRouter, a self-hosted OpenAI-compatible gateway, vLLM, LM Studio, llama.cpp's server, or Ollama's own `/v1` shim. Configure via `ai.provider: "openai"` + `ai.openai.{baseURL, model, apiKey}` in `~/.config/pippin/config.json`, or per-command with `--provider openai --model <m> --api-key <k>`. The API key is optional (local endpoints that don't authenticate send no `Authorization` header). Lets `memos summarize`/`capture`, `calendar`/`reminders smart-create`, `actions`, `do`, and `mail --ai-assisted` run against any reachable model server instead of being tied to local Ollama. (Mail semantic-search embeddings remain Ollama-only.)
+- [feat] Configurable OpenAI-compatible AI backend. A new `openai` provider talks to any OpenAI-compatible Chat Completions endpoint (`POST {baseURL}/chat/completions`): OpenAI, OpenRouter, a self-hosted OpenAI-compatible gateway, vLLM, LM Studio, llama.cpp's server, or Ollama's own `/v1` shim. Configure via `ai.provider: "openai"` + `ai.openai.{baseURL, model, apiKey}` in `~/.config/pippin/config.json`, or per-command with `--provider openai --model <m> --api-key <k>`. The API key is optional (local endpoints that don't authenticate send no `Authorization` header). Lets `memos summarize`/`capture`, `calendar`/`reminders smart-create`, `actions`, `do`, and `mail --ai-assisted` run against any reachable model server instead of being tied to local Ollama. (Mail semantic-search embeddings remain Ollama-only.)
 
 ## [0.26.0] - 2026-06-03
 
@@ -421,20 +421,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `mail list --preview N` now reads/writes through the local mail body cache (the same `~/.config/pippin/mail-cache.db` used by `mail show`/`mail index`). Previews are assembled in two passes — a cheap metadata-only enumeration, then a single batch osascript that fetches bodies only for cache misses and writes them through. A warm cache skips the expensive per-message `msg.content()` IMAP download entirely; a cold cache adds just one extra metadata pass. Read/unread and all other metadata stay live (only the body preview comes from the cache). Always-on; new `mail list --no-cache` forces live fetches. Closes pippin-8fq. (`mail search --body` remains deferred — tracked as pippin-1wy.)
+- [feat] `mail list --preview N` now reads/writes through the local mail body cache (the same `~/.config/pippin/mail-cache.db` used by `mail show`/`mail index`). Previews are assembled in two passes: a cheap metadata-only enumeration, then a single batch osascript that fetches bodies only for cache misses and writes them through. A warm cache skips the expensive per-message `msg.content()` IMAP download entirely; a cold cache adds just one extra metadata pass. Read/unread and all other metadata stay live (only the body preview comes from the cache). Always-on; new `mail list --no-cache` forces live fetches. Closes pippin-8fq. (`mail search --body` remains deferred: tracked as pippin-1wy.)
 
 ## [0.25.0] - 2026-06-03
 
 ### Added
 
-- [feat] Local mail body cache. `mail show` and `mail index` now read message bodies through a SQLite cache (`~/.config/pippin/mail-cache.db`) keyed by compound id, so the expensive per-message `msg.content()` IMAP download happens once. Repeat reads are ~75× faster (≈1.3s → ≈17ms in local testing) and `mail index` re-runs skip already-fetched bodies. New `mail cache stats|clear|warm` subcommands (`warm` pre-fetches recent bodies; `clear --older-than-days N` prunes) and a `mail show --no-cache` escape hatch. Read/unread state is never cached — `mail list`/`search` stay live. Closes pippin-e6m. (The bulk `list --preview` / `search --body` timeout path fetches bodies inside the JXA loop and needs a separate restructure — tracked as a follow-up.)
+- [feat] Local mail body cache. `mail show` and `mail index` now read message bodies through a SQLite cache (`~/.config/pippin/mail-cache.db`) keyed by compound id, so the expensive per-message `msg.content()` IMAP download happens once. Repeat reads are ~75× faster (≈1.3s → ≈17ms in local testing) and `mail index` re-runs skip already-fetched bodies. New `mail cache stats|clear|warm` subcommands (`warm` pre-fetches recent bodies; `clear --older-than-days N` prunes) and a `mail show --no-cache` escape hatch. Read/unread state is never cached: `mail list`/`search` stay live. Closes pippin-e6m. (The bulk `list --preview` / `search --body` timeout path fetches bodies inside the JXA loop and needs a separate restructure: tracked as a follow-up.)
 - [feat] `mail list` now accepts `--fields` (and the `mail_list` MCP tool a `fields` arg) to project the output to chosen JSON keys, trimming agent token usage. Closes pippin-1k0.
-- [feat] `pippin agent-info` — a capability-probe command for orchestrating agents. One call returns pippin's contract as structured data (envelope v1): version, `schema_version`, output `formats`, the typed `exit_codes` map, `global_flags`, experimental-gate status, MCP `tool_count` (sourced from the tool registry so it can't drift from `mcp-server --list-tools`), and the visible top-level `commands`. Complements `mcp-server --list-tools`. Closes pippin-zgs.
+- [feat] `pippin agent-info`: a capability-probe command for orchestrating agents. One call returns pippin's contract as structured data (envelope v1): version, `schema_version`, output `formats`, the typed `exit_codes` map, `global_flags`, experimental-gate status, MCP `tool_count` (sourced from the tool registry so it can't drift from `mcp-server --list-tools`), and the visible top-level `commands`. Complements `mcp-server --list-tools`. Closes pippin-zgs.
 - [feat] Typed process exit codes. On failure `pippin` now sets a distinct exit code derived from the envelope's `error.code` so a calling shell or agent can branch on the failure *class* without parsing JSON: `3` not-found, `4` auth/permission/config, `5` tool/bridge failure (default), `7` timeout/rate-limit, `2` usage/bad-input. Argument-parsing failures keep ArgumentParser's `64`. Applies in `--format agent` mode and to catalogued errors in text/json mode; the MCP server passes the code through verbatim. Documented in SKILL.md and docs/mcp-server.md. Closes pippin-y7y.
 
 ### Fixed
 
-- [bug] `--fields` projection now works in `--format agent`, not just `--format json`. It was previously silent in agent mode — the exact format AI agents/MCP clients use — so `notes`/`calendar`/`reminders` list/search calls returned full objects despite `--fields`. Projection now applies inside the envelope's `data` (leaving `v`/`status`/`duration_ms`/`warnings` intact) and preserves `next_cursor` on paginated output. The three duplicated field-filter implementations (ReminderModels/CalendarModels `jsonData`, NotesCommand `filteredNoteDicts`) were consolidated onto one shared `FieldProjection` helper so json- and agent-mode stay in lockstep. Closes pippin-1k0.
+- [bug] `--fields` projection now works in `--format agent`, not just `--format json`. It was previously silent in agent mode, the exact format AI agents/MCP clients use, so `notes`/`calendar`/`reminders` list/search calls returned full objects despite `--fields`. Projection now applies inside the envelope's `data` (leaving `v`/`status`/`duration_ms`/`warnings` intact) and preserves `next_cursor` on paginated output. The three duplicated field-filter implementations (ReminderModels/CalendarModels `jsonData`, NotesCommand `filteredNoteDicts`) were consolidated onto one shared `FieldProjection` helper so json- and agent-mode stay in lockstep. Closes pippin-1k0.
 
 ## [0.24.3] - 2026-06-03
 
@@ -458,72 +458,72 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - [docs] Refresh `SKILL.md` to current state: bump to 0.24.0, document the `messages`, `digest`, `actions`, `job`, `do`, `batch`, and `mcp-server` command groups, mark `audio`/`browser` as experimental (`PIPPIN_EXPERIMENTAL=1`), fix `completions` to positional-arg syntax, and replace the pre-envelope agent-output examples with envelope v1 + pagination guidance.
 - [docs] Add a graphify knowledge graph under `graphify-out/` for repo onboarding and register `/graphify` for the various coding agents used on this repo.
-- [docs] Repo-wide doc drift sweep: fix `reminders list`/`create` (`--list` takes an ID, title is positional) and `calendar events --calendar-name` examples in `README.md`; rewrite the stale `.github/copilot-instructions.md` (was v0.1.0 / 5 subcommands / wrong deps); remove the dead SwiftLint section and correct the `.forgejo` "retired" note in `docs/gotchas/build.md`; fix the release skill's "wait for CI" step (GitHub CI is disabled — gate is local `make ci`); correct the `gastownhall/beads` URL and CHANGELOG pointer in `docs/ROADMAP.md`; fix the single-account `--body` search timeout (75s) and add the MCP-clamp note in `TIMEOUT_ANALYSIS.md`; de-hardcode stale test counts.
+- [docs] Repo-wide doc drift sweep: fix `reminders list`/`create` (`--list` takes an ID, title is positional) and `calendar events --calendar-name` examples in `README.md`; rewrite the stale `.github/copilot-instructions.md` (was v0.1.0 / 5 subcommands / wrong deps); remove the dead SwiftLint section and correct the `.forgejo` "retired" note in `docs/gotchas/build.md`; fix the release skill's "wait for CI" step (GitHub CI is disabled: gate is local `make ci`); correct the `gastownhall/beads` URL and CHANGELOG pointer in `docs/ROADMAP.md`; fix the single-account `--body` search timeout (75s) and add the MCP-clamp note in `TIMEOUT_ANALYSIS.md`; de-hardcode stale test counts.
 - [docs] Reduce `AGENTS.md` to a thin pointer to `CLAUDE.md` (the single source of truth).
 - [build] Untrack the stray repo-root `issues.jsonl` (accidental early commit; gitignored, no longer regenerated since `export.auto: false`).
 - [ci] Bring the Forgejo workflows into parity with GitHub: add the detach-blocking lint to `.forgejo/workflows/ci.yaml`, and fix `release.yaml` to use the self-hosted `macos` runner label (was `macos-15`) with a SHA-pinned checkout.
-- [ci] Remove the GitHub Copilot automatic CI-troubleshooting workflow (`.github/workflows/copilot-ci-fix.yml`) — no longer in use — and strip its references from `CLAUDE.md` / `copilot-instructions.md`. The Copilot coding agent (manual `@copilot`) and its `copilot-setup-steps.yml` env remain.
+- [ci] Remove the GitHub Copilot automatic CI-troubleshooting workflow (`.github/workflows/copilot-ci-fix.yml`), no longer in use, and strip its references from `CLAUDE.md` / `copilot-instructions.md`. The Copilot coding agent (manual `@copilot`) and its `copilot-setup-steps.yml` env remain.
 
 ## [0.24.0] - 2026-06-02
 
 ### Added
 
-- [feat] `detachBlocking` helper (`pippin/DetachBlocking.swift`) — single-purpose wrapper that hops sync, thread-blocking work to a detached `Task` so async commands no longer stall the cooperative pool when invoking subprocess waits, `DispatchSemaphore.wait`, or `sendSynchronousRequest`. Throwing and non-throwing overloads. Documented at `docs/gotchas/swift.md` § Cooperative-thread blocking.
-- [feat] `pippin doctor --latency` — opt-in Mail bridge latency probes (list/activity/search) with classifyLatency thresholds (<20s ok, 20–55s warn, ≥55s fail with remediation hint). Self-bounded inside the bridge (softTimeoutMs=20000) so the whole `--latency` pass is bounded around 60s. Closes pippin-11e.
-- [feat] `pippin doctor` — Ollama check now also verifies the configured model is actually pulled (`/api/tags` lookup with base-name fuzzy match). When missing, the failure detail names the model and the remediation lists `ollama pull <model>` plus a sample of what's available so the user can pick. Closes pippin-n5p.
-- [feat] `NotesBridge.countNotes(folder:)` — single-Apple-Event count helper for dashboards/digests that need `noteCount` without iterating bodies. Adopted by `StatusCommand.gatherNotesStatus`. Closes pippin-9s6.
-- [feat] `BatchBudget` (`pippin/BatchBudget.swift`) — wall-clock budget for parallel batch operations. `forCurrentContext()` picks 50s under MCP (PIPPIN_MCP=1) and unlimited in CLI. Wired into `memos export --all --transcribe` and `memos transcribe --all` so MCP clients see a partial-results warning instead of mid-batch SIGKILL. Closes pippin-55e.
-- [feat] `pippin/AIProvider/AIProvider.swift` — `isMCPContext()` / `aiRequestTimeoutSeconds()` helpers. `OllamaProvider` runs a 2s `GET /api/version` preflight before completion calls; failures surface as new `AIProviderError.providerUnreachable` with a "start it with `ollama serve`" hint. Both providers shorten the request budget to 50s under MCP (vs 120s CLI) so the JSON-RPC client sees a typed AI error rather than the runChild SIGKILL. Closes pippin-5et.
+- [feat] `detachBlocking` helper (`pippin/DetachBlocking.swift`): single-purpose wrapper that hops sync, thread-blocking work to a detached `Task` so async commands no longer stall the cooperative pool when invoking subprocess waits, `DispatchSemaphore.wait`, or `sendSynchronousRequest`. Throwing and non-throwing overloads. Documented at `docs/gotchas/swift.md` § Cooperative-thread blocking.
+- [feat] `pippin doctor --latency`: opt-in Mail bridge latency probes (list/activity/search) with classifyLatency thresholds (<20s ok, 20 to 55s warn, ≥55s fail with remediation hint). Self-bounded inside the bridge (softTimeoutMs=20000) so the whole `--latency` pass is bounded around 60s. Closes pippin-11e.
+- [feat] `pippin doctor`: Ollama check now also verifies the configured model is actually pulled (`/api/tags` lookup with base-name fuzzy match). When missing, the failure detail names the model and the remediation lists `ollama pull <model>` plus a sample of what's available so the user can pick. Closes pippin-n5p.
+- [feat] `NotesBridge.countNotes(folder:)`: single-Apple-Event count helper for dashboards/digests that need `noteCount` without iterating bodies. Adopted by `StatusCommand.gatherNotesStatus`. Closes pippin-9s6.
+- [feat] `BatchBudget` (`pippin/BatchBudget.swift`): wall-clock budget for parallel batch operations. `forCurrentContext()` picks 50s under MCP (PIPPIN_MCP=1) and unlimited in CLI. Wired into `memos export --all --transcribe` and `memos transcribe --all` so MCP clients see a partial-results warning instead of mid-batch SIGKILL. Closes pippin-55e.
+- [feat] `pippin/AIProvider/AIProvider.swift`: `isMCPContext()` / `aiRequestTimeoutSeconds()` helpers. `OllamaProvider` runs a 2s `GET /api/version` preflight before completion calls; failures surface as new `AIProviderError.providerUnreachable` with a "start it with `ollama serve`" hint. Both providers shorten the request budget to 50s under MCP (vs 120s CLI) so the JSON-RPC client sees a typed AI error rather than the runChild SIGKILL. Closes pippin-5et.
 - [feat] `MCPServerRuntime.runChild` sets `PIPPIN_MCP=1` in child env so AI providers and `BatchBudget` can detect MCP context.
-- [feat] `StatusReport.NotesStatus.timedOut` — new optional field (defaults to false; backward-compat init) populated from `listFolders` + `listNotes` outcomes. Text mode appends "(partial — Notes scan timed out)". Closes pippin-53p.
-- [feat] `pippin notes list` native offset pushdown for deep pagination — `buildListScript`/`listNotes` take an `offset` so `--page-size`/`--cursor` walks past the old 500-note ceiling without re-fetching from the top (mirrors the MailCommand pushdown path). Closes pippin-m3y.
-- [feat] `pippin doctor --latency` fourth probe — a Mail.app ready-poll latency probe (`MailBridge.probeReady()`, runs `jsMailReadyPoll` only, no mailbox scan) wired as the first probe, so a slow Mail.app startup/sync is distinguishable from a slow query. Closes pippin-11e.
-- [test] 26 new tests across `DetachBlocking`, `BatchBudget`, `DoctorTests` (latency classifier + Ollama model matcher), `AIProviderTests` (preflight + MCP context), `NotesBridgeSoftTimeoutTests` (pre-sort budget check + countNotes script shape), `StatusCommandTests` (Notes timedOut Codable). DoctorTests caches `runAllChecks()` once per suite — full suite wall time 22s → 19s. Test count 1632 → 1658.
+- [feat] `StatusReport.NotesStatus.timedOut`: new optional field (defaults to false; backward-compat init) populated from `listFolders` + `listNotes` outcomes. Text mode appends "(partial: Notes scan timed out)". Closes pippin-53p.
+- [feat] `pippin notes list` native offset pushdown for deep pagination: `buildListScript`/`listNotes` take an `offset` so `--page-size`/`--cursor` walks past the old 500-note ceiling without re-fetching from the top (mirrors the MailCommand pushdown path). Closes pippin-m3y.
+- [feat] `pippin doctor --latency` fourth probe: a Mail.app ready-poll latency probe (`MailBridge.probeReady()`, runs `jsMailReadyPoll` only, no mailbox scan) wired as the first probe, so a slow Mail.app startup/sync is distinguishable from a slow query. Closes pippin-11e.
+- [test] 26 new tests across `DetachBlocking`, `BatchBudget`, `DoctorTests` (latency classifier + Ollama model matcher), `AIProviderTests` (preflight + MCP context), `NotesBridgeSoftTimeoutTests` (pre-sort budget check + countNotes script shape), `StatusCommandTests` (Notes timedOut Codable). DoctorTests caches `runAllChecks()` once per suite: full suite wall time 22s → 19s. Test count 1632 → 1658.
 
 ### Fixed
 
 - [bug] Async commands no longer stall the Swift 6 cooperative thread pool. Wrapped sync blocking work in `detachBlocking` at the async boundary across DoctorCommand, InitCommand, AudioCommand (4 sites), MailCommand semantic-search paths, StatusCommand, BrowserCommand (8 sites) + BrowserRetry, SummarizeCommand, MemosCaptureCommand, ActionsCommand, CalendarCommand smart-create + briefing, RemindersCommand smart-create, MailCommand list --summarize / show --sanitize. Closes pippin-3re, pippin-f1n, pippin-ka7, pippin-zwn, pippin-8l6.
-- [bug] `NotesBridge.buildListScript` / `buildSearchScript` — large vaults could spend the entire 22s soft-cap budget on `app.notes()` and the modificationDate-comparing sort alone, busting the ScriptRunner 30s hard cap before the loop ran. Now skips the sort when over budget and emits unsorted notes (capped to limit) with `timedOut=true`. ScriptRunner default 30→35s on read-only Notes paths. Closes pippin-4as.
-- [bug] `AudioConverter.swift` — silenced Swift 6.3 Sendable warnings via `@preconcurrency import AVFoundation` and `nonisolated(unsafe) var fed` (the converter callback runs synchronously). Closes pippin-srt.
+- [bug] `NotesBridge.buildListScript` / `buildSearchScript`: large vaults could spend the entire 22s soft-cap budget on `app.notes()` and the modificationDate-comparing sort alone, busting the ScriptRunner 30s hard cap before the loop ran. Now skips the sort when over budget and emits unsorted notes (capped to limit) with `timedOut=true`. ScriptRunner default 30→35s on read-only Notes paths. Closes pippin-4as.
+- [bug] `AudioConverter.swift`: silenced Swift 6.3 Sendable warnings via `@preconcurrency import AVFoundation` and `nonisolated(unsafe) var fed` (the converter callback runs synchronously). Closes pippin-srt.
 - [bug] `runConcurrently<Input, Output>` now requires `Input: Sendable, Output: Sendable` so the `@Sendable` closure capture is well-typed. All callers already pass Sendable types. Closes pippin-69y.
 - [bug] `MailBridge.timedOut` and `NotesBridge.timedOut` no longer silently dropped by callers that need the signal. `DigestCommand` notes section + `MailAICommand` index/triage + `StatusReport.NotesStatus` now surface partial-results warnings. Closes pippin-6tg, pippin-53p.
-- [bug] `MessagesCommand.swift` — removed five `try?` wrappers around the non-throwing `MessagesAuditLog.record`. Adjacent `StatusCommand.swift` cleanup: dropped dead `?? ""` on non-optional `account.email`, replaced four deprecated `EKAuthorizationStatus.authorized` comparisons with `.fullAccess` (we target macOS 15+). Closes pippin-7xn.
-- [perf] `pippin status` no longer hangs ~84s on Notes count — `gatherNotesStatus` switched from `listNotes(limit: 500)` (which iterates every note's body+plainText) to the new `NotesBridge.countNotes()` single Apple Event. End-to-end status duration on a 440-note vault: 84s → 12.8s. Closes pippin-9s6.
+- [bug] `MessagesCommand.swift`: removed five `try?` wrappers around the non-throwing `MessagesAuditLog.record`. Adjacent `StatusCommand.swift` cleanup: dropped dead `?? ""` on non-optional `account.email`, replaced four deprecated `EKAuthorizationStatus.authorized` comparisons with `.fullAccess` (we target macOS 15+). Closes pippin-7xn.
+- [perf] `pippin status` no longer hangs ~84s on Notes count: `gatherNotesStatus` switched from `listNotes(limit: 500)` (which iterates every note's body+plainText) to the new `NotesBridge.countNotes()` single Apple Event. End-to-end status duration on a 440-note vault: 84s → 12.8s. Closes pippin-9s6.
 - [bug] `parseRange("today+N")` (calendar `--range`) and `MessagesDatabase.appleNanos` no longer crash on out-of-range input. `today+<huge N>` overflow-trapped on `n + 1` and force-unwrapped `Calendar.date(byAdding:)`; `appleNanos` trapped on `Int64(Double)` for far-future dates. Now caps N at ~10 years with guard-lets, and clamps the nanosecond value to Int64 bounds. Closes pippin-dr7.
-- [bug] Voice Memos with NULL Core Data columns no longer crash `memos list`/`getMemo`. `VoiceMemo.init(row:)` force-decoded `ZUNIQUEID`/`ZDURATION`/`ZDATE`/`ZPATH`, and GRDB traps on a NULL — common for an iCloud recording not yet downloaded. Now decodes optionally with fallbacks. `deleteMemo` also force-decoded `ZPATH` and an empty path would have made `appendingPathComponent("")` target (and delete) the whole recordings directory — guarded. Closes pippin-hgo.
+- [bug] Voice Memos with NULL Core Data columns no longer crash `memos list`/`getMemo`. `VoiceMemo.init(row:)` force-decoded `ZUNIQUEID`/`ZDURATION`/`ZDATE`/`ZPATH`, and GRDB traps on a NULL: common for an iCloud recording not yet downloaded. Now decodes optionally with fallbacks. `deleteMemo` also force-decoded `ZPATH` and an empty path would have made `appendingPathComponent("")` target (and delete) the whole recordings directory: guarded. Closes pippin-hgo.
 - [bug] `OllamaEmbeddingProvider` (semantic search / triage) now honors MCP timeout budgets. It hardcoded 120s/300s and ignored `isMCPContext()`, so under `PIPPIN_MCP=1` a slow embedding server blew past the 60s child cap and was SIGKILLed (misreported as a protocol error). New `requestTimeout(batch:)` clamps to the MCP-aware budget (50s) under MCP, keeping the generous CLI budget otherwise. Closes pippin-754.
 - [bug] `messages list/search/show --limit` no longer crashes or over-fetches on pathological input. A negative limit made SQLite treat `LIMIT -1` as unbounded (whole-DB fetch into memory); a near-`Int.max` limit overflow-trapped `limit + 1` / `limit + excluded.count`. New `MessagesDatabase.clampLimit` normalizes to `[0, 100000]` at all three query entry points. Closes pippin-fvg.
 - [bug] Pagination no longer overflow-traps on a huge `--page-size` or crafted cursor. `Cursor.paginate`'s `safeOffset + pageSize` and `pageFromPushdown`'s `offset + pageSize` could trap; `resolve()` now caps `pageSize` at 100000, `paginate` computes the slice end from a remaining-bounded count, and pushdown uses `addingReportingOverflow`. Closes pippin-69k.
-- [bug] `SessionManager` (REPL session state) no longer loses concurrent updates. Mutators released the lock, then `save()` re-snapshotted under a separate lock and wrote atomically outside it, so two concurrent mutators' writes were unordered — an older snapshot could land last and revert a sibling field on disk. Persistence now happens inside the mutation's lock. Closes pippin-ym2.
+- [bug] `SessionManager` (REPL session state) no longer loses concurrent updates. Mutators released the lock, then `save()` re-snapshotted under a separate lock and wrote atomically outside it, so two concurrent mutators' writes were unordered: an older snapshot could land last and revert a sibling field on disk. Persistence now happens inside the mutation's lock. Closes pippin-ym2.
 - [bug] `memos export --all --format agent`/`json` no longer hides per-item failures. They were only printed to stdout in non-structured mode, so an all-failed batch returned an empty result set with status `ok` and exit 0. Failures and batch-budget exhaustion now surface as envelope `warnings` (agent) / stderr (json/plain). Closes pippin-290.
-- [bug] Date parsing/formatting no longer misbehaves under a non-Gregorian device calendar. `parseDateString` (`memos`/`summarize --since`) lacked `locale = en_US_POSIX` on its fixed `yyyy-MM-dd` formatter, and `TextFormatter.compactDate` used `Calendar.current` — a Buddhist/Japanese-era calendar would misparse the `--since` window or render the wrong year (e.g. 2567 for 2024). Both now pin Gregorian (timezone stays local). Closes pippin-ope.
+- [bug] Date parsing/formatting no longer misbehaves under a non-Gregorian device calendar. `parseDateString` (`memos`/`summarize --since`) lacked `locale = en_US_POSIX` on its fixed `yyyy-MM-dd` formatter, and `TextFormatter.compactDate` used `Calendar.current`: a Buddhist/Japanese-era calendar would misparse the `--since` window or render the wrong year (e.g. 2567 for 2024). Both now pin Gregorian (timezone stays local). Closes pippin-ope.
 - [bug] MCP tool calls no longer fail when an argument value starts with `-`. Option values were passed as two argv tokens (`["--flag", value]`), so a value like a search body `-19%` or a markdown-bullet reminder title `- item` was misparsed by ArgumentParser as a stray flag. Option values now bind as `--flag=value`, and free-form positionals (search queries, reminder titles) are appended last behind a `--` separator. Closes pippin-xbm, pippin-bhn.
-- [bug] `JSONValue.intValue` (MCP argument extraction) no longer crashes the child on a huge number. A JSON number larger than Int64 decodes as `.double`, and `Int64(value)` traps on an out-of-range/non-finite double — so an arg like `{"limit": 1e19}` crashed the tool call. It now coerces only finite, in-range doubles and returns nil (treated as absent) otherwise. Closes pippin-8y0.
-- [bug] `calendar show/edit/delete <prefix>` now works for recurring events. `CalendarBridge.findEventByPrefix` returned nil for every repeating event — its occurrences are separate `EKEvent`s sharing one `calendarItemIdentifier`, so the old `matches.count == 1` check always saw N>1 and bailed. Now dedupes by distinct identifier (extracted to the testable `isUnambiguousPrefixMatch`).
+- [bug] `JSONValue.intValue` (MCP argument extraction) no longer crashes the child on a huge number. A JSON number larger than Int64 decodes as `.double`, and `Int64(value)` traps on an out-of-range/non-finite double, so an arg like `{"limit": 1e19}` crashed the tool call. It now coerces only finite, in-range doubles and returns nil (treated as absent) otherwise. Closes pippin-8y0.
+- [bug] `calendar show/edit/delete <prefix>` now works for recurring events. `CalendarBridge.findEventByPrefix` returned nil for every repeating event: its occurrences are separate `EKEvent`s sharing one `calendarItemIdentifier`, so the old `matches.count == 1` check always saw N>1 and bailed. Now dedupes by distinct identifier (extracted to the testable `isUnambiguousPrefixMatch`).
 - [bug] `notes list` pagination past the 500-note fetch ceiling no longer silently hides notes 501+. A window beyond the fetch cap sliced a truncated result into an empty page with no cursor and a false "done"; it now throws a clear `ValidationError` when the window exceeds `maxListLimit`.
 - [bug] `contacts search --limit` is now honored in the non-paginated path (it previously emitted the full result set; `--limit` only applied as the page size). `contacts search --email` now forces the matched address into output, so `--fields id,fullName` no longer hides the very email that matched.
-- [bug] Mail cross-account scans no longer get SIGKILLed under MCP. The list/activity/search hard caps scale up for cross-account scans (to 95s search / 115s activity) — above the 60s MCP `runChild` cap — so a wedged osascript was killed ungracefully instead of self-reaping with partial results. New `MailBridge.clampHardTimeout` clamps every hard cap to 55s under `PIPPIN_MCP` (CLI keeps the full scaled values); the 22s soft cap still fires first in normal operation.
+- [bug] Mail cross-account scans no longer get SIGKILLed under MCP. The list/activity/search hard caps scale up for cross-account scans (to 95s search / 115s activity), above the 60s MCP `runChild` cap, so a wedged osascript was killed ungracefully instead of self-reaping with partial results. New `MailBridge.clampHardTimeout` clamps every hard cap to 55s under `PIPPIN_MCP` (CLI keeps the full scaled values); the 22s soft cap still fires first in normal operation.
 - [bug] Claude API-key resolution no longer hangs. `AIProviderFactory.tryGetSecret` left `stderr` as an undrained `Pipe()`, so a `get-secret` emitting >64KB of stderr blocked on a full pipe buffer and never exited. It now discards stderr at the OS level, drains stdout concurrently, and bounds the wait with a 10s SIGTERM→SIGKILL. Separately, `AudioCommand`'s `isAvailable()` subprocess probe is now hopped off the cooperative pool at all four sites.
-- [bug] `RemindersBridge.fetchRemindersSync` no longer hangs forever when EventKit's `fetchReminders` callback never fires (store hang / permission edge) — the bare `semaphore.wait()` is now bounded at 15s, returning partial results with a stderr warning. `DoCommand`'s serial `runChild` loop is hopped off the cooperative pool via `detachBlocking`.
+- [bug] `RemindersBridge.fetchRemindersSync` no longer hangs forever when EventKit's `fetchReminders` callback never fires (store hang / permission edge): the bare `semaphore.wait()` is now bounded at 15s, returning partial results with a stderr warning. `DoCommand`'s serial `runChild` loop is hopped off the cooperative pool via `detachBlocking`.
 - [bug] `reminders list --due-before`/`--due-after` no longer include reminders that have no due date. They were treated as passing (so an undated reminder showed up in both `--due-before X` and `--due-after X`); an undated reminder now fails any due filter, matching the `--created-after`/`--modified-after` behavior. Closes pippin-cbr.
-- [bug] `pippin digest --calendar-days N` now covers the full N days beyond today. The upcoming window was anchored to start-of-today, so it spanned only N−1 days (the default 7 dropped the 7th day's events). `--calendar-days` is also now bounded to 1–366 so a huge value can't overflow the date arithmetic. Closes pippin-921.
+- [bug] `pippin digest --calendar-days N` now covers the full N days beyond today. The upcoming window was anchored to start-of-today, so it spanned only N−1 days (the default 7 dropped the 7th day's events). `--calendar-days` is also now bounded to 1 to 366 so a huge value can't overflow the date arithmetic. Closes pippin-921.
 - [bug] The always-on prompt-injection rule scanner (`PromptInjectionScanner`) no longer misses phrases that are obfuscated with extra whitespace. Patterns like "ignore previous instructions" used literal substring matching, so `"ignore  previous\ninstructions"` (padded or line-broken) slipped past the rule pass. The systemPromptOverride / dataExfiltration / roleHijacking phrases now match with whitespace-tolerant regex (`word\s+word`), and `sanitize()` still redacts the real matched text. Closes pippin-z3c.
 
 ### Changed
 
 - [refactor] Unified `MailBridge.SearchMeta` / `ListMeta` / `ActivityMeta` (three byte-identical Decodable structs with the same custom init), `SearchResponse` / `ListResponse` / `ActivityResponse`, and `SearchOutcome` / `ListOutcome` / `ActivityOutcome` into `ScanMeta` / `ScanResponse` / `ScanOutcome`. Legacy names kept as typealiases so existing callers compile unchanged. ~80 lines of duplication removed. Closes pippin-660.
-- [build] `Makefile` — `make build` and `make test` now invoke `xcrun --sdk macosx swift {build,test}` so they route through `xcode-select`. CLT-only macOS 26 hosts get a clear hint to install Xcode or set `DEVELOPER_DIR`. Closes pippin-ncr.
+- [build] `Makefile`: `make build` and `make test` now invoke `xcrun --sdk macosx swift {build,test}` so they route through `xcode-select`. CLT-only macOS 26 hosts get a clear hint to install Xcode or set `DEVELOPER_DIR`. Closes pippin-ncr.
 - [refactor] Lifted the duplicated per-bridge `Outcome<T>` (NotesBridge + ContactsBridge) into a shared `pippin/Formatting/BridgeOutcome.swift`, resolving the Decodable/pure-Swift mismatch via conditional conformance (`extension BridgeOutcome: Decodable where T: Decodable`). `MailBridge.ScanOutcome` stays separate by design. Closes pippin-a9v.
-- [ci] `scripts/lint-detach-blocking.py` — async-aware brace-stack analyzer that flags `async` commands calling blocking bridge work without `detachBlocking` (strips comments/strings, handles same-line wraps, `// detach-lint:allow` suppression, `--self-test`); wired into the CI gates. It found and fixed 16 cooperative-pool gaps across Mail/Notes/Contacts. Closes pippin-avc, pippin-8aa.
-- [build] Local CI moved off GitHub-hosted runners. `make ci` runs the full gates natively (build + test + swiftformat + detach-lint); `make ci-vm` runs them in an ephemeral, isolated macOS VM via Tart (`scripts/ci-vm.sh` clones a fresh image, rsyncs the tree, runs the gates, destroys the VM). The GitHub `ci.yml` workflow is disabled — `make ci`/`ci-vm` is now the pre-push gate.
+- [ci] `scripts/lint-detach-blocking.py`: async-aware brace-stack analyzer that flags `async` commands calling blocking bridge work without `detachBlocking` (strips comments/strings, handles same-line wraps, `// detach-lint:allow` suppression, `--self-test`); wired into the CI gates. It found and fixed 16 cooperative-pool gaps across Mail/Notes/Contacts. Closes pippin-avc, pippin-8aa.
+- [build] Local CI moved off GitHub-hosted runners. `make ci` runs the full gates natively (build + test + swiftformat + detach-lint); `make ci-vm` runs them in an ephemeral, isolated macOS VM via Tart (`scripts/ci-vm.sh` clones a fresh image, rsyncs the tree, runs the gates, destroys the VM). The GitHub `ci.yml` workflow is disabled: `make ci`/`ci-vm` is now the pre-push gate.
 
 ### Documentation
 
-- [docs] `docs/ROADMAP.md` rewritten — every one of the previous file's 13 listed roadmap items had landed and closed. Restructured into Deferred (3 explicitly-deferred beads) and Shipped (v0.16 → v0.22) sections.
-- [docs] `docs/mcp-server.md` — tool count refreshed (33 → 44, added the messages_*, mail_activity, memos_capture_to_reminders, digest tools). Known-consumers section updated: the agent gateway now drives pippin natively over stdio MCP rather than shelling out.
-- [docs] `README.md` — install URL no longer pin-points v0.14.2 specifically; replaced with a generic vX.Y.Z placeholder pointing at the Releases page.
-- [docs] `docs/agent-prompts/{review-and-ship,autonomous-audit}.md` — retired the Forgejo PR-creation flow (Forgejo retired 2026-04-17 in favor of GitHub canonical); replaced with `gh pr create`. Test-count baseline 831 → ~1648. Audit checklist gained a Concurrency section and codified envelope v1 + outcome.timedOut surfacing as AX contracts.
-- [docs] `docs/gotchas/swift.md` — new "Cooperative-thread blocking — use `detachBlocking`" section covering where the blocking lives, the mechanical fix, and the two recurring traps (mutable struct self-capture, captured-var test counters).
+- [docs] `docs/ROADMAP.md` rewritten: every one of the previous file's 13 listed roadmap items had landed and closed. Restructured into Deferred (3 explicitly-deferred beads) and Shipped (v0.16 → v0.22) sections.
+- [docs] `docs/mcp-server.md`: tool count refreshed (33 → 44, added the messages_*, mail_activity, memos_capture_to_reminders, digest tools). Known-consumers section updated: the agent gateway now drives pippin natively over stdio MCP rather than shelling out.
+- [docs] `README.md`: install URL no longer pin-points v0.14.2 specifically; replaced with a generic vX.Y.Z placeholder pointing at the Releases page.
+- [docs] `docs/agent-prompts/{review-and-ship,autonomous-audit}.md`: retired the Forgejo PR-creation flow (Forgejo retired 2026-04-17 in favor of GitHub canonical); replaced with `gh pr create`. Test-count baseline 831 → ~1648. Audit checklist gained a Concurrency section and codified envelope v1 + outcome.timedOut surfacing as AX contracts.
+- [docs] `docs/gotchas/swift.md`, new "Cooperative-thread blocking, use `detachBlocking`" section covering where the blocking lives, the mechanical fix, and the two recurring traps (mutable struct self-capture, captured-var test counters).
 - [docs] Toolchain/CI/dependency drift cleanup: README Swift toolchain floor aligned to 6.0 (matches `Package.swift`); `copilot-setup-steps.yml` `setup-xcode` pin normalized to match ci/codeql/release (with a note on why Forgejo CI omitted it); the `.upToNextMinor` + `Package.resolved` revision-pin dependency policy documented in `Package.swift`. Closes pippin-7gb, pippin-n7q, pippin-9vh.
 - [docs] `docs/local-ci.md` + CLAUDE.md document the Tart `make ci-vm` / native `make ci` flow and that the GitHub `ci.yml` is disabled.
 
@@ -537,13 +537,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- [bug] `pippin mail list` (no `--account`) no longer hard-times out on multi-account setups — cross-account INBOX scan across 5+ accounts now gets 60s (was 10s). Partial results via the 22s soft timeout surface quickly; full scan finishes within the hard cap. Closes pippin-j3g.
-- [bug] `pippin mail search <query> --body` (no `--account`/`--mailbox`) no longer hard-times out — cross-account body search now gets 95s (was 30s). Searches across 5 accounts × ~30 mailboxes with per-message IMAP body fetches complete successfully.
-- [bug] `pippin mail activity` (no `--account`) no longer hard-times out — cross-account activity scan now gets 75s (was 50s), 115s with preview (was 90s). Scans 5 accounts × INBOX + Sent within the cap.
+- [bug] `pippin mail list` (no `--account`) no longer hard-times out on multi-account setups: cross-account INBOX scan across 5+ accounts now gets 60s (was 10s). Partial results via the 22s soft timeout surface quickly; full scan finishes within the hard cap. Closes pippin-j3g.
+- [bug] `pippin mail search <query> --body` (no `--account`/`--mailbox`) no longer hard-times out: cross-account body search now gets 95s (was 30s). Searches across 5 accounts × ~30 mailboxes with per-message IMAP body fetches complete successfully.
+- [bug] `pippin mail activity` (no `--account`) no longer hard-times out: cross-account activity scan now gets 75s (was 50s), 115s with preview (was 90s). Scans 5 accounts × INBOX + Sent within the cap.
 
 ### Changed
 
-- [refactor] `MailBridge.listMessages`, `listActivity`, `searchMessages` now auto-detect cross-account via `crossAccount = (account == nil)` (and `&& (mailbox == nil)` for search) and apply the appropriate timeout multiplier. No API surface change — all existing callers work unchanged.
+- [refactor] `MailBridge.listMessages`, `listActivity`, `searchMessages` now auto-detect cross-account via `crossAccount = (account == nil)` (and `&& (mailbox == nil)` for search) and apply the appropriate timeout multiplier. No API surface change: all existing callers work unchanged.
 
 ---
 
@@ -551,8 +551,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `pippin messages` subcommand — read and send access to Apple Messages (`~/Library/Messages/chat.db` via GRDB). Read subcommands: `list` (recent conversations, most-recent first), `search <query>` (substring match over message bodies), `show <conversation-id>` (thread view by GUID), `exclude {list,add,remove} <thread>` (per-thread opt-out stored in config). Handles both the post-macOS-10.13 nanosecond date column and the legacy seconds format. Agent/JSON output obeys envelope v1. Audit log at `~/.local/share/pippin/messages-audit.jsonl` records every read/send op (no message bodies persisted). MCP tools: `messages_list`, `messages_search`, `messages_show`, `messages_send` (draft-only via MCP). Requires Full Disk Access for the invoking terminal.
-- [feat] `pippin messages send --to <handle> --body <text>` — defaults to `--draft` (log-only, no delivery). Autonomous delivery (`--autonomous`) is triple-gated: env var `PIPPIN_AUTONOMOUS_MESSAGES=1` AND recipient in `config.messages.autonomousAllowlist` AND explicit `--autonomous` flag. PHI filter (SSN, credit card, API key, PEM, password mention) blocks send and records category names in the audit log.
+- [feat] `pippin messages` subcommand: read and send access to Apple Messages (`~/Library/Messages/chat.db` via GRDB). Read subcommands: `list` (recent conversations, most-recent first), `search <query>` (substring match over message bodies), `show <conversation-id>` (thread view by GUID), `exclude {list,add,remove} <thread>` (per-thread opt-out stored in config). Handles both the post-macOS-10.13 nanosecond date column and the legacy seconds format. Agent/JSON output obeys envelope v1. Audit log at `~/.local/share/pippin/messages-audit.jsonl` records every read/send op (no message bodies persisted). MCP tools: `messages_list`, `messages_search`, `messages_show`, `messages_send` (draft-only via MCP). Requires Full Disk Access for the invoking terminal.
+- [feat] `pippin messages send --to <handle> --body <text>`: defaults to `--draft` (log-only, no delivery). Autonomous delivery (`--autonomous`) is triple-gated: env var `PIPPIN_AUTONOMOUS_MESSAGES=1` AND recipient in `config.messages.autonomousAllowlist` AND explicit `--autonomous` flag. PHI filter (SSN, credit card, API key, PEM, password mention) blocks send and records category names in the audit log.
 
 ---
 
@@ -560,7 +560,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `pippin memos capture --to-reminders` — transcribe the most recent voice memo (or `--memo <id>`), extract action items via the configured LLM, and create Reminders in one shot. Chains existing `VoiceMemosDB`/`TranscriptCache`/`MLXAudioTranscriber` → `AIProvider` → `RemindersBridge`; no new infrastructure. Supports `--list <name>` (default: Inbox), `--dry-run` (auto-on for TTY text output; commits by default for `--format json` / `--format agent`). MCP tool: `memos_capture_to_reminders`. New built-in template `capture-action-items` enforces JSON shape `{items: [{title, due_hint, notes}]}`.
+- [feat] `pippin memos capture --to-reminders`: transcribe the most recent voice memo (or `--memo <id>`), extract action items via the configured LLM, and create Reminders in one shot. Chains existing `VoiceMemosDB`/`TranscriptCache`/`MLXAudioTranscriber` → `AIProvider` → `RemindersBridge`; no new infrastructure. Supports `--list <name>` (default: Inbox), `--dry-run` (auto-on for TTY text output; commits by default for `--format json` / `--format agent`). MCP tool: `memos_capture_to_reminders`. New built-in template `capture-action-items` enforces JSON shape `{items: [{title, due_hint, notes}]}`.
 
 ---
 
@@ -568,7 +568,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Deprecated
 
-- [deprecation] `pippin audio` and `pippin browser` subcommands are now hidden by default. Set `PIPPIN_EXPERIMENTAL=1` to re-enable them — existing scripts with the env var continue to work unchanged. These commands will be **removed in the next major release (v1.0.0)** unless an issue is filed against `github.com/mattwag05/pippin` requesting otherwise. Rationale: they're rarely used and carry outsized maintenance cost (mlx-audio Python subprocess, Playwright WebKit bundle). Code and tests remain in place so re-enabling requires no rebuild.
+- [deprecation] `pippin audio` and `pippin browser` subcommands are now hidden by default. Set `PIPPIN_EXPERIMENTAL=1` to re-enable them: existing scripts with the env var continue to work unchanged. These commands will be **removed in the next major release (v1.0.0)** unless an issue is filed against `github.com/mattwag05/pippin` requesting otherwise. Rationale: they're rarely used and carry outsized maintenance cost (mlx-audio Python subprocess, Playwright WebKit bundle). Code and tests remain in place so re-enabling requires no rebuild.
 
 ---
 
@@ -597,19 +597,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Breaking
 
-- [agent] Envelope v1 — every `--format agent` response is now wrapped in `{"v":1,"status":"ok","duration_ms":N,"data":<payload>}` (or `{"v":1,"status":"error",…,"error":{…}}`). The previous raw payload lives unchanged under `.data`, so single-field extractions like `.error.code` keep working; iterations like `jq 'length'` must be rewritten as `jq '.data | length'`. Canonical constant: `AGENT_SCHEMA_VERSION` in `pippin/Formatting/AgentOutput.swift`. Morning-briefing scheduled task already migrated. Consumer migration notes in `docs/mcp-server.md`.
+- [agent] Envelope v1: every `--format agent` response is now wrapped in `{"v":1,"status":"ok","duration_ms":N,"data":<payload>}` (or `{"v":1,"status":"error",…,"error":{…}}`). The previous raw payload lives unchanged under `.data`, so single-field extractions like `.error.code` keep working; iterations like `jq 'length'` must be rewritten as `jq '.data | length'`. Canonical constant: `AGENT_SCHEMA_VERSION` in `pippin/Formatting/AgentOutput.swift`. Morning-briefing scheduled task already migrated. Consumer migration notes in `docs/mcp-server.md`.
 
 ### Added
 
-- [feat] `pippin do "<intent>"` — LLM-planned sub-command execution. Reads the MCP tool registry as the tool schema, prompts the active AIProvider for a JSON plan (with one self-repair retry), validates step args against each tool's `inputSchema`, then executes via `pippin batch`. `--dry-run` stops before execution; `--max-steps N` caps plan size.
-- [feat] `pippin job run/show/list/wait/logs/gc` — detached-child jobs subsystem. State under `~/.cache/pippin/jobs/<ulid>/{status.json,stdout.log,stderr.log}`. Matching MCP tools `job_run`, `job_show`, `job_list`, `job_wait` so agents can fire long-running work without blocking the tools/call channel.
-- [feat] `pippin batch` — reads a JSON array of `{cmd,args}` on stdin, runs each entry concurrently (subprocess per entry, `--concurrency` default 4), returns an enveloped array of per-item envelopes. MCP companion tool `batch` registered — a single `tools/call` can parallelize N things.
-- [feat] `pippin mail watch` — polls configured accounts and emits newline-delimited JSON events for new messages. Options: `--account`, `--mailbox`, `--interval`.
-- [feat] `pippin contacts create/edit/delete` — write support on top of the existing read-only bridge. Uses `CNMutableContact` + `CNSaveRequest`. `--force` required for destructive ops.
-- [feat] `pippin mail triage` rules engine — persistent per-user rules at `~/.config/pippin/triage-rules.json` apply before (or instead of) the AI pass, covering auto-label, auto-archive, and priority overrides by sender/subject/keywords. Cuts tokens spent on predictable traffic.
-- [feat] Browser retry flags — `pippin browser open/fetch/snapshot` gained `--retry N`, `--expect-field <json.path>`, `--retry-delay-ms <ms>`. Response envelope adds `data._attempts` whenever `--retry > 0` is passed.
-- [feat] Pagination cursors — `--cursor <token>` + `--page-size N` on `mail list`, `mail search`, `memos list`, `reminders list`, `notes list`, `calendar events`, `calendar upcoming`, `contacts search`. When either flag is set, `envelope.data` becomes `{items, next_cursor}`; bare-array shape preserved otherwise. Cursor is `base64url(json({offset, filter_hash}))` with SHA-256 filter hash to reject cross-query reuse.
-- [feat] REPL tab completion — command names, subcommands, flag names, and contextual values (mail account names, reminder list names).
+- [feat] `pippin do "<intent>"`: LLM-planned sub-command execution. Reads the MCP tool registry as the tool schema, prompts the active AIProvider for a JSON plan (with one self-repair retry), validates step args against each tool's `inputSchema`, then executes via `pippin batch`. `--dry-run` stops before execution; `--max-steps N` caps plan size.
+- [feat] `pippin job run/show/list/wait/logs/gc`: detached-child jobs subsystem. State under `~/.cache/pippin/jobs/<ulid>/{status.json,stdout.log,stderr.log}`. Matching MCP tools `job_run`, `job_show`, `job_list`, `job_wait` so agents can fire long-running work without blocking the tools/call channel.
+- [feat] `pippin batch`: reads a JSON array of `{cmd,args}` on stdin, runs each entry concurrently (subprocess per entry, `--concurrency` default 4), returns an enveloped array of per-item envelopes. MCP companion tool `batch` registered: a single `tools/call` can parallelize N things.
+- [feat] `pippin mail watch`: polls configured accounts and emits newline-delimited JSON events for new messages. Options: `--account`, `--mailbox`, `--interval`.
+- [feat] `pippin contacts create/edit/delete`: write support on top of the existing read-only bridge. Uses `CNMutableContact` + `CNSaveRequest`. `--force` required for destructive ops.
+- [feat] `pippin mail triage` rules engine: persistent per-user rules at `~/.config/pippin/triage-rules.json` apply before (or instead of) the AI pass, covering auto-label, auto-archive, and priority overrides by sender/subject/keywords. Cuts tokens spent on predictable traffic.
+- [feat] Browser retry flags: `pippin browser open/fetch/snapshot` gained `--retry N`, `--expect-field <json.path>`, `--retry-delay-ms <ms>`. Response envelope adds `data._attempts` whenever `--retry > 0` is passed.
+- [feat] Pagination cursors: `--cursor <token>` + `--page-size N` on `mail list`, `mail search`, `memos list`, `reminders list`, `notes list`, `calendar events`, `calendar upcoming`, `contacts search`. When either flag is set, `envelope.data` becomes `{items, next_cursor}`; bare-array shape preserved otherwise. Cursor is `base64url(json({offset, filter_hash}))` with SHA-256 filter hash to reject cross-query reuse.
+- [feat] REPL tab completion: command names, subcommands, flag names, and contextual values (mail account names, reminder list names).
 
 ### Changed
 
@@ -627,7 +627,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `pippin actions extract` — scans recent Sent mail and recently-modified Notes for first-person commitments ("I'll send Q3 numbers by Friday") and emits a structured list of draft reminders. Batches items 10 per AI call, 4 concurrent (mirrors `TriageEngine`). `--create` flag chains into `RemindersBridge` to write reminders directly. Supports `--days`, `--no-mail`, `--no-notes`, `--account`, `--limit`, `--min-confidence`, `--provider`, `--model`, `--list`, and `--format text|json|agent`.
+- [feat] `pippin actions extract`: scans recent Sent mail and recently-modified Notes for first-person commitments ("I'll send Q3 numbers by Friday") and emits a structured list of draft reminders. Batches items 10 per AI call, 4 concurrent (mirrors `TriageEngine`). `--create` flag chains into `RemindersBridge` to write reminders directly. Supports `--days`, `--no-mail`, `--no-notes`, `--account`, `--limit`, `--min-confidence`, `--provider`, `--model`, `--list`, and `--format text|json|agent`.
 
 ---
 
@@ -635,17 +635,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `ErrorCategory` enum — closed set of snake_case error codes backs `RemediationCatalog`, so a typo fails to compile instead of silently returning `nil`. Agent JSON shape is unchanged.
-- [feat] mlx-audio STT three-tier entry resolution — prefers the pipx-installed `mlx_audio.stt.generate` binary, falls back to `-m mlx_audio.stt.generate` (0.4.2+), then `-m mlx_audio.stt` (legacy). Pinned version `0.4.2` lives in `AudioBridge.pinnedMLXAudioVersion`. `AudioBridgeError.versionMismatch` surfaces skew with install-vs-pinned remediation.
+- [feat] `ErrorCategory` enum: closed set of snake_case error codes backs `RemediationCatalog`, so a typo fails to compile instead of silently returning `nil`. Agent JSON shape is unchanged.
+- [feat] mlx-audio STT three-tier entry resolution: prefers the pipx-installed `mlx_audio.stt.generate` binary, falls back to `-m mlx_audio.stt.generate` (0.4.2+), then `-m mlx_audio.stt` (legacy). Pinned version `0.4.2` lives in `AudioBridge.pinnedMLXAudioVersion`. `AudioBridgeError.versionMismatch` surfaces skew with install-vs-pinned remediation.
 - [feat] `pippin doctor` mlx-audio check now reports installed version via `importlib.metadata`, runs a dry `--help` invocation, and calls out version mismatches with an exact `pipx install 'mlx-audio==<pinned>' --force` remediation.
-- [feat] 5 new MCP tools — `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_summarize`. Brings the registry to 31 tools. `docs/mcp-server.md` updated.
-- [feat] `AudioConverter` — AVFoundation-based transcoder that normalizes non-native audio formats to 16 kHz mono PCM WAV before STT. `memos transcribe --keep-converted` preserves the temp WAV and prints its path for debugging. `.wav` and `.m4a` (Voice Memos native) skip conversion.
+- [feat] 5 new MCP tools: `memos_list`, `memos_info`, `memos_export`, `memos_transcribe`, `memos_summarize`. Brings the registry to 31 tools. `docs/mcp-server.md` updated.
+- [feat] `AudioConverter`: AVFoundation-based transcoder that normalizes non-native audio formats to 16 kHz mono PCM WAV before STT. `memos transcribe --keep-converted` preserves the temp WAV and prints its path for debugging. `.wav` and `.m4a` (Voice Memos native) skip conversion.
 - [feat] Homebrew formula `post_install` runs `pipx install mlx-audio==<pinned>` when `pipx` is on PATH (falls back with a hint otherwise). Homebrew-pipx venv path added to `AudioBridge`'s candidate list.
 
 ### Changed
 
 - [refactor] `DiagnosticCheck.remediation` is now `Remediation?` (was `String?`). `pippin doctor --format json` emits structured `{human_hint, doctor_check, shell_command}` instead of a free-form string. Text rendering still groups the hint prose with a `$ <cmd>` suffix line, so non-JSON output reads the same or better.
-- [refactor] All FDA remediation text unified into one catalog entry in `Remediation.swift` — previously duplicated across three Doctor branches + the catalog. Grep `Full Disk Access` across `pippin/` now returns the single canonical home plus docstring references.
+- [refactor] All FDA remediation text unified into one catalog entry in `Remediation.swift`, previously duplicated across three Doctor branches + the catalog. Grep `Full Disk Access` across `pippin/` now returns the single canonical home plus docstring references.
 
 ---
 
@@ -653,7 +653,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `pippin mcp-server` — expose pippin as a Model Context Protocol server over stdio so Claude Code, Claude Desktop, Cursor, and other MCP-compatible clients can attach directly instead of shelling out to the CLI. Ships with 26 tools covering mail, calendar, reminders, contacts, notes, status, and doctor. Each `tools/call` spawns `pippin <cmd> --format agent` as a child process so the MCP path has perfect parity with the existing CLI path. See `docs/mcp-server.md` for wiring details.
+- [feat] `pippin mcp-server`: expose pippin as a Model Context Protocol server over stdio so Claude Code, Claude Desktop, Cursor, and other MCP-compatible clients can attach directly instead of shelling out to the CLI. Ships with 26 tools covering mail, calendar, reminders, contacts, notes, status, and doctor. Each `tools/call` spawns `pippin <cmd> --format agent` as a child process so the MCP path has perfect parity with the existing CLI path. See `docs/mcp-server.md` for wiring details.
 
 ---
 
@@ -661,26 +661,26 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] `pippin status` — system dashboard showing mail accounts, calendar events, reminders, voice memos, notes, contacts, and TCC permission status; supports `--format text|json|agent`
-- [feat] Session state persistence — REPL sessions persist active account, last-used IDs, and command history to `~/.config/pippin/session.json`; built-in commands: `use <account>`, `context`, `history`
-- [feat] `pippin init --format json|agent` — structured output for the init/doctor guided setup
-- [feat] `SKILL.md` — agent discovery manifest with YAML frontmatter and full command reference
-- [feat] `runConcurrently<Input, Output>()` — generic concurrent dispatch helper with optional rate limiting and fail-fast support (`ConcurrencyUtils.swift`)
-- [ci] GitHub Copilot coding agent — `.github/copilot-setup-steps.yml` environment + `.github/workflows/copilot-ci-fix.yml` auto-creates issues on CI failure for Copilot to fix
+- [feat] `pippin status`: system dashboard showing mail accounts, calendar events, reminders, voice memos, notes, contacts, and TCC permission status; supports `--format text|json|agent`
+- [feat] Session state persistence: REPL sessions persist active account, last-used IDs, and command history to `~/.config/pippin/session.json`; built-in commands: `use <account>`, `context`, `history`
+- [feat] `pippin init --format json|agent`: structured output for the init/doctor guided setup
+- [feat] `SKILL.md`: agent discovery manifest with YAML frontmatter and full command reference
+- [feat] `runConcurrently<Input, Output>()`: generic concurrent dispatch helper with optional rate limiting and fail-fast support (`ConcurrencyUtils.swift`)
+- [ci] GitHub Copilot coding agent: `.github/copilot-setup-steps.yml` environment + `.github/workflows/copilot-ci-fix.yml` auto-creates issues on CI failure for Copilot to fix
 
 ### Changed
 
-- [refactor] `TriageEngine` — replaced private `runBatchesConcurrently` (~30 lines) with `runConcurrently(batches, maxConcurrent: 4, failFast: true)`
-- [refactor] `SemanticSearch` — replaced inline DispatchGroup+NSLock pattern with `runConcurrently`
-- [docs] `CLAUDE.md` — added session state, status command, Copilot CI-fix workflow, and lint tips
-- [docs] `AGENTS.md` — added Copilot coding agent section with failure patterns and quality gates
+- [refactor] `TriageEngine`: replaced private `runBatchesConcurrently` (~30 lines) with `runConcurrently(batches, maxConcurrent: 4, failFast: true)`
+- [refactor] `SemanticSearch`: replaced inline DispatchGroup+NSLock pattern with `runConcurrently`
+- [docs] `CLAUDE.md`: added session state, status command, Copilot CI-fix workflow, and lint tips
+- [docs] `AGENTS.md`: added Copilot coding agent section with failure patterns and quality gates
 
 ### Added (Tests)
 
-- `StatusCommandTests` — 7 tests covering status report building and output formats
-- `ConcurrencyUtilsTests` — 7 tests covering concurrent dispatch, rate limiting, fail-fast, empty input
-- `InitCommandTests` — 8 tests covering init report structure and format options
-- `SessionStateTests` — 11 tests covering persistence, thread safety, atomic writes, history capping
+- `StatusCommandTests`: 7 tests covering status report building and output formats
+- `ConcurrencyUtilsTests`: 7 tests covering concurrent dispatch, rate limiting, fail-fast, empty input
+- `InitCommandTests`: 8 tests covering init report structure and format options
+- `SessionStateTests`: 11 tests covering persistence, thread safety, atomic writes, history capping
 - 914 → 1049 tests, 0 failures
 
 ---
@@ -689,7 +689,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- [feat] ShellCommand: interactive REPL mode — `pippin shell` or bare `pippin` with no subcommand drops into a session where commands are entered without the `pippin` prefix
+- [feat] ShellCommand: interactive REPL mode: `pippin shell` or bare `pippin` with no subcommand drops into a session where commands are entered without the `pippin` prefix
 - [feat] Session-wide `--format` flag: `pippin shell --format json` injects format into all commands
 - [feat] Non-interactive pipe mode: `echo "calendar agenda" | pippin shell --format agent` for scripting
 - [feat] Quote-aware argument splitting (`shellSplit`) for command lines with quoted strings
@@ -739,7 +739,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- [quality] MemosCommand.swift: replace 8 verbose `!outputOptions.isJSON, !outputOptions.isAgent` progress guards with the canonical `!outputOptions.isStructured` — consistent with `SummarizeCommand` and the documented pattern
+- [quality] MemosCommand.swift: replace 8 verbose `!outputOptions.isJSON, !outputOptions.isAgent` progress guards with the canonical `!outputOptions.isStructured`: consistent with `SummarizeCommand` and the documented pattern
 - [quality] CalendarCommand.swift: refactor `SmartBriefing` output block from combined `if isJSON || isAgent {}` to the standard three-way `if isJSON / else if isAgent / else` pattern
 
 ---
@@ -748,7 +748,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- [ax] MemosCommand.swift: `memos export` had a hidden `--format` collision — the sidecar transcript format option (`txt`, `srt`, `markdown`, `rtf`) shadowed the `OutputOptions --format` flag, causing ArgumentParser to fatal-error whenever `--format` was used; renamed to `--sidecar-format` (matching the `AudioCommand.Transcribe` fix in v0.13.0)
+- [ax] MemosCommand.swift: `memos export` had a hidden `--format` collision: the sidecar transcript format option (`txt`, `srt`, `markdown`, `rtf`) shadowed the `OutputOptions --format` flag, causing ArgumentParser to fatal-error whenever `--format` was used; renamed to `--sidecar-format` (matching the `AudioCommand.Transcribe` fix in v0.13.0)
 
 ### Changed
 
@@ -760,8 +760,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - [test] BrowserCommandTests.swift: 13 new tests covering `--format agent/json/text` parsing for Screenshot, Click, Fill, Scroll, Close + `BrowserActionResult` encoding
-- [test] MemosCommandTests.swift: 55 new tests covering all 5 MemosCommand subcommands (List, Info, Export, Transcribe, Delete) — argument parsing, validation, and format options
-- [test] CalendarCommandTests.swift: 15 new tests for `calendar today`, `calendar remaining`, `calendar upcoming` subcommands — argument parsing and format options
+- [test] MemosCommandTests.swift: 55 new tests covering all 5 MemosCommand subcommands (List, Info, Export, Transcribe, Delete): argument parsing, validation, and format options
+- [test] CalendarCommandTests.swift: 15 new tests for `calendar today`, `calendar remaining`, `calendar upcoming` subcommands: argument parsing and format options
 - 844 → 914 tests, 0 failures
 
 ---
@@ -771,16 +771,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Structured agent error output: when `--format agent` is active, unhandled errors emit `{"error":{"code":"snake_case_code","message":"..."}}`  to stdout (via `AgentError` + `printAgentError()` in `AgentOutput.swift`)
-- `BrowserCommandTests` — parse/validate tests for all 9 browser subcommands + `BrowserBridgeError` descriptions
-- `AudioCommandTests` — parse/validate tests for all 4 audio subcommands + `AudioBridgeError` descriptions
-- `ContactsCommandTests` — parse/validate tests for all 4 contacts subcommands
+- `BrowserCommandTests`: parse/validate tests for all 9 browser subcommands + `BrowserBridgeError` descriptions
+- `AudioCommandTests`: parse/validate tests for all 4 audio subcommands + `AudioBridgeError` descriptions
+- `ContactsCommandTests`: parse/validate tests for all 4 contacts subcommands
 
 ### Changed
 
 - `MailBridge.swift` split into four focused files: `MailBridgeScripts.swift`, `MailBridgeHelpers.swift`, `MailBridgeRunner.swift` (core API methods remain in `MailBridge.swift`); removes `swiftlint:disable file_length`
 - `MailBridgeError` moved to `MailModels.swift` (public, `Sendable`)
 - `AudioBridgeError` moved from `AudioBridge.swift` to `AudioModels.swift` (public, `Sendable`)
-- `BrowserBridgeError.actionFailed(String)` replaced with typed cases: `scriptFailed(String)`, `decodingFailed(String)`, `timeout` — matching Mail/Notes pattern
+- `BrowserBridgeError.actionFailed(String)` replaced with typed cases: `scriptFailed(String)`, `decodingFailed(String)`, `timeout`: matching Mail/Notes pattern
 - `AudioCommand.Transcribe` renames `--format` to `--transcription-format` (was colliding with `OutputOptions --format`)
 - 703 → 819 tests, 0 failures
 
@@ -790,11 +790,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `pippin doctor --format agent` — compact JSON output for AI agent consumption
+- `pippin doctor --format agent`: compact JSON output for AI agent consumption
 - `pippin doctor` now checks Python 3 availability as a separate named check
-- `pippin doctor` Notes.app pre-check via `pgrep` — faster fail when Notes is not running
+- `pippin doctor` Notes.app pre-check via `pgrep`: faster fail when Notes is not running
 - `classifyMailError()` and `classifyPython3Output()` extracted as testable public helpers
-- `DoctorTests` — unit tests for mail error classification, python3 detection, and permission-denied remediation format
+- `DoctorTests`: unit tests for mail error classification, python3 detection, and permission-denied remediation format
 
 ### Fixed
 
@@ -802,7 +802,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Notes.app timeout remediation simplified to `$ open -a Notes && sleep 2`
 - Node.js remediation updated to `$ brew install node`
 - Playwright remediation updated to `$ npx playwright install webkit`
-- Transcription unified on `mlx-audio` (AudioBridge) — removes separate `parakeet-mlx` binary dependency
+- Transcription unified on `mlx-audio` (AudioBridge): removes separate `parakeet-mlx` binary dependency
 - `pippin memos transcribe` and `pippin memos export --transcribe` now read/write transcript cache (no more redundant transcription)
 - `pippin doctor` no longer checks `parakeet-mlx` or Speech Recognition; `mlx-audio` check promoted from optional to required
 - `MLXAudioTranscriber` replaces `ParakeetTranscriber`/`SpeechFrameworkTranscriber`/`TranscriberFactory` (dead code removed)
@@ -822,10 +822,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - `--format agent` output mode across all commands: compact (non-pretty-printed) JSON for AI agent consumption
 - `OutputFormat.agent` case added to `OutputFormat` enum (alongside `text` and `json`)
 - `OutputOptions.isAgent` computed property for command dispatch
-- `printAgentJSON<T: Encodable>()` helper in `AgentOutput.swift` — uses `JSONEncoder` with no formatting options (compact by default)
-- Agent mode for action results (create/edit/delete/complete/send/move/mark) — same as `json` (already compact)
-- Agent mode for `notes show` uses `NoteAgentView` — excludes large HTML body, includes `plainText`, reducing token usage
-- Claude Code plugin at `~/.claude/plugins/pippin/` — skill that teaches Claude to use pippin for Apple app automation
+- `printAgentJSON<T: Encodable>()` helper in `AgentOutput.swift`: uses `JSONEncoder` with no formatting options (compact by default)
+- Agent mode for action results (create/edit/delete/complete/send/move/mark): same as `json` (already compact)
+- Agent mode for `notes show` uses `NoteAgentView`: excludes large HTML body, includes `plainText`, reducing token usage
+- Claude Code plugin at `~/.claude/plugins/pippin/`: skill that teaches Claude to use pippin for Apple app automation
 
 ---
 
@@ -911,10 +911,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `--after YYYY-MM-DD` — only include messages on or after this date
-- `--before YYYY-MM-DD` — only include messages on or before this date
-- `--to <email>` — filter search results by recipient address
-- `--verbose` — print search diagnostics to stderr (accounts/mailboxes scanned, messages examined, body search status)
+- `--after YYYY-MM-DD`: only include messages on or after this date
+- `--before YYYY-MM-DD`: only include messages on or before this date
+- `--to <email>`: filter search results by recipient address
+- `--verbose`: print search diagnostics to stderr (accounts/mailboxes scanned, messages examined, body search status)
 
 ---
 
@@ -922,9 +922,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `pippin mail reply <id> --body "..."` — reply to a message; optional `--to` to override recipient
-- `pippin mail forward <id> --to <addr>` — forward a message; optional `--body` for additional text
-- `pippin mail attachments <id>` — list attachments; `--save-dir <path>` to save to disk
+- `pippin mail reply <id> --body "..."`: reply to a message; optional `--to` to override recipient
+- `pippin mail forward <id> --to <addr>`: forward a message; optional `--body` for additional text
+- `pippin mail attachments <id>`: list attachments; `--save-dir <path>` to save to disk
 - `--bcc` flag on `mail send`, `mail reply`, `mail forward`
 - `--to`, `--cc`, `--bcc`, `--attach` are now repeatable (accept multiple values)
 
@@ -940,15 +940,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `pippin calendar` — new command group for Apple Calendar automation using EventKit
-- `pippin calendar list` — list all calendars (NAME, TYPE, ACCOUNT, COLOR columns)
-- `pippin calendar events` — list events; `--from`, `--to`, `--calendar`, `--limit 50`; defaults to today
-- `pippin calendar show <id>` — full event card with attendees, recurrence, notes, URL
-- `pippin calendar create --title --start` — create event; `--end` (default: +1h), `--location`, `--notes`, `--all-day`, `--url`, `--calendar`
-- `pippin calendar edit <id>` — update any field on an existing event
-- `pippin calendar delete <id> --force` — delete an event (requires `--force`)
-- `pippin calendar smart-create "<description>"` — AI parses natural language → creates event; `--dry-run` to preview parsed JSON
-- `pippin calendar agenda` — AI-generated daily/weekly briefing; `--days 1` (max 7)
+- `pippin calendar`: new command group for Apple Calendar automation using EventKit
+- `pippin calendar list`: list all calendars (NAME, TYPE, ACCOUNT, COLOR columns)
+- `pippin calendar events`: list events; `--from`, `--to`, `--calendar`, `--limit 50`; defaults to today
+- `pippin calendar show <id>`: full event card with attendees, recurrence, notes, URL
+- `pippin calendar create --title --start`: create event; `--end` (default: +1h), `--location`, `--notes`, `--all-day`, `--url`, `--calendar`
+- `pippin calendar edit <id>`: update any field on an existing event
+- `pippin calendar delete <id> --force`: delete an event (requires `--force`)
+- `pippin calendar smart-create "<description>"`: AI parses natural language → creates event; `--dry-run` to preview parsed JSON
+- `pippin calendar agenda`: AI-generated daily/weekly briefing; `--days 1` (max 7)
 - `pippin doctor` now checks Calendar TCC permission and reports ok/skip/fail
 - 2 built-in AI templates: `smart-create-calendar`, `calendar-briefing`
 - Event IDs use `calendarItemIdentifier` (stable UUID); prefix matching (8+ chars) supported
@@ -962,7 +962,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - `mail move --to Trash` (and `Deleted`, `Junk`, `Spam`, `Sent`, `Drafts`, `Bin`) now resolves the correct provider mailbox via JXA special accessors (`acct.trash()`, `acct.junk()`, `acct.sent()`, `acct.drafts()`), fixing failures on Gmail, iCloud, and Exchange accounts where the folder name varies by provider (fixes #4)
 - `mail list --mailbox <alias>` and `mail search --mailbox <alias>` use the same alias resolver, so `--mailbox Trash` works regardless of provider naming
-- `mail show` now fetches plain-text content first to trigger the IMAP body download before attempting `htmlContent()`, and retries once after 500 ms if `htmlBody` is still null — fixes `htmlBody: null` on undownloaded IMAP messages (fixes #3)
+- `mail show` now fetches plain-text content first to trigger the IMAP body download before attempting `htmlContent()`, and retries once after 500 ms if `htmlBody` is still null: fixes `htmlBody: null` on undownloaded IMAP messages (fixes #3)
 
 ---
 
@@ -970,9 +970,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `memos summarize <id>` — AI-powered summarization of voice memo transcripts; saves Markdown summary to output directory
-- `memos templates` — list and manage summarization prompt templates (5 built-in + user-defined)
-- `memos delete <id> --force` — permanently delete a voice memo from the Voice Memos database
+- `memos summarize <id>`: AI-powered summarization of voice memo transcripts; saves Markdown summary to output directory
+- `memos templates`: list and manage summarization prompt templates (5 built-in + user-defined)
+- `memos delete <id> --force`: permanently delete a voice memo from the Voice Memos database
 - AI provider layer: Ollama (local) and Claude (Anthropic) backends; configurable via `pippin init` or `--provider`
 - Transcript cache: transcripts saved alongside audio exports, reused on subsequent summarize calls
 - `--format` flag for `memos export` output (text/json, consistent with other subcommands)
@@ -993,17 +993,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `pippin completions <shell>` — generate shell completion scripts (`zsh`, `bash`, `fish`); `make completions` installs to `~/.zfunc/_pippin`
-- `pippin mail mailboxes` — list all mailboxes for an account; `--account` filter
-- `pippin mail list` — `--page` flag for paginated browsing, `--has-attachment` filter
-- `pippin mail show` — enriched output with `htmlBody`, `headers`, and `attachments[]` (name, mimeType, size)
-- `pippin memos info` — prefix ID matching (first 8 chars of UUID)
-- GitHub Actions CI (`.github/workflows/ci.yaml`) — build, test, lint on GitHub push and PR
+- `pippin completions <shell>`: generate shell completion scripts (`zsh`, `bash`, `fish`); `make completions` installs to `~/.zfunc/_pippin`
+- `pippin mail mailboxes`: list all mailboxes for an account; `--account` filter
+- `pippin mail list`: `--page` flag for paginated browsing, `--has-attachment` filter
+- `pippin mail show`: enriched output with `htmlBody`, `headers`, and `attachments[]` (name, mimeType, size)
+- `pippin memos info`: prefix ID matching (first 8 chars of UUID)
+- GitHub Actions CI (`.github/workflows/ci.yaml`): build, test, lint on GitHub push and PR
 - Forgejo Actions CI enforces `swiftformat --lint` across all three source dirs
 
 ### Changed
 
-- `pippin mail search` — timeout increased from 10 s to 30 s; fixes timeouts on large IMAP mailboxes
+- `pippin mail search`: timeout increased from 10 s to 30 s; fixes timeouts on large IMAP mailboxes
 - All source migrated to Swift 6 strict concurrency (`swiftLanguageMode(.v6)`); all `Sendable` conformances and `nonisolated(unsafe)` patterns applied
 - macOS platform minimum set to macOS 15+
 
@@ -1020,32 +1020,32 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 ### Added
 
 **Core**
-- `pippin --version` — print version string
-- `pippin doctor` — check macOS version, Mail TCC, Voice Memos DB access, parakeet-mlx, Speech Recognition; exits 1 on critical failure; `--format json` for scripting
-- `pippin init` — guided first-run setup with step-by-step remediation for each failed check
+- `pippin --version`: print version string
+- `pippin doctor`: check macOS version, Mail TCC, Voice Memos DB access, parakeet-mlx, Speech Recognition; exits 1 on critical failure; `--format json` for scripting
+- `pippin init`: guided first-run setup with step-by-step remediation for each failed check
 - `--format text|json` on every subcommand (default: text)
 
 **Mail**
-- `pippin mail accounts` — list configured Mail accounts
-- `pippin mail list` — list inbox messages (limit 20, `--unread`, `--mailbox`, `--account`)
-- `pippin mail search <query>` — search by subject, sender, or body (limit 10)
-- `pippin mail show <id>` — show full message; `--subject` shortcut to search-then-show
-- `pippin mail mark <id> --read|--unread` — mark message read status (`--dry-run`)
-- `pippin mail move <id> --to <mailbox>` — move message to another mailbox (`--dry-run`)
-- `pippin mail send --to --subject --body` — send email; optional `--cc`, `--from`, `--attach`, `--dry-run`
-- `pippin mail read` — hidden alias for `show` (backward compat)
+- `pippin mail accounts`: list configured Mail accounts
+- `pippin mail list`: list inbox messages (limit 20, `--unread`, `--mailbox`, `--account`)
+- `pippin mail search <query>`: search by subject, sender, or body (limit 10)
+- `pippin mail show <id>`: show full message; `--subject` shortcut to search-then-show
+- `pippin mail mark <id> --read|--unread`: mark message read status (`--dry-run`)
+- `pippin mail move <id> --to <mailbox>`: move message to another mailbox (`--dry-run`)
+- `pippin mail send --to --subject --body`: send email; optional `--cc`, `--from`, `--attach`, `--dry-run`
+- `pippin mail read`: hidden alias for `show` (backward compat)
 
 **Memos**
-- `pippin memos list` — list recordings as text table; `--since YYYY-MM-DD`, `--limit`
-- `pippin memos info <id>` — full metadata card for a recording
-- `pippin memos export <id|--all> --output <dir>` — copy audio file(s) to directory; `--transcribe` for transcript sidecar
+- `pippin memos list`: list recordings as text table; `--since YYYY-MM-DD`, `--limit`
+- `pippin memos info <id>`: full metadata card for a recording
+- `pippin memos export <id|--all> --output <dir>`: copy audio file(s) to directory; `--transcribe` for transcript sidecar
 
 **Infrastructure**
-- GRDB.swift 7.0 dependency — read-only SQLite access to Voice Memos database (replaces Python subprocess)
-- `TextFormatter` — 80-column table/card/truncate/duration/date formatting for all text output
+- GRDB.swift 7.0 dependency: read-only SQLite access to Voice Memos database (replaces Python subprocess)
+- `TextFormatter`: 80-column table/card/truncate/duration/date formatting for all text output
 - Apache 2.0 LICENSE
 - `Makefile` with `build`, `test`, `lint`, `install`, `version`, `release`, `clean` targets
-- Forgejo Actions CI (`.forgejo/workflows/ci.yaml`) — build, test, lint on every push and PR
+- Forgejo Actions CI (`.forgejo/workflows/ci.yaml`): build, test, lint on every push and PR
 
 ### Changed
 
@@ -1057,8 +1057,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
 ### Removed
 
 - Python `pippin-memos` package (archived to `archive/pippin-memos/`)
-- `pippin memos delete` — dropped from v0.1 scope (sandboxing concerns)
-- Xcode project (`pippin.xcodeproj`) — SPM is the build system
+- `pippin memos delete`: dropped from v0.1 scope (sandboxing concerns)
+- Xcode project (`pippin.xcodeproj`): SPM is the build system
 - `make install-memos` and `make install-all` targets (no Python)
 
 ---
@@ -1069,7 +1069,7 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
          so a compare link would reference a tag that doesn't exist and 404.
          Their successors bridge the gap to the nearest earlier tag instead
          (0.8.0 compares against v0.4.0; 0.23.0 against v0.20.2).
-       - 0.1.0-beta is tagged, but it's the first release — nothing precedes it.
+       - 0.1.0-beta is tagged, but it's the first release: nothing precedes it.
 
      A version with no link renders as plain bracketed text, not a broken link,
      so this is a stable end state, not a backlog item. Don't "fix" it by
