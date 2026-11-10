@@ -1657,18 +1657,23 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "memos_delete",
-            description: "Delete a voice memo — both the database row and the audio file. IRREVERSIBLE — fails unless confirm=true. Consider memos_export first.",
+            description: "Delete a voice memo: its audio file moves to the Trash and its database row is removed. Fails unless confirm=true, and refuses while the Voice Memos app is running. Pass dryRun=true (with confirm=false) to see which recording an id names without changing anything.",
             inputSchema: Schema.object(
                 properties: [
-                    "id": Schema.string("Memo ID from memos_list."),
-                    "confirm": Schema.boolean("Must be true. The audio file is unrecoverable.", default: false),
+                    "id": Schema.string("Memo ID from memos_list, or an unambiguous prefix of it."),
+                    "confirm": Schema.boolean("Must be true to delete. The audio is recoverable from the Trash; the recording's entry is not.", default: false),
+                    "dryRun": Schema.boolean("Report the recording that would be deleted and change nothing.", default: false),
                 ],
                 required: ["id", "confirm"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("memos", "delete")
                 try argv.append(ArgHelpers.requiredString(args, "id"))
-                try argv += ArgHelpers.forceFromConfirm(args)
+                if ArgHelpers.bool(args, "dryRun") == true {
+                    argv.append("--dry-run")
+                } else {
+                    try argv += ArgHelpers.forceFromConfirm(args)
+                }
                 return argv
             }
         ),

@@ -43,6 +43,7 @@ final class NextStepTests: XCTestCase {
         VoiceMemosError.memoNotFound("i"), VoiceMemosError.memoEvicted("i"), VoiceMemosError.fileNotFound("p"),
         VoiceMemosError.exportFailed("e"), VoiceMemosError.ambiguousId("i", ["a", "b"]),
         VoiceMemosError.accessDenied("p"),
+        VoiceMemosError.voiceMemosRunning, VoiceMemosError.deleteFailed("d"),
         // AudioConverterError
         AudioConverterError.formatUnsupported("f"), AudioConverterError.bufferAllocationFailed,
         AudioConverterError.conversionFailed("e"),

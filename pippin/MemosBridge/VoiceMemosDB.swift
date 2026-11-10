@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GRDB
 
@@ -33,6 +34,12 @@ public enum VoiceMemosError: LocalizedError, Sendable {
     /// associated value for display; remediation text is attached by the
     /// remediation catalog at the CLI boundary.
     case accessDenied(String)
+    /// `memos delete` edits Voice Memos' own store, which is only safe while
+    /// the app is not running against it.
+    case voiceMemosRunning
+    /// A delete stopped partway. The associated value says what state the
+    /// recording was left in.
+    case deleteFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -52,6 +59,10 @@ public enum VoiceMemosError: LocalizedError, Sendable {
             return "Ambiguous ID prefix '\(prefix)' matches \(matches.count) recordings: \(matches.joined(separator: ", "))"
         case let .accessDenied(detail):
             return "Voice Memos database access denied (\(detail)). See `pippin doctor` for remediation."
+        case .voiceMemosRunning:
+            return "Voice Memos is running. Quit the app before deleting a recording; nothing was changed."
+        case let .deleteFailed(detail):
+            return "Delete failed: \(detail)"
         }
     }
 }
@@ -67,13 +78,16 @@ extension VoiceMemosError: RemediableError {
         case .exportFailed: return "export_failed"
         case .ambiguousId: return "ambiguous_id"
         case .accessDenied: return "access_denied"
+        case .voiceMemosRunning: return "voice_memos_running"
+        case .deleteFailed: return "delete_failed"
         }
     }
 
     public var nextStep: NextStep {
         switch self {
         case .databaseNotFound: return .human("Open the Voice Memos app once to create its database, then retry.")
-        case .unsupportedSchemaVersion, .fileNotFound, .exportFailed: return .none
+        case .unsupportedSchemaVersion, .fileNotFound, .exportFailed, .deleteFailed: return .none
+        case .voiceMemosRunning: return .human("Quit the Voice Memos app, then retry the delete.")
         case .memoNotFound, .ambiguousId: return .call(tool: "memos_list", argv: ["memos", "list"])
         case .memoEvicted: return .human("Download this recording from iCloud in the Voice Memos app, then retry.")
         case .accessDenied:
@@ -211,15 +225,19 @@ public final class VoiceMemosDB: Sendable {
     public func getMemoByPrefix(id: String) throws -> VoiceMemo? {
         // Try exact match first
         if let memo = try getMemo(id: id) { return memo }
-        // Fall back to prefix scan using SQLite LIKE (case-insensitive for ASCII/hex)
+        // An empty prefix is a prefix of every id, so it names nothing.
+        guard !id.isEmpty else { return nil }
+        // Fall back to prefix scan using SQLite LIKE (case-insensitive for ASCII/hex).
+        // The id is user input: escape LIKE's wildcards so `%` or `_` cannot
+        // match rows the caller did not name (RC-05).
         let matches = try dbQueue.read { db in
             try VoiceMemo.fetchAll(
                 db,
                 sql: """
                 SELECT ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH, ZEVICTIONDATE
-                FROM ZCLOUDRECORDING WHERE ZUNIQUEID LIKE ? || '%'
+                FROM ZCLOUDRECORDING WHERE ZUNIQUEID LIKE ? || '%' ESCAPE '\\'
                 """,
-                arguments: [id]
+                arguments: [Self.escapeLike(id)]
             )
         }
         switch matches.count {
@@ -328,14 +346,46 @@ public final class VoiceMemosDB: Sendable {
         )
     }
 
-    /// Delete a memo's DB row, audio file, and optionally its cached transcript.
-    /// Uses a separate writable connection (not the read-only queue).
+    /// Escape `%`, `_` and the escape character itself for a `LIKE ... ESCAPE '\\'`.
+    static func escapeLike(_ value: String) -> String {
+        value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+    }
+
+    public static func voiceMemosIsRunning() -> Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.VoiceMemos").isEmpty
+    }
+
+    /// Move a file to the user's Trash and return where it landed.
+    public static func moveToUserTrash(_ url: URL) throws -> URL {
+        var trashed: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+        return (trashed as URL?) ?? url
+    }
+
+    /// Delete a memo: move its audio to the Trash, then remove its DB row.
+    ///
+    /// The row is removed with raw SQL from a store Voice Memos owns, so this
+    /// refuses while the app is running. The audio goes to the Trash FIRST, so
+    /// the recording stays recoverable, and each failure leaves a consistent
+    /// state: if the move fails nothing has changed, and if the row delete
+    /// fails the audio is moved back before the error is thrown.
+    /// `isAppRunning` and `trash` are parameters so tests never touch the real
+    /// app state or the real Trash.
     /// - Parameters:
     ///   - id: Full UUID of the memo to delete.
     ///   - dbPath: Path to CloudRecordings.db (defaults to system path).
-    /// - Returns: The audio file path that was deleted.
+    /// - Returns: The audio file's original path and where it was trashed
+    ///   (`audioPath` empty when the row has no path; `trashedTo` nil when no
+    ///   local file existed).
     @discardableResult
-    public static func deleteMemo(id: String, dbPath: String? = nil) throws -> String {
+    public static func deleteMemo(
+        id: String,
+        dbPath: String? = nil,
+        isAppRunning: () -> Bool = voiceMemosIsRunning,
+        trash: (URL) throws -> URL = moveToUserTrash
+    ) throws -> (audioPath: String, trashedTo: String?) {
         let path = dbPath ?? defaultDBPath()
         let dbURL = URL(fileURLWithPath: path)
         let dir = dbURL.deletingLastPathComponent().path
@@ -345,6 +395,7 @@ public final class VoiceMemosDB: Sendable {
         guard FileManager.default.fileExists(atPath: path) else {
             throw VoiceMemosError.databaseNotFound(path)
         }
+        guard !isAppRunning() else { throw VoiceMemosError.voiceMemosRunning }
         let writableQueue = try openQueue(path: path, readonly: false)
 
         // Fetch the file path before deleting
@@ -358,28 +409,48 @@ public final class VoiceMemosDB: Sendable {
             }
             // ZPATH can be NULL (e.g. an iCloud recording not yet downloaded).
             // Decode optionally so a NULL doesn't trap; the empty-path guard
-            // below then skips file deletion rather than targeting `dir` itself.
+            // below then skips the file rather than targeting `dir` itself.
             return (row["ZPATH"] as String?) ?? ""
         }
 
-        // Delete DB row
-        try writableQueue.write { db in
-            try db.execute(
-                sql: "DELETE FROM ZCLOUDRECORDING WHERE ZUNIQUEID = ?",
-                arguments: [id]
+        // Guard against an empty path: appendingPathComponent("") returns
+        // `dir`, so an unguarded move would trash the entire memos directory.
+        let audioPath = filePath.isEmpty ? "" : (dir as NSString).appendingPathComponent(filePath)
+        var trashedTo: URL?
+        if !audioPath.isEmpty, FileManager.default.fileExists(atPath: audioPath) {
+            do {
+                trashedTo = try trash(URL(fileURLWithPath: audioPath))
+            } catch {
+                throw VoiceMemosError.deleteFailed(
+                    "could not move \(audioPath) to the Trash (\(error.localizedDescription)); nothing was changed."
+                )
+            }
+        }
+
+        do {
+            try writableQueue.write { db in
+                try db.execute(
+                    sql: "DELETE FROM ZCLOUDRECORDING WHERE ZUNIQUEID = ?",
+                    arguments: [id]
+                )
+            }
+        } catch {
+            guard let trashedTo else {
+                throw VoiceMemosError.deleteFailed("could not remove the recording's row (\(error.localizedDescription)); nothing was changed.")
+            }
+            do {
+                try FileManager.default.moveItem(at: trashedTo, to: URL(fileURLWithPath: audioPath))
+            } catch {
+                throw VoiceMemosError.deleteFailed(
+                    "could not remove the recording's row, and its audio could not be moved back: it is at \(trashedTo.path)."
+                )
+            }
+            throw VoiceMemosError.deleteFailed(
+                "could not remove the recording's row (\(error.localizedDescription)); the audio was moved back and nothing was changed."
             )
         }
 
-        // Delete audio file. Guard against an empty path: appendingPathComponent("")
-        // returns `dir`, so an unguarded delete would remove the entire memos
-        // directory.
-        guard !filePath.isEmpty else { return "" }
-        let audioPath = (dir as NSString).appendingPathComponent(filePath)
-        if FileManager.default.fileExists(atPath: audioPath) {
-            try FileManager.default.removeItem(atPath: audioPath)
-        }
-
-        return audioPath
+        return (audioPath, trashedTo?.path)
     }
 
     /// Transcribe a memo's audio to text without copying the audio file.
