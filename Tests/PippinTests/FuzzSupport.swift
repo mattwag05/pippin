@@ -96,8 +96,8 @@ enum Fuzz {
         if rng.chance(5) { return rng.chance(50) ? nil : json(&rng) }
         var object: [String: JSONValue] = [:]
         if case let .some(.object(properties)) = schema["properties"] {
-            for (name, property) in properties.sorted(by: { $0.key < $1.key }) where rng.chance(65) {
-                object[name] = rng.chance(80) ? conforming(&rng, to: property) : json(&rng)
+            for (name, property) in properties.sorted(by: { $0.key < $1.key }) where rng.chance(80) {
+                object[name] = rng.chance(90) ? conforming(&rng, to: property) : json(&rng)
             }
         }
         if rng.chance(10) { object[string(&rng, maxPieces: 2)] = json(&rng) }
