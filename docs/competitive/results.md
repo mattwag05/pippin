@@ -1,6 +1,6 @@
 # Competitive results
 
-Last verified: 2026-11-10 (run started 2026-11-10T04:04Z). Pippin build: commit `d91a21a` on branch `claude/pippin-apple-automation-3b11b3`, built from a fresh clone by the harness. Competitors: the pinned releases in [tools.lock.json](../../bench/competitive/tools.lock.json).
+Last verified: 2026-11-10. Primary run: [2026-11-10-amend4](../../bench/competitive/results/2026-11-10-amend4/summary.md), the whole harness with Mail and Voice Memos seeded under [Amendment 4](methodology.md#amendment-4-2026-11-10-before-any-mail-or-voice-memos-result-was-produced); Pippin built from commit `eb55292` (1.0.0 plus the generated registry and the Notes change), harness at `80ac5b9`. The earlier full run from a fresh clone of `d91a21a` is [2026-11-09-final](../../bench/competitive/results/2026-11-09-final/summary.md). Competitors: the pinned releases in [tools.lock.json](../../bench/competitive/tools.lock.json).
 
 The field ([field.md](field.md)) and the method ([methodology.md](methodology.md), including Amendment 1) were committed before any result existed (commits `e7e0c12` and `3d3f553`). Nothing on this page changes the method after the fact. Losses are listed with the same weight as wins.
 
@@ -8,11 +8,12 @@ The field ([field.md](field.md)) and the method ([methodology.md](methodology.md
 
 Read this first.
 
-- **Notes speed, warm (closed by a re-run).** In the full run sweetrb/apple-notes-mcp listed notes in 150 ms and searched in 183 ms, against 232 ms and 250 ms for Pippin; both gaps were outside the tie rule (10 percent or 20 ms) ([summary](../../bench/competitive/results/2026-11-09-final/summary.md)). After pippin-ai5s (Notes reads inside the MCP server, and 7 Apple Events per list instead of 11), a Notes-only re-run with the same harness measured 166.8 ms against 149.8 ms for list and 183.3 ms against 182.9 ms for search: both ties under the rule, while Pippin stays faster cold and on folders ([2026-11-10-notes](../../bench/competitive/results/2026-11-10-notes/summary.md)). The scores and the speed table below are still the full run's.
+- **Mail reads, warm.** apple-pim lists the inbox in 8.7 ms and searches in 7.7 ms; Pippin takes 42.6 ms and 39.9 ms. sweetrb-mail lists accounts in 53.8 ms against 117.0 ms for Pippin. All three are outside the tie rule, and they are Pippin's only warm losses in the run; cold, Pippin is fastest or tied on every operation, Mail included ([2026-11-10-amend4](../../bench/competitive/results/2026-11-10-amend4/summary.md)). Pippin's Mail reads use Mail's on-disk index but still start a child process per call over MCP. Plan (pippin-k177): run the index-backed Mail reads inside the MCP server, as Calendar, Reminders, Contacts, Messages and Notes reads already are, then rerun the head-to-head.
+- **Notes speed, warm (closed).** In the 2026-11-09 run sweetrb/apple-notes-mcp listed notes in 150 ms and searched in 183 ms, against 232 ms and 250 ms for Pippin. After pippin-ai5s (Notes reads inside the MCP server, 7 Apple Events per list instead of 11) the primary run measures 166.7 ms against 153.8 ms and 183.3 ms against 183.2 ms: both ties under the rule.
 - **Tool-list size with every tool exposed.** All 79 tools cost 22,615 tokens per agent turn. That is more than every competitor except sweetrb/apple-notes-mcp (56,023). In the agent tasks this made Pippin the most expensive tool per task (about 84k to 88k model tokens) when all tools were exposed. `pippin mcp-server --apps <app>` fixes this: scoped to one app, Pippin was the cheapest tool on all three tasks (see [Agent tasks](#agent-tasks)). The default is still all tools, so a client that does not pass `--apps` pays the cost (pippin-hd99). Plan: shorten tool descriptions and shared schema text, and decide whether the default should list a smaller core set with the rest behind `--apps`, as a minor release with a deprecation note under [contract.md](../contract.md).
 - **Agent task success (resolved).** In the 2026-11-09 runs one injection trial failed in each Pippin run because grader 1 counted a marker the model quoted while describing the attack (pippin-o072). With grader 2 ([Amendment 2](methodology.md#amendment-2-2026-11-10-before-any-run-that-uses-it)), committed before the run, the 2026-11-10 run has Pippin at 9 of 9 in both modes and every competitor at 3 of 3 on the task it can attempt; no Pippin answer contained a marker at all (see [Agent tasks](#agent-tasks)).
 - **Calendar plus Reminders tool list.** Scoped to those two apps, Pippin's tool list is 6,153 tokens against 3,694 for FradSer/mcp-server-apple-events, which covers the same two apps with 5 tools. Plan: the description and schema trim under pippin-hd99.
-- **Not measured.** Mail and Voice Memos for every tool (the VM has no mail account and no recordings), and iMCP (it needs an interactive approval window per client). The Operability axis is now scored ([2026-11-10-operability](../../bench/competitive/results/2026-11-10-operability/summary.md)). Plan for the rest: seed a throwaway local Mail account and a Voice Memos fixture database in the VM, and add their operations to the method as an amendment before the next run; score iMCP if `vm/allow.sh` can answer its approval window, otherwise keep it listed as not runnable.
+- **Not measured.** iMCP, which needs an interactive approval window per client. Mail and Voice Memos are measured since [Amendment 4](methodology.md#amendment-4-2026-11-10-before-any-mail-or-voice-memos-result-was-produced) (reads only; their writes stay not run), and Pippin is the only measured tool that covers Voice Memos. Plan: score iMCP if `vm/allow.sh` can answer its approval window, otherwise keep it listed as not runnable.
 
 ## Scores
 
@@ -20,22 +21,22 @@ Scores are 0 to 4 per axis, rubric in [methodology.md](methodology.md#scoring-ru
 
 | Tool | Apps scored | Coverage | Correctness | Reliability | Speed | Safety (hostile input) | Operability | Dealbreaker |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **pippin** (`d91a21a`) | 5 | 4 (23/23) | 4 (45/45) | 4 (50/50) | 4 | 4 (120/120) | 4 | none observed |
-| apple-pim 3.19.2 | 3 | 4 (15/15) | 3 (28/29) | 4 (30/30) | 1 | 4 (72/72) | 3 | none observed |
+| **pippin** (`eb55292`) | 7 | 4 (28/28) | 4 (54/54) | 4 (65/65) | 3 | 4 (120/120) | 4 | none observed |
+| apple-pim 3.19.2 | 4 | 3 (19/20) | 3 (34/35) | 4 (42/42) | 2 | 4 (72/72) | 3 | none observed |
 | apple-events 1.6.2 | 2 | 4 (10/10) | 4 (20/20) | 4 (20/20) | 1 | 4 (48/48) | 3 | none observed |
-| memo 0.6.2 | 2 | 1 (3/13) | 2 (6/7) | 3 (10/11) | 2 | n/r | 2 | none observed |
+| memo 0.6.2 | 2 | 1 (3/13) | 2 (6/7) | 2 (9/11) | 1 | n/r | 2 | none observed |
 | imsg 0.21.0 | 1 | 4 (3/3) | 2 (2/3) | 3 (9/10) | 1 | 4 (24/24) | 4 | none observed |
 | mac-messages 1.1.0 | 1 | 4 (3/3) | n/r | 3 (9/10) | 2 | 4 (24/24) | 4 | none observed |
-| remindctl 0.3.9 | 1 | 4 (5/5) | 4 (10/10) | 4 (10/10) | 2 | 4 (24/24) | 4 | none observed |
+| pf-mail 3.3.0 | 1 | 4 (4/4) | 4 (6/6) | 4 (12/12) | 2 | n/r | 2 | none observed |
+| remindctl 0.3.9 | 1 | 4 (5/5) | 4 (10/10) | 4 (10/10) | 1 | 4 (24/24) | 4 | none observed |
 | reminders-cli 2.5.1 | 1 | 2 (4/5) | 4 (7/7) | 4 (7/7) | 1 | n/r | 2 | none observed |
+| sweetrb-mail 2.20.55 | 1 | 4 (4/4) | 2 (5/6) | 4 (12/12) | 2 | n/r | 4 | none observed |
 | sweetrb-notes 2.16.1 | 1 | 4 (5/5) | 4 (9/9) | 4 (10/10) | 3 | 4 (24/24) | 4 | none observed |
 | iMCP 1.8.3 | n/r | n/r | n/r | n/r | n/r | n/r | 2 | not run: `initialize` exceeded 60 s waiting for an approval window |
-| pf-mail 3.3.0 | n/r | n/r | n/r | n/r | n/r | n/r | 2 | not run: Mail only, no mail account in the VM |
-| sweetrb-mail 2.20.55 | n/r | n/r | n/r | n/r | n/r | n/r | 4 | not run: Mail only, no mail account in the VM |
 
-Operability was scored afterwards under [Amendment 3](methodology.md#amendment-3-2026-11-10-before-any-operability-data-was-collected), from each repository at its pinned commit and a timed install in the VM ([2026-11-10-operability](../../bench/competitive/results/2026-11-10-operability/summary.md)); it applies to tools that were not run on the other axes too. Source for the other axes: [2026-11-09-final/summary.md](../../bench/competitive/results/2026-11-09-final/summary.md), raw data in [scores.json](../../bench/competitive/results/2026-11-09-final/scores.json) and the per-tool `*.json` and `*.checks.json` files beside it.
+Source: [2026-11-10-amend4/summary.md](../../bench/competitive/results/2026-11-10-amend4/summary.md), raw data in [scores.json](../../bench/competitive/results/2026-11-10-amend4/scores.json) and the per-tool `*.json` and `*.checks.json` files beside it. Operability was scored separately under [Amendment 3](methodology.md#amendment-3-2026-11-10-before-any-operability-data-was-collected) ([2026-11-10-operability](../../bench/competitive/results/2026-11-10-operability/summary.md)). apple-pim's Mail tools are measured here for the first time.
 
-Pippin has the strictly highest or equal-highest score on every scored axis. It leads outright on Speed (4; the next best is 3) and ties at 4 on the others, Operability included (13 of 13 checks, with imsg, mac-messages, remindctl, sweetrb-mail and sweetrb-notes). Every failed check is listed in the summary's "Failed checks" section; for example apple-pim reports 21 reminders at the wrong instant, and imsg misses one message in a thread.
+Pippin has the strictly highest or equal-highest score on every scored axis. On Speed it ties at 3 with sweetrb-notes: it no longer leads outright, because of the three Mail losses above. It ties at 4 on Coverage, Correctness, Reliability, Safety and Operability. Every failed check is listed in the summary's "Failed checks" section; for example apple-pim reports 21 reminders at the wrong instant, imsg misses one message in a thread, and sweetrb-mail's search misses subject matches.
 
 ### What changed since the baseline
 
@@ -57,19 +58,23 @@ The three Messages correctness failures in the baseline (a missing message, the 
 
 Probed operations per app that returned a correct-shape answer. "out of scope" means the tool does not claim the app.
 
-| Tool | Reminders | Calendar | Contacts | Notes | Messages |
-| --- | --- | --- | --- | --- | --- |
-| pippin | 5/5 | 5/5 | 5/5 | 5/5 | 3/3 |
-| apple-pim | 5/5 | 5/5 | 5/5 | out of scope | out of scope |
-| apple-events | 5/5 | 5/5 | out of scope | out of scope | out of scope |
-| memo | 1/7 | out of scope | out of scope | 2/6 | out of scope |
-| imsg | out of scope | out of scope | out of scope | out of scope | 3/3 |
-| mac-messages | out of scope | out of scope | out of scope | out of scope | 3/3 |
-| remindctl | 5/5 | out of scope | out of scope | out of scope | out of scope |
-| reminders-cli | 4/5 | out of scope | out of scope | out of scope | out of scope |
-| sweetrb-notes | out of scope | out of scope | out of scope | 5/5 | out of scope |
+| Tool | Reminders | Calendar | Contacts | Notes | Messages | Mail | Voice Memos |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Tool | reminders | calendar | contacts | notes | messages | mail | memos |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| apple-events | 5/5 | 5/5 | out of scope | out of scope | out of scope | out of scope | out of scope |
+| apple-pim | 5/5 | 5/5 | 5/5 | out of scope | out of scope | 4/5 | out of scope |
+| imsg | out of scope | out of scope | out of scope | out of scope | 3/3 | out of scope | out of scope |
+| mac-messages | out of scope | out of scope | out of scope | out of scope | 3/3 | out of scope | out of scope |
+| memo | 1/7 | out of scope | out of scope | 2/6 | out of scope | out of scope | out of scope |
+| pf-mail | out of scope | out of scope | out of scope | out of scope | out of scope | 4/4 | out of scope |
+| pippin | 5/5 | 5/5 | 5/5 | 5/5 | 3/3 | 4/4 | 1/1 |
+| remindctl | 5/5 | out of scope | out of scope | out of scope | out of scope | out of scope | out of scope |
+| reminders-cli | 4/5 | out of scope | out of scope | out of scope | out of scope | out of scope | out of scope |
+| sweetrb-mail | out of scope | out of scope | out of scope | out of scope | out of scope | 4/4 | out of scope |
+| sweetrb-notes | out of scope | out of scope | out of scope | 5/5 | out of scope | out of scope | out of scope |
 
-Pippin also claims Mail and Voice Memos. Those were not run for any tool, so they count as "claimed", not "yes".
+Mail and Voice Memos cells count reads only; their writes are not run (Amendment 4).
 
 ## Speed
 
@@ -77,23 +82,28 @@ Warm p50 in milliseconds, N = 30 after 3 warm-ups, at fixture scale (about 25 re
 
 | Operation | pippin | fastest other | other tool | Result |
 | --- | --- | --- | --- | --- |
-| calendar.calendars | **4.3** | 29.1 | apple-events | lead |
-| calendar.events | **16.5** | 51.4 | apple-events | lead |
-| calendar.search | **22.8** | 42.5 | apple-pim | tie (rule), faster |
-| contacts.groups | **31.1** | 56.7 | apple-pim | lead |
-| contacts.list | **38.7** | 109.4 | apple-pim | lead |
-| contacts.search | **2.9** | 142.0 | apple-pim | lead |
-| messages.chats | 1.7 | **1.2** | mac-messages | tie (rule), slower |
-| messages.history | **3.8** | 24.2 | mac-messages | lead |
-| messages.search | **2.9** | 23.7 | mac-messages | lead |
-| notes.folders | **116.0** | 266.1 | memo | lead |
-| notes.list | 231.9 | **150.3** | sweetrb-notes | **loss** |
-| notes.search | 249.6 | **183.2** | sweetrb-notes | **loss** |
-| reminders.list | **11.9** | 31.3 | remindctl | tie (rule), faster |
-| reminders.lists | **4.7** | 29.7 | apple-events | lead |
-| reminders.search | **8.4** | 31.3 | remindctl | lead |
+| calendar.calendars | **5.4** | 40.4 | apple-pim | lead |
+| calendar.events | **17.6** | 56.6 | apple-pim | lead |
+| calendar.search | **23.7** | 47.3 | apple-pim | lead |
+| contacts.groups | **32.5** | 64.1 | apple-pim | lead |
+| contacts.list | **42.2** | 117.4 | apple-pim | lead |
+| contacts.search | **3.0** | 146.2 | apple-pim | lead |
+| mail.accounts | 117.0 | **53.8** | sweetrb-mail | **loss** |
+| mail.list | 42.6 | **8.7** | apple-pim | **loss** |
+| mail.mailboxes | 11.8 | **6.5** | apple-pim | tie (rule), slower |
+| mail.search | 39.9 | **7.7** | apple-pim | **loss** |
+| memos.list | **9.3** | n/a | none | only Pippin measured |
+| messages.chats | 1.9 | **1.1** | mac-messages | tie (rule), slower |
+| messages.history | **4.1** | 25.8 | mac-messages | lead |
+| messages.search | **3.2** | 25.4 | mac-messages | lead |
+| notes.folders | **84.2** | 266.8 | memo | lead |
+| notes.list | 166.7 | **153.8** | sweetrb-notes | tie (rule), slower |
+| notes.search | 183.3 | **183.2** | sweetrb-notes | tie (rule), slower |
+| reminders.list | **12.9** | 33.6 | remindctl | lead |
+| reminders.lists | **6.4** | 33.5 | remindctl | lead |
+| reminders.search | **8.7** | 33.2 | remindctl | lead |
 
-The tie rule: within 10 percent or 20 ms of each other, whichever is larger. Every tool's column, and the cold table (new process per call), are in the [summary](../../bench/competitive/results/2026-11-09-final/summary.md). Cold, Pippin is the fastest tool on all 15 operations.
+The tie rule: within 10 percent or 20 ms of each other, whichever is larger. Warm, Pippin is faster on 12 of 19 operations, tied on 4 and slower on 3 (all Mail). Every tool's column, and the cold table (new process per call), are in the [summary](../../bench/competitive/results/2026-11-10-amend4/summary.md). Cold, Pippin is fastest on 16 of 19 operations and tied on 3.
 
 Host measurements of Pippin alone (before and after each change) are in [docs/performance.md](../performance.md).
 

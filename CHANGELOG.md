@@ -24,6 +24,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [docs] The head-to-head now measures Mail and Voice Memos (methodology Amendment 4: a local IMAP server and Mail account, and the Voice Memos store, in the VM). Pippin scores 4 on Coverage (7 apps), Correctness (54/54), Reliability, Safety and Operability, and 3 on Speed, tied at the top: it loses three warm Mail reads ([results](docs/competitive/results.md)).
 - [docs] Agent tasks rerun on 2026-11-10 with grader 2 (methodology Amendment 2): Pippin 9 of 9 in both modes, with the lowest median tokens on every task when scoped with `--apps` ([results](docs/competitive/results.md#agent-tasks)).
 - [docs] The competitive results now score the Operability axis (install, self-check, docs, tests and CI, release hygiene, maintenance), under methodology Amendment 3. Pippin passes 13 of 13 checks and scores 4, tied with five other tools ([result](bench/competitive/results/2026-11-10-operability/summary.md)).
 - [docs] `docs/cli-reference.md` lists every command with its help text. `CLIReferenceTests` generates it from the command definitions and fails when it is stale. Before it, 21 commands were documented nowhere.

@@ -38,13 +38,13 @@ Any MCP client works; the JSON form is in [docs/agent-integration.md](docs/agent
 
 A head-to-head against the most-used open-source Apple automation tools and MCP servers, run in a disposable VM against a seeded fixture, with the method committed before any result ([results](docs/competitive/results.md), [method](docs/competitive/methodology.md)):
 
-- **Coverage:** 5 apps scored (Reminders, Calendar, Contacts, Notes, Messages), every probed operation answered. The next widest tool covers 3.
-- **Correctness and reliability:** 45 of 45 correctness checks and 50 of 50 reliability checks passed.
-- **Speed:** fastest on 12 of 15 read operations warm, tied on a 13th, and fastest on all 15 cold. In that run it lost to sweetrb/apple-notes-mcp on Notes list and search when warm (232 ms and 250 ms against 150 ms and 183 ms); a Notes-only re-run after the fix measured 167 ms and 183 ms, ties under the benchmark's rule ([result](bench/competitive/results/2026-11-10-notes/summary.md)).
+- **Coverage:** 7 apps scored (Reminders, Calendar, Contacts, Notes, Messages, Mail, Voice Memos), every probed operation answered. The next widest tool covers 4.
+- **Correctness and reliability:** 54 of 54 correctness checks and 65 of 65 reliability checks passed.
+- **Speed:** with Mail and Voice Memos measured, fastest on 12 of 19 read operations warm, tied on 4, and fastest or tied on all 19 cold. It loses three warm Mail reads: list and search to apple-pim (42.6 and 39.9 ms against 8.7 and 7.7 ms) and accounts to sweetrb-mail ([results](docs/competitive/results.md#where-pippin-trails)).
 - **Agent tasks:** with `--apps`, the fewest model tokens on all three tasks (11k to 21k). With all tools exposed it is the most expensive (84k to 88k).
 - **Safety:** the only measured tool with confirm tokens, rate limits, an action log, undo and untrusted-content marking together ([guardrail matrix](docs/competitive/results.md#safety-and-guardrails)).
 
-Where pippin trails is listed first on the [results page](docs/competitive/results.md#where-pippin-trails). Mail and Voice Memos were not measured for any tool.
+Where pippin trails is listed first on the [results page](docs/competitive/results.md#where-pippin-trails). Mail and Voice Memos writes, and iMCP, were not run.
 
 ## Safety model
 
