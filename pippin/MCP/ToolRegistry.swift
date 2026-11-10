@@ -45,8 +45,11 @@ struct MCPTool {
 
     var descriptor: MCPToolDescriptor {
         let readOnly = effect == .readOnly
+        // Every tool that is not read-only passes through `SafetyGate`, which
+        // accepts confirmToken and idempotencyKey for all of them.
         return MCPToolDescriptor(
-            name: name, description: description, inputSchema: inputSchema,
+            name: name, description: description,
+            inputSchema: readOnly ? inputSchema : SafetyGate.withReservedArguments(inputSchema),
             annotations: .init(readOnlyHint: readOnly, destructiveHint: !readOnly)
         )
     }
@@ -1982,6 +1985,49 @@ enum MCPToolRegistry {
                 }
                 var argv = pippinArgv("batch", "--entries", json)
                 argv += ArgHelpers.optionIfInt(args, "concurrency", flagName: "--concurrency")
+                return argv
+            }
+        ),
+
+        // MARK: Safety (policy, action log, undo)
+
+        MCPTool(
+            name: "policy_show",
+            effect: .readOnly,
+            description: "Show the safety policy this server applies: for every tool its rule (allow, deny, confirm) and rate limit, and whether they come from the policy file or the built-in default. Read-only; the policy file can only be edited by the user.",
+            inputSchema: Schema.empty,
+            buildArgs: { _ in pippinArgv("policy", "show") }
+        ),
+        MCPTool(
+            name: "action_log",
+            effect: .readOnly,
+            description: "List the mutating tool calls this server ran or refused, newest first: id, time, tool, arguments (bodies and secrets shown only as length and hash), policy rule, outcome, and whether the action can be undone. Pass an entry's id to undo.",
+            inputSchema: Schema.object(properties: [
+                "limit": Schema.integer("Maximum actions to return (default: 50).", default: 50),
+                "since": Schema.string("Only actions at or after this time: YYYY-MM-DD or ISO 8601."),
+                "tool": Schema.string("Only actions of this tool, e.g. mail_send."),
+                "cursor": Schema.string("Opaque next_cursor from a previous response."),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("log")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
+                argv += ArgHelpers.optionIfString(args, "tool", flagName: "--tool")
+                argv += ArgHelpers.optionIfString(args, "cursor", flagName: "--cursor")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "undo",
+            effect: .mutating(verifyWith: "action_log"),
+            description: "Reverse one logged action by its id from action_log, where its entry says undo.supported=true (mail move and mark, reminders complete and edit, calendar, notes and contacts edit). Refuses with undo_target_changed if the target was changed since. Sends and deletes cannot be undone.",
+            inputSchema: Schema.object(
+                properties: ["id": Schema.string("Action id from action_log.")],
+                required: ["id"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("undo")
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             }
         ),

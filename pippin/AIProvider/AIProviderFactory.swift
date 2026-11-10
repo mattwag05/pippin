@@ -178,32 +178,9 @@ public enum AIProviderFactory {
     public static func saveConfig(_ config: PippinConfig, path: String? = nil) throws {
         // Resolve symlinks so a linked config (dotfiles) is updated in place, not replaced by a regular file.
         let configPath = URL(fileURLWithPath: path ?? defaultConfigPath()).resolvingSymlinksInPath().path
-        let dir = (configPath as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(
-            atPath: dir,
-            withIntermediateDirectories: true
-        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(config)
-
-        let tempPath = "\(configPath).tmp-\(UUID().uuidString)"
-        let fd = open(tempPath, O_WRONLY | O_CREAT | O_EXCL, 0o600)
-        guard fd >= 0 else {
-            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: tempPath])
-        }
-        do {
-            let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-            try handle.write(contentsOf: data)
-            try handle.synchronize()
-            try handle.close()
-            guard rename(tempPath, configPath) == 0 else {
-                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: configPath])
-            }
-        } catch {
-            try? FileManager.default.removeItem(atPath: tempPath)
-            throw error
-        }
+        try PrivateFile.writeAtomically(encoder.encode(config), to: configPath)
     }
 
     /// Create the appropriate AIProvider from CLI flags, falling back to config file then defaults.

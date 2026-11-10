@@ -256,6 +256,9 @@ final class ToolRegistryTests: XCTestCase {
             "digest": DigestCommand.self,
             "status": StatusCommand.self,
             "doctor": DoctorCommand.self,
+            "policy": PolicyCommand.self,
+            "log": LogCommand.self,
+            "undo": UndoCommand.self,
         ]
 
         for tool in MCPToolRegistry.tools {

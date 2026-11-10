@@ -37,6 +37,10 @@ enum ToolDataAccess {
         "job_show": Set(PersonalDataKind.allCases),
         "job_list": Set(PersonalDataKind.allCases),
         "job_wait": Set(PersonalDataKind.allCases),
+        "policy_show": [],
+        // The log names targets and recipients across every app; undo acts on any of them.
+        "action_log": Set(PersonalDataKind.allCases),
+        "undo": Set(PersonalDataKind.allCases),
     ]
 
     /// Data kinds for `toolName`, or nil when the tool is unclassified.

@@ -180,8 +180,26 @@ public func runAllChecks(config: PippinConfig? = AIProviderFactory.loadConfig())
     checks.append(checkNodeJS())
     checks.append(checkPlaywright())
     checks.append(checkPippinVersion())
+    checks.append(checkPolicyFile())
 
     return checks
+}
+
+/// A policy file that does not parse makes the MCP server refuse every write,
+/// so it has to show up here.
+func checkPolicyFile(path: String = SafetyPaths.policyPath()) -> DiagnosticCheck {
+    let report = PolicyReport.make(path: path)
+    guard let error = report.error else {
+        let detail = report.source == "file" ? "\(path) parses" : "no file at \(path); the built-in policy applies"
+        return DiagnosticCheck(name: "Policy file", status: .ok, detail: detail)
+    }
+    return DiagnosticCheck(
+        name: "Policy file", status: .fail, detail: error,
+        remediation: Remediation(
+            humanHint: "Fix the JSON in \(path), or move the file aside to run on the built-in policy. Until then the MCP server refuses every tool that changes something.",
+            doctorCheck: "Policy file"
+        )
+    )
 }
 
 private func checkMacOSVersion() -> DiagnosticCheck {

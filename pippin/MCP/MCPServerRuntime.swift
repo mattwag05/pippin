@@ -276,7 +276,9 @@ enum MCPDispatcher {
         pippinPath: String,
         tools: [MCPTool] = MCPToolRegistry.tools,
         inProcessDeadline: Double = Double(MCPInProcessTools.deadlineSeconds),
-        childTimeoutSeconds: Int = MCPServerRuntime.defaultChildTimeoutSeconds
+        childTimeoutSeconds: Int = MCPServerRuntime.defaultChildTimeoutSeconds,
+        safety: SafetyGate = .shared,
+        runner: ArgvRunner? = nil
     ) async -> JSONRPCResponse? {
         // Notifications (no id) never get a response, even on error.
         if request.isNotification {
@@ -297,7 +299,9 @@ enum MCPDispatcher {
                 pippinPath: pippinPath,
                 tools: tools,
                 inProcessDeadline: inProcessDeadline,
-                childTimeoutSeconds: childTimeoutSeconds
+                childTimeoutSeconds: childTimeoutSeconds,
+                safety: safety,
+                runner: runner
             )
         case "ping":
             return JSONRPCResponse(id: id, result: .object([:]))
@@ -344,7 +348,9 @@ enum MCPDispatcher {
         pippinPath: String,
         tools: [MCPTool],
         inProcessDeadline: Double,
-        childTimeoutSeconds: Int
+        childTimeoutSeconds: Int,
+        safety: SafetyGate,
+        runner: ArgvRunner?
     ) async -> JSONRPCResponse {
         guard let toolName = params?["name"]?.stringValue else {
             return JSONRPCResponse(
@@ -365,69 +371,75 @@ enum MCPDispatcher {
         }
 
         let toolStartedAt = Date()
-        let argv: [String]
-        do {
-            // buildArgs reads only the keys it knows, so without this an
-            // unknown or mistyped safety key (`dry_run`, `dryRun: "true"`)
-            // is dropped and the real write runs.
-            try SchemaValidator.validate(args: toolArguments, against: tool.inputSchema)
-            argv = try tool.buildArgs(toolArguments)
-        } catch {
-            return errorResult(id: id, error, startedAt: toolStartedAt)
+        // `runner` stands in for both ways of running a command (tests).
+        let runArgv: ArgvRunner = runner ?? { argv in
+            try await runChild(argv: argv, pippinPath: pippinPath, timeoutSeconds: childTimeoutSeconds)
         }
 
-        // In-process fast path: no child spawn, same command as the child runs.
-        // A tool that wedges past the deadline moves to the child path, where
-        // a hard kill exists, for the rest of the session.
-        if let handler = tool.inProcess, !MCPInProcessTools.isDemoted(tool.name) {
+        // The safety chokepoint: anything not declared read-only (an
+        // unclassified tool included) runs only through the gate, which applies
+        // policy, confirmation, rate limits, the action log and idempotency.
+        guard tool.effect == .readOnly else {
             do {
-                let text = try await MCPInProcessTools.withDeadline(seconds: inProcessDeadline) {
-                    try await handler(argv)
-                }
-                return wrapToolResult(id: id, payload: MCPToolCallResult(text: text, isError: false))
+                let result = try await safety.run(tool: tool, arguments: toolArguments, tools: tools, runArgv: runArgv)
+                return wrapToolResult(id: id, payload: MCPToolCallResult(text: result.text, isError: result.isError))
             } catch {
-                if case MCPServerRuntimeError.inProcessTimedOut = error {
-                    MCPInProcessTools.demote(tool.name)
-                }
                 return errorResult(id: id, error, startedAt: toolStartedAt)
             }
         }
 
-        let childResult: MCPServerRuntime.ChildResult
         do {
-            // runChild blocks on waitUntilExit — hop off the cooperative pool
-            // (mirrors DoCommand's call site).
-            childResult = try await detachBlocking {
-                try MCPServerRuntime.runChild(
-                    argv: argv, pippinPath: pippinPath, timeoutSeconds: childTimeoutSeconds, ownProcessGroup: true
-                )
+            try safety.checkRead(tool, tools: tools)
+            // buildArgs reads only the keys it knows, so without this an
+            // unknown or mistyped key is silently dropped.
+            try SchemaValidator.validate(args: toolArguments, against: tool.inputSchema)
+            let argv = try tool.buildArgs(toolArguments)
+
+            // In-process fast path: no child spawn, same command as the child runs.
+            // A tool that wedges past the deadline moves to the child path, where
+            // a hard kill exists, for the rest of the session.
+            if runner == nil, let handler = tool.inProcess, !MCPInProcessTools.isDemoted(tool.name) {
+                do {
+                    let text = try await MCPInProcessTools.withDeadline(seconds: inProcessDeadline) {
+                        try await handler(argv)
+                    }
+                    return wrapToolResult(id: id, payload: MCPToolCallResult(text: text, isError: false))
+                } catch {
+                    if case MCPServerRuntimeError.inProcessTimedOut = error {
+                        MCPInProcessTools.demote(tool.name)
+                    }
+                    throw error
+                }
             }
+            let result = try await runArgv(argv)
+            return wrapToolResult(id: id, payload: MCPToolCallResult(text: result.text, isError: result.isError))
         } catch {
-            // Every failure to run the child is tool-level: the caller can act
+            // Every failure to run the tool is tool-level: the caller can act
             // on it, and the envelope says how.
-            return errorResult(
-                id: id, MCPServerRuntime.outcomeUnknownIfMutating(error, tool: tool, tools: tools),
-                startedAt: toolStartedAt
+            return errorResult(id: id, error, startedAt: toolStartedAt)
+        }
+    }
+
+    /// Run `pippin <argv>` as a child and return its envelope. A non-zero exit
+    /// is the child's own error envelope, passed through verbatim so clients
+    /// can parse it; only a child that could not be run to an answer throws.
+    private static func runChild(
+        argv: [String], pippinPath: String, timeoutSeconds: Int
+    ) async throws -> (text: String, isError: Bool) {
+        // runChild blocks on waitUntilExit: hop off the cooperative pool
+        // (mirrors DoCommand's call site).
+        let childResult = try await detachBlocking {
+            try MCPServerRuntime.runChild(
+                argv: argv, pippinPath: pippinPath, timeoutSeconds: timeoutSeconds, ownProcessGroup: true
             )
         }
-
-        let stdoutString = String(data: childResult.stdout, encoding: .utf8) ?? ""
-        let trimmed = stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
-
+        let trimmed = (String(data: childResult.stdout, encoding: .utf8) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         if childResult.exitCode == 0 {
-            let text = trimmed.isEmpty ? "{}" : trimmed
-            return wrapToolResult(id: id, payload: MCPToolCallResult(text: text, isError: false))
-        } else {
-            // Non-zero exit: the child already printed its error envelope;
-            // pass it through verbatim so clients can parse it.
-            if trimmed.isEmpty {
-                return errorResult(
-                    id: id, MCPServerRuntimeError.childNoOutput(exitCode: childResult.exitCode),
-                    startedAt: toolStartedAt
-                )
-            }
-            return wrapToolResult(id: id, payload: MCPToolCallResult(text: trimmed, isError: true))
+            return (trimmed.isEmpty ? "{}" : trimmed, false)
         }
+        guard !trimmed.isEmpty else { throw MCPServerRuntimeError.childNoOutput(exitCode: childResult.exitCode) }
+        return (trimmed, true)
     }
 
     private static func errorResult(id: JSONRPCID, _ error: Error, startedAt: Date) -> JSONRPCResponse {
