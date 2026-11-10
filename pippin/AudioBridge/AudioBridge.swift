@@ -505,60 +505,19 @@ public enum AudioBridge {
         arguments: [String],
         timeoutSeconds: Int
     ) throws -> ProcessOutcome {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = arguments
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
+        let outcome: Subprocess.Outcome
         do {
-            try process.run()
+            outcome = try Subprocess.run(
+                executable: executable, arguments: arguments, timeout: TimeInterval(timeoutSeconds)
+            )
         } catch {
             throw AudioBridgeError.processFailed("Failed to launch \(executable.path): \(error.localizedDescription)")
         }
-
-        // Drain both pipes concurrently to avoid deadlock on large output (>64KB pipe buffer)
-        // nonisolated(unsafe): each var is written once by one GCD block; group.wait() provides happens-before
-        nonisolated(unsafe) var stdoutData = Data()
-        nonisolated(unsafe) var stderrData = Data()
-        let group = DispatchGroup()
-
-        group.enter()
-        DispatchQueue.global().async {
-            stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
-        }
-
-        group.enter()
-        DispatchQueue.global().async {
-            stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
-        }
-
-        let timeoutItem = DispatchWorkItem {
-            guard process.isRunning else { return }
-            process.terminate()
-            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            }
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSeconds), execute: timeoutItem)
-
-        process.waitUntilExit()
-        timeoutItem.cancel()
-        group.wait()
-
-        let stdoutStr = (String(data: stdoutData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let stderrStr = (String(data: stderrData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-
         return ProcessOutcome(
-            stdout: stdoutStr,
-            stderr: stderrStr,
-            status: process.terminationStatus,
-            timedOut: process.terminationReason == .uncaughtSignal
+            stdout: outcome.stdoutText,
+            stderr: outcome.stderrText,
+            status: outcome.status,
+            timedOut: outcome.signaled
         )
     }
 

@@ -144,65 +144,28 @@ public enum ScriptRunner {
     }
 
     private static func runOsascript(script: String, timeout: TimeInterval) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-l", "JavaScript", "-e", script]
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
+        let outcome: Subprocess.Outcome
         do {
-            try process.run()
+            outcome = try Subprocess.run(
+                executable: URL(fileURLWithPath: "/usr/bin/osascript"),
+                arguments: ["-l", "JavaScript", "-e", script],
+                timeout: timeout
+            )
         } catch {
             throw ScriptRunnerError.launchFailed(error.localizedDescription)
         }
 
-        // Drain both pipes concurrently to avoid deadlock on large output (>64KB pipe buffer).
-        // nonisolated(unsafe): each var is written once by one GCD block; group.wait() provides happens-before.
-        nonisolated(unsafe) var stdoutData = Data()
-        nonisolated(unsafe) var stderrData = Data()
-        let group = DispatchGroup()
-
-        group.enter()
-        DispatchQueue.global().async {
-            stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
-        }
-
-        group.enter()
-        DispatchQueue.global().async {
-            stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
-        }
-
-        let killedByTimer = ConcurrentSlot<Bool>()
-        let timeoutItem = DispatchWorkItem {
-            guard process.isRunning else { return }
-            killedByTimer.set(true)
-            process.terminate() // SIGTERM — give osascript 2 seconds to clean up
-            DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
-                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            }
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutItem)
-
-        process.waitUntilExit()
-        timeoutItem.cancel()
-        group.wait()
-
         // Only our own timer's kill is a timeout. Any other signal death is a
         // crash, which must not read as retryable.
-        if process.terminationReason == .uncaughtSignal {
-            if killedByTimer.get() == true { throw ScriptRunnerError.timeout }
-            throw ScriptRunnerError.crashed(signal: process.terminationStatus)
+        if outcome.signaled {
+            if outcome.timedOut { throw ScriptRunnerError.timeout }
+            throw ScriptRunnerError.crashed(signal: outcome.status)
         }
 
-        let stdoutStr = (String(data: stdoutData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let rawStderr = (String(data: stderrData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let stdoutStr = outcome.stdoutText
+        let rawStderr = outcome.stderrText
 
-        guard process.terminationStatus == 0 else {
+        guard outcome.status == 0 else {
             throw ScriptRunnerError.nonZeroExit(rawStderr)
         }
 
