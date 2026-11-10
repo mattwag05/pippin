@@ -1,0 +1,15 @@
+{
+  "_note": "Seconds in the benchmark VM on 2026-11-10: install.sh into a fresh tools directory for each competitor (package-manager caches were warm), and `brew install mattwag05/tap/pippin` for Pippin.",
+  "imsg": 2,
+  "remindctl": 1,
+  "reminders-cli": 1,
+  "memo": 7,
+  "sweetrb-mail": 4,
+  "pf-mail": 7,
+  "sweetrb-notes": 2,
+  "apple-events": 2,
+  "mac-messages": 7,
+  "apple-pim": 35,
+  "imcp": 1,
+  "pippin": 16
+}

@@ -24,6 +24,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [docs] The competitive results now score the Operability axis (install, self-check, docs, tests and CI, release hygiene, maintenance), under methodology Amendment 3. Pippin passes 13 of 13 checks and scores 4, tied with five other tools ([result](bench/competitive/results/2026-11-10-operability/summary.md)).
 - [docs] `docs/cli-reference.md` lists every command with its help text. `CLIReferenceTests` generates it from the command definitions and fails when it is stale. Before it, 21 commands were documented nowhere.
 - [test] `LiveConformanceTests` runs every read tool against real app data and validates each envelope and `data` against the published schemas. It runs only inside a VM and only with `PIPPIN_LIVE_CONFORMANCE=1` ([result](bench/competitive/results/2026-11-10-doctor/summary.md)).
 

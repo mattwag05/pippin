@@ -1,0 +1,682 @@
+{
+  "collected_utc": "2026-11-10T17:06:43Z",
+  "pin_note": "All files read at the pinned commit SHA; release/tag/commit-recency checks use the default branch via the GitHub API.",
+  "tools": {
+    "imcp": {
+      "repo": "https://github.com/mattt/iMCP",
+      "commit": "6284060d73a554a19dfb31af2fccbc1650fd94f3",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md 'Download and open the app': brew install --cask mattt/tap/iMCP (also direct download)",
+          "value": 1
+        },
+        "self_check": {
+          "pass": false,
+          "evidence": "No doctor/status tool. Only utilities_beep ('test a connection without granting any permissions'); in-app service toggles show state but that is GUI, not a command/tool."
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "App/Services/Music.swift: 'Allow iMCP in System Settings > Privacy & Security > Media & Apple Music' and '... > Automation'; Home.swift: '... > Local Network'"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Getting Started"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md 'Turn on services' (per-service macOS dialogs), Mail folder access section, Music Automation note"
+        },
+        "interface_documented": {
+          "pass": false,
+          "evidence": "Source App/Services/*.swift registers 55 named tools (plus Home tools via helper); README lists services in a capabilities table and names only 7 tool identifiers (exposed 55, documented-by-name 7)."
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "Tests/imcp-serverTests"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/ci.yml on push to main + pull_request to main; release.yml on tag push"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "gh api releases: 1.8.3, 1.8.2, 1.8.1 ..."
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": ".github/workflows/release.yml 'Builds, signs, notarizes, and publishes a release'"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "commits?since=2026-08-11: latest c30e84ce 2026-11-05"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "1.8.3 published 2026-11-04"
+        }
+      },
+      "notes": "Exposed count 55 is from name: \"...\" literals in App/Services; Home tools are defined via a separate helper app and not counted. interface_documented is service-level only. Not a pure MCP server: a menu-bar app plus CLI proxy."
+    },
+    "imsg": {
+      "repo": "https://github.com/openclaw/imsg",
+      "commit": "1bc0679663bf3978a744a61a5a9161d9ba518764",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md Install: brew install steipete/tap/imsg (then optional 'imsg --version')",
+          "value": 1
+        },
+        "self_check": {
+          "pass": true,
+          "evidence": "`imsg status` (Sources/imsg/Commands/StatusCommand.swift: 'Display the current status of imsg features and permissions')"
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "StatusCommand.swift prints 'System Settings > Privacy & Security > Full Disk Access'; README Quick start; docs/permissions.md"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Install; docs/install.md"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md Permissions section (Full Disk Access, Automation -> Messages, optional Contacts); docs/permissions.md"
+        },
+        "interface_documented": {
+          "pass": true,
+          "evidence": "Sources/imsg/Commands: 38 command names found (21 top-level + 17 bridge); every one appears as 'imsg <cmd>' in README/docs/*.md (exposed 38, documented 38)"
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "Tests/IMsgCoreTests, Tests/IMsgHelperTests, Tests/imsgTests, TestsLinux/"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/ci.yml on push main + pull_request; codeql.yml on pull_request + schedule"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "v0.21.0, v0.20.0, v0.19.1 ..."
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": ".github/workflows/release.yml runs xcrun notarytool; README says 'Signed macOS builds'"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest 1bc06796 2026-11-05"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "v0.21.0 published 2026-11-05"
+        }
+      },
+      "notes": "Advanced IMCore commands need SIP disabled (documented). Command count excludes option-only names (option-index, target-part)."
+    },
+    "remindctl": {
+      "repo": "https://github.com/openclaw/remindctl",
+      "commit": "1ae0c5dbc607c9c682b0f8d895c7138de603e615",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md Install: brew install steipete/tap/remindctl",
+          "value": 1
+        },
+        "self_check": {
+          "pass": true,
+          "evidence": "`remindctl doctor` and `remindctl status` (README Commands table)"
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "Sources/remindctl/PermissionsHelp.swift: 'System Settings > Privacy & Security > Reminders'; docs/permissions.md"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Installation; docs/install.md"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md Requirements ('Full Reminders access'); docs/permissions.md"
+        },
+        "interface_documented": {
+          "pass": true,
+          "evidence": "Sources/remindctl/Commands: 15 commands (add authorize complete completion delete doctor edit export info link list open search show status); all in README Commands table or docs/commands.md (exposed 15, documented 15)"
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "Tests/RemindCoreTests, Tests/remindctlTests"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/ci.yml on push main + pull_request; codeql.yml"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "v0.3.9, v0.3.8, v0.3.7 ..."
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": ".github/workflows/release.yml: 'Build, sign, notarize and verify' (xcrun notarytool)"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest b74c3618 2026-11-05"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "v0.3.9 published 2026-10-21"
+        }
+      },
+      "notes": "README also lists 'From Source' via pnpm. Same org/author family as imsg."
+    },
+    "reminders-cli": {
+      "repo": "https://github.com/keith/reminders-cli",
+      "commit": "7bd86247be7e0fc41b08ef20d0d3491228a67d57",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md Installation: brew install keith/formulae/reminders-cli",
+          "value": 1
+        },
+        "self_check": {
+          "pass": false,
+          "evidence": "No doctor/status command; CLI.swift subcommands: add complete uncomplete delete edit show show-lists new-list show-all"
+        },
+        "permission_diagnosis": {
+          "pass": false,
+          "evidence": "No 'System Settings'/'Privacy' strings in README, CLI.swift, Reminders.swift or main.swift; requestAccess only returns a bool/error"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Installation (brew, release tarball, build)"
+        },
+        "permissions_documented": {
+          "pass": false,
+          "evidence": "README never mentions Reminders permission"
+        },
+        "interface_documented": {
+          "pass": false,
+          "evidence": "CLI.swift registers 9 subcommands; README documents 7 (missing show-all, new-list) (exposed 9, documented 7)"
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "Tests/RemindersTests/NaturalLanguageTests.swift (single file, date parsing only)"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/swift.yml on push main + pull_request main"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "2.5.1, 2.5.0, 2.4.0 ..."
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": "Release 2.5.1 body publishes sha256 for reminders.tar.gz and binary; Makefile prints shasum"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest bdf04974 2026-10-02"
+        },
+        "recent_release": {
+          "pass": false,
+          "evidence": "latest release 2.5.1 published 2024-05-07 (before 2026-05-13)"
+        }
+      },
+      "notes": "Maintained (commits in window) but release cadence stopped in 2024. CI uses Xcode_15.0.app."
+    },
+    "memo": {
+      "repo": "https://github.com/antoniorodr/memo",
+      "commit": "959f47fbec6c9f129705431b710e1a2448e07c32",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md: first-listed manual route is 3 lines (git clone; cd memo; pip install .); Homebrew route is 2 (brew tap; brew install); uv route is 1",
+          "value": 3
+        },
+        "self_check": {
+          "pass": false,
+          "evidence": "CLI has only `memo notes` and `memo rem` (+ --help/--version); no doctor/status"
+        },
+        "permission_diagnosis": {
+          "pass": false,
+          "evidence": "No Privacy/System Settings/Automation strings in README, docs/ or src/"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Installation; docs/Installation.md"
+        },
+        "permissions_documented": {
+          "pass": false,
+          "evidence": "README and docs never mention macOS Automation/permissions (only 'depends on Apple Notes, Reminders and AppleScript')"
+        },
+        "interface_documented": {
+          "pass": false,
+          "evidence": "src/memo/memo.py: 2 commands, 15 options (notes: folder edit add delete move flist search remove export view no_cache = 11; rem: complete add delete edit = 4). docs/Getting started.md lists 10 notes + 3 rem flags; missing notes --no-cache and rem --edit (exposed 15, documented 13)"
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "tests/memo_notes_test.py, tests/memo_rem_test.py, tests/test_md_converter_images.py"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/run-tests-on-pr.yml (on pull_request, uses tests.yml: uv run pytest); merge-to-main.yml on push main"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "v0.6.2, v0.6.1, v0.6.0 ..."
+        },
+        "verifiable_artifact": {
+          "pass": false,
+          "evidence": "release.yml runs uv build and attaches wheel + sdist to the GitHub release; no checksum file, no PyPI publish step seen in workflows. Homebrew tap formula (separate repo) not inspected."
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest 1cf73cd4 2026-10-28"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "v0.6.2 published 2026-10-21"
+        }
+      },
+      "notes": "README header says 'Status: Under development'. install value=3 uses the first-listed route; Homebrew would be 2. Also has a no-autopilot.yml workflow (pull_request_target) that is unrelated to the check."
+    },
+    "sweetrb-mail": {
+      "repo": "https://github.com/sweetrb/apple-mail-mcp",
+      "commit": "c054b058cf0e241185c330111a2e68dcddf91179",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md Quick Start: claude mcp add apple-mail -s user -- npx -y apple-mail-mcp (alt: npm install -g apple-mail-mcp + JSON config)",
+          "value": 1
+        },
+        "self_check": {
+          "pass": true,
+          "evidence": "MCP tools `doctor` and `health-check` (README Diagnostics; doctor checks Mail automation permission, accounts, IMAP/SMTP)"
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "src/utils/applescript.ts: 'Grant automation access in System Settings > Privacy & Security > Automation.'; README Troubleshooting 'Permission denied'"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Quick Start / Installation Options"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md Requirements (Automation, Full Disk Access for search-contacts); docs/NODE-RUNTIME-AND-TCC-PERMISSIONS.md"
+        },
+        "interface_documented": {
+          "pass": true,
+          "evidence": "src/index.ts: 52 distinct tool names registered; all 52 appear as `name` in README Tool Reference (exposed 52, documented 52)"
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "src/*.test.ts (117 test files incl. src/tools/*.test.ts)"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/ci.yml on push main + pull_request main; codeql.yml; version-guard.yml"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "v2.20.55, v2.20.54, v2.20.53 ..."
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": "npm package published via publish.yml with OIDC trusted publishing and provenance (pnpm publish); npm integrity hashes"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest c054b058 2026-11-04"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "v2.20.55 published 2026-11-04"
+        }
+      },
+      "notes": "Very high release cadence (3 releases in one day, 2026-11-04). 2500-line README. Tool-name extraction regex may miss tools registered via helper functions, so exposed count is a lower bound."
+    },
+    "pf-mail": {
+      "repo": "https://github.com/patrickfreyer/apple-mail-mcp",
+      "commit": "daaf963e4b051e8cea02a456b149750de45edd03",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md Quick Install (Claude Code plugin): claude plugin marketplace add patrickfreyer/apple-mail-mcp; claude plugin install apple-mail@apple-mail-mcp (uvx route is 1)",
+          "value": 2
+        },
+        "self_check": {
+          "pass": false,
+          "evidence": "No doctor/health tool among 28 registered tools"
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "README Troubleshooting: 'Grant access in System Settings > Privacy & Security > Automation' (documented error table). Source (plugin/apple_mail_mcp/**) contains no such string."
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Quick Install"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md: 'Mail.app permissions: Automation + Mail Data Access' with pane path"
+        },
+        "interface_documented": {
+          "pass": false,
+          "evidence": "plugin/apple_mail_mcp/tools/*.py register 28 @mcp.tool functions; README table lists 25 (header says 'Tools (23)'); undocumented: get_email_source, list_account_addresses, synchronize_account (exposed 28, documented 25)"
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "tests/ (test_*.py, 18 files) + tests/fixtures"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/ci.yml on push main + pull_request"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "v3.3.0, v3.2.1, v3.2.0 ..."
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": "PyPI package mcp-apple-mail (README badge); .mcpb bundle in release (no checksum)"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest 66b86a83 2026-11-04"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "v3.3.0 published 2026-11-03"
+        }
+      },
+      "notes": "README tool count (23) disagrees with its own table (25) and the source (28). PyPI claim rests on README badge and package name, not verified via PyPI API (outside allowed hosts)."
+    },
+    "sweetrb-notes": {
+      "repo": "https://github.com/sweetrb/apple-notes-mcp",
+      "commit": "fb5ef5bcfedf9103449aac116bda6585c572e98b",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md step 1: claude mcp add apple-notes -s user -- npx -y apple-notes-mcp@2.15.1 (one command; README example pins 2.15.1, pin is older than v2.16.1)",
+          "value": 1
+        },
+        "self_check": {
+          "pass": true,
+          "evidence": "MCP tools `doctor`, `health-check`, `get-capabilities`; also CLI `npx apple-notes-mcp setup --permissions --check`"
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "src/*: 'System Settings > Privacy & Security > Full Disk Access' and '... > Automation' strings; doctor reports remediation"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Setup on your Mac; 'Installation choices and upgrades'"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md section 2 table (Automation, Full Disk Access, Shortcuts, Speech); docs/FULL-DISK-ACCESS.md; docs/NODE-RUNTIME-AND-TCC-PERMISSIONS.md"
+        },
+        "interface_documented": {
+          "pass": true,
+          "evidence": "89 distinct tool names extracted from src (registerTool literals + tool(...) helper calls); all 89 appear as `name` in README (README has ~90 tool headings). Extraction may under-count (exposed >=89, documented >=89) Re-checked by the session over the full source at the pinned commit: 70 tools registered via registerTool, all named in README.md."
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "src/**/*.test.ts (158 test files)"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/ci.yml on push main + pull_request main; codeql.yml"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "v2.16.1, v2.16.0, v2.15.18 ..."
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": "npm package via publish.yml (npm Trusted Publisher / OIDC); GitHub releases carry no assets"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest fb5ef5bc 2026-11-09"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "v2.16.1 published 2026-11-09"
+        }
+      },
+      "notes": "Largest surface of the set (3500-line README). Two releases on the pin date. Source download was partial when the extraction ran (79 of 119 non-test src files) so tool count is a lower bound; no undocumented tool was found."
+    },
+    "apple-events": {
+      "repo": "https://github.com/FradSer/mcp-server-apple-events",
+      "commit": "a80e04b48d2f80957dc7ac1b35702a7c35ec0591",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md Quick Start: npx mcp-server-apple-events (plus a JSON client config entry, not a shell command)",
+          "value": 1
+        },
+        "self_check": {
+          "pass": true,
+          "evidence": "./check-permissions.sh (README macOS Permissions; checks Reminders/Calendars/Automation). It is in the repo root and NOT in package.json 'files', so npx-only users do not get it."
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "check-permissions.sh: 'System Settings > Privacy & Security > Reminders' / 'Calendars' / 'Automation'; README macOS Permissions"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Quick Start + Configuration"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md macOS Permissions section"
+        },
+        "interface_documented": {
+          "pass": true,
+          "evidence": "src/tools/definitions.ts: 5 tools (reminders_tasks, reminders_subtasks, reminders_lists, calendar_events, calendar_calendars); all 5 in README Available MCP Tools with actions (exposed 5, documented 5)"
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "src/__tests__/, src/*.test.ts (45 test files)"
+        },
+        "ci": {
+          "pass": false,
+          "evidence": "Only .github/workflows/release.yml, triggered by tag push (v*) and workflow_dispatch; it runs jest (excluding e2e) before npm publish. No workflow on branch push or pull_request."
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "v1.6.2, v1.6.1, v1.6.0 ..."
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": "npm package; release.yml uses npm trusted publishing (OIDC) and codesigns bin/event"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest a02e0ffa 2026-11-08"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "v1.6.2 published 2026-10-22"
+        }
+      },
+      "notes": "ci=false is strict: tests do run, but only on release tags. The check-permissions.sh self-check requires a git clone. bin/event codesign check in release.yml asserts no Authority line, suggesting ad-hoc rather than Developer ID signing (not verified)."
+    },
+    "mac-messages": {
+      "repo": "https://github.com/carterlasalle/mac_messages_mcp",
+      "commit": "ec4de8d379583c7fa7224728d6de3891d97533ba",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md Quick start: brew install uv; claude mcp add --transport stdio --scope user mac-messages -- uvx mac-messages-mcp (uv is not in the assumed-present list, so counted)",
+          "value": 2
+        },
+        "self_check": {
+          "pass": true,
+          "evidence": "MCP tools tool_check_db_access, tool_check_contacts, tool_check_addressbook (README step 4 'Verify the connection')"
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "mac_messages_mcp/messages.py: 'grant Full Disk Access permission to your terminal application in System Preferences > Security & Privacy > Privacy' (legacy pane name); README step 2 names System Settings > Privacy & Security > Full Disk Access"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Quick start"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md step 2 + Privacy and security + Troubleshooting"
+        },
+        "interface_documented": {
+          "pass": true,
+          "evidence": "mac_messages_mcp/server.py: 11 @mcp.tool + 2 resources; README Available tools lists 11 tools and both resources (exposed 11, documented 11)"
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "tests/ (9 test files)"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/ci.yml on push main + pull_request main; plus codeql, bandit, semgrep, osv-scanner"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "v1.1.0"
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": ".github/workflows/publish.yml publishes to PyPI via trusted publishing with attestations: true, then verifies PyPI SHA-256 digests"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest 8b0cef1d 2026-11-05"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "v1.1.0 published 2026-09-01"
+        }
+      },
+      "notes": "Only one GitHub release; pin is the first. Permission string in source uses the pre-Ventura pane name."
+    },
+    "apple-pim": {
+      "repo": "https://github.com/omarshahine/apple-pim",
+      "commit": "36a406328ebe7de92cf37d408d6064d3cbce44e5",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "evidence": "README.md Claude Code Plugin route: /plugin marketplace add omarshahine/apple-pim; /plugin install apple-pim@apple-pim; bash ~/.claude/plugins/cache/*/apple-pim/*/setup.sh --install (2 slash commands + 1 shell). Standalone Swift CLI route needs a clone, ./setup.sh --install, then PATH export (echo + source) = 4+",
+          "value": 3
+        },
+        "self_check": {
+          "pass": true,
+          "evidence": "MCP/CLI `apple_pim_system` action `status` (per-domain permissionStatus) and `scripts/doctor.sh`; also `mail-cli auth-status`"
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "lib/handlers/apple-pim.js: 'Enable in System Settings > Privacy & Security'; README Troubleshooting 'Permission Denied' lists panes"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md Installation"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md Post-Installation (Calendar/Reminders/Contacts, Mail Automation, optional Full Disk Access)"
+        },
+        "interface_documented": {
+          "pass": false,
+          "evidence": "lib/schemas.js: 5 tools, all in README Tools Reference table; but every tool also exposes an undocumented `schema` introspection action (5 extra actions) and the four Swift CLIs' subcommands are only partly listed. Tool-level 5/5; action-level ~48 documented of ~53 exposed. BORDERLINE."
+        },
+        "tests": {
+          "pass": true,
+          "evidence": "mcp-server/test/ (14 files), swift/Tests (43), openclaw/src/*.test.ts, evals/tests, scripts/test"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".github/workflows/tests.yml on push main + pull_request; plugin-inspector.yml on pull_request + push"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "v3.19.2, v3.19.1, v3.19.0 ..."
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": "Release v3.19.2 ships SHA256SUMS; release-signed-artifacts.yml: Developer ID signed + notarized universal binaries; also npm (apple-pim-cli)"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "latest c0b9eb56 2026-11-01"
+        },
+        "recent_release": {
+          "pass": true,
+          "evidence": "v3.19.2 published 2026-10-25"
+        }
+      },
+      "notes": "Largest feature set (calendar, reminders, contacts, mail, SMTP, plugins for Claude Code and OpenClaw). Install is the most involved of the set. interface_documented is a judgment call (see evidence)."
+    },
+    "pippin": {
+      "repo": "https://forgejo.tail6e035b.ts.net/matthewwagner/pippin (mirrored to https://github.com/mattwag05/pippin)",
+      "commit": "efe46c7 (branch claude/registry-generation)",
+      "checks": {
+        "install_commands": {
+          "pass": true,
+          "value": 1,
+          "evidence": "README.md Install: `brew install mattwag05/tap/pippin`"
+        },
+        "self_check": {
+          "pass": true,
+          "evidence": "`pippin doctor` and the MCP tool `doctor` (pippin/Commands/DoctorCommand.swift)"
+        },
+        "permission_diagnosis": {
+          "pass": true,
+          "evidence": "doctor remediation names the pane, e.g. 'Open System Settings > Privacy & Security > Automation' (classifyMailError in pippin/Commands/DoctorCommand.swift)"
+        },
+        "install_documented": {
+          "pass": true,
+          "evidence": "README.md sections Install and Setup"
+        },
+        "permissions_documented": {
+          "pass": true,
+          "evidence": "README.md Setup; docs/gotchas/permissions.md table of mechanism and System Settings pane per app"
+        },
+        "interface_documented": {
+          "pass": true,
+          "value": "79 of 79 MCP tools in docs/mcp-server.md; 100 of 100 visible commands in docs/cli-reference.md",
+          "evidence": "docs/mcp-server.md, docs/cli-reference.md (CLIReferenceTests keeps it complete)"
+        },
+        "tests": {
+          "pass": true,
+          "value": "2,762 XCTest cases",
+          "evidence": "Tests/PippinTests"
+        },
+        "ci": {
+          "pass": true,
+          "evidence": ".forgejo/workflows/ci.yaml and quality.yaml, on push and pull_request to main; ran green on PR #30 (the GitHub mirror's own workflows are disabled)"
+        },
+        "tagged_releases": {
+          "pass": true,
+          "evidence": "tags v0.40.0 to v1.0.0; GitHub releases"
+        },
+        "verifiable_artifact": {
+          "pass": true,
+          "evidence": "release tarball signed with a Developer ID Application certificate; Homebrew formula pins its sha256"
+        },
+        "recent_commits": {
+          "pass": true,
+          "evidence": "commits on main through 2026-11-10"
+        },
+        "recent_release": {
+          "pass": true,
+          "value": "v0.41.1, 2026-11-08",
+          "evidence": "git tag v0.41.1"
+        }
+      },
+      "notes": "Scored at the commit above. Check 7 failed before commit efe46c7 (21 commands were documented nowhere); that commit added the generated reference."
+    }
+  },
+  "note": "Competitor facts collected through the GitHub API at the pinned commits; repository text read as data. Pippin facts from this repository at the commit named in its entry."
+}

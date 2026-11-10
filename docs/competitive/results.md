@@ -12,30 +12,30 @@ Read this first.
 - **Tool-list size with every tool exposed.** All 79 tools cost 22,615 tokens per agent turn. That is more than every competitor except sweetrb/apple-notes-mcp (56,023). In the agent tasks this made Pippin the most expensive tool per task (about 84k to 88k model tokens) when all tools were exposed. `pippin mcp-server --apps <app>` fixes this: scoped to one app, Pippin was the cheapest tool on all three tasks (see [Agent tasks](#agent-tasks)). The default is still all tools, so a client that does not pass `--apps` pays the cost (pippin-hd99). Plan: shorten tool descriptions and shared schema text, and decide whether the default should list a smaller core set with the rest behind `--apps`, as a minor release with a deprecation note under [contract.md](../contract.md).
 - **Agent task success: 8 of 9, against 3 of 3 for each competitor on the one task it can attempt.** One injection trial failed in each Pippin run. In both, the model summarized the hostile note and quoted its marker string (`PB-04-LEAK`) while describing the attack, and the grader counts any appearance of the marker as a leak. No tripwire fired, no event was planted and no instruction was obeyed. The grader is unchanged; the failure stands as recorded. The change for the next run (a marker in backticks or double quotes is a quotation, not a leak) is committed as [Amendment 2](methodology.md#amendment-2-2026-11-10-before-any-run-that-uses-it) and is not applied to this result (pippin-o072).
 - **Calendar plus Reminders tool list.** Scoped to those two apps, Pippin's tool list is 6,153 tokens against 3,694 for FradSer/mcp-server-apple-events, which covers the same two apps with 5 tools. Plan: the description and schema trim under pippin-hd99.
-- **Not measured.** Mail and Voice Memos for every tool (the VM has no mail account and no recordings), iMCP (it needs an interactive approval window per client), and the Operability axis (install friction, release hygiene, maintenance), which the harness does not score yet (pippin-0ifz). Plan: seed a throwaway local Mail account and a Voice Memos fixture database in the VM, and add their operations to the method as an amendment before the next run; score iMCP if `vm/allow.sh` can answer its approval window, otherwise keep it listed as not runnable; implement the Operability score in `harness/report.py` from the definition in methodology.md, committed before the run that uses it.
+- **Not measured.** Mail and Voice Memos for every tool (the VM has no mail account and no recordings), and iMCP (it needs an interactive approval window per client). The Operability axis is now scored ([2026-11-10-operability](../../bench/competitive/results/2026-11-10-operability/summary.md)). Plan for the rest: seed a throwaway local Mail account and a Voice Memos fixture database in the VM, and add their operations to the method as an amendment before the next run; score iMCP if `vm/allow.sh` can answer its approval window, otherwise keep it listed as not runnable.
 
 ## Scores
 
 Scores are 0 to 4 per axis, rubric in [methodology.md](methodology.md#scoring-rubric). Axis scores are never summed. Tools are listed by number of apps scored, then by name.
 
-| Tool | Apps scored | Coverage | Correctness | Reliability | Speed | Safety (hostile input) | Dealbreaker |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **pippin** (`d91a21a`) | 5 | 4 (23/23) | 4 (45/45) | 4 (50/50) | 4 | 4 (120/120) | none observed |
-| apple-pim 3.19.2 | 3 | 4 (15/15) | 3 (28/29) | 4 (30/30) | 1 | 4 (72/72) | none observed |
-| apple-events 1.6.2 | 2 | 4 (10/10) | 4 (20/20) | 4 (20/20) | 1 | 4 (48/48) | none observed |
-| memo 0.6.2 | 2 | 1 (3/13) | 2 (6/7) | 3 (10/11) | 2 | n/r | none observed |
-| imsg 0.21.0 | 1 | 4 (3/3) | 2 (2/3) | 3 (9/10) | 1 | 4 (24/24) | none observed |
-| mac-messages 1.1.0 | 1 | 4 (3/3) | n/r | 3 (9/10) | 2 | 4 (24/24) | none observed |
-| remindctl 0.3.9 | 1 | 4 (5/5) | 4 (10/10) | 4 (10/10) | 2 | 4 (24/24) | none observed |
-| reminders-cli 2.5.1 | 1 | 2 (4/5) | 4 (7/7) | 4 (7/7) | 1 | n/r | none observed |
-| sweetrb-notes 2.16.1 | 1 | 4 (5/5) | 4 (9/9) | 4 (10/10) | 3 | 4 (24/24) | none observed |
-| iMCP 1.8.3 | n/r | n/r | n/r | n/r | n/r | n/r | not run: `initialize` exceeded 60 s waiting for an approval window |
-| pf-mail 3.3.0 | n/r | n/r | n/r | n/r | n/r | n/r | not run: Mail only, no mail account in the VM |
-| sweetrb-mail 2.20.55 | n/r | n/r | n/r | n/r | n/r | n/r | not run: Mail only, no mail account in the VM |
+| Tool | Apps scored | Coverage | Correctness | Reliability | Speed | Safety (hostile input) | Operability | Dealbreaker |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **pippin** (`d91a21a`) | 5 | 4 (23/23) | 4 (45/45) | 4 (50/50) | 4 | 4 (120/120) | 4 | none observed |
+| apple-pim 3.19.2 | 3 | 4 (15/15) | 3 (28/29) | 4 (30/30) | 1 | 4 (72/72) | 3 | none observed |
+| apple-events 1.6.2 | 2 | 4 (10/10) | 4 (20/20) | 4 (20/20) | 1 | 4 (48/48) | 3 | none observed |
+| memo 0.6.2 | 2 | 1 (3/13) | 2 (6/7) | 3 (10/11) | 2 | n/r | 2 | none observed |
+| imsg 0.21.0 | 1 | 4 (3/3) | 2 (2/3) | 3 (9/10) | 1 | 4 (24/24) | 4 | none observed |
+| mac-messages 1.1.0 | 1 | 4 (3/3) | n/r | 3 (9/10) | 2 | 4 (24/24) | 4 | none observed |
+| remindctl 0.3.9 | 1 | 4 (5/5) | 4 (10/10) | 4 (10/10) | 2 | 4 (24/24) | 4 | none observed |
+| reminders-cli 2.5.1 | 1 | 2 (4/5) | 4 (7/7) | 4 (7/7) | 1 | n/r | 2 | none observed |
+| sweetrb-notes 2.16.1 | 1 | 4 (5/5) | 4 (9/9) | 4 (10/10) | 3 | 4 (24/24) | 4 | none observed |
+| iMCP 1.8.3 | n/r | n/r | n/r | n/r | n/r | n/r | 2 | not run: `initialize` exceeded 60 s waiting for an approval window |
+| pf-mail 3.3.0 | n/r | n/r | n/r | n/r | n/r | n/r | 2 | not run: Mail only, no mail account in the VM |
+| sweetrb-mail 2.20.55 | n/r | n/r | n/r | n/r | n/r | n/r | 4 | not run: Mail only, no mail account in the VM |
 
-Source: [2026-11-09-final/summary.md](../../bench/competitive/results/2026-11-09-final/summary.md), raw data in [scores.json](../../bench/competitive/results/2026-11-09-final/scores.json) and the per-tool `*.json` and `*.checks.json` files beside it.
+Operability was scored afterwards under [Amendment 3](methodology.md#amendment-3-2026-11-10-before-any-operability-data-was-collected), from each repository at its pinned commit and a timed install in the VM ([2026-11-10-operability](../../bench/competitive/results/2026-11-10-operability/summary.md)); it applies to tools that were not run on the other axes too. Source for the other axes: [2026-11-09-final/summary.md](../../bench/competitive/results/2026-11-09-final/summary.md), raw data in [scores.json](../../bench/competitive/results/2026-11-09-final/scores.json) and the per-tool `*.json` and `*.checks.json` files beside it.
 
-Pippin has the strictly highest or equal-highest score on every scored axis. It leads outright on Speed (4; the next best is 3) and ties at 4 on the others. Every failed check is listed in the summary's "Failed checks" section; for example apple-pim reports 21 reminders at the wrong instant, and imsg misses one message in a thread.
+Pippin has the strictly highest or equal-highest score on every scored axis. It leads outright on Speed (4; the next best is 3) and ties at 4 on the others, Operability included (13 of 13 checks, with imsg, mac-messages, remindctl, sweetrb-mail and sweetrb-notes). Every failed check is listed in the summary's "Failed checks" section; for example apple-pim reports 21 reminders at the wrong instant, and imsg misses one message in a thread.
 
 ### What changed since the baseline
 
@@ -112,10 +112,10 @@ Host measurements of Pippin alone (before and after each change) are in [docs/pe
 | apple-pim | 5 | 7,823 | 0 | 3 of 3 |
 | mac-messages | 11 | 3,437 | 0 | 0 of 1 |
 | sweetrb-notes | 89 | 56,023 | 46 | 1 of 1 |
-| imsg (CLI help) | n/a | 389 | n/a | 0 of 1 |
-| memo (CLI help) | n/a | 37 | n/a | 0 of 2 |
-| remindctl (CLI help) | n/a | 109 | n/a | 0 of 1 |
-| reminders-cli (CLI help) | n/a | 102 | n/a | 0 of 1 |
+| imsg (CLI help) | n/a | 389 | n/a | 4 | 0 of 1 |
+| memo (CLI help) | n/a | 37 | n/a | 2 | 0 of 2 |
+| remindctl (CLI help) | n/a | 109 | n/a | 4 | 0 of 1 |
+| reminders-cli (CLI help) | n/a | 102 | n/a | 2 | 0 of 1 |
 
 Token counts use the harness's own fixed tokenizer (words and single punctuation marks), so only ratios between tools mean anything. The all-tools row and the competitor rows are from the final run. The `--apps` rows were counted with the same tokenizer on the same build (`pippin mcp-server --apps <app>`, `tools/list`) and are not part of the harness output.
 
@@ -127,7 +127,7 @@ Same model (`haiku`), same system prompt, same task prompt for every tool, 3 tri
 | --- | --- | --- | --- |
 | pippin `--apps` scoped | 3/3, **20.8k** | 3/3, **12.2k** | 2/3, **11.2k** |
 | pippin, all 79 tools | 3/3, 85.7k | 3/3, 83.8k | 2/3, 87.5k |
-| pippin 0.41.1 (baseline), all 76 tools | 3/3, 64.6k | 3/3, 63.0k | 3/3, 66.5k |
+| pippin 0.41.1 (baseline), all 76 tools | 3/3, 64.6k | 3/3, 63.0k | 4 | 3/3, 66.5k |
 | apple-events | 3/3, 22.2k | out of scope | out of scope |
 | apple-pim | 3/3, 37.7k | out of scope | out of scope |
 | imsg | out of scope | 3/3, 17.1k | out of scope |
@@ -156,17 +156,17 @@ Facts read from each tool's live `tools/list`, help text and docs. The competito
 
 | Tool | Dry run on writes | Confirmation before send or delete | Policy file | Rate limit | Action log | Undo | Untrusted-content marking | Annotations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **pippin** `d91a21a` | 34 of 34 mutating tools | confirm token bound to the arguments (sends, deletes); draft only (`messages_send`) | yes | yes | yes | edits (7 inverses) | yes | 79 of 79 |
-| pippin 0.41.1 | 9 of 24 ops | `confirm` argument (9), draft only (1), none (14) | yes | no | yes | no | no | 0 of 76 |
+| **pippin** `d91a21a` | 34 of 34 mutating tools | confirm token bound to the arguments (sends, deletes); draft only (`messages_send`) | yes | yes | yes | edits (7 inverses) | yes | 4 | 79 of 79 |
+| pippin 0.41.1 | 9 of 24 ops | `confirm` argument (9), draft only (1), none (14) | yes | no | yes | no | no | 4 | 0 of 76 |
 | apple-pim | 12 of 12 ops | none | yes | no | no | partial | yes | 0 of 5 |
 | apple-events | 0 of 7 ops | none | yes | no | no | no | yes | 0 of 5 |
-| sweetrb-notes | 2 of 10 ops | content-hash guard (4), plan then apply (1), none (5) | partial | no | no | no | no | 46 of 89 |
+| sweetrb-notes | 2 of 10 ops | content-hash guard (4), plan then apply (1), none (5) | partial | no | no | no | no | 4 | 46 of 89 |
 | sweetrb-mail | 0 of 9 ops | none | partial | partial | yes | no | unknown | 52 of 52 |
-| pf-mail | 3 of 8 ops | `confirm` argument (1), none (7) | yes | no | no | no | unknown | 0 of 28 |
+| pf-mail | 3 of 8 ops | `confirm` argument (1), none (7) | yes | no | no | no | unknown | 2 | 0 of 28 |
 | mac-messages | 0 of 1 ops | none | no | no | no | no | yes | 0 of 11 |
 | imsg | 0 of 7 ops | none | no | no | no | yes | no | n/a |
-| memo | 0 of 7 ops | interactive item number (7) | no | no | no | no | no | n/a |
-| remindctl | 2 of 3 ops | interactive prompt with a skip flag (1), none (2) | no | no | no | partial | no | n/a |
+| memo | 0 of 7 ops | interactive item number (7) | no | no | no | no | no | 2 | n/a |
+| remindctl | 2 of 3 ops | interactive prompt with a skip flag (1), none (2) | no | no | no | partial | no | 4 | n/a |
 | reminders-cli | 0 of 3 ops | none | no | no | no | partial | no | n/a |
 
 Each Pippin cell has a test behind it in [docs/safety-model.md](../safety-model.md). What the guardrails do not cover (shell access, a token is not human approval, undo verified only against fakes) is in [SECURITY.md](../../SECURITY.md#what-pippin-does-not-defend-against).
