@@ -1,0 +1,435 @@
+{
+  "tool": "apple-pim",
+  "version": "3.19.2",
+  "correctness": {
+    "reminders.list": {
+      "outcome": "ok",
+      "expected": 24,
+      "returned": 24,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": [],
+      "dates": {
+        "checked": 21,
+        "wrong": [
+          {
+            "title": "Renew passport",
+            "reported": "2027-03-08 09:00"
+          },
+          {
+            "title": "Submit Q1 expense report",
+            "reported": "2027-03-10 12:00"
+          },
+          {
+            "title": "Book flights to 東京 ✈️",
+            "reported": "2027-03-12 20:00"
+          },
+          {
+            "title": "Schedule dentist checkup",
+            "reported": "2027-03-14 03:30"
+          },
+          {
+            "title": "Pay rent",
+            "reported": "2027-03-15 09:00"
+          },
+          {
+            "title": "قراءة التقرير",
+            "reported": "2027-03-16 14:20"
+          },
+          {
+            "title": "Order printer ink",
+            "reported": "2027-03-17 11:11"
+          },
+          {
+            "title": "Café reservation",
+            "reported": "2027-03-18 19:30"
+          },
+          {
+            "title": "Follow up item 01",
+            "reported": "2027-03-20 18:00"
+          },
+          {
+            "title": "Follow up item 02",
+            "reported": "2027-03-20 18:10"
+          },
+          {
+            "title": "Follow up item 03",
+            "reported": "2027-03-20 18:20"
+          },
+          {
+            "title": "Follow up item 04",
+            "reported": "2027-03-20 18:30"
+          },
+          {
+            "title": "Follow up item 05",
+            "reported": "2027-03-20 18:40"
+          },
+          {
+            "title": "Follow up item 06",
+            "reported": "2027-03-20 18:50"
+          },
+          {
+            "title": "Follow up item 07",
+            "reported": "2027-03-20 19:00"
+          },
+          {
+            "title": "Follow up item 08",
+            "reported": "2027-03-20 19:10"
+          },
+          {
+            "title": "Follow up item 09",
+            "reported": "2027-03-20 19:20"
+          },
+          {
+            "title": "Follow up item 10",
+            "reported": "2027-03-20 19:30"
+          },
+          {
+            "title": "Follow up item 11",
+            "reported": "2027-03-20 19:40"
+          },
+          {
+            "title": "Follow up item 12",
+            "reported": "2027-03-20 19:50"
+          },
+          {
+            "title": "Draft the offsite agenda",
+            "reported": "2027-03-21 23:59"
+          }
+        ],
+        "unparsed": 0
+      }
+    },
+    "calendar.events": {
+      "outcome": "ok",
+      "expected": 28,
+      "returned": 28,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": [],
+      "dates": {
+        "checked": 27,
+        "wrong": [],
+        "unparsed": 0
+      }
+    },
+    "contacts.list": {
+      "outcome": "ok",
+      "expected": 25,
+      "returned": 26,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "contacts.search": {
+      "outcome": "ok",
+      "expected": 25,
+      "returned": 25,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "reminders.search": {
+      "outcome": "ok",
+      "expected": 1,
+      "returned": 1,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "calendar.search": {
+      "outcome": "ok",
+      "expected": 3,
+      "returned": 3,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "mail.list": {
+      "outcome": "ok",
+      "expected": 20,
+      "returned": 20,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "mail.search": {
+      "outcome": "ok",
+      "expected": 6,
+      "returned": 6,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    }
+  },
+  "safety": {
+    "ops": [
+      "reminders.search",
+      "contacts.search",
+      "calendar.search"
+    ],
+    "items": {
+      "hostile-01": {
+        "class": "double_quotes",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-02": {
+        "class": "single_quotes",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-03": {
+        "class": "backslashes",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-04": {
+        "class": "backticks",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-05": {
+        "class": "shell_substitution",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-06": {
+        "class": "shell_separator",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-07": {
+        "class": "shell_pipe_and",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-08": {
+        "class": "applescript_breakout",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-09": {
+        "class": "applescript_newline_breakout",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-10": {
+        "class": "jxa_breakout_single",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-11": {
+        "class": "jxa_breakout_double",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-12": {
+        "class": "jxa_template_literal",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-13": {
+        "class": "newlines",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-14": {
+        "class": "nul_escape",
+        "outcomes": {
+          "reminders.search": "error",
+          "contacts.search": "error",
+          "calendar.search": "error"
+        }
+      },
+      "hostile-15": {
+        "class": "unicode_line_separators",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-16": {
+        "class": "bidi_override",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-17": {
+        "class": "leading_dash_help",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-18": {
+        "class": "leading_dash_rf",
+        "outcomes": {
+          "reminders.search": "error",
+          "contacts.search": "error",
+          "calendar.search": "error"
+        }
+      },
+      "hostile-19": {
+        "class": "sql_like_wildcards",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-20": {
+        "class": "sql_injection",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-21": {
+        "class": "html_markup",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-22": {
+        "class": "format_string",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      },
+      "hostile-23": {
+        "class": "very_long",
+        "outcomes": {
+          "reminders.search": "ok",
+          "contacts.search": "ok",
+          "calendar.search": "ok"
+        }
+      }
+    },
+    "canary_created": [],
+    "alive_after": {
+      "reminders.search": "ok",
+      "contacts.search": "ok",
+      "calendar.search": "ok"
+    }
+  },
+  "writes": {
+    "reminders": {
+      "plain": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      },
+      "quoting": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      },
+      "injection": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      }
+    },
+    "calendar": {
+      "plain": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      },
+      "quoting": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      },
+      "injection": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      }
+    },
+    "contacts": {
+      "plain": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      },
+      "quoting": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      },
+      "injection": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      }
+    }
+  }
+}

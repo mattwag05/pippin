@@ -1,0 +1,26 @@
+{
+  "tool": "pf-mail",
+  "version": "3.3.0",
+  "correctness": {
+    "mail.list": {
+      "outcome": "ok",
+      "expected": 20,
+      "returned": 20,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "mail.search": {
+      "outcome": "ok",
+      "expected": 6,
+      "returned": 6,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    }
+  },
+  "safety": {
+    "not_run": "no search operation to carry a hostile query"
+  },
+  "writes": {}
+}

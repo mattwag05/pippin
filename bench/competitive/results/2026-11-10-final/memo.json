@@ -1,0 +1,183 @@
+{
+  "tool": "memo",
+  "version": "0.6.2",
+  "kind": "cli",
+  "apps": [
+    "notes",
+    "reminders"
+  ],
+  "manifest": {
+    "kind": "cli",
+    "help_outcome": "ok",
+    "help_chars": 156,
+    "help_tokens": 37
+  },
+  "speed": {
+    "reminders.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 2447.85,
+        "p50_ms": 2463.55,
+        "p95_ms": 2489.18,
+        "max_ms": 2489.18
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 2447.26,
+        "p50_ms": 2450.22,
+        "p95_ms": 2466.87,
+        "max_ms": 2467.84
+      }
+    },
+    "notes.folders": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 263.56,
+        "p50_ms": 267.16,
+        "p95_ms": 431.49,
+        "max_ms": 431.49
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 251.09,
+        "p50_ms": 265.87,
+        "p95_ms": 275.59,
+        "max_ms": 276.07
+      }
+    },
+    "notes.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 254.91,
+        "p50_ms": 267.08,
+        "p95_ms": 267.83,
+        "max_ms": 267.83
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 254.9,
+        "p50_ms": 266.34,
+        "p95_ms": 270.34,
+        "max_ms": 271.85
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "reminders.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 2,
+        "failures": []
+      },
+      "notes.folders": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1,
+        "failures": []
+      },
+      "notes.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1,
+        "failures": []
+      }
+    },
+    "bad_input": {
+      "notes.show": {
+        "outcome": "error",
+        "ms": 48.03,
+        "error_is_structured": false,
+        "detail": "exit 2: Usage: memo notes [OPTIONS]\nTry 'memo notes --help' for help.\n\nError: Invalid value for '--view' / '-v': 'PB-NOPE-0000' is not a valid integer.\n"
+      },
+      "reminders.list": {
+        "outcome": "ok",
+        "ms": 2462.91,
+        "error_is_structured": false,
+        "detail": "\nFetching reminders...\n\nYour Reminders:\n\n1. Café reservation | 2027-03-18 23:30:00 | Due on 129 days\n2. Follow up item 06 | 2027-03-20 22:50:00 | Due on 131 days\n3. قراءة التقرير | 2027-03-16 18:20:0"
+      }
+    }
+  },
+  "coverage": {
+    "reminders.lists": "no",
+    "reminders.list": "yes",
+    "reminders.search": "no",
+    "reminders.create": "no",
+    "reminders.edit": "no",
+    "reminders.complete": "no",
+    "reminders.delete": "no",
+    "calendar.calendars": "no",
+    "calendar.events": "no",
+    "calendar.search": "no",
+    "calendar.create": "no",
+    "calendar.edit": "no",
+    "calendar.delete": "no",
+    "contacts.list": "no",
+    "contacts.search": "no",
+    "contacts.show": "no",
+    "contacts.create": "no",
+    "contacts.edit": "no",
+    "contacts.delete": "no",
+    "contacts.groups": "no",
+    "notes.folders": "yes",
+    "notes.list": "yes",
+    "notes.search": "no",
+    "notes.show": "claimed",
+    "notes.create": "no",
+    "notes.edit": "no",
+    "notes.delete": "no",
+    "messages.chats": "no",
+    "messages.history": "no",
+    "messages.search": "no",
+    "messages.send": "no",
+    "mail.accounts": "no",
+    "mail.mailboxes": "no",
+    "mail.list": "no",
+    "mail.search": "no",
+    "mail.show": "no",
+    "mail.send": "no",
+    "mail.move": "no",
+    "mail.mark": "no",
+    "mail.attachments": "no",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}

@@ -1,0 +1,173 @@
+{
+  "tool": "imsg",
+  "version": "0.21.0",
+  "kind": "cli",
+  "apps": [
+    "messages"
+  ],
+  "manifest": {
+    "kind": "cli",
+    "help_outcome": "ok",
+    "help_chars": 2043,
+    "help_tokens": 389
+  },
+  "speed": {
+    "messages.chats": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 139.36,
+        "p50_ms": 172.32,
+        "p95_ms": 176.18,
+        "max_ms": 176.18
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 105.65,
+        "p50_ms": 116.7,
+        "p95_ms": 136.93,
+        "max_ms": 144.23
+      }
+    },
+    "messages.history": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 205.44,
+        "p50_ms": 237.89,
+        "p95_ms": 241.76,
+        "max_ms": 241.76
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 208.22,
+        "p50_ms": 263.41,
+        "p95_ms": 310.93,
+        "max_ms": 313.79
+      }
+    },
+    "messages.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 154.42,
+        "p50_ms": 158.21,
+        "p95_ms": 177.2,
+        "max_ms": 177.2
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 138.74,
+        "p50_ms": 148.81,
+        "p95_ms": 181.34,
+        "max_ms": 213.85
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "messages.chats": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "messages.history": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "messages.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      }
+    },
+    "bad_input": {
+      "messages.history": {
+        "outcome": "ok",
+        "ms": 40.97,
+        "error_is_structured": false,
+        "detail": ""
+      }
+    }
+  },
+  "coverage": {
+    "reminders.lists": "no",
+    "reminders.list": "no",
+    "reminders.search": "no",
+    "reminders.create": "no",
+    "reminders.edit": "no",
+    "reminders.complete": "no",
+    "reminders.delete": "no",
+    "calendar.calendars": "no",
+    "calendar.events": "no",
+    "calendar.search": "no",
+    "calendar.create": "no",
+    "calendar.edit": "no",
+    "calendar.delete": "no",
+    "contacts.list": "no",
+    "contacts.search": "no",
+    "contacts.show": "no",
+    "contacts.create": "no",
+    "contacts.edit": "no",
+    "contacts.delete": "no",
+    "contacts.groups": "no",
+    "notes.folders": "no",
+    "notes.list": "no",
+    "notes.search": "no",
+    "notes.show": "no",
+    "notes.create": "no",
+    "notes.edit": "no",
+    "notes.delete": "no",
+    "messages.chats": "yes",
+    "messages.history": "yes",
+    "messages.search": "yes",
+    "messages.send": "claimed",
+    "mail.accounts": "no",
+    "mail.mailboxes": "no",
+    "mail.list": "no",
+    "mail.search": "no",
+    "mail.show": "no",
+    "mail.send": "no",
+    "mail.move": "no",
+    "mail.mark": "no",
+    "mail.attachments": "no",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}

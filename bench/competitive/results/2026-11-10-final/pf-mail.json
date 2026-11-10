@@ -1,0 +1,207 @@
+{
+  "tool": "pf-mail",
+  "version": "3.3.0",
+  "kind": "mcp",
+  "apps": [
+    "mail"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 404.19,
+    "tool_count": 28,
+    "manifest_chars": 43030,
+    "manifest_tokens": 14334,
+    "tools_with_description": 28,
+    "tools_with_annotations": 0
+  },
+  "speed": {
+    "mail.accounts": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 536.66,
+        "p50_ms": 591.8,
+        "p95_ms": 670.37,
+        "max_ms": 670.37
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 63.92,
+        "p50_ms": 66.46,
+        "p95_ms": 69.01,
+        "max_ms": 69.27
+      }
+    },
+    "mail.mailboxes": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 680.83,
+        "p50_ms": 696.43,
+        "p95_ms": 758.93,
+        "max_ms": 758.93
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 150.86,
+        "p50_ms": 166.57,
+        "p95_ms": 168.97,
+        "max_ms": 169.31
+      }
+    },
+    "mail.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 2633.1,
+        "p50_ms": 2640.98,
+        "p95_ms": 2670.19,
+        "max_ms": 2670.19
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 2104.98,
+        "p50_ms": 2132.24,
+        "p95_ms": 2136.42,
+        "max_ms": 2148.61
+      }
+    },
+    "mail.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 1390.79,
+        "p50_ms": 1400.37,
+        "p95_ms": 1406.51,
+        "max_ms": 1406.51
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 836.13,
+        "p50_ms": 866.55,
+        "p95_ms": 879.37,
+        "max_ms": 884.88
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "mail.accounts": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": null,
+        "failures": []
+      },
+      "mail.mailboxes": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": null,
+        "failures": []
+      },
+      "mail.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1,
+        "failures": []
+      },
+      "mail.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1,
+        "failures": []
+      }
+    },
+    "bad_input": {}
+  },
+  "coverage": {
+    "reminders.lists": "no",
+    "reminders.list": "no",
+    "reminders.search": "no",
+    "reminders.create": "no",
+    "reminders.edit": "no",
+    "reminders.complete": "no",
+    "reminders.delete": "no",
+    "calendar.calendars": "no",
+    "calendar.events": "no",
+    "calendar.search": "no",
+    "calendar.create": "no",
+    "calendar.edit": "no",
+    "calendar.delete": "no",
+    "contacts.list": "no",
+    "contacts.search": "no",
+    "contacts.show": "no",
+    "contacts.create": "no",
+    "contacts.edit": "no",
+    "contacts.delete": "no",
+    "contacts.groups": "no",
+    "notes.folders": "no",
+    "notes.list": "no",
+    "notes.search": "no",
+    "notes.show": "no",
+    "notes.create": "no",
+    "notes.edit": "no",
+    "notes.delete": "no",
+    "messages.chats": "no",
+    "messages.history": "no",
+    "messages.search": "no",
+    "messages.send": "no",
+    "mail.accounts": "yes",
+    "mail.mailboxes": "yes",
+    "mail.list": "yes",
+    "mail.search": "yes",
+    "mail.show": "claimed",
+    "mail.send": "claimed",
+    "mail.move": "claimed",
+    "mail.mark": "claimed",
+    "mail.attachments": "claimed",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}
