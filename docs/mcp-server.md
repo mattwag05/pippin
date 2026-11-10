@@ -184,7 +184,7 @@ The MCP server and the CLI are two surfaces over the **same binary** with **iden
 ~/.local/bin/pippin mail list --unread --limit 5
 ```
 
-Use the stable **`~/.local/bin/pippin`** path (the `make install` copy), **not** the brew symlink (`/opt/homebrew/bin/pippin`): macOS keys the bare-CLI TCC grant on the binary's resolved path, and brew's is the *versioned* `Cellar/<ver>/bin/pippin`, so a grant there is lost on every upgrade. The fallback is lossless (same envelope, same typed exit codes, same Automation/EventKit permissions) so an agent that drops to the shell behaves identically to one calling the MCP tool.
+Any signed install works as the shell fallback. macOS keys a signed binary's grants on its code-signing identity, so the Developer ID signed binary from `make install` or Homebrew (which installs the signed release tarball) keeps its grants across upgrades. An ad-hoc build is re-prompted after every rebuild. `pippin doctor` shows which you have in its Code signing row, and [gotchas/permissions.md](gotchas/permissions.md) has the details. The fallback is lossless (same envelope, same typed exit codes, same Automation/EventKit permissions) so an agent that drops to the shell behaves identically to one calling the MCP tool.
 
 ## Envelope v4 (v1: 2026-04-20; v2: 2026-07-15; v3: 2026-08-12; v4: 2026-11-08)
 

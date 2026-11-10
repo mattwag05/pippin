@@ -14,9 +14,9 @@ public struct OllamaProvider: AIProvider {
     }
 
     /// `/api/generate` request body. Pure (no network) so the `format: json`
-    /// native-JSON wiring is unit-testable. Native JSON mode is safe for the
-    /// default `gemma4` (no thinking pass); thinking models (e.g. Qwen3.6) are
-    /// served via the OpenAI path, not here.
+    /// native-JSON wiring is unit-testable. Native JSON mode is safe for
+    /// non-thinking models such as the default `llama3.2`; thinking models
+    /// (e.g. Qwen3.6) are served via the OpenAI path, not here.
     func requestBody(prompt: String, system: String, jsonMode: Bool) -> [String: Any] {
         requestBody(
             prompt: prompt,
