@@ -174,7 +174,7 @@ final class MessagesDatabaseTests: XCTestCase {
             INSERT INTO chat_message_join (chat_id, message_id) VALUES (2, last_insert_rowid());
             """, arguments: [ns])
         }
-        let db = try MessagesDatabase(dbQueue: fixture)
+        let db = MessagesDatabase(dbQueue: fixture)
         let (_, messages, _) = try db.showConversation(conversationId: "iMessage;-;groupA", limit: 50)
         XCTAssertEqual(messages.map(\.id), ["msg-3"])
         let (matches, _, _) = try db.searchMessages(query: "Removed a heart", limit: 50)
@@ -266,7 +266,7 @@ final class MessagesDatabaseTests: XCTestCase {
             INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 2);
             """, arguments: [ns, ns - 1])
         }
-        let db = try MessagesDatabase(dbQueue: fixture)
+        let db = MessagesDatabase(dbQueue: fixture)
         let (matches, _, _) = try db.searchMessages(query: "100%", limit: 50)
         XCTAssertEqual(matches.count, 1)
         XCTAssertEqual(matches.first?.text, "100% complete")
@@ -289,7 +289,7 @@ final class MessagesDatabaseTests: XCTestCase {
             INSERT INTO chat_message_join (chat_id, message_id) VALUES (2, 2);
             """, arguments: [ns, ns - 1])
         }
-        let db = try MessagesDatabase(dbQueue: fixture)
+        let db = MessagesDatabase(dbQueue: fixture)
         let (matches, _, _) = try db.searchMessages(query: "hello world", limit: 50)
         XCTAssertEqual(matches.count, 1)
         XCTAssertEqual(matches.first?.id, "m-active")
@@ -369,7 +369,7 @@ final class MessagesDatabaseTests: XCTestCase {
             // Give the searchable text message an attachment too.
             try db.execute(sql: "INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (2, 1)")
         }
-        let db = try MessagesDatabase(dbQueue: fixture)
+        let db = MessagesDatabase(dbQueue: fixture)
         let (matches, _, _) = try db.searchMessages(query: "attached photo", limit: 50)
         XCTAssertEqual(matches.count, 1)
         XCTAssertEqual(matches.first?.attachments, [MessageAttachment(filename: "IMG_1234.HEIC", mimeType: "image/heic")])
@@ -518,7 +518,7 @@ final class MessagesDatabaseTests: XCTestCase {
                 arguments: [blob, ns]
             )
         }
-        let mdb = try MessagesDatabase(dbQueue: queue)
+        let mdb = MessagesDatabase(dbQueue: queue)
 
         let (_, messages, _) = try mdb.showConversation(conversationId: "blob-chat", limit: 10)
         XCTAssertEqual(messages.count, 1)
@@ -549,7 +549,7 @@ final class MessagesDatabaseTests: XCTestCase {
                 arguments: [blob, ns]
             )
         }
-        let mdb = try MessagesDatabase(dbQueue: queue)
+        let mdb = MessagesDatabase(dbQueue: queue)
         let (convs, _) = try mdb.listConversations(limit: 10)
         XCTAssertEqual(convs.first?.lastMessagePreview, "Hello, typedstream world! 🌍")
     }

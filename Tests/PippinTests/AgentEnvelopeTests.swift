@@ -64,7 +64,7 @@ final class AgentEnvelopeTests: XCTestCase {
                 "boom"
             }
         }
-        let capture = try captureStdout {
+        let capture = captureStdout {
             printAgentError(Boom())
         }
         let json = try decodeObject(capture)
@@ -78,7 +78,7 @@ final class AgentEnvelopeTests: XCTestCase {
     }
 
     func testErrorEnvelopeIncludesRemediationWhenCatalogued() throws {
-        let capture = try captureStdout {
+        let capture = captureStdout {
             printAgentError(CalendarBridgeError.accessDenied)
         }
         let json = try decodeObject(capture)
@@ -114,7 +114,7 @@ final class AgentEnvelopeTests: XCTestCase {
     // MARK: - OutputOptions helper
 
     func testOutputOptionsRenderWrapsAndThreadsStartedAt() throws {
-        var opts = try OutputOptions.parse(["--format", "agent"])
+        let opts = try OutputOptions.parse(["--format", "agent"])
         _ = opts // silence 'was never mutated' — parse returns a new struct each time
         // Parse, wait, print — duration should reflect the wait.
         let parsed = try OutputOptions.parse(["--format", "agent"])

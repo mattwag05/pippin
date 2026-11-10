@@ -268,10 +268,8 @@ final class CalendarModelsTests: XCTestCase {
 
     func testOverlapAbutting() {
         // [10, 11) and [11, 12) — abut, no overlap
-        let aStart = date("2026-03-07T10:00:00")
         let aEnd = date("2026-03-07T11:00:00")
         let bStart = date("2026-03-07T11:00:00")
-        let bEnd = date("2026-03-07T12:00:00")
         // a < d: aStart(10) < bEnd(12) ✓, but c < b: bStart(11) < aEnd(11) ✗
         XCTAssertFalse(bStart < aEnd) // no overlap for abutting ranges
     }

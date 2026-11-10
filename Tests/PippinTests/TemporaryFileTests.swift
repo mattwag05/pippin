@@ -54,7 +54,7 @@ final class TemporaryFileTests: XCTestCase {
 
     func testWithTemporaryFileToleratesUncreatedFile() throws {
         // A body that never writes the file must not fail cleanup.
-        let result = try withTemporaryFile(prefix: "pippin-test-", extension: "json") { _ in "ok" }
+        let result = withTemporaryFile(prefix: "pippin-test-", extension: "json") { _ in "ok" }
         XCTAssertEqual(result, "ok")
     }
 }
