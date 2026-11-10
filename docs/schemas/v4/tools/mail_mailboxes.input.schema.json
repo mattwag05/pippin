@@ -1,0 +1,13 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List mailboxes, optionally filtered to one account.",
+  "properties" : {
+    "account" : {
+      "description" : "Mail account name.",
+      "type" : "string"
+    }
+  },
+  "title" : "mail_mailboxes: arguments",
+  "type" : "object"
+}

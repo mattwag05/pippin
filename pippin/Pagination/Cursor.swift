@@ -168,7 +168,9 @@ public enum Pagination {
             // Numbered pages are sugar over the cursor offset: page N starts at
             // (N-1)*pageSize. A --cursor, when present, wins over --page.
             guard page >= 1 else { throw CursorError.invalidPage }
-            offset = (page - 1) * pageSize
+            let (product, overflow) = (page - 1).multipliedReportingOverflow(by: pageSize)
+            guard !overflow else { throw CursorError.invalidPage } // unchecked, this traps
+            offset = product
         }
         return (offset, pageSize)
     }

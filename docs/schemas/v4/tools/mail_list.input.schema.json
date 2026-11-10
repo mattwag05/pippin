@@ -1,0 +1,56 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List messages in a mailbox. Defaults to INBOX, limit 20. Set preview to ~200 for agent scan workflows to avoid N+1 mail_show calls.",
+  "properties" : {
+    "account" : {
+      "description" : "Mail account name.",
+      "type" : "string"
+    },
+    "after" : {
+      "description" : "Only messages on/after YYYY-MM-DD.",
+      "type" : "string"
+    },
+    "before" : {
+      "description" : "Only messages on/before YYYY-MM-DD.",
+      "type" : "string"
+    },
+    "cursor" : {
+      "description" : "Opaque next_cursor from a previous response.",
+      "type" : "string"
+    },
+    "fields" : {
+      "description" : "Comma-separated JSON field names to include (e.g. id,subject,from). Trims the payload to fewer tokens.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 20,
+      "description" : "Maximum messages to return (default: 20; capped at 500).",
+      "type" : "integer"
+    },
+    "mailbox" : {
+      "description" : "Mailbox name (default: INBOX).",
+      "type" : "string"
+    },
+    "page" : {
+      "default" : 1,
+      "description" : "Page number (1-based).",
+      "type" : "integer"
+    },
+    "pageSize" : {
+      "description" : "Rows per page when paginating.",
+      "type" : "integer"
+    },
+    "preview" : {
+      "description" : "Include a plain-text body preview of up to N chars per message (forces per-message IMAP fetch; use ~200 for scan workflows).",
+      "type" : "integer"
+    },
+    "unread" : {
+      "default" : false,
+      "description" : "Only return unread messages.",
+      "type" : "boolean"
+    }
+  },
+  "title" : "mail_list: arguments",
+  "type" : "object"
+}

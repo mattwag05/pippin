@@ -1,0 +1,20 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "email" : {
+        "type" : "string"
+      },
+      "name" : {
+        "type" : "string"
+      }
+    },
+    "required" : [
+      "email",
+      "name"
+    ],
+    "type" : "object"
+  },
+  "title" : "mail_accounts: data",
+  "type" : "array"
+}

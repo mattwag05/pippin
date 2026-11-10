@@ -1,0 +1,30 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Mark a message as read or unread. Reversible: call again with the opposite `read` value.",
+  "properties" : {
+    "dryRun" : {
+      "default" : false,
+      "description" : "Report what would change without touching the message.",
+      "type" : "boolean"
+    },
+    "expectMessageId" : {
+      "description" : "Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch.",
+      "type" : "string"
+    },
+    "messageId" : {
+      "description" : "Compound message ID from mail_list output.",
+      "type" : "string"
+    },
+    "read" : {
+      "description" : "true marks the message read; false marks it unread.",
+      "type" : "boolean"
+    }
+  },
+  "required" : [
+    "messageId",
+    "read"
+  ],
+  "title" : "mail_mark: arguments",
+  "type" : "object"
+}

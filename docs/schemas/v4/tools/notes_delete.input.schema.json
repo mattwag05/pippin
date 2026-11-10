@@ -1,0 +1,22 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Move a note to Recently Deleted. Fails unless confirm=true. Recoverable from Recently Deleted for 30 days.",
+  "properties" : {
+    "confirm" : {
+      "default" : false,
+      "description" : "Must be true.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Note ID from notes_list / notes_search.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id",
+    "confirm"
+  ],
+  "title" : "notes_delete: arguments",
+  "type" : "object"
+}

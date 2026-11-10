@@ -1,0 +1,48 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "originalBody" : {
+      "type" : "string"
+    },
+    "riskLevel" : {
+      "type" : "string"
+    },
+    "sanitizedBody" : {
+      "type" : "string"
+    },
+    "threats" : {
+      "items" : {
+        "properties" : {
+          "category" : {
+            "type" : "string"
+          },
+          "confidence" : {
+            "type" : "number"
+          },
+          "explanation" : {
+            "type" : "string"
+          },
+          "matchedText" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "category",
+          "confidence",
+          "explanation",
+          "matchedText"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    }
+  },
+  "required" : [
+    "originalBody",
+    "riskLevel",
+    "sanitizedBody",
+    "threats"
+  ],
+  "title" : "mail_sanitize: data",
+  "type" : "object"
+}

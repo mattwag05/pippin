@@ -1,0 +1,28 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "body_hash" : {
+      "type" : "string"
+    },
+    "delivered" : {
+      "type" : "boolean"
+    },
+    "detail" : {
+      "type" : "string"
+    },
+    "mode" : {
+      "type" : "string"
+    },
+    "recipient" : {
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "body_hash",
+    "delivered",
+    "mode",
+    "recipient"
+  ],
+  "title" : "messages_send: data",
+  "type" : "object"
+}

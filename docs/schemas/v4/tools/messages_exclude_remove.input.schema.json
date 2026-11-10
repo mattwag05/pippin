@@ -1,0 +1,16 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Un-hide a conversation by removing its thread GUID from the exclude list.",
+  "properties" : {
+    "thread" : {
+      "description" : "Thread GUID from messages_exclude_list.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "thread"
+  ],
+  "title" : "messages_exclude_remove: arguments",
+  "type" : "object"
+}

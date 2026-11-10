@@ -1,0 +1,47 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Summarize a Voice Memos recording using the configured AI provider.",
+  "properties" : {
+    "all" : {
+      "default" : false,
+      "description" : "Summarize every recording.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Memo UUID (omit with all=true).",
+      "type" : "string"
+    },
+    "jobs" : {
+      "default" : 2,
+      "description" : "Parallel summarization jobs (default: 2).",
+      "type" : "integer"
+    },
+    "model" : {
+      "description" : "Model name (provider-specific default).",
+      "type" : "string"
+    },
+    "output" : {
+      "description" : "Write output to a directory instead of inline JSON.",
+      "type" : "string"
+    },
+    "prompt" : {
+      "description" : "Free-form prompt (overrides template).",
+      "type" : "string"
+    },
+    "provider" : {
+      "description" : "AI provider: ollama, claude, or openai (default: ai.provider, else ollama).",
+      "type" : "string"
+    },
+    "since" : {
+      "description" : "With all=true, only memos on or after YYYY-MM-DD.",
+      "type" : "string"
+    },
+    "template" : {
+      "description" : "Template name (e.g. meeting-notes, summary, action-items).",
+      "type" : "string"
+    }
+  },
+  "title" : "memos_summarize: arguments",
+  "type" : "object"
+}

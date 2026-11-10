@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] `docs/schemas/v4/`: the envelope schema, an input schema for every MCP tool, output schemas for 69 tools and an `index.json` that maps each tool to its CLI command. The files are generated from the tool registry and a test fails when they are stale.
+- [feat] `docs/contract.md`: what counts as a breaking change, the semver guarantee and the deprecation policy.
+- [test] The MCP tool registry is locked to the CLI by test: every tool's arguments are parsed by the real commands and checked against their definitions, and every tool is shown to return one schema-valid error envelope with a nonzero exit on a bad argument.
+
 ### Fixed
 
 - [bug] MCP tool calls now reject unknown or wrongly typed arguments (`unexpected_argument`, `wrong_type`) before anything runs. A misspelled `dry_run`, or `dryRun` passed as a string, used to be dropped and the real write ran.
@@ -48,6 +54,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] `job` commands emit `started_at` / `ended_at` (and `job gc` `cutoff`, `memos summarize` `createdAt`) as ISO 8601 strings instead of seconds since 2001. Closes pippin-l4i8.
 - [bug] A NUL character in an MCP argument or a `batch` entry returns `invalid_argument` instead of aborting the server. Closes pippin-l8d1.
 - [bug] An MCP id that starts with `-` (such as `--version`) is refused instead of being parsed as a flag, and a fractional number for an integer MCP argument (`limit: 2.5`) is rejected instead of being truncated. Refs pippin-o190.
+- [bug] `messages show` and `messages search` no longer report the recipient's handle as `from_handle` on messages you sent; it is omitted for outgoing messages. Closes pippin-py28.
+- [bug] Script string escaping now works per Unicode scalar: a quote, backslash, backtick or line break directly before a combining mark was passed into Notes, Mail and Messages scripts unescaped, and a NUL before a digit changed the text. Found by the new fuzz tests.
+- [bug] `--page` and `job gc --older-than` reject values that overflow instead of crashing the process.
+- [test] Seeded fuzz tests (SchemaValidator, every tool's argument builder, the MCP request path, ids, cursors, date and duration parsers, the typedstream decoder, script escaping; replay with `PIPPIN_FUZZ_SEED`) and chaos tests (killed, stalled and half-written children; deleted, truncated, garbage and locked stores). CI runs both as named steps, and `scripts/sbom.sh` emits a CycloneDX SBOM.
+- [bug] The `job_list` `status` schema lists its allowed values, and the `job_run` description names the `id` field it returns.
 
 ### Performance
 

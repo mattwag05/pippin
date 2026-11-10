@@ -1,0 +1,145 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "calendar" : {
+      "properties" : {
+        "calendarCount" : {
+          "type" : "integer"
+        },
+        "eventsRemaining" : {
+          "type" : "integer"
+        },
+        "eventsToday" : {
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "calendarCount",
+        "eventsRemaining",
+        "eventsToday"
+      ],
+      "type" : "object"
+    },
+    "contacts" : {
+      "properties" : {
+        "contactCount" : {
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "contactCount"
+      ],
+      "type" : "object"
+    },
+    "mail" : {
+      "properties" : {
+        "accounts" : {
+          "items" : {
+            "properties" : {
+              "email" : {
+                "type" : "string"
+              },
+              "mailboxCount" : {
+                "type" : "integer"
+              },
+              "name" : {
+                "type" : "string"
+              }
+            },
+            "required" : [
+              "email",
+              "mailboxCount",
+              "name"
+            ],
+            "type" : "object"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [
+        "accounts"
+      ],
+      "type" : "object"
+    },
+    "memos" : {
+      "properties" : {
+        "recordingCount" : {
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "recordingCount"
+      ],
+      "type" : "object"
+    },
+    "notes" : {
+      "properties" : {
+        "folderCount" : {
+          "type" : "integer"
+        },
+        "noteCount" : {
+          "type" : "integer"
+        },
+        "timedOut" : {
+          "type" : "boolean"
+        }
+      },
+      "required" : [
+        "folderCount",
+        "noteCount",
+        "timedOut"
+      ],
+      "type" : "object"
+    },
+    "permissions" : {
+      "items" : {
+        "properties" : {
+          "granted" : {
+            "type" : "boolean"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "granted",
+          "name"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    },
+    "reminders" : {
+      "properties" : {
+        "incomplete" : {
+          "type" : "integer"
+        },
+        "listCount" : {
+          "type" : "integer"
+        },
+        "overdueCount" : {
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "incomplete",
+        "listCount",
+        "overdueCount"
+      ],
+      "type" : "object"
+    },
+    "timedOut" : {
+      "type" : "boolean"
+    },
+    "version" : {
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "permissions",
+    "timedOut",
+    "version"
+  ],
+  "title" : "status: data",
+  "type" : "object"
+}

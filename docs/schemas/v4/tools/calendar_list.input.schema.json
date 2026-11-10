@@ -1,0 +1,13 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List calendars configured in Apple Calendar.",
+  "properties" : {
+    "type" : {
+      "description" : "Filter by type: local, calDAV, exchange, subscription, birthday.",
+      "type" : "string"
+    }
+  },
+  "title" : "calendar_list: arguments",
+  "type" : "object"
+}

@@ -1,0 +1,44 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Copy Voice Memos recording(s) to a directory, optionally with transcript sidecars.",
+  "properties" : {
+    "all" : {
+      "default" : false,
+      "description" : "Export every recording.",
+      "type" : "boolean"
+    },
+    "forceTranscribe" : {
+      "default" : false,
+      "description" : "Bypass transcript cache.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Memo UUID (omit with all=true).",
+      "type" : "string"
+    },
+    "jobs" : {
+      "default" : 2,
+      "description" : "Parallel transcription jobs (default: 2).",
+      "type" : "integer"
+    },
+    "output" : {
+      "description" : "Destination directory (created if absent).",
+      "type" : "string"
+    },
+    "sidecarFormat" : {
+      "description" : "Sidecar format: txt (default), srt, markdown, rtf.",
+      "type" : "string"
+    },
+    "transcribe" : {
+      "default" : false,
+      "description" : "Transcribe audio and write sidecar.",
+      "type" : "boolean"
+    }
+  },
+  "required" : [
+    "output"
+  ],
+  "title" : "memos_export: arguments",
+  "type" : "object"
+}

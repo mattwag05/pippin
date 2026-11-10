@@ -9,7 +9,19 @@ from ._util import named, pick, rec, rows, values
 
 NAME = "pippin"
 KIND = "mcp"
-VERSION = "0.41.1"
+def _version() -> str:
+    """The binary under test names itself; PIPPIN_LABEL adds what the version string cannot (a branch build)."""
+    import subprocess
+
+    try:
+        reported = subprocess.run([os.environ.get("PIPPIN_BIN", "pippin"), "--version"], capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        reported = "unknown"
+    label = os.environ.get("PIPPIN_LABEL")
+    return "%s (%s)" % (reported, label) if label else reported
+
+
+VERSION = _version()
 APPS = ["reminders", "calendar", "contacts", "notes", "messages", "mail", "memos"]
 
 
@@ -94,7 +106,7 @@ def _notes(text: str) -> list:
 
 
 def _chats(text: str) -> list:
-    return [rec(id=r.get("id"), title=r.get("display_name"), participants=[p.get("handle") for p in r.get("participants", [])], date=r.get("last_message_at")) for r in _data(text)]
+    return [rec(id=r.get("id"), title=r.get("display_name"), participants=[p.get("handle") for p in r.get("participants", [])], date=r.get("last_message_at"), unread=r.get("unread_count")) for r in _data(text)]
 
 
 def _messages(text: str) -> list:

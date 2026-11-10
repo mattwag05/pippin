@@ -1,0 +1,80 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "alerts" : {
+        "items" : {
+          "type" : "string"
+        },
+        "type" : "array"
+      },
+      "attendees" : {
+        "items" : {
+          "properties" : {
+            "email" : {
+              "type" : "string"
+            },
+            "name" : {
+              "type" : "string"
+            },
+            "status" : {
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "email",
+            "name",
+            "status"
+          ],
+          "type" : "object"
+        },
+        "type" : "array"
+      },
+      "calendarId" : {
+        "type" : "string"
+      },
+      "calendarTitle" : {
+        "type" : "string"
+      },
+      "endDate" : {
+        "type" : "string"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "isAllDay" : {
+        "type" : "boolean"
+      },
+      "isRecurring" : {
+        "type" : "boolean"
+      },
+      "location" : {
+        "type" : "string"
+      },
+      "notes" : {
+        "type" : "string"
+      },
+      "occurrenceDate" : {
+        "type" : "string"
+      },
+      "recurrence" : {
+        "type" : "string"
+      },
+      "startDate" : {
+        "type" : "string"
+      },
+      "status" : {
+        "type" : "string"
+      },
+      "title" : {
+        "type" : "string"
+      },
+      "url" : {
+        "type" : "string"
+      }
+    },
+    "type" : "object"
+  },
+  "title" : "calendar_upcoming: data",
+  "type" : "array"
+}

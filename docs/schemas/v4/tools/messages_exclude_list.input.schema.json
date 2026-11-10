@@ -1,0 +1,10 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Show the thread exclude list: conversations hidden from every messages_* read. Read-only.",
+  "properties" : {
+
+  },
+  "title" : "messages_exclude_list: arguments",
+  "type" : "object"
+}

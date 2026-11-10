@@ -15,7 +15,7 @@ final class JsEscapeTests: XCTestCase {
     // MARK: - Null byte
 
     func testNullByte() {
-        XCTAssertEqual(jsEscape("a\0b"), "a\\0b")
+        XCTAssertEqual(jsEscape("a\0b"), "a\\x00b")
     }
 
     // MARK: - Quotes
@@ -63,8 +63,8 @@ final class JsEscapeTests: XCTestCase {
     func testAllSpecialCombined() {
         // Backslash must be doubled before other escapes are applied
         let input = "\\\0\"'`\n\r\u{2028}\u{2029}"
-        // Build expected: \ → \\, \0 → \0, " → \", ' → \', ` → \`, \n → \n, \r → \r, U+2028 → \u2028, U+2029 → \u2029
-        let expected = "\\\\" + "\\0" + "\\\"" + "\\'" + "\\`" + "\\n" + "\\r" + "\\u2028" + "\\u2029"
+        // Build expected: \ → \\, \0 → \x00, " → \", ' → \', ` → \`, \n → \n, \r → \r, U+2028 → \u2028, U+2029 → \u2029
+        let expected = "\\\\" + "\\x00" + "\\\"" + "\\'" + "\\`" + "\\n" + "\\r" + "\\u2028" + "\\u2029"
         XCTAssertEqual(jsEscape(input), expected)
     }
 

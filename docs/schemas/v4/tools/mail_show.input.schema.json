@@ -1,0 +1,24 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Show one or more mail messages by compound ID (account||mailbox||numericId). Pass messageIds with 2+ IDs to batch-fetch in one call (single batched Mail fetch; data becomes an array).",
+  "properties" : {
+    "messageId" : {
+      "description" : "Compound message ID from mail_list output.",
+      "type" : "string"
+    },
+    "messageIds" : {
+      "description" : "Two or more compound message IDs to fetch in one batched call. `data` is an array in input order.",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "subject" : {
+      "description" : "Alternative: find first message matching this subject.",
+      "type" : "string"
+    }
+  },
+  "title" : "mail_show: arguments",
+  "type" : "object"
+}

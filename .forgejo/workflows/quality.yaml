@@ -1,0 +1,31 @@
+name: Quality
+
+# Fuzz and chaos suites as named steps, plus the dependency SBOM. Both suites
+# also run inside ci.yaml's `swift test`; they are repeated here so a failure
+# is visible by name. Same self-hosted runner and toolchain notes as ci.yaml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  fuzz-and-chaos:
+    name: Fuzz, Chaos and SBOM
+    runs-on: macos-tart
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: SBOM self-check
+        run: scripts/sbom.sh --self-check
+
+      - name: SBOM (CycloneDX, from Package.resolved)
+        run: scripts/sbom.sh
+
+      - name: Fuzz tests
+        run: PIPPIN_HEADLESS_CI=1 scripts/test-suite.sh fuzz
+
+      - name: Chaos tests
+        run: PIPPIN_HEADLESS_CI=1 scripts/test-suite.sh chaos

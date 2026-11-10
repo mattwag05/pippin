@@ -511,12 +511,17 @@ func parseDuration(_ input: String) throws -> Int {
     guard let value = Int(numberPart), value >= 0 else {
         throw JobCommandError.invalidDuration(input)
     }
+    let unit: Int
     switch unitChar {
-    case "s", "S": return value
-    case "m", "M": return value * 60
-    case "h", "H": return value * 3600
-    case "d", "D": return value * 86400
-    case "w", "W": return value * 86400 * 7
+    case "s", "S": unit = 1
+    case "m", "M": unit = 60
+    case "h", "H": unit = 3600
+    case "d", "D": unit = 86400
+    case "w", "W": unit = 86400 * 7
     default: throw JobCommandError.invalidDuration(input)
     }
+    // Unchecked multiplication traps on overflow; a count that large is not a duration.
+    let (seconds, overflow) = value.multipliedReportingOverflow(by: unit)
+    guard !overflow else { throw JobCommandError.invalidDuration(input) }
+    return seconds
 }

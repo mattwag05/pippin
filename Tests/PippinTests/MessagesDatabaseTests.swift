@@ -392,6 +392,22 @@ final class MessagesDatabaseTests: XCTestCase {
         XCTAssertNil(messages.first(where: { $0.isFromMe })?.fromDisplayName)
     }
 
+    /// chat.db puts the recipient's handle on an outgoing row. It must not be
+    /// reported as the sender (pippin-py28).
+    func testOutgoingMessageDoesNotReportRecipientAsSender() throws {
+        let queue = try makeFixtureDB()
+        try queue.write { db in
+            try db.execute(sql: "UPDATE message SET handle_id = (SELECT MIN(ROWID) FROM handle) WHERE is_from_me = 1")
+        }
+        let (_, messages, _) = try MessagesDatabase(dbQueue: queue).showConversation(
+            conversationId: "iMessage;-;+15551234567", contactIndex: contactFixtureIndex()
+        )
+        let outgoing = messages.filter(\.isFromMe)
+        XCTAssertFalse(outgoing.isEmpty)
+        XCTAssertTrue(outgoing.allSatisfy { $0.fromHandle == nil && $0.fromDisplayName == nil })
+        XCTAssertNotNil(messages.first(where: { !$0.isFromMe })?.fromHandle)
+    }
+
     func testListResolvesParticipantsButKeepsGroupName() throws {
         let db = try MessagesDatabase(dbQueue: makeFixtureDB())
         let (convs, _) = try db.listConversations(limit: 50, contactIndex: contactFixtureIndex())

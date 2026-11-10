@@ -1,0 +1,22 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Delete a reminder. IRREVERSIBLE: fails unless confirm=true. To just tick one off, use reminders_complete instead.",
+  "properties" : {
+    "confirm" : {
+      "default" : false,
+      "description" : "Must be true. Deletion cannot be undone.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Reminder ID from reminders_list / reminders_search.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id",
+    "confirm"
+  ],
+  "title" : "reminders_delete: arguments",
+  "type" : "object"
+}

@@ -1,0 +1,506 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "calendar" : {
+      "properties" : {
+        "today" : {
+          "items" : {
+            "properties" : {
+              "alerts" : {
+                "items" : {
+                  "type" : "string"
+                },
+                "type" : "array"
+              },
+              "attendees" : {
+                "items" : {
+                  "properties" : {
+                    "email" : {
+                      "type" : "string"
+                    },
+                    "name" : {
+                      "type" : "string"
+                    },
+                    "status" : {
+                      "type" : "string"
+                    }
+                  },
+                  "required" : [
+                    "email",
+                    "name",
+                    "status"
+                  ],
+                  "type" : "object"
+                },
+                "type" : "array"
+              },
+              "calendarId" : {
+                "type" : "string"
+              },
+              "calendarTitle" : {
+                "type" : "string"
+              },
+              "endDate" : {
+                "type" : "string"
+              },
+              "id" : {
+                "type" : "string"
+              },
+              "isAllDay" : {
+                "type" : "boolean"
+              },
+              "isRecurring" : {
+                "type" : "boolean"
+              },
+              "location" : {
+                "type" : "string"
+              },
+              "notes" : {
+                "type" : "string"
+              },
+              "occurrenceDate" : {
+                "type" : "string"
+              },
+              "recurrence" : {
+                "type" : "string"
+              },
+              "startDate" : {
+                "type" : "string"
+              },
+              "status" : {
+                "type" : "string"
+              },
+              "title" : {
+                "type" : "string"
+              },
+              "url" : {
+                "type" : "string"
+              }
+            },
+            "required" : [
+              "calendarId",
+              "calendarTitle",
+              "endDate",
+              "id",
+              "isAllDay",
+              "startDate",
+              "status",
+              "title"
+            ],
+            "type" : "object"
+          },
+          "type" : "array"
+        },
+        "upcoming" : {
+          "items" : {
+            "properties" : {
+              "alerts" : {
+                "items" : {
+                  "type" : "string"
+                },
+                "type" : "array"
+              },
+              "attendees" : {
+                "items" : {
+                  "properties" : {
+                    "email" : {
+                      "type" : "string"
+                    },
+                    "name" : {
+                      "type" : "string"
+                    },
+                    "status" : {
+                      "type" : "string"
+                    }
+                  },
+                  "required" : [
+                    "email",
+                    "name",
+                    "status"
+                  ],
+                  "type" : "object"
+                },
+                "type" : "array"
+              },
+              "calendarId" : {
+                "type" : "string"
+              },
+              "calendarTitle" : {
+                "type" : "string"
+              },
+              "endDate" : {
+                "type" : "string"
+              },
+              "id" : {
+                "type" : "string"
+              },
+              "isAllDay" : {
+                "type" : "boolean"
+              },
+              "isRecurring" : {
+                "type" : "boolean"
+              },
+              "location" : {
+                "type" : "string"
+              },
+              "notes" : {
+                "type" : "string"
+              },
+              "occurrenceDate" : {
+                "type" : "string"
+              },
+              "recurrence" : {
+                "type" : "string"
+              },
+              "startDate" : {
+                "type" : "string"
+              },
+              "status" : {
+                "type" : "string"
+              },
+              "title" : {
+                "type" : "string"
+              },
+              "url" : {
+                "type" : "string"
+              }
+            },
+            "required" : [
+              "calendarId",
+              "calendarTitle",
+              "endDate",
+              "id",
+              "isAllDay",
+              "startDate",
+              "status",
+              "title"
+            ],
+            "type" : "object"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [
+        "today",
+        "upcoming"
+      ],
+      "type" : "object"
+    },
+    "generatedAt" : {
+      "type" : "string"
+    },
+    "mail" : {
+      "properties" : {
+        "perAccount" : {
+          "items" : {
+            "properties" : {
+              "account" : {
+                "type" : "string"
+              },
+              "topMessages" : {
+                "items" : {
+                  "properties" : {
+                    "account" : {
+                      "type" : "string"
+                    },
+                    "attachments" : {
+                      "items" : {
+                        "properties" : {
+                          "mimeType" : {
+                            "type" : "string"
+                          },
+                          "name" : {
+                            "type" : "string"
+                          },
+                          "saveError" : {
+                            "type" : "string"
+                          },
+                          "savedPath" : {
+                            "type" : "string"
+                          },
+                          "size" : {
+                            "type" : "integer"
+                          }
+                        },
+                        "required" : [
+                          "mimeType",
+                          "name",
+                          "saveError",
+                          "savedPath",
+                          "size"
+                        ],
+                        "type" : "object"
+                      },
+                      "type" : "array"
+                    },
+                    "body" : {
+                      "type" : [
+                        "null",
+                        "string"
+                      ]
+                    },
+                    "bodyPreview" : {
+                      "type" : "string"
+                    },
+                    "date" : {
+                      "type" : "string"
+                    },
+                    "from" : {
+                      "type" : "string"
+                    },
+                    "fromContact" : {
+                      "type" : "string"
+                    },
+                    "hasAttachment" : {
+                      "type" : "boolean"
+                    },
+                    "headerAnomalies" : {
+                      "items" : {
+                        "type" : "string"
+                      },
+                      "type" : "array"
+                    },
+                    "headers" : {
+                      "properties" : {
+
+                      },
+                      "type" : "object"
+                    },
+                    "htmlBody" : {
+                      "type" : "string"
+                    },
+                    "id" : {
+                      "type" : "string"
+                    },
+                    "mailbox" : {
+                      "type" : "string"
+                    },
+                    "messageIdHeader" : {
+                      "type" : "string"
+                    },
+                    "read" : {
+                      "type" : "boolean"
+                    },
+                    "receivedAt" : {
+                      "type" : "string"
+                    },
+                    "size" : {
+                      "type" : "integer"
+                    },
+                    "subject" : {
+                      "type" : "string"
+                    },
+                    "to" : {
+                      "items" : {
+                        "type" : "string"
+                      },
+                      "type" : "array"
+                    }
+                  },
+                  "required" : [
+                    "account",
+                    "body",
+                    "date",
+                    "from",
+                    "id",
+                    "mailbox",
+                    "read",
+                    "subject",
+                    "to"
+                  ],
+                  "type" : "object"
+                },
+                "type" : "array"
+              },
+              "unread" : {
+                "type" : "integer"
+              }
+            },
+            "required" : [
+              "account",
+              "topMessages",
+              "unread"
+            ],
+            "type" : "object"
+          },
+          "type" : "array"
+        },
+        "totalUnread" : {
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "perAccount",
+        "totalUnread"
+      ],
+      "type" : "object"
+    },
+    "notes" : {
+      "properties" : {
+        "recent" : {
+          "items" : {
+            "properties" : {
+              "folder" : {
+                "type" : "string"
+              },
+              "id" : {
+                "type" : "string"
+              },
+              "modificationDate" : {
+                "type" : "string"
+              },
+              "plainText" : {
+                "type" : "string"
+              },
+              "title" : {
+                "type" : "string"
+              }
+            },
+            "required" : [
+              "folder",
+              "id",
+              "modificationDate",
+              "plainText",
+              "title"
+            ],
+            "type" : "object"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [
+        "recent"
+      ],
+      "type" : "object"
+    },
+    "reminders" : {
+      "properties" : {
+        "dueToday" : {
+          "items" : {
+            "properties" : {
+              "completionDate" : {
+                "type" : "string"
+              },
+              "creationDate" : {
+                "type" : "string"
+              },
+              "dueDate" : {
+                "type" : "string"
+              },
+              "id" : {
+                "type" : "string"
+              },
+              "isCompleted" : {
+                "type" : "boolean"
+              },
+              "lastModifiedDate" : {
+                "type" : "string"
+              },
+              "listId" : {
+                "type" : "string"
+              },
+              "listTitle" : {
+                "type" : "string"
+              },
+              "notes" : {
+                "type" : "string"
+              },
+              "priority" : {
+                "type" : "integer"
+              },
+              "title" : {
+                "type" : "string"
+              },
+              "url" : {
+                "type" : "string"
+              }
+            },
+            "required" : [
+              "id",
+              "isCompleted",
+              "listId",
+              "listTitle",
+              "priority",
+              "title"
+            ],
+            "type" : "object"
+          },
+          "type" : "array"
+        },
+        "overdue" : {
+          "items" : {
+            "properties" : {
+              "completionDate" : {
+                "type" : "string"
+              },
+              "creationDate" : {
+                "type" : "string"
+              },
+              "dueDate" : {
+                "type" : "string"
+              },
+              "id" : {
+                "type" : "string"
+              },
+              "isCompleted" : {
+                "type" : "boolean"
+              },
+              "lastModifiedDate" : {
+                "type" : "string"
+              },
+              "listId" : {
+                "type" : "string"
+              },
+              "listTitle" : {
+                "type" : "string"
+              },
+              "notes" : {
+                "type" : "string"
+              },
+              "priority" : {
+                "type" : "integer"
+              },
+              "title" : {
+                "type" : "string"
+              },
+              "url" : {
+                "type" : "string"
+              }
+            },
+            "required" : [
+              "id",
+              "isCompleted",
+              "listId",
+              "listTitle",
+              "priority",
+              "title"
+            ],
+            "type" : "object"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [
+        "dueToday",
+        "overdue"
+      ],
+      "type" : "object"
+    },
+    "warnings" : {
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    }
+  },
+  "required" : [
+    "calendar",
+    "generatedAt",
+    "mail",
+    "notes",
+    "reminders",
+    "warnings"
+  ],
+  "title" : "digest: data",
+  "type" : "object"
+}

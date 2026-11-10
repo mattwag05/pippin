@@ -1,0 +1,30 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "exportedTo" : {
+        "type" : "string"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "title" : {
+        "type" : "string"
+      },
+      "transcription" : {
+        "type" : "string"
+      },
+      "transcriptionFile" : {
+        "type" : "string"
+      }
+    },
+    "required" : [
+      "exportedTo",
+      "id",
+      "title"
+    ],
+    "type" : "object"
+  },
+  "title" : "memos_export: data",
+  "type" : "array"
+}

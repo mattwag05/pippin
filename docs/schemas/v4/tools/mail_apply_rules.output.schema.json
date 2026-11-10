@@ -1,0 +1,112 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "applied" : {
+      "type" : "integer"
+    },
+    "bySender" : {
+      "items" : {
+        "properties" : {
+          "actions" : {
+            "items" : {
+              "properties" : {
+                "applied" : {
+                  "type" : "boolean"
+                },
+                "date" : {
+                  "type" : "string"
+                },
+                "error" : {
+                  "type" : "string"
+                },
+                "from" : {
+                  "type" : "string"
+                },
+                "markRead" : {
+                  "type" : "boolean"
+                },
+                "messageId" : {
+                  "type" : "string"
+                },
+                "moveTo" : {
+                  "type" : "string"
+                },
+                "operationalDate" : {
+                  "type" : "string"
+                },
+                "rule" : {
+                  "type" : "string"
+                },
+                "subject" : {
+                  "type" : "string"
+                }
+              },
+              "required" : [
+                "applied",
+                "date",
+                "from",
+                "messageId",
+                "operationalDate",
+                "rule",
+                "subject"
+              ],
+              "type" : "object"
+            },
+            "type" : "array"
+          },
+          "count" : {
+            "type" : "integer"
+          },
+          "sender" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "actions",
+          "count",
+          "sender"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    },
+    "dryRun" : {
+      "type" : "boolean"
+    },
+    "failed" : {
+      "type" : "integer"
+    },
+    "heldOverCap" : {
+      "type" : "integer"
+    },
+    "heldTooNew" : {
+      "type" : "integer"
+    },
+    "heldUnread" : {
+      "type" : "integer"
+    },
+    "matched" : {
+      "type" : "integer"
+    },
+    "planned" : {
+      "type" : "integer"
+    },
+    "scanned" : {
+      "type" : "integer"
+    }
+  },
+  "required" : [
+    "applied",
+    "bySender",
+    "dryRun",
+    "failed",
+    "heldOverCap",
+    "heldTooNew",
+    "heldUnread",
+    "matched",
+    "planned",
+    "scanned"
+  ],
+  "title" : "mail_apply_rules: data",
+  "type" : "object"
+}
