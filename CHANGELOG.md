@@ -19,6 +19,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] `messages exclude add/remove` no longer overwrite a config file they could not parse, and config saves are a single rename that leaves the file mode 0600.
 - [bug] The Messages audit log now records every send attempt before it is made and its outcome after (`success`, `failed`, `outcome_unknown`, `refused`, `draft`). A send is refused with `audit_log_unavailable` when the attempt cannot be logged. The log is created mode 0600. Closes pippin-7k69.
 - [bug] Messages `unread_count` no longer counts group renames, system rows, unsent or empty rows, and `messages show` no longer returns them as blank messages. Refs pippin-lzuv.
+- [bug] `mail attachments --save-dir` no longer trusts attachment file names: names are reduced to a safe basename, existing files and same-named attachments are never overwritten (` (1)`, ` (2)` suffixes), and each attachment reports saved or failed (`saveError`) with no zero-byte leftovers. Closes pippin-rcoa.
+- [bug] `mail mark`, `move`, `attachments`, `reply` and `forward` accept `--expect-message-id` (MCP `expectMessageId`) and fail with `message_identity_mismatch` before acting when the id now names a different message; list, search, activity and show rows expose `messageIdHeader`. Closes pippin-h8ro.
+- [bug] `mail list` and `mail search` keep `next_cursor` for page sizes of 500 and above, and a request clamped at 500 rows or cut by the 5000-candidate index cap now returns a warning and `partial: true`. Closes pippin-dqbz.
+- [bug] Header anomaly detection reads the receiving server's topmost `Authentication-Results` when a header repeats, not the sender-supplied one; the mail body cache is rebuilt once to pick this up. Closes pippin-x8wi.
+- [bug] `pippin do` stops at the first failed step and returns the steps that ran, the failure, `partial: true` and exit status 5. Closes pippin-t4u0.
+- [bug] `mail apply-rules` stops at the MCP time budget and returns its per-message report with `partial: true` and a warning. Refs pippin-qpt5.
+- [bug] `doctor` names failed checks in `warnings`; the MCP `doctor` tool no longer reports a failed check as a tool error (the CLI still exits 1). Closes pippin-i114.
+- [bug] `mail list` and `mail search` `--after` / `--before` are whole days in the local time zone, and `--before` includes its own day.
+- [bug] Compound message ids accept only ASCII digits.
 
 ---
 
