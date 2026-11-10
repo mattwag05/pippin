@@ -65,10 +65,13 @@ enum NotesBridge {
         return try decode(BridgeActionResult.self, from: json)
     }
 
-    static func editNote(id: String, title: String? = nil, body: String? = nil, append: Bool = false, html: Bool = false) throws -> BridgeActionResult {
-        let script = buildEditScript(id: id, title: title, body: body, append: append, html: html)
+    static func editNote(
+        id: String, title: String? = nil, body: String? = nil, append: Bool = false, html: Bool = false,
+        dryRun: Bool = false
+    ) throws -> NoteEditResult {
+        let script = buildEditScript(id: id, title: title, body: body, append: append, html: html, dryRun: dryRun)
         let json = try runScript(script, timeoutSeconds: 20)
-        return try decode(BridgeActionResult.self, from: json)
+        return try decode(NoteEditResult.self, from: json)
     }
 
     static func deleteNote(id: String) throws -> BridgeActionResult {
@@ -381,7 +384,9 @@ enum NotesBridge {
         """
     }
 
-    static func buildEditScript(id: String, title: String?, body: String?, append: Bool, html: Bool = false) -> String {
+    static func buildEditScript(
+        id: String, title: String?, body: String?, append: Bool, html: Bool = false, dryRun: Bool = false
+    ) -> String {
         let safeId = jsEscape(id)
         let safeTitle = jsEscapeOptional(title)
         // Append concatenates two HTML fragments, which is fine — the appended
@@ -396,22 +401,28 @@ enum NotesBridge {
         var newTitle = \(safeTitle);
         var newBody = \(safeBody);
         var isAppend = \(append ? "true" : "false");
-        if (newTitle !== null) { note.name = newTitle; }
-        if (newBody !== null) {
-            if (isAppend) {
-                var existing = '';
-                try { existing = note.body(); } catch(e) {}
-                note.body = existing + newBody;
-            } else {
-                note.body = newBody;
-            }
+        var dryRun = \(dryRun ? "true" : "false");
+        // Read the current body BEFORE any write and let a failed read throw.
+        // Swallowing it turned an append into a replace: the note's whole body
+        // became the appended fragment (RC-04).
+        var existing = note.body();
+        if (typeof existing !== 'string') { throw new Error('Could not read the current note body; nothing was written.'); }
+        var finalBody = newBody === null ? existing : (isAppend ? existing + newBody : newBody);
+        var finalTitle = newTitle !== null ? newTitle : note.name();
+        if (!dryRun) {
+            if (newTitle !== null) { note.name = newTitle; }
+            if (newBody !== null) { note.body = finalBody; }
         }
         JSON.stringify({
             success: true,
             action: 'edit',
             details: {
                 id: '\(safeId)'
-            }
+            },
+            title: finalTitle,
+            previousBodyLength: existing.length,
+            newBodyLength: finalBody.length,
+            dryRun: dryRun
         });
         """
     }

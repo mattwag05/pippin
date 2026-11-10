@@ -114,6 +114,20 @@ public struct NoteInfo: Codable, Sendable {
     }
 }
 
+/// What `notes edit` answers with. A body edit replaces the whole body unless
+/// `--append` is passed, so the lengths (characters of the note's HTML body)
+/// let a caller see how much text an edit removed, and `--dry-run` reports
+/// them without writing.
+public struct NoteEditResult: Codable, Sendable {
+    public let success: Bool
+    public let action: String
+    public let details: [String: String]
+    public let title: String
+    public let previousBodyLength: Int
+    public let newBodyLength: Int
+    public let dryRun: Bool
+}
+
 public struct NoteFolder: Codable, Sendable {
     public let id: String
     public let name: String

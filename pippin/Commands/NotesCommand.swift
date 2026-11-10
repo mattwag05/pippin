@@ -209,6 +209,9 @@ public struct NotesCommand: ParsableCommand {
         @Flag(name: .long, help: "Treat --body as raw HTML (skip plain-text-to-HTML conversion).")
         public var html: Bool = false
 
+        @Flag(name: .long, help: "Report the note's title, current body length and resulting body length without writing.")
+        public var dryRun: Bool = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -220,8 +223,8 @@ public struct NotesCommand: ParsableCommand {
         }
 
         public mutating func execute() async throws -> AgentResult {
-            let result = try await detachBlocking { [id, title, body, append, html] in
-                try NotesBridge.editNote(id: id, title: title, body: body, append: append, html: html)
+            let result = try await detachBlocking { [id, title, body, append, html, dryRun] in
+                try NotesBridge.editNote(id: id, title: title, body: body, append: append, html: html, dryRun: dryRun)
             }
             return AgentResult(result)
         }

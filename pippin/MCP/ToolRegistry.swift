@@ -1381,7 +1381,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "notes_edit",
-            description: "Edit an existing note's title or body (replaces, or appends with append=true).",
+            description: "Edit an existing note's title or body. body REPLACES the whole note body unless append=true; pass dryRun=true first to see the current and resulting body length without writing.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Note ID from notes_list."),
@@ -1389,6 +1389,7 @@ enum MCPToolRegistry {
                     "body": Schema.string("New body. Plain text; newlines become formatted HTML unless html=true."),
                     "append": Schema.boolean("Append body instead of replacing.", default: false),
                     "html": Schema.boolean("Treat body as raw HTML (skip plain-text-to-HTML conversion).", default: false),
+                    "dryRun": Schema.boolean("Report title, previousBodyLength and newBodyLength without writing.", default: false),
                 ],
                 required: ["id"]
             ),
@@ -1399,6 +1400,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "body", flagName: "--body")
                 argv += ArgHelpers.flagIfTrue(args, "append", flagName: "--append")
                 argv += ArgHelpers.flagIfTrue(args, "html", flagName: "--html")
+                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
                 ArgHelpers.appendPositionalLast(id, into: &argv)
                 return argv
             }
