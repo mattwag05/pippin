@@ -1916,7 +1916,11 @@ enum MCPToolRegistry {
             description: "List recent background jobs. Filter by status to find only running/failed jobs.",
             inputSchema: Schema.object(properties: [
                 "limit": Schema.integer("Maximum jobs to return (default: 20).", default: 20),
-                "status": Schema.string("Filter: running, done, error, killed."),
+                "status": .object([
+                    "type": .string("string"),
+                    "description": .string("Filter: running, done, error, killed."),
+                    "enum": .array(["running", "done", "error", "killed"].map { .string($0) }),
+                ]),
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("job", "list")
