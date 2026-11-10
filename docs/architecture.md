@@ -323,7 +323,7 @@ The SQLite caches open through `openCacheQueue` ([CacheDB.swift](../pippin/Cache
 
 ## Test strategy
 
-The suite is XCTest, about 1,700 tests ([gotchas/build.md](gotchas/build.md)). Tests never need a live Apple app. A test that needs a permission or a service the machine lacks skips itself.
+The suite is XCTest, more than 2,600 tests (`make test` prints the count). Tests never need a live Apple app. A test that needs a permission or a service the machine lacks skips itself.
 
 **Fakes.** Bridges take injected collaborators: the app launcher, the Automation check and the app-running check on `ScriptRunner.run`; `isAppRunning` and `trash` on `VoiceMemosDB.deleteMemo`; a database path on the SQLite bridges. `MessagesFixture` ([MessagesTestSupport.swift](../Tests/PippinTests/MessagesTestSupport.swift)) builds a `chat.db` stand-in. AI code uses small fakes such as `FakeAIProvider` and `MockTranscriber`.
 
