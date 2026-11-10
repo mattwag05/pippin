@@ -141,8 +141,12 @@ final class VoiceMemosDBTests: XCTestCase {
             """)
         }
 
-        let deleted = try VoiceMemosDB.deleteMemo(id: "nullpath", dbPath: dbPath)
-        XCTAssertEqual(deleted, "", "NULL path → no file deleted, returns empty")
+        let deleted = try VoiceMemosDB.deleteMemo(
+            id: "nullpath", dbPath: dbPath, isAppRunning: { false },
+            trash: { url in XCTFail("nothing to trash for a NULL path"); return url }
+        )
+        XCTAssertEqual(deleted.audioPath, "", "NULL path → no file deleted, returns empty")
+        XCTAssertNil(deleted.trashedTo)
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: workDir),
             "parent recordings directory must still exist after deleting a NULL-path memo"

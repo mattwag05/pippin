@@ -18,10 +18,13 @@ final class NextStepTests: XCTestCase {
         // MessagesError
         MessagesError.databaseNotFound("p"), MessagesError.accessDenied("p"),
         MessagesError.conversationNotFound("c"), MessagesError.databaseError("e"),
+        MessagesError.conversationExcluded("c"), MessagesError.ambiguousConversation("c", ["a", "b"]),
+        // ConfigError
+        ConfigError.invalid(path: "p", detail: "e"),
         // MessagesSendError
         MessagesSendError.timeout, MessagesSendError.scriptFailed("e"), MessagesSendError.phiFiltered(["ssn"]),
         MessagesSendError.recipientNotAllowed("r"), MessagesSendError.autonomousNotAuthorized,
-        MessagesSendError.accessDenied,
+        MessagesSendError.accessDenied, MessagesSendError.auditLogUnavailable(path: "p", detail: "e"),
         // ScriptRunnerError
         ScriptRunnerError.timeout, ScriptRunnerError.nonZeroExit("e"), ScriptRunnerError.stderrOnSuccess("e"),
         ScriptRunnerError.launchFailed("e"), ScriptRunnerError.automationDenied("com.apple.mail"),
@@ -43,6 +46,7 @@ final class NextStepTests: XCTestCase {
         VoiceMemosError.memoNotFound("i"), VoiceMemosError.memoEvicted("i"), VoiceMemosError.fileNotFound("p"),
         VoiceMemosError.exportFailed("e"), VoiceMemosError.ambiguousId("i", ["a", "b"]),
         VoiceMemosError.accessDenied("p"),
+        VoiceMemosError.voiceMemosRunning, VoiceMemosError.deleteFailed("d"),
         // AudioConverterError
         AudioConverterError.formatUnsupported("f"), AudioConverterError.bufferAllocationFailed,
         AudioConverterError.conversionFailed("e"),
@@ -60,14 +64,14 @@ final class NextStepTests: XCTestCase {
         ContactsBridgeError.groupNotFound("g"), ContactsBridgeError.saveFailed("e"), ContactsBridgeError.deleteFailed("e"),
         // RemindersBridgeError
         RemindersBridgeError.accessDenied, RemindersBridgeError.reminderNotFound("i"), RemindersBridgeError.listNotFound("l"),
-        RemindersBridgeError.saveFailed("e"), RemindersBridgeError.ambiguousId("i"), RemindersBridgeError.noDefaultCalendar,
+        RemindersBridgeError.saveFailed("e"), RemindersBridgeError.ambiguousId("i", count: 2), RemindersBridgeError.idPrefixTooShort("i"), RemindersBridgeError.noDefaultCalendar,
         // MailBridgeError
         MailBridgeError.scriptFailed("e"), MailBridgeError.messageNotFound("i"),
         MailBridgeError.accountNotFound("a", available: ["b"]), MailBridgeError.searchIncomplete, MailBridgeError.timeout,
         MailBridgeError.sendOutcomeUnknown, MailBridgeError.decodingFailed("e"), MailBridgeError.invalidMessageId("i"),
         MailBridgeError.invalidMailbox("m"), MailBridgeError.accessDenied,
         // NotesBridgeError
-        NotesBridgeError.scriptFailed("e"), NotesBridgeError.noteNotFound("i"), NotesBridgeError.timeout,
+        NotesBridgeError.scriptFailed("e"), NotesBridgeError.noteNotFound("i"), NotesBridgeError.noteInTrash("i"), NotesBridgeError.folderNotFound("f"), NotesBridgeError.timeout,
         NotesBridgeError.decodingFailed("e"), NotesBridgeError.accessDenied,
         // ActionExtractorError
         ActionExtractorError.malformedAIResponse("e"), ActionExtractorError.noSourcesSelected,
@@ -100,7 +104,8 @@ final class NextStepTests: XCTestCase {
         JobStoreError.statusWriteFailed("p"),
         // CalendarBridgeError
         CalendarBridgeError.accessDenied, CalendarBridgeError.eventNotFound("i"), CalendarBridgeError.calendarNotFound("c"),
-        CalendarBridgeError.saveFailed("e"), CalendarBridgeError.ambiguousId("i"), CalendarBridgeError.dateParseError("d"),
+        CalendarBridgeError.saveFailed("e"), CalendarBridgeError.ambiguousId("i", count: 2), CalendarBridgeError.idPrefixTooShort("i"),
+        CalendarBridgeError.occurrenceRequired("i"), CalendarBridgeError.occurrenceNotFound("i"), CalendarBridgeError.dateParseError("d"),
         CalendarBridgeError.aiParseError("e"),
         // MailEnvelopeIndexError
         MailEnvelopeIndexError.databaseNotFound("p"), MailEnvelopeIndexError.unsupportedVersion(1),
@@ -109,6 +114,18 @@ final class NextStepTests: XCTestCase {
         // AudioBridgeError
         AudioBridgeError.notAvailable, AudioBridgeError.processFailed("e"), AudioBridgeError.timeout,
         AudioBridgeError.decodingFailed("e"), AudioBridgeError.versionMismatch(installed: "1", pinned: "2"),
+        // SafetyError
+        SafetyError.invalidPolicy(path: "p", detail: "e"), SafetyError.policyDenied(tool: "mail_send", source: "*"),
+        SafetyError.confirmationRequired(tool: "mail_send", token: "t", summary: "s", expiresAt: "e", preview: nil),
+        SafetyError.confirmTokenInvalid, SafetyError.confirmTokenReused, SafetyError.confirmTokenExpired,
+        SafetyError.confirmTokenMismatch,
+        SafetyError.rateLimited(tool: "mail_send", limit: .init(max: 1, perSeconds: 60), retryAfter: 9),
+        SafetyError.auditLogUnavailable(path: "p", detail: "e"), SafetyError.idempotencyKeyConflict("k"),
+        SafetyError.priorOutcomeUnknown(tool: "mail_send", key: "k"), SafetyError.invalidReservedArgument("confirmToken"),
+        SafetyError.actionNotFound("i"), SafetyError.undoNotSupported(id: "i", reason: "r"), SafetyError.alreadyUndone("i"),
+        SafetyError.undoTargetChanged("i"), SafetyError.undoFailed(id: "i", code: "c", message: "m"),
+        // MCPCommandPolicy.Violation
+        MCPCommandPolicy.Violation.directCallRequired(command: "mail send", tool: "mail_send"),
     ]
 
     /// Retrying a send that may have gone out could deliver it twice.
@@ -210,6 +227,29 @@ final class NextStepTests: XCTestCase {
         XCTAssertEqual(payload["code"] as? String, "unknown_error")
         let step = try XCTUnwrap(payload["next_step"] as? [String: Any])
         XCTAssertEqual(step["retryable"] as? Bool, false)
+    }
+
+    /// A misspelled or mistyped safety key must stop the call, not be dropped
+    /// (the write would otherwise run for real). `/usr/bin/false` stands in
+    /// for pippin so a call that slipped through would fail differently.
+    func testToolsCallRejectsUnknownAndMistypedArguments() async throws {
+        let cases = [
+            (#"{"messageId":"a||b||1","read":true,"dry_run":true}"#, "unexpected_argument"),
+            (#"{"messageId":"a||b||1","read":true,"dryRun":"true"}"#, "wrong_type"),
+        ]
+        for (arguments, expectedCode) in cases {
+            let json = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"mail_mark","arguments":"# + arguments + "}}"
+            let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(json.utf8))
+            let response = await MCPDispatcher.handle(request, pippinPath: "/usr/bin/false")
+            let encoded = try JSONEncoder().encode(XCTUnwrap(response))
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+            let result = try XCTUnwrap(root["result"] as? [String: Any])
+            XCTAssertEqual(result["isError"] as? Bool, true)
+            let text = try XCTUnwrap((result["content"] as? [[String: Any]])?.first?["text"] as? String)
+            let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+            let error = try XCTUnwrap(envelope["error"] as? [String: Any])
+            XCTAssertEqual(error["code"] as? String, expectedCode, arguments)
+        }
     }
 
     func testTimeoutEncodesRetryableWithDelay() throws {

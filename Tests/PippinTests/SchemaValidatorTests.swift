@@ -74,6 +74,19 @@ final class SchemaValidatorTests: XCTestCase {
         ))
     }
 
+    /// RT-11: a fractional number is not an integer.
+    func testFractionalNumberIsNotAnInteger() throws {
+        let schema = try XCTUnwrap(MCPToolRegistry.tool(named: "notes_list")).inputSchema
+        XCTAssertThrowsError(try SchemaValidator.validate(args: .object(["limit": .double(2.5)]), against: schema)) { error in
+            XCTAssertEqual(error as? SchemaValidatorError, .wrongType(field: "limit", expected: "integer", got: "number"))
+        }
+        // 2.0 is an integer in JSON Schema terms, and some clients send it that way.
+        XCTAssertNoThrow(try SchemaValidator.validate(args: .object(["limit": .double(2.0)]), against: schema))
+        XCTAssertNoThrow(try SchemaValidator.validate(args: .object(["limit": .int(2)]), against: schema))
+        XCTAssertNil(JSONValue.double(2.5).intValue)
+        XCTAssertEqual(JSONValue.double(2.0).intValue, 2)
+    }
+
     func testBooleanTypeMismatchThrows() {
         let schema: JSONValue = .object([
             "properties": .object([

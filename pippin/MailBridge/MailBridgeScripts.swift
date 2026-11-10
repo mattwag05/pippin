@@ -192,6 +192,7 @@ extension MailBridge {
                     _meta.timedOut = true;
                 } else {
                     try { row.hasAttachment = row.__msg.mailAttachments().length > 0; } catch (e) {}
+                    try { row.messageIdHeader = row.__msg.messageId() || null; } catch (e) {}
                     if (previewChars > 0) {
                         try {
                             var raw = row.__msg.content();
@@ -217,20 +218,44 @@ extension MailBridge {
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 8))
-        var accounts = mail.accounts();
-        var results = [];
-        for (var a = 0; a < accounts.length; a++) {
-            var acct = accounts[a];
-            var emails = [];
-            try { emails = acct.emailAddresses(); } catch(e) {}
-            var emailStr = (Array.isArray(emails) && emails.length > 0) ? emails[0] : '';
-            var acctId = '';
-            try { acctId = String(acct.id()); } catch(e) {}
-            results.push({
-                name: acct.name(),
-                email: emailStr,
-                id: acctId
-            });
+        // One Apple Event per property for every account, instead of three
+        // per account (measured with 6 accounts: 125 ms against 357 ms).
+        // The three lists line up by position only if they are the same
+        // length, so anything else, or any error, falls back to the
+        // per-account loop.
+        var results = null;
+        try {
+            var names = mail.accounts.name();
+            var emailLists = mail.accounts.emailAddresses();
+            var ids = mail.accounts.id();
+            if (names.length === emailLists.length && names.length === ids.length) {
+                results = [];
+                for (var b = 0; b < names.length; b++) {
+                    var list = emailLists[b];
+                    results.push({
+                        name: names[b],
+                        email: (Array.isArray(list) && list.length > 0) ? list[0] : '',
+                        id: String(ids[b])
+                    });
+                }
+            }
+        } catch(e) { results = null; }
+        if (results === null) {
+            var accounts = mail.accounts();
+            results = [];
+            for (var a = 0; a < accounts.length; a++) {
+                var acct = accounts[a];
+                var emails = [];
+                try { emails = acct.emailAddresses(); } catch(e) {}
+                var emailStr = (Array.isArray(emails) && emails.length > 0) ? emails[0] : '';
+                var acctId = '';
+                try { acctId = String(acct.id()); } catch(e) {}
+                results.push({
+                    name: acct.name(),
+                    email: emailStr,
+                    id: acctId
+                });
+            }
         }
         JSON.stringify(results);
         """
@@ -284,7 +309,8 @@ extension MailBridge {
         to: String? = nil,
         from: String? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
-        preview: Int? = nil
+        preview: Int? = nil,
+        pageSentinel: Bool = false
     ) -> String {
         let safeQuery = jsEscape(query)
         let acctFilter = jsEscapeOptional(account)
@@ -294,7 +320,7 @@ extension MailBridge {
         let toFilter = jsEscapeOptional(to)
         let fromFilter = jsEscapeOptional(from)
         // Clamp limit to prevent runaway scans; the per-mailbox cap bounds body fetches
-        let safeLimitVal = max(1, min(limit, 500))
+        let safeLimitVal = clampScanLimit(limit, pageSentinel: pageSentinel)
         let perMailboxLimit = 500
         let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
         // Snippet length for body-matched hits (the body is already fetched for
@@ -431,8 +457,9 @@ extension MailBridge {
                 }
             }
             // Gmail lists the same message in both INBOX and [Gmail]/All Mail.
-            var dedupKey = null;
-            if (msg !== null) { try { dedupKey = msg.messageId(); } catch(e) {} }
+            var rfcId = null;
+            if (msg !== null) { try { rfcId = msg.messageId() || null; } catch(e) {} }
+            var dedupKey = rfcId;
             if (!dedupKey) dedupKey = subject2 + '\\x00' + sender2 + '\\x00' + opDate.toISOString();
             if (seenMsgKeys[dedupKey]) continue;
             seenMsgKeys[dedupKey] = true;
@@ -451,7 +478,8 @@ extension MailBridge {
                 body: null,
                 bodyPreview: c2.bodyPrev,
                 size: c2.b.size[c2.i],
-                hasAttachment: msgHasAtt
+                hasAttachment: msgHasAtt,
+                messageIdHeader: rfcId
             });
         }
         results = results.slice(offset, offset + limit);
@@ -557,8 +585,9 @@ extension MailBridge {
                 if (msg === null) _meta.timedOut = true; // Mailbox changed; the bulk row is still right.
             }
             // INBOX and Sent can overlap on labeled accounts such as Gmail.
-            var dedupKey = null;
-            if (msg !== null) { try { dedupKey = msg.messageId(); } catch(e) {} }
+            var rfcId = null;
+            if (msg !== null) { try { rfcId = msg.messageId() || null; } catch(e) {} }
+            var dedupKey = rfcId;
             if (!dedupKey) dedupKey = subject + '\\x00' + sender + '\\x00' + opDate.toISOString();
             if (seenMsgKeys[dedupKey]) continue;
             seenMsgKeys[dedupKey] = true;
@@ -581,6 +610,7 @@ extension MailBridge {
                 body: null,
                 size: c.b.size[c.i],
                 hasAttachment: msgHasAtt,
+                messageIdHeader: rfcId,
                 __msg: msg
             });
         }
@@ -613,22 +643,30 @@ extension MailBridge {
         mailbox: String,
         messageId: String,
         toMailbox: String,
-        dryRun: Bool
+        dryRun: Bool,
+        expectMessageId: String? = nil,
+        locateByMessageId: Bool = false
     ) -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
         let safeTarget = jsEscape(toMailbox)
         let safeMsgId = jsEscape(messageId)
+        // Undo of a move: Mail gave the message a new row id in the mailbox it
+        // went to, so it is found there by its Message-ID instead.
+        let sourceQuery = locateByMessageId
+            ? "{messageId: \(jsEscapeOptional(expectMessageId))}" : "{id: \(safeMsgId)}"
 
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 20, errorMessage: "MAILBRIDGE_ERR_NOT_READY"))
         \(jsFindMailboxByName())
         \(jsResolveMailbox())
+        \(jsRequireIdentity(expectMessageId: expectMessageId))
         var isDryRun = \(dryRun ? "true" : "false");
         var sourceMsg = null;
         var targetMb = null;
         var fromName = '\(safeMailbox)';
+        var rfcMessageId = '';
 
         var accounts = mail.accounts();
         for (var a = 0; a < accounts.length; a++) {
@@ -641,9 +679,11 @@ extension MailBridge {
             for (var m = 0; m < mailboxes.length; m++) {
                 var mb = mailboxes[m];
                 if (mb.name() === '\(safeMailbox)') {
-                    var msgs = mb.messages.whose({id: \(safeMsgId)})();
+                    var msgs = mb.messages.whose(\(sourceQuery))();
                     if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
                     sourceMsg = msgs[0];
+                    requireIdentity(sourceMsg);
+                    try { rfcMessageId = String(sourceMsg.messageId() || ''); } catch(e) {}
                     break;
                 }
             }
@@ -667,6 +707,8 @@ extension MailBridge {
                 messageId: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
                 from: fromName,
                 to: '\(safeTarget)',
+                toResolved: String(targetMb.name()),
+                rfcMessageId: rfcMessageId,
                 dryRun: String(isDryRun)
             }
         });
@@ -778,11 +820,15 @@ extension MailBridge {
 
     // MARK: - Save Attachments Script
 
+    /// `saveDir` is a staging directory the caller owns. Each attachment is
+    /// saved there under its index, never under its sender-chosen name; the
+    /// caller renames it (`MailBridge.finalizeSavedAttachments`).
     static func buildSaveAttachmentsScript(
         account: String,
         mailbox: String,
         messageId: String,
-        saveDir: String?
+        saveDir: String?,
+        expectMessageId: String? = nil
     ) -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
@@ -795,6 +841,7 @@ extension MailBridge {
         \(jsFindMailboxByName())
         \(jsCollectAllMailboxes())
         \(jsResolveMailbox())
+        \(jsRequireIdentity(expectMessageId: expectMessageId))
         var saveDir = \(safeSaveDir);
         var result = [];
 
@@ -836,6 +883,7 @@ extension MailBridge {
 
             var msg = findMessageById(acct, '\(safeMailbox)', \(safeMsgId));
             if (msg === null) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
+            requireIdentity(msg);
 
             // Reading .source() forces Mail to fetch the full RFC822 body from IMAP, which pulls
             // in attachment binaries. .content() only guarantees the text body — mail attachments
@@ -860,15 +908,19 @@ extension MailBridge {
                     try { attSize = att.downloadedSize(); } catch(e2) {}
                 }
                 var savedPath = null;
+                var saveError = null;
                 if (saveDir !== null) {
-                    var dest = saveDir + '/' + attName;
-                    prepareSaveTarget(dest);
-                    // AppleScript 'save a in POSIX file path' → JXA uses the preposition as the
-                    // key: {in: Path(dest)}. {to: ...} errors 'Some data was the wrong type' (-10000).
-                    att.save({in: Path(dest)});
-                    savedPath = dest;
+                    // One failed save must not lose the report of the others.
+                    try {
+                        var dest = saveDir + '/' + i;
+                        prepareSaveTarget(dest);
+                        // AppleScript 'save a in POSIX file path' → JXA uses the preposition as the
+                        // key: {in: Path(dest)}. {to: ...} errors 'Some data was the wrong type' (-10000).
+                        att.save({in: Path(dest)});
+                        savedPath = dest;
+                    } catch (e) { saveError = String(e && e.message ? e.message : e); }
                 }
-                result.push({name: attName, mimeType: attMime, size: attSize, savedPath: savedPath});
+                result.push({name: attName, mimeType: attMime, size: attSize, savedPath: savedPath, saveError: saveError});
             }
             break;
         }
@@ -884,7 +936,8 @@ extension MailBridge {
         mailbox: String,
         messageId: String,
         read: Bool,
-        dryRun: Bool
+        dryRun: Bool,
+        expectMessageId: String? = nil
     ) -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
@@ -894,9 +947,12 @@ extension MailBridge {
         return """
         var mail = Application('Mail');
         \(jsMailReadyPoll(maxAttempts: 20, errorMessage: "MAILBRIDGE_ERR_NOT_READY"))
+        \(jsRequireIdentity(expectMessageId: expectMessageId))
         var targetRead = \(read ? "true" : "false");
         var isDryRun = \(dryRun ? "true" : "false");
         var found = false;
+        var previousRead = '';
+        var rfcMessageId = '';
 
         var accounts = mail.accounts();
         for (var a = 0; a < accounts.length; a++) {
@@ -910,6 +966,10 @@ extension MailBridge {
 
                 var msgs = mb.messages.whose({id: \(safeMsgId)})();
                 if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
+                requireIdentity(msgs[0]);
+                // What `pippin undo` needs: the state before, and the identity to check later.
+                previousRead = String(msgs[0].readStatus());
+                try { rfcMessageId = String(msgs[0].messageId() || ''); } catch(e) {}
 
                 if (!isDryRun) {
                     msgs[0].readStatus = targetRead;
@@ -932,6 +992,8 @@ extension MailBridge {
             details: {
                 messageId: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
                 readStatus: String(targetRead),
+                previousReadStatus: previousRead,
+                rfcMessageId: rfcMessageId,
                 dryRun: String(isDryRun)
             }
         });

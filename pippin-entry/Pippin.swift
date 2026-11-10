@@ -19,6 +19,7 @@ struct Pippin: AsyncParsableCommand {
             BatchCommand.self,
             JobCommand.self, JobRunnerInternalCommand.self,
             DoCommand.self,
+            PolicyCommand.self, LogCommand.self, UndoCommand.self,
             // Also reachable as `memos templates`; templates aren't memo-
             // specific (mail/notes/memos all summarize with them), so expose a
             // top-level alias too (pippin-77t).

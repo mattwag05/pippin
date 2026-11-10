@@ -1,0 +1,32 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "account" : {
+        "type" : "string"
+      },
+      "color" : {
+        "type" : "string"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "isDefault" : {
+        "type" : "boolean"
+      },
+      "title" : {
+        "type" : "string"
+      }
+    },
+    "required" : [
+      "account",
+      "color",
+      "id",
+      "isDefault",
+      "title"
+    ],
+    "type" : "object"
+  },
+  "title" : "reminders_lists: data",
+  "type" : "array"
+}

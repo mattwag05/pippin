@@ -93,17 +93,6 @@ func formatEventDay(_ date: Date) -> String {
     return formatter.string(from: date)
 }
 
-// MARK: - Span parsing
-
-/// Parse a span string into an EKSpan. Returns nil for unrecognized values.
-func parseSpan(_ value: String) -> EKSpan? {
-    switch value.lowercased() {
-    case "this": return .thisEvent
-    case "future": return .futureEvents
-    default: return nil
-    }
-}
-
 // MARK: - Alert duration
 
 /// Parse an alert duration string like "15m", "2h", "1d" into a TimeInterval (seconds).

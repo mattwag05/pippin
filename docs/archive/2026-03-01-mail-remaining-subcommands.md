@@ -14,17 +14,17 @@
 
 | File | Role |
 |------|------|
-| `pippin/Commands/MailCommand.swift` | All ArgumentParser subcommand structs — add new ones here |
-| `pippin/MailBridge/MailBridge.swift` | All JXA logic — add public methods + script builders here |
-| `pippin/Models/MailModels.swift` | Codable output types — add `MailAccount` and `MailActionResult` here |
+| `pippin/Commands/MailCommand.swift` | All ArgumentParser subcommand structs: add new ones here |
+| `pippin/MailBridge/MailBridge.swift` | All JXA logic: add public methods + script builders here |
+| `pippin/Models/MailModels.swift` | Codable output types: add `MailAccount` and `MailActionResult` here |
 
 **Existing utilities to reuse (don't rewrite):**
-- `jsEscape()` at `MailBridge.swift:56` — escapes user strings for safe JXA embedding
-- `runScript()` at `MailBridge.swift:190` — executes osascript with concurrent pipe drain + 10s timeout
-- `decodeMessages()` at `MailBridge.swift:248` — decodes `[MailMessage]` from JSON string
-- Compound ID parsing at `MailBridge.swift:42-48` — split on `"||"` into `(account, mailbox, messageId)`
-- JXA startup poll loop (8 attempts × 0.5s) — copy from any existing script builder in `MailBridge.swift`
-- `JSONEncoder` with `.prettyPrinted, .sortedKeys` — copy from any existing `run()` method
+- `jsEscape()` at `MailBridge.swift:56`: escapes user strings for safe JXA embedding
+- `runScript()` at `MailBridge.swift:190`: executes osascript with concurrent pipe drain + 10s timeout
+- `decodeMessages()` at `MailBridge.swift:248`: decodes `[MailMessage]` from JSON string
+- Compound ID parsing at `MailBridge.swift:42-48`: split on `"||"` into `(account, mailbox, messageId)`
+- JXA startup poll loop (8 attempts × 0.5s): copy from any existing script builder in `MailBridge.swift`
+- `JSONEncoder` with `.prettyPrinted, .sortedKeys`: copy from any existing `run()` method
 
 ---
 
@@ -146,7 +146,7 @@ Expected: `Build complete!`
 **Step 5: Invoke security review agents**
 
 Invoke:
-- `applescript-security-reviewer` agent — pass the `buildAccountsScript()` method body
+- `applescript-security-reviewer` agent: pass the `buildAccountsScript()` method body
 - `headless-compatibility-checker` agent
 
 Address any NEEDS REVISION or UNSAFE findings before continuing.
@@ -343,7 +343,7 @@ Expected: `Build complete!`
 **Step 4: Invoke security review agents**
 
 Invoke:
-- `applescript-security-reviewer` agent — review `buildSearchScript()`
+- `applescript-security-reviewer` agent: review `buildSearchScript()`
 - `headless-compatibility-checker` agent
 
 Address any findings before continuing.
@@ -471,7 +471,7 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "title": "feat: pippin mail accounts and search subcommands",
-    "body": "Implements `pippin mail accounts` (list configured accounts) and `pippin mail search <query>` (case-insensitive search across subject, sender, and body).\n\n## Subcommands\n- `accounts` — returns `[{name, email}]`\n- `search <query> [--account x] [--limit 10]` — returns `[MailMessage]` (body: null)\n\nBoth are read-only and headless-safe.",
+    "body": "Implements `pippin mail accounts` (list configured accounts) and `pippin mail search <query>` (case-insensitive search across subject, sender, and body).\n\n## Subcommands\n- `accounts` (returns `[{name, email}]`\n- `search <query> [--account x] [--limit 10]`) returns `[MailMessage]` (body: null)\n\nBoth are read-only and headless-safe.",
     "head": "feature/mail-accounts-search",
     "base": "main"
   }' \
@@ -633,7 +633,7 @@ Expected: `Build complete!`
 **Step 5: Invoke security review agents**
 
 Invoke:
-- `applescript-security-reviewer` agent — review `buildMarkScript()`
+- `applescript-security-reviewer` agent: review `buildMarkScript()`
 - `headless-compatibility-checker` agent
 
 Address all findings before continuing.
@@ -859,7 +859,7 @@ Expected: `Build complete!`
 **Step 4: Invoke security review agents**
 
 Invoke:
-- `applescript-security-reviewer` agent — review `buildMoveScript()`
+- `applescript-security-reviewer` agent: review `buildMoveScript()`
 - `headless-compatibility-checker` agent
 
 **Step 5: Commit**
@@ -987,7 +987,7 @@ static func sendMessage(
 }
 ```
 
-**Step 2: Add `runScriptWithTimeout()` — a version of `runScript()` with a configurable timeout — after `runScript()` in the Process Runner MARK section**
+**Step 2: Add `runScriptWithTimeout()`: a version of `runScript()` with a configurable timeout, after `runScript()` in the Process Runner MARK section**
 
 ```swift
 private static func runScriptWithTimeout(_ script: String, seconds: Int) throws -> String {
@@ -1135,7 +1135,7 @@ Expected: `Build complete!`
 **Step 5: Invoke security review agents**
 
 Invoke:
-- `applescript-security-reviewer` agent — review `buildSendScript()` (highest-risk method)
+- `applescript-security-reviewer` agent: review `buildSendScript()` (highest-risk method)
 - `headless-compatibility-checker` agent
 
 Address ALL findings before continuing. `send` is a write operation with external side effects.
@@ -1290,7 +1290,7 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "title": "feat: pippin mail mark, move, send subcommands",
-    "body": "Implements write subcommands for `pippin mail`:\n\n- `mark <id> --read|--unread [--dry-run]` — toggle read status\n- `move <id> --to <mailbox> [--dry-run]` — move message between mailboxes\n- `send --to <addr> --subject <text> --body <text> [--cc] [--from] [--attach] [--dry-run]` — send email\n\nAll write operations return `MailActionResult` JSON. All include `--dry-run` flag. `send` uses a 30-second timeout to accommodate SMTP handshake.",
+    "body": "Implements write subcommands for `pippin mail`:\n\n- `mark <id> --read|--unread [--dry-run]`, toggle read status\n- `move <id> --to <mailbox> [--dry-run]`, move message between mailboxes\n- `send --to <addr> --subject <text> --body <text> [--cc] [--from] [--attach] [--dry-run]`: send email\n\nAll write operations return `MailActionResult` JSON. All include `--dry-run` flag. `send` uses a 30-second timeout to accommodate SMTP handshake.",
     "head": "feature/mail-write-ops",
     "base": "main"
   }' \
@@ -1315,18 +1315,18 @@ git pull origin main
 
 ## Final Verification Checklist
 
-- [ ] `swift build` — clean, no warnings
-- [ ] `pippin mail accounts` — returns valid `[{email, name}]` JSON
-- [ ] `pippin mail search "query"` — returns `[MailMessage]` matching query
-- [ ] `pippin mail search "query" --account "iCloud"` — filtered correctly
-- [ ] `pippin mail mark <id> --read --dry-run` — returns MailActionResult, no actual change
-- [ ] `pippin mail mark <id> --unread` — actually toggles read status
-- [ ] `pippin mail mark <id>` (no flag) — exits with error "Specify exactly one of --read or --unread"
-- [ ] `pippin mail move <id> --to "Archive" --dry-run` — returns MailActionResult, message stays
-- [ ] `pippin mail send --to x --subject x --body x --dry-run` — returns MailActionResult, nothing sent
-- [ ] `pippin mail send --attach /nonexistent --dry-run` — exits with "Attachment file not found"
+- [ ] `swift build`: clean, no warnings
+- [ ] `pippin mail accounts`: returns valid `[{email, name}]` JSON
+- [ ] `pippin mail search "query"`: returns `[MailMessage]` matching query
+- [ ] `pippin mail search "query" --account "iCloud"`: filtered correctly
+- [ ] `pippin mail mark <id> --read --dry-run`: returns MailActionResult, no actual change
+- [ ] `pippin mail mark <id> --unread`: actually toggles read status
+- [ ] `pippin mail mark <id>` (no flag): exits with error "Specify exactly one of --read or --unread"
+- [ ] `pippin mail move <id> --to "Archive" --dry-run`: returns MailActionResult, message stays
+- [ ] `pippin mail send --to x --subject x --body x --dry-run`: returns MailActionResult, nothing sent
+- [ ] `pippin mail send --attach /nonexistent --dry-run`: exits with "Attachment file not found"
 - [ ] All JSON output validated with `python3 -m json.tool`
-- [ ] `applescript-security-reviewer` — APPROVED for all new MailBridge methods
-- [ ] `headless-compatibility-checker` — HEADLESS-SAFE for all new MailBridge methods
-- [ ] `/pippin-output-validator` — all schemas validated
+- [ ] `applescript-security-reviewer`: APPROVED for all new MailBridge methods
+- [ ] `headless-compatibility-checker`: HEADLESS-SAFE for all new MailBridge methods
+- [ ] `/pippin-output-validator`: all schemas validated
 - [ ] Both PRs merged to main

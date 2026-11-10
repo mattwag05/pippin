@@ -100,7 +100,8 @@ public struct PaginationOptions: ParsableArguments {
 
     public init() {}
 
-    /// True if any pagination flag was passed — switch the response shape to {items, next_cursor}.
+    /// True if any pagination flag was passed. `data` stays the item array either way;
+    /// the cursor for the next page goes in the envelope's top-level `next_cursor`.
     public var isActive: Bool {
         cursor != nil || pageSize != nil || page != nil
     }
@@ -168,7 +169,9 @@ public enum Pagination {
             // Numbered pages are sugar over the cursor offset: page N starts at
             // (N-1)*pageSize. A --cursor, when present, wins over --page.
             guard page >= 1 else { throw CursorError.invalidPage }
-            offset = (page - 1) * pageSize
+            let (product, overflow) = (page - 1).multipliedReportingOverflow(by: pageSize)
+            guard !overflow else { throw CursorError.invalidPage } // unchecked, this traps
+            offset = product
         }
         return (offset, pageSize)
     }

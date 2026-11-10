@@ -1,0 +1,72 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Scan recent Sent mail and recently-modified Notes for commitments you made (\"I'll send you…\", \"I'll follow up…\") and emit draft reminders with a confidence score. Read-only by default; set create=true to also create the reminders in a list. Slow (per-batch AI calls): under MCP the AI pass is bounded to ~50s and returns partial results with a timedOut warning: lower limit/days or run via job_run for an exhaustive scan.",
+  "properties" : {
+    "account" : {
+      "description" : "Mail account to scan (default: all accounts).",
+      "type" : "string"
+    },
+    "api_key" : {
+      "description" : "API key for the Claude provider.",
+      "type" : "string"
+    },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "create" : {
+      "default" : false,
+      "description" : "Create reminders from the extracted actions (side-effecting).",
+      "type" : "boolean"
+    },
+    "days" : {
+      "default" : 7,
+      "description" : "Days back to scan (1-90, default 7).",
+      "type" : "integer"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Max items to scan per source (default: 50).",
+      "type" : "integer"
+    },
+    "list" : {
+      "description" : "Reminder list name to create into (used when create=true).",
+      "type" : "string"
+    },
+    "mail" : {
+      "default" : true,
+      "description" : "Include Sent mail as a source.",
+      "type" : "boolean"
+    },
+    "min_confidence" : {
+      "default" : 0.5,
+      "description" : "Minimum confidence (0.0-1.0) to include an action (default: 0.5).",
+      "type" : "number"
+    },
+    "model" : {
+      "description" : "Model name (provider-specific default).",
+      "type" : "string"
+    },
+    "notes" : {
+      "default" : true,
+      "description" : "Include recently-modified Notes as a source.",
+      "type" : "boolean"
+    },
+    "provider" : {
+      "description" : "AI provider: ollama, claude, or openai (default: ollama).",
+      "type" : "string"
+    }
+  },
+  "title" : "actions_extract: arguments",
+  "type" : "object"
+}

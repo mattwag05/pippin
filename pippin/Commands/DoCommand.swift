@@ -146,9 +146,21 @@ public struct DoCommand: AgentCommand {
             finalAnswer: plan.finalAnswer,
             excludedData: excludedNames,
             dryRun: false,
-            executed: execution.executed
+            executed: execution.executed,
+            failure: execution.failure
         )
-        return AgentResult(result)
+        guard let failure = execution.failure else { return AgentResult(result) }
+        // The steps that ran are the answer even when a later one failed, so
+        // this is a partial result with a failing exit status, not an error.
+        let skipped = plan.steps.count - execution.executedSteps.count
+        return AgentResult(
+            result,
+            warnings: [
+                "stopped at step \(failure.step + 1) (\(failure.tool)): \(failure.message). \(skipped) later step(s) did not run.",
+            ],
+            partial: true,
+            exitCode: PippinExitCode.toolFailure
+        )
     }
 
     static func decodeChildStdout(_ stdout: Data) -> JSONValue {
@@ -157,13 +169,9 @@ public struct DoCommand: AgentCommand {
         if let value = try? JSONDecoder().decode(JSONValue.self, from: Data(trimmed.utf8)) {
             return value
         }
-        return .object([
-            "status": .string("error"),
-            "error": .object([
-                "code": .string("invalid_json"),
-                "message": .string("Child stdout was not valid JSON: \(String(trimmed.prefix(200)))"),
-            ]),
-        ])
+        return DoExecutor.errorEnvelope(
+            code: "invalid_json", message: "Child stdout was not valid JSON: \(String(trimmed.prefix(200)))"
+        )
     }
 }
 
@@ -197,6 +205,8 @@ struct ExecutedResult: Encodable {
     let excludedData: [String]
     let dryRun: Bool
     let executed: Bool
+    /// The step that stopped the run. Omitted when every step succeeded.
+    var failure: StepFailure?
 
     enum CodingKeys: String, CodingKey {
         case steps
@@ -204,13 +214,24 @@ struct ExecutedResult: Encodable {
         case excludedData = "excluded_data"
         case dryRun = "dry_run"
         case executed
+        case failure
     }
+}
+
+/// Why a run stopped early. `step` indexes `steps`, whose entry at that index
+/// holds the failed step's own error envelope.
+struct StepFailure: Encodable, Equatable, Sendable {
+    let step: Int
+    let tool: String
+    let code: String
+    let message: String
 }
 
 struct DoExecutionOutput: Sendable {
     let executedSteps: [ExecutedStep]
     let dryRun: Bool
     let executed: Bool
+    var failure: StepFailure?
 }
 
 /// Injectable plan executor. Validation happens before the first runner call,
@@ -230,19 +251,47 @@ enum DoExecutor {
             return DoExecutionOutput(executedSteps: [], dryRun: true, executed: false)
         }
 
+        // Stop at the first failed step: later steps were planned on the
+        // assumption that it worked. The steps that ran are always returned.
         var executedSteps: [ExecutedStep] = []
-        for step in plan.steps {
+        var failure: StepFailure?
+        for (index, step) in plan.steps.enumerated() {
             guard let tool = tools.first(where: { $0.name == step.tool }) else {
                 throw IntentPlannerError.unknownTool(step.tool)
             }
-            let payload = try await runTool(tool, step.args)
+            let payload: JSONValue
+            do {
+                payload = try await runTool(tool, step.args)
+            } catch {
+                let code = (error as? RemediableError)?.agentCode ?? "step_failed"
+                payload = errorEnvelope(code: code, message: error.localizedDescription)
+            }
             executedSteps.append(ExecutedStep(tool: step.tool, args: step.args, result: payload))
+            if let (code, message) = stepError(payload) {
+                failure = StepFailure(step: index, tool: step.tool, code: code, message: message)
+                break
+            }
         }
         return DoExecutionOutput(
             executedSteps: executedSteps,
             dryRun: false,
-            executed: !executedSteps.isEmpty
+            executed: !executedSteps.isEmpty,
+            failure: failure
         )
+    }
+
+    static func errorEnvelope(code: String, message: String) -> JSONValue {
+        .object([
+            "status": .string("error"),
+            "error": .object(["code": .string(code), "message": .string(message)]),
+        ])
+    }
+
+    /// The code and message of a step result that is an error envelope.
+    static func stepError(_ payload: JSONValue) -> (code: String, message: String)? {
+        guard case let .object(envelope) = payload, envelope["status"] == .string("error") else { return nil }
+        guard case let .object(error)? = envelope["error"] else { return ("step_failed", "the step reported an error") }
+        return (error["code"]?.stringValue ?? "step_failed", error["message"]?.stringValue ?? "the step reported an error")
     }
 }
 

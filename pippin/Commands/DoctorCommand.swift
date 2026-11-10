@@ -50,8 +50,21 @@ public struct DoctorCommand: AgentCommand {
             return checks
         }
 
-        let hasCriticalFailure = checks.contains { $0.status == .fail }
-        return AgentResult(checks, exitCode: hasCriticalFailure ? 1 : 0)
+        return Self.result(for: checks, underMCP: isMCPContext())
+    }
+
+    /// The doctor contract: the checks always arrive in an `ok` envelope, and
+    /// failed checks are named in `warnings`. The CLI also exits 1 so scripts
+    /// can branch on it. Under MCP the exit status stays 0, because a nonzero
+    /// child is reported as a tool error and a finished diagnosis is not one.
+    static func result(for checks: [DiagnosticCheck], underMCP: Bool) -> AgentResult {
+        let failed = checks.filter { $0.status == .fail }.map(\.name)
+        guard !failed.isEmpty else { return AgentResult(checks) }
+        return AgentResult(
+            checks,
+            warnings: ["\(failed.count) check(s) failed: \(failed.joined(separator: ", "))"],
+            exitCode: underMCP ? 0 : 1
+        )
     }
 }
 
@@ -150,25 +163,50 @@ func classifyPython3Output(exitCode: Int32, output: String) -> DiagnosticCheck {
 
 /// Run all diagnostic checks and return results.
 public func runAllChecks(config: PippinConfig? = AIProviderFactory.loadConfig()) -> [DiagnosticCheck] {
-    var checks: [DiagnosticCheck] = []
+    runChecksConcurrently([
+        { [checkMacOSVersion()] },
+        { [checkMailAutomation()] },
+        { [checkMailEnvelopeIndex()] },
+        { [checkVoiceMemosDB()] },
+        { [checkMessagesAccess()] },
+        { [checkCalendarAccess()] },
+        { [checkRemindersAccess()] },
+        { [checkContactsAccess()] },
+        { [checkNotesAccess()] },
+        { [checkCodeSigning()] },
+        { [checkPython3()] },
+        { backendChecks(config: config) },
+        { [checkNodeJS()] },
+        { [checkPlaywright()] },
+        { [checkPippinVersion()] },
+        { [checkPolicyFile()] },
+    ])
+}
 
-    checks.append(checkMacOSVersion())
-    checks.append(checkMailAutomation())
-    checks.append(checkMailEnvelopeIndex())
-    checks.append(checkVoiceMemosDB())
-    checks.append(checkMessagesAccess())
-    checks.append(checkCalendarAccess())
-    checks.append(checkRemindersAccess())
-    checks.append(checkContactsAccess())
-    checks.append(checkNotesAccess())
-    checks.append(checkCodeSigning())
-    checks.append(checkPython3())
-    checks.append(contentsOf: backendChecks(config: config))
-    checks.append(checkNodeJS())
-    checks.append(checkPlaywright())
-    checks.append(checkPippinVersion())
+/// Run every probe at once and return the checks in the order listed. Each
+/// probe asks a different subsystem (an app, a database, a helper binary) and
+/// shares no state with the others, so the report costs the slowest probe
+/// instead of the sum.
+func runChecksConcurrently(_ probes: [@Sendable () -> [DiagnosticCheck]]) -> [DiagnosticCheck] {
+    let groups = (try? runConcurrently(probes) { $0() }) ?? probes.map { $0() }
+    return groups.flatMap(\.self)
+}
 
-    return checks
+/// A policy file that does not parse makes the MCP server refuse every write,
+/// so it has to show up here.
+func checkPolicyFile(path: String = SafetyPaths.policyPath()) -> DiagnosticCheck {
+    let report = PolicyReport.make(path: path)
+    guard let error = report.error else {
+        let detail = report.source == "file" ? "\(path) parses" : "no file at \(path); the built-in policy applies"
+        return DiagnosticCheck(name: "Policy file", status: .ok, detail: detail)
+    }
+    return DiagnosticCheck(
+        name: "Policy file", status: .fail, detail: error,
+        remediation: Remediation(
+            humanHint: "Fix the JSON in \(path), or move the file aside to run on the built-in policy. Until then the MCP server refuses every tool that changes something.",
+            doctorCheck: "Policy file"
+        )
+    )
 }
 
 private func checkMacOSVersion() -> DiagnosticCheck {

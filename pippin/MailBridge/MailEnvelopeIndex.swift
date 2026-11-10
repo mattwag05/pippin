@@ -164,6 +164,81 @@ private extension JSONEncoder {
     }
 }
 
+// MARK: - Snapshot reuse
+
+/// Hands out one Envelope Index snapshot per process for as long as it is
+/// still current, so a command that scans several accounts (`digest`,
+/// `status`) or a long-lived process (`mail watch`) copies the index once.
+///
+/// Invalidation rule: a snapshot is reused only while Mail's database file and
+/// its `-wal` each have the inode, size and modification time they had just
+/// before the snapshot was copied, and the account map is the same. Mail
+/// appends every change to the `-wal` (or rewrites the database at a
+/// checkpoint), so any new or changed message moves a stamp and the next call
+/// copies again. The stamp is read BEFORE the copy: a write that lands during
+/// the copy leaves the stored stamp older than the files, which forces a fresh
+/// copy next time instead of reusing a snapshot of unknown age.
+final class MailEnvelopeIndexMemo: @unchecked Sendable {
+    typealias Opener = @Sendable (String, [MailAccountRecord]) throws -> MailEnvelopeIndex
+
+    struct FileStamp: Equatable {
+        let inode: UInt64
+        let size: Int64
+        let modifiedSeconds: Int
+        let modifiedNanoseconds: Int
+
+        init?(path: String) {
+            var info = stat()
+            guard stat(path, &info) == 0 else { return nil }
+            inode = UInt64(info.st_ino)
+            size = Int64(info.st_size)
+            modifiedSeconds = info.st_mtimespec.tv_sec
+            modifiedNanoseconds = info.st_mtimespec.tv_nsec
+        }
+    }
+
+    private struct Key: Equatable {
+        let dbPath: String
+        let database: FileStamp?
+        let wal: FileStamp?
+        let accounts: [MailAccountRecord]
+    }
+
+    // @unchecked Sendable: `entry` is only touched under `lock`.
+    private let lock = NSLock()
+    private var entry: (key: Key, index: MailEnvelopeIndex)?
+
+    /// The current snapshot, opening one through `open` only when there is none
+    /// or the stored one is stale. The lock is held across `open` so concurrent
+    /// callers share one copy instead of racing to make several.
+    func index(
+        dbPath: String,
+        accounts: [MailAccountRecord],
+        open: Opener = { try MailEnvelopeIndex(dbPath: $0, accounts: $1) }
+    ) throws -> MailEnvelopeIndex {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = Key(
+            dbPath: dbPath,
+            database: FileStamp(path: dbPath),
+            wal: FileStamp(path: dbPath + "-wal"),
+            accounts: accounts
+        )
+        if let entry, entry.key == key { return entry.index }
+        entry = nil // drop the stale snapshot (and its temp dir) before copying again
+        let index = try open(dbPath, accounts)
+        entry = (key, index)
+        return index
+    }
+
+    /// Release the held snapshot so its temp dir is removed.
+    func clear() {
+        lock.lock()
+        entry = nil
+        lock.unlock()
+    }
+}
+
 // MARK: - Reader
 
 /// Read-only view over a snapshot of Mail's Envelope Index SQLite for
@@ -229,6 +304,7 @@ final class MailEnvelopeIndex: Sendable {
             try? fm.removeItem(atPath: dir)
             throw MailEnvelopeIndexError.accessDenied(error.localizedDescription)
         }
+        Self.adviseReadAhead(path: copyPath)
         do {
             // Writable open on OUR copy: SQLite needs to recover the copied WAL,
             // which a readonly config can refuse. Nothing here ever writes SQL.
@@ -245,6 +321,22 @@ final class MailEnvelopeIndex: Sendable {
             try? fm.removeItem(atPath: dir)
             throw error
         }
+    }
+
+    /// Ask the kernel to page the whole snapshot in with one sequential
+    /// read-ahead. The copy is an APFS clone, a new file with an empty page
+    /// cache, so without this the first query faults its pages in one random
+    /// read at a time: measured 188 ms against 34 ms for a 64 MB index.
+    /// Advisory only: a failure changes nothing but speed.
+    @discardableResult
+    static func adviseReadAhead(path: String) -> Bool {
+        let fd = open(path, O_RDONLY)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0 else { return false }
+        var advice = radvisory(ra_offset: 0, ra_count: Int32(clamping: info.st_size))
+        return fcntl(fd, F_RDADVISE, &advice) == 0
     }
 
     /// Test seam: pre-built (in-memory) queue, no snapshot.
@@ -264,12 +356,14 @@ final class MailEnvelopeIndex: Sendable {
     // MARK: Schema guard
 
     private func validateSchema() throws {
-        let version = try dbQueue.read { db -> Int in
+        // No `properties` table (zero-byte or foreign file) reads as version 0,
+        // which is refused below with a typed error.
+        let version = (try? dbQueue.read { db -> Int in
             let raw = try String.fetchOne(
                 db, sql: "SELECT value FROM properties WHERE key = 'version'"
             )
             return raw.flatMap(Int.init) ?? 0
-        }
+        }) ?? 0
         guard Self.knownVersions.contains(version) else {
             throw MailEnvelopeIndexError.unsupportedVersion(version)
         }
@@ -529,6 +623,8 @@ final class MailEnvelopeIndex: Sendable {
     /// shortfall-hint display — using local here would drop rows near day
     /// boundaries that the JXA path keeps.
     static func parseFilterDateUTC(_ s: String) -> Date? {
+        // The bridge resolves a day to an instant first (`dayFilterInstants`).
+        if let date = ISO8601DateFormatter().date(from: s) { return date }
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "UTC")
@@ -646,7 +742,8 @@ final class MailEnvelopeIndex: Sendable {
                 read: raw.read,
                 body: nil,
                 size: raw.size,
-                hasAttachment: raw.hasAttachment
+                hasAttachment: raw.hasAttachment,
+                messageIdHeader: raw.header.map(MailBridge.normalizeMessageId).flatMap { $0.isEmpty ? nil : $0 }
             )
         }
     }
@@ -702,7 +799,14 @@ final class MailEnvelopeIndex: Sendable {
     /// Safety cap on pre-dedup candidate rows for search/activity. Far above
     /// any real limit (CLI clamps limit to 500); keeps a pathological LIKE
     /// from materializing the whole 28k-row table.
-    private static let candidateCap = 5000
+    static let candidateCap = 5000
+
+    /// Rows plus whether the answer ran off the end of a candidate set that was
+    /// cut at `candidateCap`: older matches may then exist that were never seen.
+    struct Scan {
+        let messages: [MailMessage]
+        let hitCandidateCap: Bool
+    }
 
     func searchMessages(
         query: String,
@@ -715,6 +819,24 @@ final class MailEnvelopeIndex: Sendable {
         to: String?,
         from: String?
     ) throws -> [MailMessage] {
+        try searchScan(
+            query: query, account: account, mailbox: mailbox, limit: limit, offset: offset,
+            after: after, before: before, to: to, from: from
+        ).messages
+    }
+
+    func searchScan(
+        query: String,
+        account: String?,
+        mailbox: String?,
+        limit: Int,
+        offset: Int,
+        after: String?,
+        before: String?,
+        to: String?,
+        from: String?,
+        candidateCap: Int = MailEnvelopeIndex.candidateCap
+    ) throws -> Scan {
         let targets = try MailboxTargets(resolveMailboxes(accountFilter: account, mailboxName: mailbox))
         // JXA parity: case-insensitive substring over subject OR the composed
         // sender string ("Name <addr>"). LIKE ... COLLATE NOCASE is ASCII-only
@@ -743,14 +865,17 @@ final class MailEnvelopeIndex: Sendable {
             arguments["to"] = to
         }
         sql += Self.dateFilterSQL(after: after, before: before)
-        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(Self.candidateCap)"
+        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(candidateCap)"
         let fetched = try dbQueue.read { db in
             try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
         }.map(Self.rawRow)
         // JXA applies offset AFTER dedup.
         let deduped = Self.dedup(fetched)
         let window = Array(deduped.dropFirst(max(0, offset)).prefix(max(1, limit)))
-        return try buildMessages(window, targets: targets, populateTo: true)
+        return try Scan(
+            messages: buildMessages(window, targets: targets, populateTo: true),
+            hitCandidateCap: fetched.count >= candidateCap && window.count < max(1, limit)
+        )
     }
 
     /// Mail's own snippet text (`messages.summary` → `summaries.summary`) for
@@ -822,6 +947,16 @@ final class MailEnvelopeIndex: Sendable {
         since: Date?,
         limit: Int
     ) throws -> [MailMessage] {
+        try activityScan(account: account, mailboxes: mailboxes, since: since, limit: limit).messages
+    }
+
+    func activityScan(
+        account: String?,
+        mailboxes: [String],
+        since: Date?,
+        limit: Int,
+        candidateCap: Int = MailEnvelopeIndex.candidateCap
+    ) throws -> Scan {
         var refs: [MailboxRef] = []
         for name in mailboxes {
             refs += try resolveMailboxes(accountFilter: account, mailboxName: name)
@@ -831,9 +966,12 @@ final class MailEnvelopeIndex: Sendable {
         if let since {
             sql += " AND COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) >= \(Int64(since.timeIntervalSince1970))"
         }
-        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(Self.candidateCap)"
+        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(candidateCap)"
         let fetched = try dbQueue.read { db in try Row.fetchAll(db, sql: sql) }.map(Self.rawRow)
         let window = Array(Self.dedup(fetched).prefix(max(1, limit)))
-        return try buildMessages(window, targets: targets, populateTo: true)
+        return try Scan(
+            messages: buildMessages(window, targets: targets, populateTo: true),
+            hitCandidateCap: fetched.count >= candidateCap && window.count < max(1, limit)
+        )
     }
 }

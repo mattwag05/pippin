@@ -1,0 +1,75 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Reply to a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
+  "properties" : {
+    "attach" : {
+      "description" : "Absolute paths of files to attach.",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "bcc" : {
+      "description" : "BCC recipients.",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "body" : {
+      "description" : "Reply body text.",
+      "type" : "string"
+    },
+    "cc" : {
+      "description" : "CC recipients.",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "confirm" : {
+      "default" : false,
+      "description" : "Must be true to actually send. Omitted or false returns a dry-run preview.",
+      "type" : "boolean"
+    },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "expectMessageId" : {
+      "description" : "Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch.",
+      "type" : "string"
+    },
+    "from" : {
+      "description" : "Sending account name (from mail_accounts).",
+      "type" : "string"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    },
+    "messageId" : {
+      "description" : "Compound message ID from mail_list output.",
+      "type" : "string"
+    },
+    "to" : {
+      "description" : "Override the reply-to addresses. Defaults to the original sender.",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    }
+  },
+  "required" : [
+    "messageId",
+    "body"
+  ],
+  "title" : "mail_reply: arguments",
+  "type" : "object"
+}

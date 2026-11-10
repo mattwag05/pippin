@@ -1,0 +1,21 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Find overlapping events in a time window. Read-only. Use before scheduling.",
+  "properties" : {
+    "from" : {
+      "description" : "Window start (default: start of today).",
+      "type" : "string"
+    },
+    "range" : {
+      "description" : "Relative window instead of from/to: today, today+N, week, or month.",
+      "type" : "string"
+    },
+    "to" : {
+      "description" : "Window end (default: end of today).",
+      "type" : "string"
+    }
+  },
+  "title" : "calendar_conflicts: arguments",
+  "type" : "object"
+}

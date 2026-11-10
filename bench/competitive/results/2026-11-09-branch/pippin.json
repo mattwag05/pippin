@@ -1,0 +1,713 @@
+{
+  "tool": "pippin",
+  "version": "pippin 0.41.1 (branch build 761148f+harness)",
+  "kind": "mcp",
+  "apps": [
+    "reminders",
+    "calendar",
+    "contacts",
+    "notes",
+    "messages",
+    "mail",
+    "memos"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 19.56,
+    "tool_count": 79,
+    "manifest_chars": 73820,
+    "manifest_tokens": 22465,
+    "tools_with_description": 79,
+    "tools_with_annotations": 79
+  },
+  "speed": {
+    "reminders.lists": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 25.12,
+        "p50_ms": 26.37,
+        "p95_ms": 27.87,
+        "max_ms": 27.87
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 5.84,
+        "p50_ms": 6.51,
+        "p95_ms": 7.15,
+        "max_ms": 7.17
+      }
+    },
+    "reminders.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 35.74,
+        "p50_ms": 36.19,
+        "p95_ms": 38.39,
+        "max_ms": 38.39
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 13.63,
+        "p50_ms": 14.88,
+        "p95_ms": 16.03,
+        "max_ms": 16.46
+      }
+    },
+    "reminders.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 31.38,
+        "p50_ms": 31.51,
+        "p95_ms": 31.58,
+        "max_ms": 31.58
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 9.66,
+        "p50_ms": 10.64,
+        "p95_ms": 11.42,
+        "max_ms": 11.64
+      }
+    },
+    "calendar.calendars": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 24.64,
+        "p50_ms": 25.55,
+        "p95_ms": 34.91,
+        "max_ms": 34.91
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 5.04,
+        "p50_ms": 6.73,
+        "p95_ms": 8.97,
+        "max_ms": 9.85
+      }
+    },
+    "calendar.events": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 37.29,
+        "p50_ms": 38.99,
+        "p95_ms": 44.77,
+        "max_ms": 44.77
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 17.41,
+        "p50_ms": 18.68,
+        "p95_ms": 23.02,
+        "max_ms": 26.96
+      }
+    },
+    "calendar.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 44.55,
+        "p50_ms": 47.68,
+        "p95_ms": 50.07,
+        "max_ms": 50.07
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 24.65,
+        "p50_ms": 26.7,
+        "p95_ms": 29.59,
+        "max_ms": 29.64
+      }
+    },
+    "contacts.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 60.89,
+        "p50_ms": 63.37,
+        "p95_ms": 69.3,
+        "max_ms": 69.3
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 46.76,
+        "p50_ms": 49.92,
+        "p95_ms": 57.05,
+        "max_ms": 60.69
+      }
+    },
+    "contacts.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 49.27,
+        "p50_ms": 49.66,
+        "p95_ms": 53.0,
+        "max_ms": 53.0
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 3.04,
+        "p50_ms": 3.22,
+        "p95_ms": 4.0,
+        "max_ms": 4.15
+      }
+    },
+    "contacts.groups": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 51.56,
+        "p50_ms": 54.37,
+        "p95_ms": 77.82,
+        "max_ms": 77.82
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 36.22,
+        "p50_ms": 38.09,
+        "p95_ms": 41.05,
+        "max_ms": 42.44
+      }
+    },
+    "notes.folders": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 131.27,
+        "p50_ms": 133.49,
+        "p95_ms": 138.26,
+        "max_ms": 138.26
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 114.89,
+        "p50_ms": 116.89,
+        "p95_ms": 134.04,
+        "max_ms": 135.53
+      }
+    },
+    "notes.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 243.3,
+        "p50_ms": 249.74,
+        "p95_ms": 251.06,
+        "max_ms": 251.06
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 230.62,
+        "p50_ms": 233.34,
+        "p95_ms": 236.53,
+        "max_ms": 252.2
+      }
+    },
+    "notes.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 265.29,
+        "p50_ms": 266.57,
+        "p95_ms": 267.54,
+        "max_ms": 267.54
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 247.21,
+        "p50_ms": 249.63,
+        "p95_ms": 252.13,
+        "max_ms": 252.89
+      }
+    },
+    "messages.chats": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 52.96,
+        "p50_ms": 54.57,
+        "p95_ms": 60.6,
+        "max_ms": 60.6
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 38.19,
+        "p50_ms": 40.37,
+        "p95_ms": 48.48,
+        "max_ms": 62.74
+      }
+    },
+    "messages.history": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 52.64,
+        "p50_ms": 53.19,
+        "p95_ms": 53.37,
+        "max_ms": 53.37
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 39.62,
+        "p50_ms": 40.44,
+        "p95_ms": 44.4,
+        "max_ms": 48.23
+      }
+    },
+    "messages.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 51.87,
+        "p50_ms": 53.2,
+        "p95_ms": 58.1,
+        "max_ms": 58.1
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 38.45,
+        "p50_ms": 39.55,
+        "p95_ms": 43.56,
+        "max_ms": 48.41
+      }
+    },
+    "mail.accounts": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 0,
+          "error": 5,
+          "hang": 0
+        },
+        "n": 0,
+        "min_ms": null,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "first_error": "{\"error\":{\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"doctor\",\"argv\":[\"doctor\"],\"args\":{}}},\"code\":\"script_failed\",\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\"},\"duration_ms\":4288,\"status\":\"error\",\"v\":4}"
+      },
+      "warm": null
+    },
+    "mail.mailboxes": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 0,
+          "error": 5,
+          "hang": 0
+        },
+        "n": 0,
+        "min_ms": null,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "first_error": "{\"status\":\"error\",\"duration_ms\":8526,\"v\":4,\"error\":{\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"doctor\",\"argv\":[\"doctor\"],\"args\":{}}},\"code\":\"script_failed\",\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\"}}"
+      },
+      "warm": null
+    },
+    "mail.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 0,
+          "error": 5,
+          "hang": 0
+        },
+        "n": 0,
+        "min_ms": null,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "first_error": "{\"v\":4,\"status\":\"error\",\"duration_ms\":8584,\"error\":{\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\",\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"doctor\",\"args\":{},\"argv\":[\"doctor\"]}},\"code\":\"script_failed\"}}"
+      },
+      "warm": null
+    },
+    "mail.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 0,
+          "error": 5,
+          "hang": 0
+        },
+        "n": 0,
+        "min_ms": null,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "first_error": "{\"v\":4,\"error\":{\"message\":\"Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)\",\"next_step\":{\"retryable\":false,\"next_call\":{\"tool\":\"doctor\",\"argv\":[\"doctor\"],\"args\":{}}},\"code\":\"script_failed\"},\"status\":\"error\",\"duration_ms\":14931}"
+      },
+      "warm": null
+    },
+    "memos.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 0,
+          "error": 5,
+          "hang": 0
+        },
+        "n": 0,
+        "min_ms": null,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "first_error": "{\"duration_ms\":2,\"error\":{\"next_step\":{\"retryable\":false,\"human_action\":\"Open the Voice Memos app once to create its database, then retry.\"},\"remediation\":{\"human_hint\":\"Voice Memos database not found. Open the Voice Memos app once to initialize it.\",\"doctor_check\":\"Voice Memos access\",\"shell_comman"
+      },
+      "warm": null
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "reminders.lists": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "reminders.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "reminders.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "calendar.calendars": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "calendar.events": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "calendar.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "contacts.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "contacts.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "contacts.groups": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "notes.folders": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "notes.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "notes.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "messages.chats": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "messages.history": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "messages.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "mail.accounts": {
+        "ok": 0,
+        "of": 8,
+        "distinct_record_sets": 0
+      },
+      "mail.mailboxes": {
+        "ok": 0,
+        "of": 8,
+        "distinct_record_sets": 0
+      },
+      "mail.list": {
+        "ok": 0,
+        "of": 8,
+        "distinct_record_sets": 0
+      },
+      "mail.search": {
+        "ok": 0,
+        "of": 8,
+        "distinct_record_sets": 0
+      },
+      "memos.list": {
+        "ok": 0,
+        "of": 8,
+        "distinct_record_sets": 0
+      }
+    },
+    "bad_input": {
+      "contacts.show": {
+        "outcome": "error",
+        "ms": 42.06,
+        "error_is_structured": true,
+        "detail": "{\"duration_ms\":30,\"error\":{\"code\":\"contact_not_found\",\"message\":\"Contact not found: PB-NOPE-0000\",\"next_step\":{\"retryable\":false,\"next_call\":{\"args\":{},\"argv\":[\"contacts\",\"list\"],\"tool\":\"contacts_list"
+      },
+      "notes.show": {
+        "outcome": "error",
+        "ms": 79.16,
+        "error_is_structured": true,
+        "detail": "{\"status\":\"error\",\"duration_ms\":64,\"error\":{\"next_step\":{\"next_call\":{\"tool\":\"notes_list\",\"argv\":[\"notes\",\"list\"],\"args\":{}},\"retryable\":false},\"message\":\"Note not found: PB-NOPE-0000\",\"code\":\"note_no"
+      },
+      "messages.history": {
+        "outcome": "error",
+        "ms": 48.34,
+        "error_is_structured": true,
+        "detail": "{\"status\":\"error\",\"v\":4,\"duration_ms\":33,\"error\":{\"message\":\"Conversation not found: 999999999\",\"next_step\":{\"retryable\":false,\"next_call\":{\"args\":{},\"tool\":\"messages_list\",\"argv\":[\"messages\",\"list\"]}"
+      },
+      "calendar.events": {
+        "outcome": "error",
+        "ms": 13.47,
+        "error_is_structured": true,
+        "detail": "{\"status\":\"error\",\"v\":4,\"duration_ms\":1,\"error\":{\"message\":\"--from must be in YYYY-MM-DD or ISO 8601 format.\",\"code\":\"command_error\",\"next_step\":{\"retryable\":false}}}"
+      },
+      "reminders.list": {
+        "outcome": "error",
+        "ms": 20.79,
+        "error_is_structured": true,
+        "detail": "{\"status\":\"error\",\"v\":4,\"error\":{\"next_step\":{\"retryable\":false,\"next_call\":{\"argv\":[\"reminders\",\"lists\"],\"tool\":\"reminders_lists\",\"args\":{}}},\"message\":\"Reminder list not found: PB-NO-SUCH-LIST\",\"cod"
+      }
+    }
+  },
+  "coverage": {
+    "reminders.lists": "yes",
+    "reminders.list": "yes",
+    "reminders.search": "yes",
+    "reminders.create": "claimed",
+    "reminders.edit": "claimed",
+    "reminders.complete": "claimed",
+    "reminders.delete": "claimed",
+    "calendar.calendars": "yes",
+    "calendar.events": "yes",
+    "calendar.search": "yes",
+    "calendar.create": "claimed",
+    "calendar.edit": "claimed",
+    "calendar.delete": "claimed",
+    "contacts.list": "yes",
+    "contacts.search": "yes",
+    "contacts.show": "claimed",
+    "contacts.create": "claimed",
+    "contacts.edit": "claimed",
+    "contacts.delete": "claimed",
+    "contacts.groups": "yes",
+    "notes.folders": "yes",
+    "notes.list": "yes",
+    "notes.search": "yes",
+    "notes.show": "claimed",
+    "notes.create": "claimed",
+    "notes.edit": "claimed",
+    "notes.delete": "claimed",
+    "messages.chats": "yes",
+    "messages.history": "yes",
+    "messages.search": "yes",
+    "messages.send": "claimed",
+    "mail.accounts": "claimed",
+    "mail.mailboxes": "claimed",
+    "mail.list": "claimed",
+    "mail.search": "claimed",
+    "mail.show": "claimed",
+    "mail.send": "claimed",
+    "mail.move": "claimed",
+    "mail.mark": "claimed",
+    "mail.attachments": "claimed",
+    "memos.list": "claimed",
+    "memos.show": "claimed",
+    "memos.transcribe": "claimed",
+    "memos.delete": "claimed"
+  }
+}

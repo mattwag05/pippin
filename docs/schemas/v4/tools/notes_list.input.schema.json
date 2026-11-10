@@ -1,0 +1,34 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List Apple Notes, defaulting to 50 most recently modified.",
+  "properties" : {
+    "cursor" : {
+      "description" : "Opaque next_cursor from a previous response.",
+      "type" : "string"
+    },
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "folder" : {
+      "description" : "Filter by folder name.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Max notes (default: 50).",
+      "type" : "integer"
+    },
+    "page" : {
+      "description" : "1-based page number. Ignored when cursor is set.",
+      "type" : "integer"
+    },
+    "pageSize" : {
+      "description" : "Rows per page when paginating.",
+      "type" : "integer"
+    }
+  },
+  "title" : "notes_list: arguments",
+  "type" : "object"
+}

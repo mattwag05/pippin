@@ -6,7 +6,7 @@ import Foundation
 /// Reads newline-delimited JSON-RPC 2.0 messages from stdin and writes responses to stdout.
 /// Safe read-only tools (EventKit/Contacts — see `MCPInProcessTools`) run in-process;
 /// every other `tools/call` spawns `pippin <subcommand> --format agent` as a child process.
-/// Both paths return the same envelope-v1 JSON to the client.
+/// Both paths return the same agent envelope (see `AGENT_SCHEMA_VERSION`) to the client.
 public struct McpServerCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mcp-server",
@@ -24,11 +24,31 @@ public struct McpServerCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Print the tool registry as JSON and exit. Useful for debugging.")
     public var listTools: Bool = false
 
+    @Option(name: .long, help: "Expose only these tool groups, comma-separated (for example `calendar,reminders`). A group is a tool name up to its first underscore. Fewer tools means less context per agent turn. `batch` and `job` can run any command, so list them only if you want that.")
+    public var apps: String?
+
     public init() {}
 
+    /// The groups named by `--apps`, or nil for every tool.
+    func appFilter() throws -> Set<String>? {
+        guard let apps else { return nil }
+        let asked = Set(apps.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+        let known = Set(MCPToolRegistry.tools.map(MCPDispatcher.app(of:)))
+        let unknown = asked.subtracting(known).sorted()
+        guard !asked.isEmpty, unknown.isEmpty else {
+            throw ValidationError("--apps: unknown group \(unknown.joined(separator: ", ")). Known groups: \(known.sorted().joined(separator: ", ")).")
+        }
+        return asked
+    }
+
+    public func validate() throws {
+        _ = try appFilter()
+    }
+
     public func run() async throws {
+        let apps = try appFilter()
         if listTools {
-            try printToolListing()
+            try printToolListing(apps: apps)
             return
         }
 
@@ -61,7 +81,7 @@ public struct McpServerCommand: AsyncParsableCommand {
                 continue
             }
 
-            if let response = await MCPDispatcher.handle(request, pippinPath: pippinPath) {
+            if let response = await MCPDispatcher.handle(request, pippinPath: pippinPath, apps: apps) {
                 do {
                     try MCPStdioWriter.send(response)
                 } catch {
@@ -81,8 +101,8 @@ public struct McpServerCommand: AsyncParsableCommand {
         try? MCPStdioWriter.send(response)
     }
 
-    private func printToolListing() throws {
-        let descriptors = MCPToolRegistry.tools.map { $0.descriptor }
+    private func printToolListing(apps: Set<String>?) throws {
+        let descriptors = MCPDispatcher.exposed(MCPToolRegistry.tools, apps: apps).map { $0.descriptor }
         let result = MCPToolsListResult(tools: descriptors)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

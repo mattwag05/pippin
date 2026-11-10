@@ -1,0 +1,50 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List calendar events in a date range. Defaults to today.",
+  "properties" : {
+    "calendar" : {
+      "description" : "Calendar ID to filter by.",
+      "type" : "string"
+    },
+    "calendarName" : {
+      "description" : "Calendar name to filter by (case-insensitive).",
+      "type" : "string"
+    },
+    "cursor" : {
+      "description" : "Opaque next_cursor from a previous response.",
+      "type" : "string"
+    },
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "from" : {
+      "description" : "Start date (YYYY-MM-DD or ISO 8601).",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Max events (default: 50).",
+      "type" : "integer"
+    },
+    "page" : {
+      "description" : "1-based page number. Ignored when cursor is set.",
+      "type" : "integer"
+    },
+    "pageSize" : {
+      "description" : "Rows per page when paginating.",
+      "type" : "integer"
+    },
+    "range" : {
+      "description" : "Shorthand range: today, today+N, week, month.",
+      "type" : "string"
+    },
+    "to" : {
+      "description" : "End date (YYYY-MM-DD or ISO 8601).",
+      "type" : "string"
+    }
+  },
+  "title" : "calendar_events: arguments",
+  "type" : "object"
+}

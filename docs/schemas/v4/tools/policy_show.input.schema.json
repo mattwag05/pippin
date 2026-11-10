@@ -1,0 +1,10 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Show the safety policy this server applies: for every tool its rule (allow, deny, confirm) and rate limit, and whether they come from the policy file or the built-in default. Read-only; the policy file can only be edited by the user.",
+  "properties" : {
+
+  },
+  "title" : "policy_show: arguments",
+  "type" : "object"
+}

@@ -2,7 +2,7 @@ import ArgumentParser
 import Foundation
 
 /// In-process execution for the safe (non-JXA) read-only MCP tools: EventKit
-/// (Calendar/Reminders) and CNContactStore (Contacts) reads. These run the same
+/// (Calendar/Reminders), CNContactStore (Contacts) and chat.db (Messages) reads. These run the same
 /// `AgentCommand` the CLI runs, parsed from the same argv a child would get, so
 /// the two paths cannot drift. Everything wedge-prone (JXA, AI, browser, audio)
 /// and all writes stay on the child path, where a hard kill exists: a blocking
@@ -12,7 +12,7 @@ enum MCPInProcessTools {
     private struct InProcessRoot: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "pippin",
-            subcommands: [CalendarCommand.self, RemindersCommand.self, ContactsCommand.self]
+            subcommands: [CalendarCommand.self, RemindersCommand.self, ContactsCommand.self, MessagesCommand.self]
         )
     }
 
@@ -90,6 +90,15 @@ enum MCPInProcessTools {
         guard let bytes = try? JSONEncoder().encode(envelope) else {
             // A fixed struct of strings and ints; keep the result non-empty if encoding ever fails.
             return #"{"v":\#(AGENT_SCHEMA_VERSION),"status":"error","duration_ms":0,"error":{"code":"unknown_error","message":"failed to encode error envelope","next_step":{"retryable":false}}}"#
+        }
+        // A safety refusal carries structured fields (the confirm token and
+        // preview) beside its message.
+        if let details = (error as? SafetyError)?.details,
+           case var .object(root)? = try? JSONDecoder().decode(JSONValue.self, from: bytes),
+           case var .object(payload)? = root["error"] {
+            payload["details"] = .object(details)
+            root["error"] = .object(payload)
+            return ArgRedactor.canonicalJSON(.object(root))
         }
         return String(decoding: bytes, as: UTF8.self)
     }

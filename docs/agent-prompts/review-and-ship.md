@@ -6,7 +6,7 @@
 
 Review changes in this repository, fix any issues, then push and open a PR on GitHub. You have full authority to modify code to make it shippable.
 
-## Phase 1 — Inventory
+## Phase 1: Inventory
 
 1. `git status` and `git diff` (or `git diff --staged` if changes are staged) to see every change
 2. `git log --oneline -10` to understand recent commit history
@@ -14,14 +14,14 @@ Review changes in this repository, fix any issues, then push and open a PR on Gi
 4. Flag any mismatch between the diff and the changelog
 5. Run `make version` to confirm the current version
 
-## Phase 2 — Review & Fix
+## Phase 2: Review & Fix
 
 Work through each changed file. For anything that fails the bar below, fix it yourself before proceeding.
 
 ### Correctness
 - Logic matches the changelog description, no regressions
 - Bridge patterns followed: `enum` + `static` methods, `nonisolated(unsafe)` + DispatchGroup (intentional for Swift 6)
-- Async commands hop sync blocking work via `detachBlocking { ... }` — see `pippin/DetachBlocking.swift` and any `process.waitUntilExit` / `DispatchSemaphore.wait` / `sendSynchronousRequest` callsite
+- Async commands hop sync blocking work via `detachBlocking { ... }`: see `pippin/DetachBlocking.swift` and any `process.waitUntilExit` / `DispatchSemaphore.wait` / `sendSynchronousRequest` callsite
 - Commands return an `AgentResult` from `execute()` and never print; output is envelope v4 (`{v, status, duration_ms, partial?, warnings?, next_cursor?, data|error}`)
 - Progress goes to stderr; stdout carries only the envelope
 - Compound IDs use the `account||mailbox||numericId` format correctly
@@ -57,7 +57,7 @@ make build   # release build must succeed
 
 If a failure is demonstrably pre-existing and unrelated, document it in the PR body but do not block on it.
 
-## Phase 3 — Commit & Push
+## Phase 3: Commit & Push
 
 Once changes are clean:
 
@@ -82,7 +82,7 @@ Once changes are clean:
    git push -u origin <branch-name>
    ```
 
-## Phase 4 — Open PR on GitHub
+## Phase 4: Open PR on GitHub
 
 ```bash
 gh pr create --title "<short summary, under 70 chars>" --body "$(cat <<'EOF'
@@ -106,7 +106,7 @@ EOF
 
 Confirm the PR URL from the `gh` output.
 
-## Phase 5 — Post-Merge
+## Phase 5: Post-Merge
 
 After the PR is merged:
 
@@ -117,7 +117,7 @@ git pull --rebase origin main
 git push --tags origin
 ```
 
-## Phase 6 — Report
+## Phase 6: Report
 
 Output a terminal summary:
 - PR URL (or direct push confirmation)

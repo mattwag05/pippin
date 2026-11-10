@@ -1,0 +1,79 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Edit an existing calendar event. Only the fields you pass are changed.",
+  "properties" : {
+    "alert" : {
+      "description" : "New alert offset.",
+      "type" : "string"
+    },
+    "allDay" : {
+      "default" : false,
+      "description" : "Convert to an all-day event.",
+      "type" : "boolean"
+    },
+    "calendar" : {
+      "description" : "Move to this calendar (EventKit ID from calendar_list, not a name).",
+      "type" : "string"
+    },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "end" : {
+      "description" : "New end date/time.",
+      "type" : "string"
+    },
+    "id" : {
+      "description" : "Event ID from calendar_events / calendar_search.",
+      "type" : "string"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    },
+    "location" : {
+      "description" : "New location.",
+      "type" : "string"
+    },
+    "noAllDay" : {
+      "default" : false,
+      "description" : "Convert away from an all-day event.",
+      "type" : "boolean"
+    },
+    "notes" : {
+      "description" : "New notes.",
+      "type" : "string"
+    },
+    "occurrence" : {
+      "description" : "For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'.",
+      "type" : "string"
+    },
+    "span" : {
+      "description" : "For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series.",
+      "type" : "string"
+    },
+    "start" : {
+      "description" : "New start date/time.",
+      "type" : "string"
+    },
+    "title" : {
+      "description" : "New event title.",
+      "type" : "string"
+    },
+    "url" : {
+      "description" : "New URL.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id"
+  ],
+  "title" : "calendar_edit: arguments",
+  "type" : "object"
+}

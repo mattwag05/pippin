@@ -4,7 +4,7 @@
 
 ## Part 1: Tools to Install
 
-Install everything below in one pass. This covers Calendar, Reminders, Contacts, Messages, Notes, Finder/metadata, and general macOS scripting utilities — leaving Mail and Voice Memos for the custom CLIs described in Parts 2 and 3.
+Install everything below in one pass. This covers Calendar, Reminders, Contacts, Messages, Notes, Finder/metadata, and general macOS scripting utilities, leaving Mail and Voice Memos for the custom CLIs described in Parts 2 and 3.
 
 ### Core Apple App CLIs
 
@@ -15,19 +15,19 @@ gem install icalpal
 # Reminders (full CRUD, JSON output, battle-tested)
 brew install keith/formulae/reminders-cli
 
-# Contacts (query by name, returns name/email pairs — simple but reliable)
+# Contacts (query by name, returns name/email pairs: simple but reliable)
 brew install keith/formulae/contacts-cli
 
-# Messages — live watch + send + history with JSON output
+# Messages: live watch + send + history with JSON output
 brew install steipete/tap/imsg
 
-# Messages — bulk export/archival to HTML/TXT (separate use case from imsg)
+# Messages: bulk export/archival to HTML/TXT (separate use case from imsg)
 brew install imessage-exporter
 
-# Notes — full CRUD, JSON output, folder management
+# Notes: full CRUD, JSON output, folder management
 brew tap RhetTbull/macnotesapp && brew install macnotesapp
 
-# Finder tags — add/remove/search tags on files
+# Finder tags: add/remove/search tags on files
 brew install tag
 ```
 
@@ -37,7 +37,7 @@ brew install tag
 # Broad macOS file metadata (Finder comments, where-from URLs, MDItem attributes, JSON output)
 pipx install osxmetadata
 
-# Move to Trash safely (preserves "Put Back" — use instead of rm for user files)
+# Move to Trash safely (preserves "Put Back": use instead of rm for user files)
 brew install trash
 
 # Set default apps for file types/URL schemes (useful for scripted system config)
@@ -46,7 +46,7 @@ brew install duti
 # Bluetooth power + device management with --format json
 brew install blueutil
 
-# Mac App Store CLI — install, update, search apps
+# Mac App Store CLI: install, update, search apps
 brew install mas
 ```
 
@@ -56,7 +56,7 @@ brew install mas
 # Send macOS notifications from scripts with custom titles, sounds, and actions
 brew install terminal-notifier
 
-# Swift scripting with inline dependencies (for building custom tools, see Parts 2–3)
+# Swift scripting with inline dependencies (for building custom tools, see Parts 2 to 3)
 brew install mxcl/made/swift-sh
 ```
 
@@ -73,11 +73,11 @@ Grant these in **System Settings → Privacy & Security**, not just at the promp
 
 ---
 
-## Part 2: MVP PRD — `mail-cli`
+## Part 2: MVP PRD: `mail-cli`
 
 ### Summary
 
-A native macOS command-line tool for reading and sending Apple Mail messages with structured JSON output, enabling Mail.app to participate in N8N workflows, shell pipelines, and homelab automation — filling the gap left by the absence of any existing brew-installable Mail CLI.
+A native macOS command-line tool for reading and sending Apple Mail messages with structured JSON output, enabling Mail.app to participate in N8N workflows, shell pipelines, and homelab automation: filling the gap left by the absence of any existing brew-installable Mail CLI.
 
 ### Problem
 
@@ -142,11 +142,11 @@ mail-cli mark <message-id> --read / --unread
 
 ---
 
-## Part 3: MVP PRD — `voicememos-cli`
+## Part 3: MVP PRD: `voicememos-cli`
 
 ### Summary
 
-A macOS command-line tool for listing, exporting, and optionally transcribing Voice Memos by reading the app's internal SQLite database and media file store — enabling Voice Memos to be used as a quick capture mechanism that feeds into automation pipelines.
+A macOS command-line tool for listing, exporting, and optionally transcribing Voice Memos by reading the app's internal SQLite database and media file store: enabling Voice Memos to be used as a quick capture mechanism that feeds into automation pipelines.
 
 ### Problem
 
@@ -172,7 +172,7 @@ Voice Memos has no API and no AppleScript dictionary. Recordings accumulate with
 
 Build in **Python** (not Swift) because the core data access is SQLite queries against `~/Library/Application Support/com.apple.voicememos/Recordings/` and the database schema, not a framework API. Python's `sqlite3` stdlib handles this cleanly, and `subprocess` can call `whisper` or macOS `SpeechRecognition` for the optional transcription path.
 
-Package as a single-file script with `argparse` and a `pipx install` workflow for clean isolation. The SQLite schema is internal and undocumented, so isolate all schema assumptions in a `VoiceMemosDB` class with a version check against the known macOS 14/15 schema — this is the most likely breakage point across OS updates and should fail loudly with a clear error message rather than silently returning wrong data.
+Package as a single-file script with `argparse` and a `pipx install` workflow for clean isolation. The SQLite schema is internal and undocumented, so isolate all schema assumptions in a `VoiceMemosDB` class with a version check against the known macOS 14/15 schema: this is the most likely breakage point across OS updates and should fail loudly with a clear error message rather than silently returning wrong data.
 
 ### CLI Interface
 

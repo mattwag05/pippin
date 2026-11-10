@@ -1,0 +1,49 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Create a new reminder.",
+  "properties" : {
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "due" : {
+      "description" : "Due date/time (YYYY-MM-DD or ISO 8601).",
+      "type" : "string"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    },
+    "list" : {
+      "description" : "Target list ID (default: default list).",
+      "type" : "string"
+    },
+    "notes" : {
+      "description" : "Reminder notes.",
+      "type" : "string"
+    },
+    "priority" : {
+      "description" : "Priority: high, medium, low, none.",
+      "type" : "string"
+    },
+    "title" : {
+      "description" : "Reminder title.",
+      "type" : "string"
+    },
+    "url" : {
+      "description" : "Reminder URL.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "title"
+  ],
+  "title" : "reminders_create: arguments",
+  "type" : "object"
+}

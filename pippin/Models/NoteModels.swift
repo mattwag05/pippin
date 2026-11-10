@@ -8,6 +8,13 @@ public enum NotesBridgeError: LocalizedError, Sendable {
     /// instead of a generic `script_failed` (exit 5). Mirrors
     /// `ContactsBridgeError.contactNotFound`.
     case noteNotFound(String)
+    /// The note is already in Recently Deleted. Deleting it again purges it
+    /// permanently, so edit and delete refuse (sentinel
+    /// `NOTESBRIDGE_ERR_IN_TRASH: <id>`).
+    case noteInTrash(String)
+    /// `notes create --folder` named a folder that does not exist (sentinel
+    /// `NOTESBRIDGE_ERR_FOLDER_NOT_FOUND: <name>`).
+    case folderNotFound(String)
     case timeout
     case decodingFailed(String)
     case accessDenied
@@ -18,6 +25,11 @@ public enum NotesBridgeError: LocalizedError, Sendable {
             return "Notes automation script failed: \(msg.prefix(200))"
         case let .noteNotFound(id):
             return id.isEmpty ? "Note not found." : "Note not found: \(id)"
+        case let .noteInTrash(id):
+            return "Note \(id) is already in Recently Deleted. Deleting it again would purge it permanently; "
+                + "restore it in the Notes app before changing it."
+        case let .folderNotFound(name):
+            return "Notes folder not found: \(name). The note was not created."
         case .timeout: return "Notes automation timed out. Ensure Notes.app is running."
         case .decodingFailed: return "Failed to decode Notes response"
         case .accessDenied: return "Notes automation is not authorized. Grant Automation control of Notes and retry."
@@ -39,6 +51,8 @@ extension NotesBridgeError: RemediableError {
         switch self {
         case .scriptFailed: return "script_failed"
         case .noteNotFound: return "note_not_found"
+        case .noteInTrash: return "note_in_trash"
+        case .folderNotFound: return "folder_not_found"
         case .timeout: return "timeout"
         case .decodingFailed: return "decoding_failed"
         case .accessDenied: return "access_denied"
@@ -49,6 +63,9 @@ extension NotesBridgeError: RemediableError {
         switch self {
         case .scriptFailed: return .call(tool: "doctor", argv: ["doctor"])
         case .noteNotFound: return .call(tool: "notes_list", argv: ["notes", "list"])
+        case .noteInTrash:
+            return .human("Restore the note from Recently Deleted in the Notes app if it should be kept.")
+        case .folderNotFound: return .call(tool: "notes_folders", argv: ["notes", "folders"])
         case .timeout: return .retry(after: 5)
         case .decodingFailed: return .none
         case .accessDenied:
@@ -112,6 +129,20 @@ public struct NoteInfo: Codable, Sendable {
         self.creationDate = creationDate
         self.modificationDate = modificationDate
     }
+}
+
+/// What `notes edit` answers with. A body edit replaces the whole body unless
+/// `--append` is passed, so the lengths (characters of the note's HTML body)
+/// let a caller see how much text an edit removed, and `--dry-run` reports
+/// them without writing.
+public struct NoteEditResult: Codable, Sendable {
+    public let success: Bool
+    public let action: String
+    public let details: [String: String]
+    public let title: String
+    public let previousBodyLength: Int
+    public let newBodyLength: Int
+    public let dryRun: Bool
 }
 
 public struct NoteFolder: Codable, Sendable {

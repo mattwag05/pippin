@@ -1,0 +1,511 @@
+{
+  "tool": "apple-pim",
+  "version": "3.19.2",
+  "kind": "mcp",
+  "apps": [
+    "reminders",
+    "calendar",
+    "contacts",
+    "mail"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 67.3,
+    "tool_count": 5,
+    "manifest_chars": 22782,
+    "manifest_tokens": 7823,
+    "tools_with_description": 5,
+    "tools_with_annotations": 0
+  },
+  "speed": {
+    "reminders.lists": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 109.72,
+        "p50_ms": 111.57,
+        "p95_ms": 122.48,
+        "max_ms": 122.48
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 35.93,
+        "p50_ms": 36.67,
+        "p95_ms": 38.25,
+        "max_ms": 41.59
+      }
+    },
+    "reminders.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 117.07,
+        "p50_ms": 118.5,
+        "p95_ms": 118.79,
+        "max_ms": 118.79
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 41.17,
+        "p50_ms": 41.84,
+        "p95_ms": 43.57,
+        "max_ms": 44.28
+      }
+    },
+    "reminders.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 115.75,
+        "p50_ms": 116.74,
+        "p95_ms": 117.28,
+        "max_ms": 117.28
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 39.72,
+        "p50_ms": 40.48,
+        "p95_ms": 44.82,
+        "max_ms": 45.31
+      }
+    },
+    "calendar.calendars": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 110.51,
+        "p50_ms": 111.52,
+        "p95_ms": 121.31,
+        "max_ms": 121.31
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 35.64,
+        "p50_ms": 36.08,
+        "p95_ms": 36.57,
+        "max_ms": 36.68
+      }
+    },
+    "calendar.events": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 126.54,
+        "p50_ms": 128.11,
+        "p95_ms": 129.64,
+        "max_ms": 129.64
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 51.07,
+        "p50_ms": 51.63,
+        "p95_ms": 53.02,
+        "max_ms": 53.97
+      }
+    },
+    "calendar.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 118.3,
+        "p50_ms": 119.13,
+        "p95_ms": 122.15,
+        "max_ms": 122.15
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 42.14,
+        "p50_ms": 42.51,
+        "p95_ms": 45.08,
+        "max_ms": 46.83
+      }
+    },
+    "contacts.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 184.4,
+        "p50_ms": 189.13,
+        "p95_ms": 193.24,
+        "max_ms": 193.24
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 108.41,
+        "p50_ms": 109.43,
+        "p95_ms": 110.32,
+        "max_ms": 118.58
+      }
+    },
+    "contacts.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 216.05,
+        "p50_ms": 217.52,
+        "p95_ms": 219.51,
+        "max_ms": 219.51
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 140.11,
+        "p50_ms": 142.01,
+        "p95_ms": 151.77,
+        "max_ms": 151.85
+      }
+    },
+    "contacts.groups": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 131.16,
+        "p50_ms": 139.56,
+        "p95_ms": 141.89,
+        "max_ms": 141.89
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 56.3,
+        "p50_ms": 56.72,
+        "p95_ms": 58.5,
+        "max_ms": 58.98
+      }
+    },
+    "mail.accounts": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 157.89,
+        "p50_ms": 163.98,
+        "p95_ms": 256.38,
+        "max_ms": 256.38
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 74.13,
+        "p50_ms": 85.22,
+        "p95_ms": 92.01,
+        "max_ms": 92.15
+      }
+    },
+    "mail.mailboxes": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 78.86,
+        "p50_ms": 79.25,
+        "p95_ms": 86.3,
+        "max_ms": 86.3
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 5.72,
+        "p50_ms": 5.97,
+        "p95_ms": 8.68,
+        "max_ms": 10.32
+      }
+    },
+    "mail.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 0,
+          "error": 5,
+          "hang": 0
+        },
+        "n": 0,
+        "min_ms": null,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "first_error": "{\n  \"success\": false,\n  \"error\": \"Error: Mailbox not found: INBOX\\n\"\n}"
+      },
+      "warm": null
+    },
+    "mail.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 78.72,
+        "p50_ms": 79.49,
+        "p95_ms": 83.94,
+        "max_ms": 83.94
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 5.87,
+        "p50_ms": 6.01,
+        "p95_ms": 6.38,
+        "max_ms": 6.49
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "reminders.lists": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "reminders.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "reminders.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "calendar.calendars": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "calendar.events": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "calendar.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "contacts.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "contacts.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "contacts.groups": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "mail.accounts": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "mail.mailboxes": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "mail.list": {
+        "ok": 0,
+        "of": 8,
+        "distinct_record_sets": 0
+      },
+      "mail.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      }
+    },
+    "bad_input": {
+      "contacts.show": {
+        "outcome": "error",
+        "ms": 133.17,
+        "error_is_structured": true,
+        "detail": "{\n  \"success\": false,\n  \"error\": \"Error: Contact not found: PB-NOPE-0000\\n\"\n}"
+      },
+      "calendar.events": {
+        "outcome": "error",
+        "ms": 99.98,
+        "error_is_structured": true,
+        "detail": "{\n  \"success\": false,\n  \"error\": \"Error: Invalid start date: not-a-date\\n\"\n}"
+      },
+      "reminders.list": {
+        "outcome": "error",
+        "ms": 112.53,
+        "error_is_structured": true,
+        "detail": "{\n  \"success\": false,\n  \"error\": \"Error: Reminder list not found: PB-NO-SUCH-LIST\\n\"\n}"
+      }
+    }
+  },
+  "coverage": {
+    "reminders.lists": "yes",
+    "reminders.list": "yes",
+    "reminders.search": "yes",
+    "reminders.create": "claimed",
+    "reminders.edit": "claimed",
+    "reminders.complete": "claimed",
+    "reminders.delete": "claimed",
+    "calendar.calendars": "yes",
+    "calendar.events": "yes",
+    "calendar.search": "yes",
+    "calendar.create": "claimed",
+    "calendar.edit": "claimed",
+    "calendar.delete": "claimed",
+    "contacts.list": "yes",
+    "contacts.search": "yes",
+    "contacts.show": "claimed",
+    "contacts.create": "claimed",
+    "contacts.edit": "claimed",
+    "contacts.delete": "claimed",
+    "contacts.groups": "yes",
+    "notes.folders": "no",
+    "notes.list": "no",
+    "notes.search": "no",
+    "notes.show": "no",
+    "notes.create": "no",
+    "notes.edit": "no",
+    "notes.delete": "no",
+    "messages.chats": "no",
+    "messages.history": "no",
+    "messages.search": "no",
+    "messages.send": "no",
+    "mail.accounts": "yes",
+    "mail.mailboxes": "yes",
+    "mail.list": "claimed",
+    "mail.search": "yes",
+    "mail.show": "claimed",
+    "mail.send": "claimed",
+    "mail.move": "claimed",
+    "mail.mark": "claimed",
+    "mail.attachments": "no",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}

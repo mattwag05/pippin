@@ -1,0 +1,50 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "argv" : {
+        "items" : {
+          "type" : "string"
+        },
+        "type" : "array"
+      },
+      "duration_ms" : {
+        "type" : "integer"
+      },
+      "ended_at" : {
+        "type" : "string"
+      },
+      "error_code" : {
+        "type" : "string"
+      },
+      "exit_code" : {
+        "type" : "integer"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "pid" : {
+        "type" : "integer"
+      },
+      "started_at" : {
+        "type" : "string"
+      },
+      "status" : {
+        "type" : "string"
+      },
+      "v" : {
+        "type" : "integer"
+      }
+    },
+    "required" : [
+      "argv",
+      "id",
+      "started_at",
+      "status",
+      "v"
+    ],
+    "type" : "object"
+  },
+  "title" : "job_list: data",
+  "type" : "array"
+}

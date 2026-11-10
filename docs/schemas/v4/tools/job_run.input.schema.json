@@ -1,0 +1,32 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Fork a detached pippin sub-command as a background job. Returns {id, pid, status: \"running\"} immediately; poll via job_show or block via job_wait. Use this for slow work (memos summarize, actions extract) so the caller isn't blocked. The argv must be a command that has an MCP tool of its own; batch and job run cannot be nested.",
+  "properties" : {
+    "argv" : {
+      "description" : "Argv for the pippin child process (e.g. [\"memos\", \"summarize\", \"--all\"]).",
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "argv"
+  ],
+  "title" : "job_run: arguments",
+  "type" : "object"
+}

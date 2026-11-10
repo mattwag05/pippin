@@ -4,9 +4,9 @@
 
 ## Mission
 
-Conduct a comprehensive autonomous audit and improvement pass on the Pippin codebase — a macOS CLI toolkit (Swift 6, SPM) with 8 bridge modules for Apple app automation. Research the current state, identify issues, implement fixes, and deliver a structured changelog entry.
+Conduct a comprehensive autonomous audit and improvement pass on the Pippin codebase: a macOS CLI toolkit (Swift 6, SPM) with 8 bridge modules for Apple app automation. Research the current state, identify issues, implement fixes, and deliver a structured changelog entry.
 
-## Phase 1 — Reconnaissance
+## Phase 1: Reconnaissance
 
 Before making any changes:
 
@@ -19,7 +19,7 @@ Before making any changes:
 7. Check for open issues: `bd ready` (if beads is configured; skip if `bd` is not available)
 8. Read `docs/` for any active specs or design documents
 
-## Phase 2 — Audit
+## Phase 2: Audit
 
 Work through each category. For each finding, note the file, line, and severity.
 
@@ -67,30 +67,30 @@ Work through each category. For each finding, note the file, line, and severity.
 - Outdated packages in `Package.resolved`
 - Unused imports
 
-## Phase 3 — Fix
+## Phase 3: Fix
 
 For each issue found, in priority order:
 
-1. **Security** — fix immediately
-2. **Bugs** — fix
-3. **AX gaps** — fix (this is Pippin's primary consumer interface)
-4. **Bridge consistency** — fix if the inconsistency causes real problems
-5. **Code quality** — fix only clear wins (dead code, obvious duplication)
-6. **Test coverage** — add missing tests
+1. **Security**: fix immediately
+2. **Bugs**: fix
+3. **AX gaps**: fix (this is Pippin's primary consumer interface)
+4. **Bridge consistency**: fix if the inconsistency causes real problems
+5. **Code quality**: fix only clear wins (dead code, obvious duplication)
+6. **Test coverage**: add missing tests
 
 After each fix:
-- Run `make test` — all tests must pass (run it for the current count)
-- Run `make lint` — no formatting violations
+- Run `make test`: all tests must pass (run it for the current count)
+- Run `make lint`: no formatting violations
 - Verify `swift build -c release` succeeds
 
 **Do NOT:**
 - Modify `.env`, secrets, or `Package.resolved` without cause
 - Change external API contracts (CLI argument names, JSON output shapes)
-- Add comments about `nonisolated(unsafe)` — the pattern is intentional for Swift 6 strict concurrency
+- Add comments about `nonisolated(unsafe)`: the pattern is intentional for Swift 6 strict concurrency
 - Remove or rename public API without checking all call sites
 - Add typed error cases for JXA failures (they always arrive as `scriptFailed(String)`)
 
-## Phase 4 — Feature Development
+## Phase 4: Feature Development
 
 If no Security, Bug, or AX findings remain unresolved:
 
@@ -104,7 +104,7 @@ If no Security, Bug, or AX findings remain unresolved:
 4. Implement fully: logic, integration, and tests
 5. Validate end-to-end: `make test`, `make lint`, `make build`
 
-## Phase 5 — Changelog & Report
+## Phase 5: Changelog & Report
 
 Append a structured entry to `CHANGELOG.md` following the existing Keep a Changelog format:
 
@@ -134,6 +134,6 @@ Output a terminal summary:
 ## Constraints
 - Do NOT delete files or modify secrets/credentials
 - Do NOT change CLI argument names or JSON output shapes (breaking changes)
-- Do NOT bump the version — that's a separate release step
+- Do NOT bump the version: that's a separate release step
 - If a fix has high regression risk, document it as "Recommended Manual Fix" in the changelog instead of applying it
-- If you hit an obstacle, diagnose and work around it — do not stop and ask until you've exhausted alternatives
+- If you hit an obstacle, diagnose and work around it: do not stop and ask until you've exhausted alternatives

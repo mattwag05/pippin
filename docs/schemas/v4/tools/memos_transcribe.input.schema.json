@@ -1,0 +1,45 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Transcribe Voice Memos audio to text. Requires mlx-audio (see `pippin doctor`).",
+  "properties" : {
+    "all" : {
+      "default" : false,
+      "description" : "Transcribe every recording.",
+      "type" : "boolean"
+    },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "force" : {
+      "default" : false,
+      "description" : "Bypass transcript cache.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Memo UUID (omit with all=true).",
+      "type" : "string"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    },
+    "jobs" : {
+      "default" : 2,
+      "description" : "Parallel transcription jobs (default: 2).",
+      "type" : "integer"
+    },
+    "output" : {
+      "description" : "Directory to write .txt files (default: inline in JSON).",
+      "type" : "string"
+    }
+  },
+  "title" : "memos_transcribe: arguments",
+  "type" : "object"
+}

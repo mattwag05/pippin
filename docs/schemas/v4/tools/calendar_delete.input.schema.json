@@ -1,0 +1,43 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Delete a calendar event. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.",
+  "properties" : {
+    "confirm" : {
+      "default" : false,
+      "description" : "Must be true. Deletion cannot be undone.",
+      "type" : "boolean"
+    },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Event ID from calendar_events / calendar_search.",
+      "type" : "string"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    },
+    "occurrence" : {
+      "description" : "For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'.",
+      "type" : "string"
+    },
+    "span" : {
+      "description" : "For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id",
+    "confirm"
+  ],
+  "title" : "calendar_delete: arguments",
+  "type" : "object"
+}

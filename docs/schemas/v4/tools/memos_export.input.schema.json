@@ -1,0 +1,57 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Copy Voice Memos recording(s) to a directory, optionally with transcript sidecars.",
+  "properties" : {
+    "all" : {
+      "default" : false,
+      "description" : "Export every recording.",
+      "type" : "boolean"
+    },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "forceTranscribe" : {
+      "default" : false,
+      "description" : "Bypass transcript cache.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Memo UUID (omit with all=true).",
+      "type" : "string"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    },
+    "jobs" : {
+      "default" : 2,
+      "description" : "Parallel transcription jobs (default: 2).",
+      "type" : "integer"
+    },
+    "output" : {
+      "description" : "Destination directory (created if absent).",
+      "type" : "string"
+    },
+    "sidecarFormat" : {
+      "description" : "Sidecar format: txt (default), srt, markdown, rtf.",
+      "type" : "string"
+    },
+    "transcribe" : {
+      "default" : false,
+      "description" : "Transcribe audio and write sidecar.",
+      "type" : "boolean"
+    }
+  },
+  "required" : [
+    "output"
+  ],
+  "title" : "memos_export: arguments",
+  "type" : "object"
+}

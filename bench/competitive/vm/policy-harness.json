@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "reminders_delete": "allow",
+    "calendar_delete": "allow",
+    "contacts_delete": "allow",
+    "notes_delete": "allow"
+  }
+}

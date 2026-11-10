@@ -141,6 +141,7 @@ struct MCPInitializeResult: Encodable {
     let protocolVersion: String
     let capabilities: Capabilities
     let serverInfo: ServerInfo
+    let instructions: String
 }
 
 /// `tools/list` response payload.
@@ -153,6 +154,13 @@ struct MCPToolDescriptor: Encodable {
     let name: String
     let description: String
     let inputSchema: JSONValue
+    let annotations: Annotations
+
+    /// MCP tool annotations (spec 2025-03-26; older clients ignore the key).
+    struct Annotations: Encodable {
+        let readOnlyHint: Bool
+        let destructiveHint: Bool
+    }
 }
 
 /// `tools/call` response payload.

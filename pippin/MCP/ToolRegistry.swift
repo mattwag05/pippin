@@ -2,7 +2,19 @@ import Foundation
 
 /// One registered MCP tool. Schema + argv builder live side-by-side so they can't drift.
 struct MCPTool {
+    /// What a call can change. Drives the `tools/list` annotations and what a
+    /// timeout means: a read can be retried, a mutation may already have happened.
+    enum Effect: Equatable {
+        case readOnly
+        /// `verifyWith` names a read-only tool that takes no required arguments
+        /// and shows whether the change landed.
+        case mutating(verifyWith: String?)
+    }
+
     let name: String
+    /// Nil means unclassified, which the dispatcher treats as mutating.
+    /// `ToolRegistryTests` fails on a registered tool that leaves it nil.
+    let effect: Effect?
     let description: String
     let inputSchema: JSONValue
     /// Given the MCP `arguments` object (or nil), return the argv passed to the child
@@ -17,12 +29,14 @@ struct MCPTool {
 
     init(
         name: String,
+        effect: Effect? = nil,
         description: String,
         inputSchema: JSONValue,
         buildArgs: @escaping @Sendable (JSONValue?) throws -> [String],
         inProcess: (@Sendable ([String]) async throws -> String)? = nil
     ) {
         self.name = name
+        self.effect = effect
         self.description = description
         self.inputSchema = inputSchema
         self.buildArgs = buildArgs
@@ -30,7 +44,14 @@ struct MCPTool {
     }
 
     var descriptor: MCPToolDescriptor {
-        MCPToolDescriptor(name: name, description: description, inputSchema: inputSchema)
+        let readOnly = effect == .readOnly
+        // Every tool that is not read-only passes through `SafetyGate`, which
+        // accepts confirmToken and idempotencyKey for all of them.
+        return MCPToolDescriptor(
+            name: name, description: description,
+            inputSchema: readOnly ? inputSchema : SafetyGate.withReservedArguments(inputSchema),
+            annotations: .init(readOnlyHint: readOnly, destructiveHint: !readOnly)
+        )
     }
 }
 
@@ -71,7 +92,7 @@ enum ArgHelpers {
     static func appendIDOrAll(_ args: JSONValue?, into argv: inout [String]) throws {
         let all = bool(args, "all") == true
         if let id = string(args, "id") {
-            argv.append(id)
+            try argv.append(notFlagLike(id, "id"))
         } else if !all {
             throw MCPToolArgError.missingRequired("id (or all=true)")
         }
@@ -80,6 +101,21 @@ enum ArgHelpers {
 
     static func string(_ args: JSONValue?, _ key: String) -> String? {
         args?[key]?.stringValue
+    }
+
+    /// A required value passed as a bare positional (an id). These sit before
+    /// the options, where a `--` separator cannot go, so one that starts with
+    /// "-" would be parsed as a flag: an id of `--version` used to return the
+    /// version text as a successful result. No real id starts with "-".
+    static func positional(_ args: JSONValue?, _ key: String) throws -> String {
+        try notFlagLike(requiredString(args, key), key)
+    }
+
+    static func notFlagLike(_ value: String, _ key: String) throws -> String {
+        guard !value.hasPrefix("-") else {
+            throw MCPToolArgError.wrongType(field: key, expected: "a value that does not start with '-'")
+        }
+        return value
     }
 
     static func requiredString(_ args: JSONValue?, _ key: String) throws -> String {
@@ -311,6 +347,7 @@ enum MCPToolRegistry {
         let added = extra.map { (key: $0.key, flag: $0.flag, isInt: $0.isInt) }
         return MCPTool(
             name: tool.name,
+            effect: tool.effect,
             description: tool.description,
             inputSchema: .object(root),
             buildArgs: { args in
@@ -334,12 +371,14 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "mail_accounts",
+            effect: .readOnly,
             description: "List configured Apple Mail accounts.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("mail", "accounts") }
         ),
         MCPTool(
             name: "mail_mailboxes",
+            effect: .readOnly,
             description: "List mailboxes, optionally filtered to one account.",
             inputSchema: Schema.object(properties: [
                 "account": Schema.string("Mail account name."),
@@ -352,6 +391,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_list",
+            effect: .readOnly,
             description: "List messages in a mailbox. Defaults to INBOX, limit 20. Set preview to ~200 for agent scan workflows to avoid N+1 mail_show calls.",
             inputSchema: Schema.object(properties: [
                 "account": Schema.string("Mail account name."),
@@ -380,6 +420,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_activity",
+            effect: .readOnly,
             description: "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default). Use this for scan workflows instead of N calls to mail_list. Default is metadata-only (preview 0, sub-second); pass preview > 0 for body snippets, which force per-message body fetches (~30-40s).",
             inputSchema: Schema.object(properties: [
                 "account": Schema.string("Mail account name."),
@@ -403,6 +444,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_show",
+            effect: .readOnly,
             description: "Show one or more mail messages by compound ID (account||mailbox||numericId). Pass messageIds with 2+ IDs to batch-fetch in one call (single batched Mail fetch; data becomes an array).",
             inputSchema: Schema.object(
                 properties: [
@@ -414,9 +456,9 @@ enum MCPToolRegistry {
             buildArgs: { args in
                 var argv = pippinArgv("mail", "show")
                 if let ids = ArgHelpers.stringArray(args, "messageIds") {
-                    argv.append(contentsOf: ids)
+                    try argv.append(contentsOf: ids.map { try ArgHelpers.notFlagLike($0, "messageIds") })
                 } else if let id = ArgHelpers.string(args, "messageId") {
-                    argv.append(id)
+                    try argv.append(ArgHelpers.notFlagLike(id, "messageId"))
                 } else if let subject = ArgHelpers.string(args, "subject") {
                     argv.append(ArgHelpers.option("--subject", subject))
                 } else {
@@ -427,6 +469,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_verify",
+            effect: .readOnly,
             description: "Inspect a message's headers against the sender's historical baseline (DKIM domain/selector, Message-ID domain, Date TZ offset, SPF/DKIM/DMARC results). Returns per-dimension comparison, anomaly warnings, the full raw-source auth chain (every Received hop, all Authentication-Results instances, ARC set, DKIM signatures) in `authChain`, and a verdict. Use on any suspicious message before acting on its contents.",
             inputSchema: Schema.object(
                 properties: [
@@ -436,34 +479,38 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "verify")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 return argv
             }
         ),
         MCPTool(
             name: "mail_attachments",
+            effect: .mutating(verifyWith: nil),
             description: "List and download attachments for a message. When saveDir is omitted, attachments are written to pippin's cache directory (~/Library/Caches/pippin/attachments/<msg>/) and the paths are returned in `savedPath`; the agent can then read the files with its file tools.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list or mail_show output."),
                     "saveDir": Schema.string("Optional directory to save attachments into. If omitted, a pippin cache directory is used."),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "attachments")
-                let id = try ArgHelpers.requiredString(args, "messageId")
+                let id = try ArgHelpers.positional(args, "messageId")
                 argv.append(id)
                 if let dir = ArgHelpers.string(args, "saveDir") {
                     argv.append(ArgHelpers.option("--save-dir", dir))
                 } else {
                     argv.append("--save-to-cache")
                 }
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
         MCPTool(
             name: "mail_search",
+            effect: .readOnly,
             description: "Search messages by subject or sender. Use `from` for sender-only searches without body scanning. `body: true` performs the slower content scan; body-matched hits return a bodyPreview snippet.",
             inputSchema: Schema.object(
                 properties: [
@@ -508,49 +555,56 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "mail_mark",
-            description: "Mark a message as read or unread. Reversible — call again with the opposite `read` value.",
+            effect: .mutating(verifyWith: "mail_list"),
+            description: "Mark a message as read or unread. Reversible: call again with the opposite `read` value.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
                     "read": Schema.boolean("true marks the message read; false marks it unread."),
                     "dryRun": Schema.boolean("Report what would change without touching the message.", default: false),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId", "read"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "mark")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 guard let read = ArgHelpers.bool(args, "read") else {
                     throw MCPToolArgError.missingRequired("read")
                 }
                 // `mail mark` validate() rejects both-or-neither, so emit exactly one.
                 argv.append(read ? "--read" : "--unread")
                 argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
         MCPTool(
             name: "mail_move",
-            description: "Move a message to another mailbox in the same account — this is how you archive, trash, or file a message (pass the destination mailbox name from mail_mailboxes, e.g. Archive, Trash, Junk). Reversible by moving it back.",
+            effect: .mutating(verifyWith: "mail_list"),
+            description: "Move a message to another mailbox in the same account: this is how you archive, trash, or file a message (pass the destination mailbox name from mail_mailboxes, e.g. Archive, Trash, Junk). Reversible by moving it back.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
                     "to": Schema.string("Destination mailbox name, exactly as reported by mail_mailboxes (names differ per account, e.g. '[Gmail]/Trash')."),
                     "dryRun": Schema.boolean("Report what would move without touching the message.", default: false),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId", "to"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "move")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 try argv.append(ArgHelpers.option("--to", ArgHelpers.requiredString(args, "to")))
                 argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
         MCPTool(
             name: "mail_send",
-            description: "Send an email. Returns a preview and sends NOTHING unless confirm=true — review the preview, then call again with confirm=true to deliver.",
+            effect: .mutating(verifyWith: "mail_list"),
+            description: "Send an email. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
             inputSchema: Schema.object(
                 properties: [
                     "to": Schema.stringArray("Recipient email addresses."),
@@ -582,7 +636,8 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_reply",
-            description: "Reply to a message. Returns a preview and sends NOTHING unless confirm=true — review the preview, then call again with confirm=true to deliver.",
+            effect: .mutating(verifyWith: "mail_list"),
+            description: "Reply to a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
@@ -593,12 +648,13 @@ enum MCPToolRegistry {
                     "from": Schema.string("Sending account name (from mail_accounts)."),
                     "attach": Schema.stringArray("Absolute paths of files to attach."),
                     "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId", "body"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "reply")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 try argv.append(ArgHelpers.option("--body", ArgHelpers.requiredString(args, "body")))
                 argv += ArgHelpers.optionPerElement(args, "to", flagName: "--to")
                 argv += ArgHelpers.optionPerElement(args, "cc", flagName: "--cc")
@@ -606,12 +662,14 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
                 argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
                 argv += ArgHelpers.dryRunUnlessConfirmed(args)
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
         MCPTool(
             name: "mail_forward",
-            description: "Forward a message. Returns a preview and sends NOTHING unless confirm=true — review the preview, then call again with confirm=true to deliver.",
+            effect: .mutating(verifyWith: "mail_list"),
+            description: "Forward a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
@@ -622,12 +680,13 @@ enum MCPToolRegistry {
                     "from": Schema.string("Sending account name (from mail_accounts)."),
                     "attach": Schema.stringArray("Absolute paths of files to attach."),
                     "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
+                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
                 ],
                 required: ["messageId", "to"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "forward")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 guard let to = ArgHelpers.stringArray(args, "to") else {
                     throw MCPToolArgError.missingRequired("to")
                 }
@@ -638,11 +697,13 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
                 argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
                 argv += ArgHelpers.dryRunUnlessConfirmed(args)
+                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
                 return argv
             }
         ),
         MCPTool(
             name: "mail_triage",
+            effect: .readOnly,
             description: "AI triage of a mailbox: classify and prioritize messages from metadata only (no bodies read). Read-only.",
             inputSchema: Schema.object(
                 properties: [
@@ -670,7 +731,8 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_apply_rules",
-            description: "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true — review the plan first. Messages newer than minAgeDays are never touched.",
+            effect: .mutating(verifyWith: "mail_list"),
+            description: "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true (or, where the policy sets this tool to confirm, the confirmToken a first call returns): review the plan first. Messages newer than minAgeDays are never touched.",
             inputSchema: Schema.object(
                 properties: [
                     "account": Schema.string("Filter by account name."),
@@ -701,6 +763,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_sanitize",
+            effect: .readOnly,
             description: "Scan a message for prompt-injection patterns before acting on its contents. Read-only. Use alongside mail_verify on anything suspicious.",
             inputSchema: Schema.object(
                 properties: [
@@ -713,7 +776,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "sanitize")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 argv += ArgHelpers.flagIfTrue(args, "aiAssisted", flagName: "--ai-assisted")
                 argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
                 argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
@@ -722,6 +785,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "mail_extract",
+            effect: .readOnly,
             description: "Extract structured data (dates, amounts, contacts, action items) from one message using AI. Read-only.",
             inputSchema: Schema.object(
                 properties: [
@@ -733,7 +797,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "extract")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
                 argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
                 return argv
@@ -741,6 +805,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_list",
+            effect: .readOnly,
             description: "List calendars configured in Apple Calendar.",
             inputSchema: Schema.object(properties: [
                 "type": Schema.string("Filter by type: local, calDAV, exchange, subscription, birthday."),
@@ -754,6 +819,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_events",
+            effect: .readOnly,
             description: "List calendar events in a date range. Defaults to today.",
             inputSchema: Schema.object(properties: [
                 "from": Schema.string("Start date (YYYY-MM-DD or ISO 8601)."),
@@ -777,6 +843,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_today",
+            effect: .readOnly,
             description: "List events scheduled for today.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("calendar", "today") },
@@ -784,6 +851,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_remaining",
+            effect: .readOnly,
             description: "List events from now until end of today.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("calendar", "remaining") },
@@ -791,6 +859,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_upcoming",
+            effect: .readOnly,
             description: "List events for the next 7 days.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("calendar", "upcoming") },
@@ -798,6 +867,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_search",
+            effect: .readOnly,
             description: "Search calendar events by text across a date range.",
             inputSchema: Schema.object(
                 properties: [
@@ -822,6 +892,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_create",
+            effect: .mutating(verifyWith: "calendar_upcoming"),
             description: "Create a new calendar event.",
             inputSchema: Schema.object(
                 properties: [
@@ -856,21 +927,25 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "calendar_show",
+            effect: .readOnly,
             description: "Show full details for a single event by ID (from calendar_events / calendar_search).",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Event ID."),
+                    "occurrence": Schema.string("For a recurring event: which occurrence to show, as the occurrenceDate from calendar_events."),
                 ],
                 required: ["id"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "show")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
+                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
                 return argv
             }
         ),
         MCPTool(
             name: "calendar_edit",
+            effect: .mutating(verifyWith: "calendar_upcoming"),
             description: "Edit an existing calendar event. Only the fields you pass are changed.",
             inputSchema: Schema.object(
                 properties: [
@@ -883,7 +958,8 @@ enum MCPToolRegistry {
                     "notes": Schema.string("New notes."),
                     "url": Schema.string("New URL."),
                     "alert": Schema.string("New alert offset."),
-                    "span": Schema.string("For a recurring event: 'this' (default) or 'future'."),
+                    "span": Schema.string("For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
+                    "occurrence": Schema.string("For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
                     "allDay": Schema.boolean("Convert to an all-day event.", default: false),
                     "noAllDay": Schema.boolean("Convert away from an all-day event.", default: false),
                 ],
@@ -891,7 +967,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "edit")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
                 argv += ArgHelpers.optionIfString(args, "start", flagName: "--start")
                 argv += ArgHelpers.optionIfString(args, "end", flagName: "--end")
@@ -901,6 +977,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
                 argv += ArgHelpers.optionIfString(args, "alert", flagName: "--alert")
                 argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
+                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
                 argv += ArgHelpers.flagIfTrue(args, "allDay", flagName: "--all-day")
                 argv += ArgHelpers.flagIfTrue(args, "noAllDay", flagName: "--no-all-day")
                 return argv
@@ -908,25 +985,29 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_delete",
-            description: "Delete a calendar event. IRREVERSIBLE — fails unless confirm=true.",
+            effect: .mutating(verifyWith: "calendar_upcoming"),
+            description: "Delete a calendar event. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Event ID from calendar_events / calendar_search."),
                     "confirm": Schema.boolean("Must be true. Deletion cannot be undone.", default: false),
-                    "span": Schema.string("For a recurring event: 'this' (default) or 'future'."),
+                    "span": Schema.string("For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
+                    "occurrence": Schema.string("For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
                 ],
                 required: ["id", "confirm"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
+                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
                 return argv
             }
         ),
         MCPTool(
             name: "calendar_smart_create",
+            effect: .mutating(verifyWith: "calendar_upcoming"),
             description: "Create an event from a natural-language description using AI (resolves calendar names, unlike calendar_create which needs an EventKit ID). Reports scheduling conflicts unless allowConflicts is set.",
             inputSchema: Schema.object(
                 properties: [
@@ -953,6 +1034,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_agenda",
+            effect: .readOnly,
             description: "AI-generated briefing of upcoming events. Read-only.",
             inputSchema: Schema.object(
                 properties: [
@@ -972,6 +1054,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "calendar_conflicts",
+            effect: .readOnly,
             description: "Find overlapping events in a time window. Read-only. Use before scheduling.",
             inputSchema: Schema.object(
                 properties: [
@@ -991,6 +1074,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "reminders_lists",
+            effect: .readOnly,
             description: "List all Apple Reminders lists.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("reminders", "lists") },
@@ -998,6 +1082,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "reminders_list",
+            effect: .readOnly,
             description: "List reminders, defaulting to incomplete items.",
             inputSchema: Schema.object(properties: [
                 "list": Schema.string("Reminder list ID from reminders_lists."),
@@ -1025,6 +1110,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "reminders_show",
+            effect: .readOnly,
             description: "Show full details for a single reminder by ID.",
             inputSchema: Schema.object(
                 properties: ["id": Schema.string("Reminder ID or prefix.")],
@@ -1032,13 +1118,14 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "show")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             },
             inProcess: MCPInProcessTools.execute
         ),
         MCPTool(
             name: "reminders_search",
+            effect: .readOnly,
             description: "Search reminders by title/notes text.",
             inputSchema: Schema.object(
                 properties: [
@@ -1062,6 +1149,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "reminders_create",
+            effect: .mutating(verifyWith: "reminders_list"),
             description: "Create a new reminder.",
             inputSchema: Schema.object(
                 properties: [
@@ -1088,6 +1176,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "reminders_complete",
+            effect: .mutating(verifyWith: "reminders_list"),
             description: "Mark a reminder as completed.",
             inputSchema: Schema.object(
                 properties: ["id": Schema.string("Reminder ID or prefix.")],
@@ -1095,7 +1184,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "complete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             }
         ),
@@ -1104,6 +1193,7 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "reminders_edit",
+            effect: .mutating(verifyWith: "reminders_list"),
             description: "Edit an existing reminder. Only the fields you pass are changed.",
             inputSchema: Schema.object(
                 properties: [
@@ -1119,7 +1209,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "edit")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
                 argv += ArgHelpers.optionIfString(args, "due", flagName: "--due")
                 argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
@@ -1131,7 +1221,8 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "reminders_delete",
-            description: "Delete a reminder. IRREVERSIBLE — fails unless confirm=true. To just tick one off, use reminders_complete instead.",
+            effect: .mutating(verifyWith: "reminders_list"),
+            description: "Delete a reminder. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. To just tick one off, use reminders_complete instead.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Reminder ID from reminders_list / reminders_search."),
@@ -1141,13 +1232,14 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 return argv
             }
         ),
         MCPTool(
             name: "reminders_smart_create",
+            effect: .mutating(verifyWith: "reminders_list"),
             description: "Create a reminder from a natural-language description using AI (resolves list names, unlike reminders_create which needs an EventKit ID).",
             inputSchema: Schema.object(
                 properties: [
@@ -1172,6 +1264,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "contacts_search",
+            effect: .readOnly,
             description: "Search contacts by name (default), email, or phone.",
             inputSchema: Schema.object(
                 properties: [
@@ -1203,6 +1296,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "contacts_show",
+            effect: .readOnly,
             description: "Show full contact details by identifier.",
             inputSchema: Schema.object(
                 properties: ["identifier": Schema.string("Contact identifier.")],
@@ -1210,7 +1304,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("contacts", "show")
-                try argv.append(ArgHelpers.requiredString(args, "identifier"))
+                try argv.append(ArgHelpers.positional(args, "identifier"))
                 return argv
             },
             inProcess: MCPInProcessTools.execute
@@ -1220,6 +1314,7 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "contacts_list",
+            effect: .readOnly,
             description: "List all contacts with their primary email and phone. Read-only. Prefer contacts_search when you know who you're looking for.",
             inputSchema: Schema.object(
                 properties: [
@@ -1235,12 +1330,14 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "contacts_groups",
+            effect: .readOnly,
             description: "List contact groups. Read-only.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("contacts", "groups") }
         ),
         MCPTool(
             name: "contacts_create",
+            effect: .mutating(verifyWith: "contacts_list"),
             description: "Create a new contact. Every field is optional, but supply at least a name or an email so the card is identifiable.",
             inputSchema: Schema.object(
                 properties: [
@@ -1261,6 +1358,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "contacts_edit",
+            effect: .mutating(verifyWith: "contacts_list"),
             description: "Edit an existing contact. Only the fields you pass are changed.",
             inputSchema: Schema.object(
                 properties: [
@@ -1276,14 +1374,15 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("contacts", "edit")
-                try argv.append(ArgHelpers.requiredString(args, "identifier"))
+                try argv.append(ArgHelpers.positional(args, "identifier"))
                 argv += ArgHelpers.contactFieldOptions(args)
                 return argv
             }
         ),
         MCPTool(
             name: "contacts_delete",
-            description: "Delete a contact. IRREVERSIBLE — fails unless confirm=true.",
+            effect: .mutating(verifyWith: "contacts_list"),
+            description: "Delete a contact. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.",
             inputSchema: Schema.object(
                 properties: [
                     "identifier": Schema.string("Contact identifier from contacts_search / contacts_show."),
@@ -1293,13 +1392,14 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("contacts", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "identifier"))
+                try argv.append(ArgHelpers.positional(args, "identifier"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 return argv
             }
         ),
         MCPTool(
             name: "notes_list",
+            effect: .readOnly,
             description: "List Apple Notes, defaulting to 50 most recently modified.",
             inputSchema: Schema.object(properties: [
                 "folder": Schema.string("Filter by folder name."),
@@ -1314,6 +1414,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "notes_search",
+            effect: .readOnly,
             description: "Search notes by title or body content.",
             inputSchema: Schema.object(
                 properties: [
@@ -1334,6 +1435,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "notes_show",
+            effect: .readOnly,
             description: "Show full details of a note by ID (returns plainText, not HTML).",
             inputSchema: Schema.object(
                 properties: ["id": Schema.string("Note ID from notes_list.")],
@@ -1341,18 +1443,20 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("notes", "show")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             }
         ),
         MCPTool(
             name: "notes_folders",
+            effect: .readOnly,
             description: "List all Apple Notes folders.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("notes", "folders") }
         ),
         MCPTool(
             name: "notes_create",
+            effect: .mutating(verifyWith: "notes_list"),
             description: "Create a new Apple Note.",
             inputSchema: Schema.object(
                 properties: [
@@ -1375,7 +1479,8 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "notes_edit",
-            description: "Edit an existing note's title or body (replaces, or appends with append=true).",
+            effect: .mutating(verifyWith: "notes_list"),
+            description: "Edit an existing note's title or body. body REPLACES the whole note body unless append=true; pass dryRun=true first to see the current and resulting body length without writing.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Note ID from notes_list."),
@@ -1383,6 +1488,7 @@ enum MCPToolRegistry {
                     "body": Schema.string("New body. Plain text; newlines become formatted HTML unless html=true."),
                     "append": Schema.boolean("Append body instead of replacing.", default: false),
                     "html": Schema.boolean("Treat body as raw HTML (skip plain-text-to-HTML conversion).", default: false),
+                    "dryRun": Schema.boolean("Report title, previousBodyLength and newBodyLength without writing.", default: false),
                 ],
                 required: ["id"]
             ),
@@ -1393,6 +1499,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "body", flagName: "--body")
                 argv += ArgHelpers.flagIfTrue(args, "append", flagName: "--append")
                 argv += ArgHelpers.flagIfTrue(args, "html", flagName: "--html")
+                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
                 ArgHelpers.appendPositionalLast(id, into: &argv)
                 return argv
             }
@@ -1402,7 +1509,8 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "notes_delete",
-            description: "Move a note to Recently Deleted. Fails unless confirm=true. Recoverable from Recently Deleted for 30 days.",
+            effect: .mutating(verifyWith: "notes_list"),
+            description: "Move a note to Recently Deleted. The first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. Recoverable from Recently Deleted for 30 days.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Note ID from notes_list / notes_search."),
@@ -1412,13 +1520,14 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("notes", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 return argv
             }
         ),
         MCPTool(
             name: "messages_list",
+            effect: .readOnly,
             description: "List recent Apple Messages conversations (most recent first). Read-only.",
             inputSchema: Schema.object(properties: [
                 "sinceHours": Schema.integer("Only conversations with a message in the last N hours (default: 48).", default: 48),
@@ -1429,10 +1538,12 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfInt(args, "sinceHours", flagName: "--since-hours")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.execute
         ),
         MCPTool(
             name: "messages_search",
+            effect: .readOnly,
             description: "Search Messages bodies by substring. Read-only.",
             inputSchema: Schema.object(
                 properties: [
@@ -1449,10 +1560,12 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 ArgHelpers.appendPositionalLast(query, into: &argv)
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.execute
         ),
         MCPTool(
             name: "messages_show",
+            effect: .readOnly,
             description: "Show messages in a conversation thread by GUID. Read-only.",
             inputSchema: Schema.object(
                 properties: [
@@ -1463,14 +1576,16 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("messages", "show")
-                try argv.append(ArgHelpers.requiredString(args, "conversationId"))
+                try argv.append(ArgHelpers.positional(args, "conversationId"))
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv
-            }
+            },
+            inProcess: MCPInProcessTools.execute
         ),
         MCPTool(
             name: "messages_send",
-            description: "Draft a message (DRAFT ONLY — MCP clients cannot trigger autonomous delivery).",
+            effect: .mutating(verifyWith: "messages_list"),
+            description: "Draft a message (DRAFT ONLY: MCP clients cannot trigger autonomous delivery).",
             inputSchema: Schema.object(
                 properties: [
                     "to": Schema.string("Recipient handle or chat GUID."),
@@ -1491,12 +1606,14 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "messages_exclude_list",
-            description: "Show the thread exclude list — conversations hidden from every messages_* read. Read-only.",
+            effect: .readOnly,
+            description: "Show the thread exclude list: conversations hidden from every messages_* read. Read-only.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("messages", "exclude", "list") }
         ),
         MCPTool(
             name: "messages_exclude_add",
+            effect: .mutating(verifyWith: "messages_exclude_list"),
             description: "Hide a conversation from every messages_* read by adding its thread GUID to the exclude list.",
             inputSchema: Schema.object(
                 properties: [
@@ -1506,12 +1623,13 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("messages", "exclude", "add")
-                try argv.append(ArgHelpers.requiredString(args, "thread"))
+                try argv.append(ArgHelpers.positional(args, "thread"))
                 return argv
             }
         ),
         MCPTool(
             name: "messages_exclude_remove",
+            effect: .mutating(verifyWith: "messages_exclude_list"),
             description: "Un-hide a conversation by removing its thread GUID from the exclude list.",
             inputSchema: Schema.object(
                 properties: [
@@ -1521,12 +1639,13 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("messages", "exclude", "remove")
-                try argv.append(ArgHelpers.requiredString(args, "thread"))
+                try argv.append(ArgHelpers.positional(args, "thread"))
                 return argv
             }
         ),
         MCPTool(
             name: "memos_list",
+            effect: .readOnly,
             description: "List Voice Memos recordings (most recent first).",
             inputSchema: Schema.object(properties: [
                 "since": Schema.string("Only recordings on or after YYYY-MM-DD."),
@@ -1541,6 +1660,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "memos_info",
+            effect: .readOnly,
             description: "Show full metadata for a single Voice Memos recording by ID.",
             inputSchema: Schema.object(
                 properties: ["id": Schema.string("Memo UUID from memos_list output.")],
@@ -1548,12 +1668,13 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("memos", "info")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             }
         ),
         MCPTool(
             name: "memos_export",
+            effect: .mutating(verifyWith: nil),
             description: "Copy Voice Memos recording(s) to a directory, optionally with transcript sidecars.",
             inputSchema: Schema.object(
                 properties: [
@@ -1580,6 +1701,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "memos_transcribe",
+            effect: .mutating(verifyWith: nil),
             description: "Transcribe Voice Memos audio to text. Requires mlx-audio (see `pippin doctor`).",
             inputSchema: Schema.object(properties: [
                 "id": Schema.string("Memo UUID (omit with all=true)."),
@@ -1599,6 +1721,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "memos_capture_to_reminders",
+            effect: .mutating(verifyWith: "reminders_list"),
             description: "Transcribe a Voice Memos recording, extract action items via the configured LLM, and create Reminders. Commits by default in agent mode; pass dryRun=true to preview.",
             inputSchema: Schema.object(properties: [
                 "memo": Schema.string("Memo UUID or prefix (default: most recent recording)."),
@@ -1619,6 +1742,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "memos_summarize",
+            effect: .mutating(verifyWith: nil),
             description: "Summarize a Voice Memos recording using the configured AI provider.",
             inputSchema: Schema.object(properties: [
                 "id": Schema.string("Memo UUID (omit with all=true)."),
@@ -1649,23 +1773,30 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "memos_delete",
-            description: "Delete a voice memo — both the database row and the audio file. IRREVERSIBLE — fails unless confirm=true. Consider memos_export first.",
+            effect: .mutating(verifyWith: "memos_list"),
+            description: "Delete a voice memo: its audio file moves to the Trash and its database row is removed. Fails unless confirm=true, and refuses while the Voice Memos app is running. Pass dryRun=true (with confirm=false) to see which recording an id names without changing anything.",
             inputSchema: Schema.object(
                 properties: [
-                    "id": Schema.string("Memo ID from memos_list."),
-                    "confirm": Schema.boolean("Must be true. The audio file is unrecoverable.", default: false),
+                    "id": Schema.string("Memo ID from memos_list, or an unambiguous prefix of it."),
+                    "confirm": Schema.boolean("Must be true to delete. The audio is recoverable from the Trash; the recording's entry is not.", default: false),
+                    "dryRun": Schema.boolean("Report the recording that would be deleted and change nothing.", default: false),
                 ],
                 required: ["id", "confirm"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("memos", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
-                try argv += ArgHelpers.forceFromConfirm(args)
+                try argv.append(ArgHelpers.positional(args, "id"))
+                if ArgHelpers.bool(args, "dryRun") == true {
+                    argv.append("--dry-run")
+                } else {
+                    try argv += ArgHelpers.forceFromConfirm(args)
+                }
                 return argv
             }
         ),
         MCPTool(
             name: "digest",
+            effect: .readOnly,
             description: "Aggregated daily digest: unread mail, today's calendar events, due and overdue reminders, and recently modified notes.",
             inputSchema: Schema.object(properties: [
                 "mailLimit": Schema.integer("Max unread messages per mail account (default: 5).", default: 5),
@@ -1685,7 +1816,8 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "actions_extract",
-            description: "Scan recent Sent mail and recently-modified Notes for commitments you made (\"I'll send you…\", \"I'll follow up…\") and emit draft reminders with a confidence score. Read-only by default; set create=true to also create the reminders in a list. Slow (per-batch AI calls): under MCP the AI pass is bounded to ~50s and returns partial results with a timedOut warning — lower limit/days or run via job_run for an exhaustive scan.",
+            effect: .mutating(verifyWith: "reminders_list"),
+            description: "Scan recent Sent mail and recently-modified Notes for commitments you made (\"I'll send you…\", \"I'll follow up…\") and emit draft reminders with a confidence score. Read-only by default; set create=true to also create the reminders in a list. Slow (per-batch AI calls): under MCP the AI pass is bounded to ~50s and returns partial results with a timedOut warning: lower limit/days or run via job_run for an exhaustive scan.",
             inputSchema: Schema.object(properties: [
                 "days": Schema.integer("Days back to scan (1-90, default 7).", default: 7),
                 "mail": Schema.boolean("Include Sent mail as a source.", default: true),
@@ -1720,12 +1852,14 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "status",
+            effect: .readOnly,
             description: "System dashboard: accounts, events, reminders, permissions.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("status") }
         ),
         MCPTool(
             name: "doctor",
+            effect: .readOnly,
             description: "Check pippin's system requirements and permissions.",
             inputSchema: Schema.empty,
             buildArgs: { _ in pippinArgv("doctor") }
@@ -1735,12 +1869,13 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "job_run",
-            description: "Fork a detached pippin sub-command as a background job. Returns {job_id, pid, status: \"running\"} immediately — poll via job_show or block via job_wait. Use this for slow work (mail index, memos summarize, actions extract) so the caller isn't blocked.",
+            effect: .mutating(verifyWith: "job_list"),
+            description: "Fork a detached pippin sub-command as a background job. Returns {id, pid, status: \"running\"} immediately; poll via job_show or block via job_wait. Use this for slow work (memos summarize, actions extract) so the caller isn't blocked. The argv must be a command that has an MCP tool of its own; batch and job run cannot be nested.",
             inputSchema: Schema.object(
                 properties: [
                     "argv": .object([
                         "type": .string("array"),
-                        "description": .string("Argv for the pippin child process (e.g. [\"mail\", \"index\"])."),
+                        "description": .string("Argv for the pippin child process (e.g. [\"memos\", \"summarize\", \"--all\"])."),
                         "items": .object(["type": .string("string")]),
                     ]),
                 ],
@@ -1756,6 +1891,7 @@ enum MCPToolRegistry {
                     }
                     return s
                 }
+                try MCPCommandPolicy.check(argv)
                 var out = pippinArgv("job", "run")
                 out.append("--")
                 out.append(contentsOf: argv)
@@ -1764,7 +1900,8 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "job_show",
-            description: "Show a job's status + stdout/stderr tails. Use prefix match (e.g. first 6 chars) to save tokens.",
+            effect: .readOnly,
+            description: "Show a job's status + stdout/stderr tails. Use prefix match (e.g. first 6 chars) to save tokens. status error with error_code runner_lost means the job's process died without recording a result.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Job id or unambiguous prefix."),
@@ -1774,17 +1911,22 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("job", "show")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 argv += ArgHelpers.optionIfInt(args, "tail", flagName: "--tail")
                 return argv
             }
         ),
         MCPTool(
             name: "job_list",
+            effect: .readOnly,
             description: "List recent background jobs. Filter by status to find only running/failed jobs.",
             inputSchema: Schema.object(properties: [
                 "limit": Schema.integer("Maximum jobs to return (default: 20).", default: 20),
-                "status": Schema.string("Filter: running, done, error, killed."),
+                "status": .object([
+                    "type": .string("string"),
+                    "description": .string("Filter: running, done, error, killed."),
+                    "enum": .array(["running", "done", "error", "killed"].map { .string($0) }),
+                ]),
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("job", "list")
@@ -1795,6 +1937,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "job_wait",
+            effect: .readOnly,
             description: "Block until a job reaches a terminal state. Prefer this over polling when you know the job is quick. Returns AgentError.wait_timed_out if deadline hits.",
             inputSchema: Schema.object(
                 properties: [
@@ -1805,7 +1948,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("job", "wait")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 // Must end before the 60s child cap or the kill loses the job status.
                 argv.append(ArgHelpers.option("--timeout", String(min(ArgHelpers.int(args, "timeout") ?? 50, 50))))
                 return argv
@@ -1816,12 +1959,13 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "batch",
-            description: "Run multiple pippin commands concurrently in one call. Use this to fan out (e.g. fetch mail + calendar + reminders simultaneously) instead of sequential tool calls. Each entry's response is its own envelope.",
+            effect: .mutating(verifyWith: nil),
+            description: "Run multiple pippin commands concurrently in one call. Use this to fan out (e.g. fetch mail + calendar + reminders simultaneously) instead of sequential tool calls. Each entry's response is its own envelope. An entry must be a command that has an MCP tool of its own (same flags as the CLI); batch and job run cannot be nested, and anything else returns a per-entry error.",
             inputSchema: Schema.object(
                 properties: [
                     "entries": .object([
                         "type": .string("array"),
-                        "description": .string("Array of {cmd, args} entries — each runs as `pippin <cmd> [args...] --format agent`."),
+                        "description": .string("Array of {cmd, args} entries: each runs as `pippin <cmd> [args...] --format agent`."),
                         "items": Schema.object(
                             properties: [
                                 "cmd": Schema.string("Top-level pippin subcommand (e.g. mail, calendar, reminders)."),
@@ -1848,6 +1992,53 @@ enum MCPToolRegistry {
                 }
                 var argv = pippinArgv("batch", "--entries", json)
                 argv += ArgHelpers.optionIfInt(args, "concurrency", flagName: "--concurrency")
+                return argv
+            }
+        ),
+
+        // MARK: Safety (policy, action log, undo)
+
+        MCPTool(
+            name: "policy_show",
+            effect: .readOnly,
+            description: "Show the safety policy this server applies: for every tool its rule (allow, deny, confirm) and rate limit, and whether they come from the policy file or the built-in default. Read-only; the policy file can only be edited by the user.",
+            inputSchema: Schema.empty,
+            buildArgs: { _ in pippinArgv("policy", "show") }
+        ),
+        MCPTool(
+            name: "action_log",
+            effect: .readOnly,
+            description: "List the mutating tool calls this server ran or refused, newest first: id, time, tool, arguments (bodies and secrets shown only as length and hash), policy rule, outcome, and whether the action can be undone. Pass an entry's id to undo.",
+            inputSchema: Schema.object(properties: [
+                "limit": Schema.integer("Maximum actions to return (default: 50).", default: 50),
+                "since": Schema.string("Only actions at or after this time: YYYY-MM-DD or ISO 8601."),
+                "tool": Schema.string("Only actions of this tool, e.g. mail_send."),
+                "cursor": Schema.string("Opaque next_cursor from a previous response."),
+                "pageSize": Schema.integer("Rows per page when paginating."),
+                "page": Schema.integer("1-based page number. Ignored when cursor is set."),
+            ]),
+            buildArgs: { args in
+                var argv = pippinArgv("log")
+                argv += ArgHelpers.optionIfInt(args, "pageSize", flagName: "--page-size")
+                argv += ArgHelpers.optionIfInt(args, "page", flagName: "--page")
+                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
+                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
+                argv += ArgHelpers.optionIfString(args, "tool", flagName: "--tool")
+                argv += ArgHelpers.optionIfString(args, "cursor", flagName: "--cursor")
+                return argv
+            }
+        ),
+        MCPTool(
+            name: "undo",
+            effect: .mutating(verifyWith: "action_log"),
+            description: "Reverse one logged action by its id from action_log, where its entry says undo.supported=true (mail move and mark, reminders complete and edit, calendar, notes and contacts edit). Refuses with undo_target_changed if the target was changed since. Sends and deletes cannot be undone.",
+            inputSchema: Schema.object(
+                properties: ["id": Schema.string("Action id from action_log.")],
+                required: ["id"]
+            ),
+            buildArgs: { args in
+                var argv = pippinArgv("undo")
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             }
         ),

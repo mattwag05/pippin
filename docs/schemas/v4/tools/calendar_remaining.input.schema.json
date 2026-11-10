@@ -1,0 +1,13 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List events from now until end of today.",
+  "properties" : {
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    }
+  },
+  "title" : "calendar_remaining: arguments",
+  "type" : "object"
+}

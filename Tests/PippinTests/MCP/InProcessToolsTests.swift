@@ -17,13 +17,14 @@ final class InProcessToolsTests: XCTestCase {
         "calendar_remaining", "calendar_upcoming", "calendar_search",
         "reminders_lists", "reminders_list", "reminders_show", "reminders_search",
         "contacts_search", "contacts_show",
+        "messages_list", "messages_search", "messages_show",
     ]
 
     // MARK: - Registry wiring
 
     func testRegistryToolCount() {
         XCTAssertEqual(
-            MCPToolRegistry.tools.count, 76,
+            MCPToolRegistry.tools.count, 79,
             "update this count when adding/removing MCP tools (and docs/mcp-server.md)"
         )
     }
@@ -59,6 +60,7 @@ final class InProcessToolsTests: XCTestCase {
         let canned = #"{"v":1,"status":"ok","duration_ms":3,"data":[]}"#
         let fake = MCPTool(
             name: "fake_tool",
+            effect: .readOnly,
             description: "test double",
             inputSchema: Schema.empty,
             buildArgs: { _ in ["fake", "--format", "agent"] },
@@ -75,6 +77,7 @@ final class InProcessToolsTests: XCTestCase {
         }
         let fake = MCPTool(
             name: "fake_tool",
+            effect: .readOnly,
             description: "test double",
             inputSchema: Schema.empty,
             buildArgs: { _ in ["fake", "--format", "agent"] },
@@ -97,7 +100,7 @@ final class InProcessToolsTests: XCTestCase {
         XCTAssertTrue(isError)
         let error = try XCTUnwrap(decodeObject(text)["error"] as? [String: Any])
         XCTAssertEqual(error["code"] as? String, "missing_required")
-        XCTAssertEqual(error["message"] as? String, "Missing required argument: id")
+        XCTAssertEqual(error["message"] as? String, "Missing required argument: 'id'.")
     }
 
     // MARK: - Live-store envelope parity (ok or access_denied, both envelope v1)
@@ -175,6 +178,7 @@ final class InProcessToolsTests: XCTestCase {
         let name = "deadline_tool_\(UUID().uuidString)"
         let slow = MCPTool(
             name: name,
+            effect: .readOnly,
             description: "test double",
             inputSchema: Schema.empty,
             buildArgs: { _ in [] },
@@ -207,6 +211,8 @@ final class InProcessToolsTests: XCTestCase {
         "reminders_search": #"{"query":"zz-no-such-reminder"}"#,
         "contacts_search": #"{"query":"zz-no-such-contact"}"#,
         "contacts_show": #"{"identifier":"zz-no-such-contact"}"#,
+        "messages_search": #"{"query":"zz-no-such-message","sinceHours":1}"#,
+        "messages_show": #"{"conversationId":"zz-no-such-chat"}"#,
     ]
 
     private func inProcessArgvs() throws -> [(name: String, argv: [String])] {
@@ -244,7 +250,9 @@ final class InProcessToolsTests: XCTestCase {
     func testCLIAndInProcessEnvelopesAreEquivalent() async throws {
         CLIIntegrationTests.setUp()
         let binary = try XCTUnwrap(CLIIntegrationTests.binaryURL, "pippin binary not found; run `swift build` first")
-        for (name, argv) in try inProcessArgvs() {
+        // Messages is left out: its live chat.db changes between the two calls and
+        // a failure would print the user's conversations. The VM fixture run covers it.
+        for (name, argv) in try inProcessArgvs() where !name.hasPrefix("messages_") {
             let cli = CLIIntegrationTests.runProcess(binary.path, args: argv)
             let inProcess: String
             if name.hasPrefix("contacts_") {

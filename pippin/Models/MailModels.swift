@@ -22,6 +22,8 @@ public enum MailBridgeError: LocalizedError, Sendable {
     case invalidMessageId(String)
     case invalidMailbox(String)
     case accessDenied
+    /// `--expect-message-id` did not match the message the id now resolves to.
+    case messageIdentityMismatch
 
     public var errorDescription: String? {
         switch self {
@@ -41,6 +43,8 @@ public enum MailBridgeError: LocalizedError, Sendable {
         case let .invalidMessageId(id): return "Invalid message id: \(id)"
         case let .invalidMailbox(name): return "Invalid mailbox name: \(name)"
         case .accessDenied: return "Mail automation is not authorized. Grant Automation control of Mail and retry."
+        case .messageIdentityMismatch:
+            return "This id now names a different message than the expected Message-ID. Nothing was changed. Re-run `pippin mail list` or `mail search` to get the current id."
         }
     }
 
@@ -69,13 +73,14 @@ extension MailBridgeError: RemediableError {
         case .invalidMessageId: return "invalid_message_id"
         case .invalidMailbox: return "invalid_mailbox"
         case .accessDenied: return "access_denied"
+        case .messageIdentityMismatch: return "message_identity_mismatch"
         }
     }
 
     public var nextStep: NextStep {
         switch self {
         case .scriptFailed: return .call(tool: "doctor", argv: ["doctor"])
-        case .messageNotFound: return .call(tool: "mail_list", argv: ["mail", "list"])
+        case .messageNotFound, .messageIdentityMismatch: return .call(tool: "mail_list", argv: ["mail", "list"])
         case .accountNotFound: return .call(tool: "mail_accounts", argv: ["mail", "accounts"])
         case .searchIncomplete, .decodingFailed, .invalidMessageId: return .none
         case .timeout: return .retry(after: 5)
@@ -122,6 +127,9 @@ public struct MailMessage: Codable, Sendable {
     public let attachments: [Attachment]? // only populated by `show`
     public let fromContact: String? // Apple Contacts display name for the sender, when resolved
     public let headerAnomalies: [String]? // derived by `show` (pippin-0pk); nil when nothing anomalous
+    /// RFC Message-ID without angle brackets. Unlike `id`, it never comes to
+    /// name a different message; pass it as `--expect-message-id` when mutating.
+    public let messageIdHeader: String?
 
     public init(
         id: String,
@@ -141,7 +149,8 @@ public struct MailMessage: Codable, Sendable {
         headers: [String: String]? = nil,
         attachments: [Attachment]? = nil,
         fromContact: String? = nil,
-        headerAnomalies: [String]? = nil
+        headerAnomalies: [String]? = nil,
+        messageIdHeader: String? = nil
     ) {
         self.id = id
         self.account = account
@@ -161,6 +170,7 @@ public struct MailMessage: Codable, Sendable {
         self.attachments = attachments
         self.fromContact = fromContact
         self.headerAnomalies = headerAnomalies
+        self.messageIdHeader = messageIdHeader
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -183,6 +193,7 @@ public struct MailMessage: Codable, Sendable {
         try container.encodeIfPresent(attachments, forKey: .attachments)
         try container.encodeIfPresent(fromContact, forKey: .fromContact)
         try container.encodeIfPresent(headerAnomalies, forKey: .headerAnomalies)
+        try container.encodeIfPresent(messageIdHeader, forKey: .messageIdHeader)
     }
 }
 
@@ -200,7 +211,7 @@ public extension MailMessage {
             from: from, to: to, date: date, receivedAt: receivedAt, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: preview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
-            fromContact: fromContact, headerAnomalies: headerAnomalies
+            fromContact: fromContact, headerAnomalies: headerAnomalies, messageIdHeader: messageIdHeader
         )
     }
 
@@ -212,7 +223,7 @@ public extension MailMessage {
             from: from, to: to, date: date, receivedAt: receivedAt, read: read, body: body,
             size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
-            fromContact: contact, headerAnomalies: headerAnomalies
+            fromContact: contact, headerAnomalies: headerAnomalies, messageIdHeader: messageIdHeader
         )
     }
 
@@ -226,7 +237,8 @@ public extension MailMessage {
             size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
             fromContact: fromContact,
-            headerAnomalies: warnings.isEmpty ? nil : warnings
+            headerAnomalies: warnings.isEmpty ? nil : warnings,
+            messageIdHeader: messageIdHeader
         )
     }
 
@@ -243,7 +255,8 @@ public extension MailMessage {
             size: size, hasAttachment: hasAttachment, bodyPreview: bodyPreview,
             htmlBody: htmlBody, headers: headers, attachments: attachments,
             fromContact: fromContact,
-            headerAnomalies: warnings.isEmpty ? nil : warnings
+            headerAnomalies: warnings.isEmpty ? nil : warnings,
+            messageIdHeader: messageIdHeader
         )
     }
 }
@@ -257,13 +270,15 @@ public struct Attachment: Codable, Sendable {
     public let name: String
     public let mimeType: String
     public let size: Int
-    public let savedPath: String? // nil unless --save-dir was used
+    public let savedPath: String? // nil unless --save-dir was used and the save worked
+    public let saveError: String? // why a requested save did not happen; omitted otherwise
 
-    public init(name: String, mimeType: String, size: Int, savedPath: String? = nil) {
+    public init(name: String, mimeType: String, size: Int, savedPath: String? = nil, saveError: String? = nil) {
         self.name = name
         self.mimeType = mimeType
         self.size = size
         self.savedPath = savedPath
+        self.saveError = saveError
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -272,6 +287,7 @@ public struct Attachment: Codable, Sendable {
         try container.encode(mimeType, forKey: .mimeType)
         try container.encode(size, forKey: .size)
         try container.encodeIfPresent(savedPath, forKey: .savedPath)
+        try container.encodeIfPresent(saveError, forKey: .saveError)
     }
 }
 

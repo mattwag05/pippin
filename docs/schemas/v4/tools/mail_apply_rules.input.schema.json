@@ -1,0 +1,59 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true (or, where the policy sets this tool to confirm, the confirmToken a first call returns): review the plan first. Messages newer than minAgeDays are never touched.",
+  "properties" : {
+    "account" : {
+      "description" : "Filter by account name.",
+      "type" : "string"
+    },
+    "confirm" : {
+      "default" : false,
+      "description" : "Set true to actually move/mark. Omitted or false returns the plan only.",
+      "type" : "boolean"
+    },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    },
+    "mailbox" : {
+      "description" : "Mailbox to scan (default: INBOX).",
+      "type" : "string"
+    },
+    "maxActions" : {
+      "default" : 200,
+      "description" : "Cap on messages actuated per run (default: 200). Oldest first.",
+      "type" : "integer"
+    },
+    "minAgeDays" : {
+      "default" : 14,
+      "description" : "Never touch messages newer than this many days (default: 14).",
+      "type" : "integer"
+    },
+    "rulesFile" : {
+      "description" : "Path to a triage-rules.json (default: ~/.config/pippin/triage-rules.json).",
+      "type" : "string"
+    },
+    "scanLimit" : {
+      "default" : 500,
+      "description" : "Messages to enumerate from the mailbox (default: 500).",
+      "type" : "integer"
+    },
+    "skipUnread" : {
+      "default" : false,
+      "description" : "Leave unread messages alone.",
+      "type" : "boolean"
+    }
+  },
+  "title" : "mail_apply_rules: arguments",
+  "type" : "object"
+}

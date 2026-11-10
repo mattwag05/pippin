@@ -272,7 +272,7 @@ public struct MailTriage: AgentCommand {
 
 // MARK: - Extract
 
-public struct MailExtract: AgentCommand {
+public struct MailExtract: AgentCommand, AIFlagged {
     public static let configuration = CommandConfiguration(
         commandName: "extract",
         abstract: "Extract structured data (dates, amounts, contacts, action items) from a message."
@@ -281,14 +281,7 @@ public struct MailExtract: AgentCommand {
     @Argument(help: "Message ID (from `pippin mail list`).")
     public var messageId: String
 
-    @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
-    public var provider: String?
-
-    @Option(name: .long, help: "Model name (provider-specific default).")
-    public var model: String?
-
-    @Option(name: .customLong("api-key"), help: "API key for Claude provider.")
-    public var apiKey: String?
+    @OptionGroup public var ai: AIOptions
 
     @OptionGroup public var output: OutputOptions
 

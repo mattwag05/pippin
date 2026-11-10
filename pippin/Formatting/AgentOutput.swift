@@ -19,7 +19,7 @@ public let AGENT_SCHEMA_VERSION = 4
 // MARK: - Envelope types
 
 /// Success envelope — wraps the original payload under `data`.
-/// Shape: {"v":3,"status":"ok","duration_ms":234,"data":<payload>}
+/// Shape: {"v":4,"status":"ok","duration_ms":234,"data":<payload>}
 /// Optional `warnings` array surfaces non-fatal advisories (e.g. "scan exceeded
 /// soft timeout, returning partial results"). Optional `partial: true` marks a
 /// result set that is incomplete (soft timeout / scan-window shortfall) so
@@ -100,6 +100,15 @@ public struct AgentErrorEnvelope: Encodable {
 
 // MARK: - Print helpers
 
+/// The encoder for everything that goes under `data`. A `Date` a payload
+/// leaves to the encoder comes out as an ISO 8601 string like every other date
+/// in the envelope, not as Foundation's default seconds since 2001.
+func agentPayloadEncoder() -> JSONEncoder {
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    return encoder
+}
+
 /// Compact JSON for agent consumption, wrapped in the envelope.
 ///
 /// - Parameters:
@@ -122,7 +131,7 @@ public func agentJSON(
         partial: partial,
         nextCursor: nextCursor
     )
-    return try String(decoding: JSONEncoder().encode(envelope), as: UTF8.self)
+    return try String(decoding: agentPayloadEncoder().encode(envelope), as: UTF8.self)
 }
 
 /// String form of the projected ok-envelope. The single definition of the
@@ -237,7 +246,7 @@ public struct AgentError: Encodable {
 }
 
 /// Print a structured JSON error to stdout for agent consumers, wrapped in
-/// envelope v1.
+/// the current envelope (`AGENT_SCHEMA_VERSION`).
 ///
 /// - Parameters:
 ///   - error: the underlying Swift error.

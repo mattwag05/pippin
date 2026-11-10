@@ -1,0 +1,1738 @@
+{
+  "envelope_schema" : "envelope.schema.json",
+  "envelope_version" : 4,
+  "tools" : [
+    {
+      "arguments" : {
+
+      },
+      "cli" : "pippin mail accounts",
+      "effect" : "read",
+      "input_schema" : "tools/mail_accounts.input.schema.json",
+      "name" : "mail_accounts",
+      "output_schema" : "tools/mail_accounts.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "account" : [
+          "--account"
+        ]
+      },
+      "cli" : "pippin mail mailboxes",
+      "effect" : "read",
+      "input_schema" : "tools/mail_mailboxes.input.schema.json",
+      "name" : "mail_mailboxes",
+      "output_schema" : "tools/mail_mailboxes.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "account" : [
+          "--account"
+        ],
+        "after" : [
+          "--after"
+        ],
+        "before" : [
+          "--before"
+        ],
+        "cursor" : [
+          "--cursor"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "mailbox" : [
+          "--mailbox"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ],
+        "preview" : [
+          "--preview"
+        ],
+        "unread" : [
+          "--unread"
+        ]
+      },
+      "cli" : "pippin mail list",
+      "effect" : "read",
+      "input_schema" : "tools/mail_list.input.schema.json",
+      "name" : "mail_list",
+      "output_schema" : "tools/mail_list.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "account" : [
+          "--account"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "mailboxes" : [
+          "--mailboxes"
+        ],
+        "preview" : [
+          "--preview"
+        ],
+        "since" : [
+          "--since"
+        ]
+      },
+      "cli" : "pippin mail activity",
+      "effect" : "read",
+      "input_schema" : "tools/mail_activity.input.schema.json",
+      "name" : "mail_activity",
+      "output_schema" : "tools/mail_activity.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "messageId" : [
+          "<0>"
+        ],
+        "messageIds" : [
+          "<0>"
+        ],
+        "subject" : [
+          "--subject"
+        ]
+      },
+      "cli" : "pippin mail show",
+      "effect" : "read",
+      "input_schema" : "tools/mail_show.input.schema.json",
+      "name" : "mail_show",
+      "output_schema" : null,
+      "output_schema_absent_because" : "One message object, an array of them for messageIds, or {message, summary|scan}; no single model."
+    },
+    {
+      "arguments" : {
+        "messageId" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin mail verify",
+      "effect" : "read",
+      "input_schema" : "tools/mail_verify.input.schema.json",
+      "name" : "mail_verify",
+      "output_schema" : "tools/mail_verify.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "expectMessageId" : [
+          "--expect-message-id"
+        ],
+        "messageId" : [
+          "<0>"
+        ],
+        "saveDir" : [
+          "--save-dir"
+        ]
+      },
+      "cli" : "pippin mail attachments",
+      "effect" : "write",
+      "input_schema" : "tools/mail_attachments.input.schema.json",
+      "name" : "mail_attachments",
+      "output_schema" : "tools/mail_attachments.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "account" : [
+          "--account"
+        ],
+        "after" : [
+          "--after"
+        ],
+        "before" : [
+          "--before"
+        ],
+        "body" : [
+          "--body"
+        ],
+        "cursor" : [
+          "--cursor"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "from" : [
+          "--from"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "mailbox" : [
+          "--mailbox"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ],
+        "preview" : [
+          "--preview"
+        ],
+        "query" : [
+          "<0>"
+        ],
+        "semantic" : [
+          "--semantic"
+        ],
+        "to" : [
+          "--to"
+        ]
+      },
+      "cli" : "pippin mail search",
+      "effect" : "read",
+      "input_schema" : "tools/mail_search.input.schema.json",
+      "name" : "mail_search",
+      "output_schema" : "tools/mail_search.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "dryRun" : [
+          "--dry-run"
+        ],
+        "expectMessageId" : [
+          "--expect-message-id"
+        ],
+        "messageId" : [
+          "<0>"
+        ],
+        "read" : [
+          "--read"
+        ]
+      },
+      "cli" : "pippin mail mark",
+      "effect" : "write",
+      "input_schema" : "tools/mail_mark.input.schema.json",
+      "name" : "mail_mark",
+      "output_schema" : "tools/mail_mark.output.schema.json",
+      "verify_with" : "mail_list"
+    },
+    {
+      "arguments" : {
+        "dryRun" : [
+          "--dry-run"
+        ],
+        "expectMessageId" : [
+          "--expect-message-id"
+        ],
+        "messageId" : [
+          "<0>"
+        ],
+        "to" : [
+          "--to"
+        ]
+      },
+      "cli" : "pippin mail move",
+      "effect" : "write",
+      "input_schema" : "tools/mail_move.input.schema.json",
+      "name" : "mail_move",
+      "output_schema" : "tools/mail_move.output.schema.json",
+      "verify_with" : "mail_list"
+    },
+    {
+      "arguments" : {
+        "attach" : [
+          "--attach"
+        ],
+        "bcc" : [
+          "--bcc"
+        ],
+        "body" : [
+          "--body"
+        ],
+        "cc" : [
+          "--cc"
+        ],
+        "confirm" : [
+          "--confirm"
+        ],
+        "from" : [
+          "--from"
+        ],
+        "subject" : [
+          "--subject"
+        ],
+        "to" : [
+          "--to"
+        ]
+      },
+      "cli" : "pippin mail send",
+      "effect" : "write",
+      "input_schema" : "tools/mail_send.input.schema.json",
+      "name" : "mail_send",
+      "output_schema" : "tools/mail_send.output.schema.json",
+      "verify_with" : "mail_list"
+    },
+    {
+      "arguments" : {
+        "attach" : [
+          "--attach"
+        ],
+        "bcc" : [
+          "--bcc"
+        ],
+        "body" : [
+          "--body"
+        ],
+        "cc" : [
+          "--cc"
+        ],
+        "confirm" : [
+          "--confirm"
+        ],
+        "expectMessageId" : [
+          "--expect-message-id"
+        ],
+        "from" : [
+          "--from"
+        ],
+        "messageId" : [
+          "<0>"
+        ],
+        "to" : [
+          "--to"
+        ]
+      },
+      "cli" : "pippin mail reply",
+      "effect" : "write",
+      "input_schema" : "tools/mail_reply.input.schema.json",
+      "name" : "mail_reply",
+      "output_schema" : "tools/mail_reply.output.schema.json",
+      "verify_with" : "mail_list"
+    },
+    {
+      "arguments" : {
+        "attach" : [
+          "--attach"
+        ],
+        "bcc" : [
+          "--bcc"
+        ],
+        "body" : [
+          "--body"
+        ],
+        "cc" : [
+          "--cc"
+        ],
+        "confirm" : [
+          "--confirm"
+        ],
+        "expectMessageId" : [
+          "--expect-message-id"
+        ],
+        "from" : [
+          "--from"
+        ],
+        "messageId" : [
+          "<0>"
+        ],
+        "to" : [
+          "--to"
+        ]
+      },
+      "cli" : "pippin mail forward",
+      "effect" : "write",
+      "input_schema" : "tools/mail_forward.input.schema.json",
+      "name" : "mail_forward",
+      "output_schema" : "tools/mail_forward.output.schema.json",
+      "verify_with" : "mail_list"
+    },
+    {
+      "arguments" : {
+        "account" : [
+          "--account"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "mailbox" : [
+          "--mailbox"
+        ],
+        "model" : [
+          "--model"
+        ],
+        "noRules" : [
+          "--no-rules"
+        ],
+        "provider" : [
+          "--provider"
+        ],
+        "rulesFile" : [
+          "--rules-file"
+        ]
+      },
+      "cli" : "pippin mail triage",
+      "effect" : "read",
+      "input_schema" : "tools/mail_triage.input.schema.json",
+      "name" : "mail_triage",
+      "output_schema" : "tools/mail_triage.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "account" : [
+          "--account"
+        ],
+        "confirm" : [
+          "--live"
+        ],
+        "mailbox" : [
+          "--mailbox"
+        ],
+        "maxActions" : [
+          "--max-actions"
+        ],
+        "minAgeDays" : [
+          "--min-age-days"
+        ],
+        "rulesFile" : [
+          "--rules-file"
+        ],
+        "scanLimit" : [
+          "--scan-limit"
+        ],
+        "skipUnread" : [
+          "--skip-unread"
+        ]
+      },
+      "cli" : "pippin mail apply-rules",
+      "effect" : "write",
+      "input_schema" : "tools/mail_apply_rules.input.schema.json",
+      "name" : "mail_apply_rules",
+      "output_schema" : "tools/mail_apply_rules.output.schema.json",
+      "verify_with" : "mail_list"
+    },
+    {
+      "arguments" : {
+        "aiAssisted" : [
+          "--ai-assisted"
+        ],
+        "messageId" : [
+          "<0>"
+        ],
+        "model" : [
+          "--model"
+        ],
+        "provider" : [
+          "--provider"
+        ]
+      },
+      "cli" : "pippin mail sanitize",
+      "effect" : "read",
+      "input_schema" : "tools/mail_sanitize.input.schema.json",
+      "name" : "mail_sanitize",
+      "output_schema" : "tools/mail_sanitize.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "messageId" : [
+          "<0>"
+        ],
+        "model" : [
+          "--model"
+        ],
+        "provider" : [
+          "--provider"
+        ]
+      },
+      "cli" : "pippin mail extract",
+      "effect" : "read",
+      "input_schema" : "tools/mail_extract.input.schema.json",
+      "name" : "mail_extract",
+      "output_schema" : "tools/mail_extract.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "type" : [
+          "--type"
+        ]
+      },
+      "cli" : "pippin calendar list",
+      "effect" : "read",
+      "input_schema" : "tools/calendar_list.input.schema.json",
+      "name" : "calendar_list",
+      "output_schema" : "tools/calendar_list.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "calendar" : [
+          "--calendar"
+        ],
+        "calendarName" : [
+          "--calendar-name"
+        ],
+        "cursor" : [
+          "--cursor"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "from" : [
+          "--from"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ],
+        "range" : [
+          "--range"
+        ],
+        "to" : [
+          "--to"
+        ]
+      },
+      "cli" : "pippin calendar events",
+      "effect" : "read",
+      "input_schema" : "tools/calendar_events.input.schema.json",
+      "name" : "calendar_events",
+      "output_schema" : "tools/calendar_events.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "fields" : [
+          "--fields"
+        ]
+      },
+      "cli" : "pippin calendar today",
+      "effect" : "read",
+      "input_schema" : "tools/calendar_today.input.schema.json",
+      "name" : "calendar_today",
+      "output_schema" : "tools/calendar_today.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "fields" : [
+          "--fields"
+        ]
+      },
+      "cli" : "pippin calendar remaining",
+      "effect" : "read",
+      "input_schema" : "tools/calendar_remaining.input.schema.json",
+      "name" : "calendar_remaining",
+      "output_schema" : "tools/calendar_remaining.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "cursor" : [
+          "--cursor"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ]
+      },
+      "cli" : "pippin calendar upcoming",
+      "effect" : "read",
+      "input_schema" : "tools/calendar_upcoming.input.schema.json",
+      "name" : "calendar_upcoming",
+      "output_schema" : "tools/calendar_upcoming.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "calendarName" : [
+          "--calendar-name"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "from" : [
+          "--from"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "query" : [
+          "--query"
+        ],
+        "to" : [
+          "--to"
+        ]
+      },
+      "cli" : "pippin calendar search",
+      "effect" : "read",
+      "input_schema" : "tools/calendar_search.input.schema.json",
+      "name" : "calendar_search",
+      "output_schema" : "tools/calendar_search.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "alert" : [
+          "--alert"
+        ],
+        "allDay" : [
+          "--all-day"
+        ],
+        "calendar" : [
+          "--calendar"
+        ],
+        "end" : [
+          "--end"
+        ],
+        "location" : [
+          "--location"
+        ],
+        "notes" : [
+          "--notes"
+        ],
+        "start" : [
+          "--start"
+        ],
+        "title" : [
+          "--title"
+        ],
+        "url" : [
+          "--url"
+        ]
+      },
+      "cli" : "pippin calendar create",
+      "effect" : "write",
+      "input_schema" : "tools/calendar_create.input.schema.json",
+      "name" : "calendar_create",
+      "output_schema" : "tools/calendar_create.output.schema.json",
+      "verify_with" : "calendar_upcoming"
+    },
+    {
+      "arguments" : {
+        "id" : [
+          "<0>"
+        ],
+        "occurrence" : [
+          "--occurrence"
+        ]
+      },
+      "cli" : "pippin calendar show",
+      "effect" : "read",
+      "input_schema" : "tools/calendar_show.input.schema.json",
+      "name" : "calendar_show",
+      "output_schema" : "tools/calendar_show.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "alert" : [
+          "--alert"
+        ],
+        "allDay" : [
+          "--all-day"
+        ],
+        "calendar" : [
+          "--calendar"
+        ],
+        "end" : [
+          "--end"
+        ],
+        "id" : [
+          "<0>"
+        ],
+        "location" : [
+          "--location"
+        ],
+        "noAllDay" : [
+          "--no-all-day"
+        ],
+        "notes" : [
+          "--notes"
+        ],
+        "occurrence" : [
+          "--occurrence"
+        ],
+        "span" : [
+          "--span"
+        ],
+        "start" : [
+          "--start"
+        ],
+        "title" : [
+          "--title"
+        ],
+        "url" : [
+          "--url"
+        ]
+      },
+      "cli" : "pippin calendar edit",
+      "effect" : "write",
+      "input_schema" : "tools/calendar_edit.input.schema.json",
+      "name" : "calendar_edit",
+      "output_schema" : "tools/calendar_edit.output.schema.json",
+      "verify_with" : "calendar_upcoming"
+    },
+    {
+      "arguments" : {
+        "confirm" : [
+
+        ],
+        "id" : [
+          "<0>"
+        ],
+        "occurrence" : [
+          "--occurrence"
+        ],
+        "span" : [
+          "--span"
+        ]
+      },
+      "cli" : "pippin calendar delete",
+      "effect" : "write",
+      "input_schema" : "tools/calendar_delete.input.schema.json",
+      "name" : "calendar_delete",
+      "output_schema" : "tools/calendar_delete.output.schema.json",
+      "verify_with" : "calendar_upcoming"
+    },
+    {
+      "arguments" : {
+        "allowConflicts" : [
+          "--allow-conflicts"
+        ],
+        "calendar" : [
+          "--calendar"
+        ],
+        "description" : [
+          "<0>"
+        ],
+        "dryRun" : [
+          "--dry-run"
+        ],
+        "model" : [
+          "--model"
+        ],
+        "provider" : [
+          "--provider"
+        ]
+      },
+      "cli" : "pippin calendar smart-create",
+      "effect" : "write",
+      "input_schema" : "tools/calendar_smart_create.input.schema.json",
+      "name" : "calendar_smart_create",
+      "output_schema" : null,
+      "output_schema_absent_because" : "Dry run returns the parsed spec and conflicts, a real run an action result.",
+      "verify_with" : "calendar_upcoming"
+    },
+    {
+      "arguments" : {
+        "days" : [
+          "--days"
+        ],
+        "model" : [
+          "--model"
+        ],
+        "provider" : [
+          "--provider"
+        ]
+      },
+      "cli" : "pippin calendar agenda",
+      "effect" : "read",
+      "input_schema" : "tools/calendar_agenda.input.schema.json",
+      "name" : "calendar_agenda",
+      "output_schema" : null,
+      "output_schema_absent_because" : "A string dictionary built inline, with no Codable model."
+    },
+    {
+      "arguments" : {
+        "from" : [
+          "--from"
+        ],
+        "range" : [
+          "--range"
+        ],
+        "to" : [
+          "--to"
+        ]
+      },
+      "cli" : "pippin calendar conflicts",
+      "effect" : "read",
+      "input_schema" : "tools/calendar_conflicts.input.schema.json",
+      "name" : "calendar_conflicts",
+      "output_schema" : "tools/calendar_conflicts.output.schema.json"
+    },
+    {
+      "arguments" : {
+
+      },
+      "cli" : "pippin reminders lists",
+      "effect" : "read",
+      "input_schema" : "tools/reminders_lists.input.schema.json",
+      "name" : "reminders_lists",
+      "output_schema" : "tools/reminders_lists.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "completed" : [
+          "--completed"
+        ],
+        "createdAfter" : [
+          "--created-after"
+        ],
+        "cursor" : [
+          "--cursor"
+        ],
+        "dueAfter" : [
+          "--due-after"
+        ],
+        "dueBefore" : [
+          "--due-before"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "list" : [
+          "--list"
+        ],
+        "modifiedAfter" : [
+          "--modified-after"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ],
+        "priority" : [
+          "--priority"
+        ]
+      },
+      "cli" : "pippin reminders list",
+      "effect" : "read",
+      "input_schema" : "tools/reminders_list.input.schema.json",
+      "name" : "reminders_list",
+      "output_schema" : "tools/reminders_list.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "id" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin reminders show",
+      "effect" : "read",
+      "input_schema" : "tools/reminders_show.input.schema.json",
+      "name" : "reminders_show",
+      "output_schema" : "tools/reminders_show.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "completed" : [
+          "--completed"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "list" : [
+          "--list"
+        ],
+        "query" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin reminders search",
+      "effect" : "read",
+      "input_schema" : "tools/reminders_search.input.schema.json",
+      "name" : "reminders_search",
+      "output_schema" : "tools/reminders_search.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "due" : [
+          "--due"
+        ],
+        "list" : [
+          "--list"
+        ],
+        "notes" : [
+          "--notes"
+        ],
+        "priority" : [
+          "--priority"
+        ],
+        "title" : [
+          "<0>"
+        ],
+        "url" : [
+          "--url"
+        ]
+      },
+      "cli" : "pippin reminders create",
+      "effect" : "write",
+      "input_schema" : "tools/reminders_create.input.schema.json",
+      "name" : "reminders_create",
+      "output_schema" : "tools/reminders_create.output.schema.json",
+      "verify_with" : "reminders_list"
+    },
+    {
+      "arguments" : {
+        "id" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin reminders complete",
+      "effect" : "write",
+      "input_schema" : "tools/reminders_complete.input.schema.json",
+      "name" : "reminders_complete",
+      "output_schema" : "tools/reminders_complete.output.schema.json",
+      "verify_with" : "reminders_list"
+    },
+    {
+      "arguments" : {
+        "due" : [
+          "--due"
+        ],
+        "id" : [
+          "<0>"
+        ],
+        "list" : [
+          "--list"
+        ],
+        "notes" : [
+          "--notes"
+        ],
+        "priority" : [
+          "--priority"
+        ],
+        "title" : [
+          "--title"
+        ],
+        "url" : [
+          "--url"
+        ]
+      },
+      "cli" : "pippin reminders edit",
+      "effect" : "write",
+      "input_schema" : "tools/reminders_edit.input.schema.json",
+      "name" : "reminders_edit",
+      "output_schema" : "tools/reminders_edit.output.schema.json",
+      "verify_with" : "reminders_list"
+    },
+    {
+      "arguments" : {
+        "confirm" : [
+
+        ],
+        "id" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin reminders delete",
+      "effect" : "write",
+      "input_schema" : "tools/reminders_delete.input.schema.json",
+      "name" : "reminders_delete",
+      "output_schema" : "tools/reminders_delete.output.schema.json",
+      "verify_with" : "reminders_list"
+    },
+    {
+      "arguments" : {
+        "description" : [
+          "<0>"
+        ],
+        "dryRun" : [
+          "--dry-run"
+        ],
+        "list" : [
+          "--list"
+        ],
+        "model" : [
+          "--model"
+        ],
+        "provider" : [
+          "--provider"
+        ]
+      },
+      "cli" : "pippin reminders smart-create",
+      "effect" : "write",
+      "input_schema" : "tools/reminders_smart_create.input.schema.json",
+      "name" : "reminders_smart_create",
+      "output_schema" : null,
+      "output_schema_absent_because" : "Dry run returns the parsed spec, a real run an action result.",
+      "verify_with" : "reminders_list"
+    },
+    {
+      "arguments" : {
+        "cursor" : [
+          "--cursor"
+        ],
+        "email" : [
+          "--email"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ],
+        "phone" : [
+          "--phone"
+        ],
+        "query" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin contacts search",
+      "effect" : "read",
+      "input_schema" : "tools/contacts_search.input.schema.json",
+      "name" : "contacts_search",
+      "output_schema" : "tools/contacts_search.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "identifier" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin contacts show",
+      "effect" : "read",
+      "input_schema" : "tools/contacts_show.input.schema.json",
+      "name" : "contacts_show",
+      "output_schema" : "tools/contacts_show.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "fields" : [
+          "--fields"
+        ],
+        "group" : [
+          "--group"
+        ]
+      },
+      "cli" : "pippin contacts list",
+      "effect" : "read",
+      "input_schema" : "tools/contacts_list.input.schema.json",
+      "name" : "contacts_list",
+      "output_schema" : "tools/contacts_list.output.schema.json"
+    },
+    {
+      "arguments" : {
+
+      },
+      "cli" : "pippin contacts groups",
+      "effect" : "read",
+      "input_schema" : "tools/contacts_groups.input.schema.json",
+      "name" : "contacts_groups",
+      "output_schema" : "tools/contacts_groups.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "email" : [
+          "--email"
+        ],
+        "first" : [
+          "--first"
+        ],
+        "jobTitle" : [
+          "--job-title"
+        ],
+        "last" : [
+          "--last"
+        ],
+        "organization" : [
+          "--organization"
+        ],
+        "phone" : [
+          "--phone"
+        ]
+      },
+      "cli" : "pippin contacts create",
+      "effect" : "write",
+      "input_schema" : "tools/contacts_create.input.schema.json",
+      "name" : "contacts_create",
+      "output_schema" : "tools/contacts_create.output.schema.json",
+      "verify_with" : "contacts_list"
+    },
+    {
+      "arguments" : {
+        "email" : [
+          "--email"
+        ],
+        "first" : [
+          "--first"
+        ],
+        "identifier" : [
+          "<0>"
+        ],
+        "jobTitle" : [
+          "--job-title"
+        ],
+        "last" : [
+          "--last"
+        ],
+        "organization" : [
+          "--organization"
+        ],
+        "phone" : [
+          "--phone"
+        ]
+      },
+      "cli" : "pippin contacts edit",
+      "effect" : "write",
+      "input_schema" : "tools/contacts_edit.input.schema.json",
+      "name" : "contacts_edit",
+      "output_schema" : "tools/contacts_edit.output.schema.json",
+      "verify_with" : "contacts_list"
+    },
+    {
+      "arguments" : {
+        "confirm" : [
+
+        ],
+        "identifier" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin contacts delete",
+      "effect" : "write",
+      "input_schema" : "tools/contacts_delete.input.schema.json",
+      "name" : "contacts_delete",
+      "output_schema" : "tools/contacts_delete.output.schema.json",
+      "verify_with" : "contacts_list"
+    },
+    {
+      "arguments" : {
+        "cursor" : [
+          "--cursor"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "folder" : [
+          "--folder"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ]
+      },
+      "cli" : "pippin notes list",
+      "effect" : "read",
+      "input_schema" : "tools/notes_list.input.schema.json",
+      "name" : "notes_list",
+      "output_schema" : "tools/notes_list.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "fields" : [
+          "--fields"
+        ],
+        "folder" : [
+          "--folder"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "query" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin notes search",
+      "effect" : "read",
+      "input_schema" : "tools/notes_search.input.schema.json",
+      "name" : "notes_search",
+      "output_schema" : "tools/notes_search.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "id" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin notes show",
+      "effect" : "read",
+      "input_schema" : "tools/notes_show.input.schema.json",
+      "name" : "notes_show",
+      "output_schema" : "tools/notes_show.output.schema.json"
+    },
+    {
+      "arguments" : {
+
+      },
+      "cli" : "pippin notes folders",
+      "effect" : "read",
+      "input_schema" : "tools/notes_folders.input.schema.json",
+      "name" : "notes_folders",
+      "output_schema" : "tools/notes_folders.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "body" : [
+          "--body"
+        ],
+        "folder" : [
+          "--folder"
+        ],
+        "html" : [
+          "--html"
+        ],
+        "title" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin notes create",
+      "effect" : "write",
+      "input_schema" : "tools/notes_create.input.schema.json",
+      "name" : "notes_create",
+      "output_schema" : "tools/notes_create.output.schema.json",
+      "verify_with" : "notes_list"
+    },
+    {
+      "arguments" : {
+        "append" : [
+          "--append"
+        ],
+        "body" : [
+          "--body"
+        ],
+        "dryRun" : [
+          "--dry-run"
+        ],
+        "html" : [
+          "--html"
+        ],
+        "id" : [
+          "<0>"
+        ],
+        "title" : [
+          "--title"
+        ]
+      },
+      "cli" : "pippin notes edit",
+      "effect" : "write",
+      "input_schema" : "tools/notes_edit.input.schema.json",
+      "name" : "notes_edit",
+      "output_schema" : "tools/notes_edit.output.schema.json",
+      "verify_with" : "notes_list"
+    },
+    {
+      "arguments" : {
+        "confirm" : [
+
+        ],
+        "id" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin notes delete",
+      "effect" : "write",
+      "input_schema" : "tools/notes_delete.input.schema.json",
+      "name" : "notes_delete",
+      "output_schema" : "tools/notes_delete.output.schema.json",
+      "verify_with" : "notes_list"
+    },
+    {
+      "arguments" : {
+        "fields" : [
+          "--fields"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "sinceHours" : [
+          "--since-hours"
+        ]
+      },
+      "cli" : "pippin messages list",
+      "effect" : "read",
+      "input_schema" : "tools/messages_list.input.schema.json",
+      "name" : "messages_list",
+      "output_schema" : "tools/messages_list.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "fields" : [
+          "--fields"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "query" : [
+          "<0>"
+        ],
+        "sinceHours" : [
+          "--since-hours"
+        ]
+      },
+      "cli" : "pippin messages search",
+      "effect" : "read",
+      "input_schema" : "tools/messages_search.input.schema.json",
+      "name" : "messages_search",
+      "output_schema" : "tools/messages_search.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "conversationId" : [
+          "<0>"
+        ],
+        "limit" : [
+          "--limit"
+        ]
+      },
+      "cli" : "pippin messages show",
+      "effect" : "read",
+      "input_schema" : "tools/messages_show.input.schema.json",
+      "name" : "messages_show",
+      "output_schema" : "tools/messages_show.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "body" : [
+          "--body"
+        ],
+        "to" : [
+          "--to"
+        ]
+      },
+      "cli" : "pippin messages send",
+      "effect" : "write",
+      "input_schema" : "tools/messages_send.input.schema.json",
+      "name" : "messages_send",
+      "output_schema" : "tools/messages_send.output.schema.json",
+      "verify_with" : "messages_list"
+    },
+    {
+      "arguments" : {
+
+      },
+      "cli" : "pippin messages exclude list",
+      "effect" : "read",
+      "input_schema" : "tools/messages_exclude_list.input.schema.json",
+      "name" : "messages_exclude_list",
+      "output_schema" : "tools/messages_exclude_list.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "thread" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin messages exclude add",
+      "effect" : "write",
+      "input_schema" : "tools/messages_exclude_add.input.schema.json",
+      "name" : "messages_exclude_add",
+      "output_schema" : "tools/messages_exclude_add.output.schema.json",
+      "verify_with" : "messages_exclude_list"
+    },
+    {
+      "arguments" : {
+        "thread" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin messages exclude remove",
+      "effect" : "write",
+      "input_schema" : "tools/messages_exclude_remove.input.schema.json",
+      "name" : "messages_exclude_remove",
+      "output_schema" : "tools/messages_exclude_remove.output.schema.json",
+      "verify_with" : "messages_exclude_list"
+    },
+    {
+      "arguments" : {
+        "cursor" : [
+          "--cursor"
+        ],
+        "fields" : [
+          "--fields"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ],
+        "since" : [
+          "--since"
+        ]
+      },
+      "cli" : "pippin memos list",
+      "effect" : "read",
+      "input_schema" : "tools/memos_list.input.schema.json",
+      "name" : "memos_list",
+      "output_schema" : "tools/memos_list.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "id" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin memos info",
+      "effect" : "read",
+      "input_schema" : "tools/memos_info.input.schema.json",
+      "name" : "memos_info",
+      "output_schema" : "tools/memos_info.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "all" : [
+          "--all"
+        ],
+        "forceTranscribe" : [
+          "--force-transcribe"
+        ],
+        "id" : [
+          "<0>"
+        ],
+        "jobs" : [
+          "--jobs"
+        ],
+        "output" : [
+          "--output"
+        ],
+        "sidecarFormat" : [
+          "--sidecar-format"
+        ],
+        "transcribe" : [
+          "--transcribe"
+        ]
+      },
+      "cli" : "pippin memos export",
+      "effect" : "write",
+      "input_schema" : "tools/memos_export.input.schema.json",
+      "name" : "memos_export",
+      "output_schema" : "tools/memos_export.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "all" : [
+          "--all"
+        ],
+        "force" : [
+          "--force"
+        ],
+        "id" : [
+          "<0>"
+        ],
+        "jobs" : [
+          "--jobs"
+        ],
+        "output" : [
+          "--output"
+        ]
+      },
+      "cli" : "pippin memos transcribe",
+      "effect" : "write",
+      "input_schema" : "tools/memos_transcribe.input.schema.json",
+      "name" : "memos_transcribe",
+      "output_schema" : "tools/memos_transcribe.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "dryRun" : [
+          "--dry-run"
+        ],
+        "list" : [
+          "--list"
+        ],
+        "memo" : [
+          "--memo"
+        ],
+        "model" : [
+          "--model"
+        ],
+        "provider" : [
+          "--provider"
+        ]
+      },
+      "cli" : "pippin memos capture",
+      "effect" : "write",
+      "input_schema" : "tools/memos_capture_to_reminders.input.schema.json",
+      "name" : "memos_capture_to_reminders",
+      "output_schema" : "tools/memos_capture_to_reminders.output.schema.json",
+      "verify_with" : "reminders_list"
+    },
+    {
+      "arguments" : {
+        "all" : [
+          "--all"
+        ],
+        "id" : [
+          "<0>"
+        ],
+        "jobs" : [
+          "--jobs"
+        ],
+        "model" : [
+          "--model"
+        ],
+        "output" : [
+          "--output"
+        ],
+        "prompt" : [
+          "--prompt"
+        ],
+        "provider" : [
+          "--provider"
+        ],
+        "since" : [
+          "--since"
+        ],
+        "template" : [
+          "--template"
+        ]
+      },
+      "cli" : "pippin memos summarize",
+      "effect" : "write",
+      "input_schema" : "tools/memos_summarize.input.schema.json",
+      "name" : "memos_summarize",
+      "output_schema" : null,
+      "output_schema_absent_because" : "One result or an array of them depending on --all."
+    },
+    {
+      "arguments" : {
+        "confirm" : [
+
+        ],
+        "dryRun" : [
+          "--dry-run"
+        ],
+        "id" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin memos delete",
+      "effect" : "write",
+      "input_schema" : "tools/memos_delete.input.schema.json",
+      "name" : "memos_delete",
+      "output_schema" : "tools/memos_delete.output.schema.json",
+      "verify_with" : "memos_list"
+    },
+    {
+      "arguments" : {
+        "calendarDays" : [
+          "--calendar-days"
+        ],
+        "mailLimit" : [
+          "--mail-limit"
+        ],
+        "notesLimit" : [
+          "--notes-limit"
+        ]
+      },
+      "cli" : "pippin digest",
+      "effect" : "read",
+      "input_schema" : "tools/digest.input.schema.json",
+      "name" : "digest",
+      "output_schema" : "tools/digest.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "account" : [
+          "--account"
+        ],
+        "api_key" : [
+          "--api-key"
+        ],
+        "create" : [
+          "--create"
+        ],
+        "days" : [
+          "--days"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "list" : [
+          "--list"
+        ],
+        "mail" : [
+          "--mail"
+        ],
+        "min_confidence" : [
+          "--min-confidence"
+        ],
+        "model" : [
+          "--model"
+        ],
+        "notes" : [
+          "--notes"
+        ],
+        "provider" : [
+          "--provider"
+        ]
+      },
+      "cli" : "pippin actions extract",
+      "effect" : "write",
+      "input_schema" : "tools/actions_extract.input.schema.json",
+      "name" : "actions_extract",
+      "output_schema" : null,
+      "output_schema_absent_because" : "Extracted actions, or created reminders with create=true.",
+      "verify_with" : "reminders_list"
+    },
+    {
+      "arguments" : {
+
+      },
+      "cli" : "pippin status",
+      "effect" : "read",
+      "input_schema" : "tools/status.input.schema.json",
+      "name" : "status",
+      "output_schema" : "tools/status.output.schema.json"
+    },
+    {
+      "arguments" : {
+
+      },
+      "cli" : "pippin doctor",
+      "effect" : "read",
+      "input_schema" : "tools/doctor.input.schema.json",
+      "name" : "doctor",
+      "output_schema" : "tools/doctor.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "argv" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin job run",
+      "effect" : "write",
+      "input_schema" : "tools/job_run.input.schema.json",
+      "name" : "job_run",
+      "output_schema" : "tools/job_run.output.schema.json",
+      "verify_with" : "job_list"
+    },
+    {
+      "arguments" : {
+        "id" : [
+          "<0>"
+        ],
+        "tail" : [
+          "--tail"
+        ]
+      },
+      "cli" : "pippin job show",
+      "effect" : "read",
+      "input_schema" : "tools/job_show.input.schema.json",
+      "name" : "job_show",
+      "output_schema" : "tools/job_show.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "limit" : [
+          "--limit"
+        ],
+        "status" : [
+          "--status"
+        ]
+      },
+      "cli" : "pippin job list",
+      "effect" : "read",
+      "input_schema" : "tools/job_list.input.schema.json",
+      "name" : "job_list",
+      "output_schema" : "tools/job_list.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "id" : [
+          "<0>"
+        ],
+        "timeout" : [
+          "--timeout"
+        ]
+      },
+      "cli" : "pippin job wait",
+      "effect" : "read",
+      "input_schema" : "tools/job_wait.input.schema.json",
+      "name" : "job_wait",
+      "output_schema" : "tools/job_wait.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "concurrency" : [
+          "--concurrency"
+        ],
+        "entries" : [
+          "--entries"
+        ]
+      },
+      "cli" : "pippin batch",
+      "effect" : "write",
+      "input_schema" : "tools/batch.input.schema.json",
+      "name" : "batch",
+      "output_schema" : null,
+      "output_schema_absent_because" : "An array of envelopes, each validated by envelope.schema.json."
+    },
+    {
+      "arguments" : {
+
+      },
+      "cli" : "pippin policy show",
+      "effect" : "read",
+      "input_schema" : "tools/policy_show.input.schema.json",
+      "name" : "policy_show",
+      "output_schema" : "tools/policy_show.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "cursor" : [
+          "--cursor"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ],
+        "since" : [
+          "--since"
+        ],
+        "tool" : [
+          "--tool"
+        ]
+      },
+      "cli" : "pippin log",
+      "effect" : "read",
+      "input_schema" : "tools/action_log.input.schema.json",
+      "name" : "action_log",
+      "output_schema" : null,
+      "output_schema_absent_because" : "Rows carry the logged arguments, whose shape is each tool's own."
+    },
+    {
+      "arguments" : {
+        "id" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin undo",
+      "effect" : "write",
+      "input_schema" : "tools/undo.input.schema.json",
+      "name" : "undo",
+      "output_schema" : null,
+      "output_schema_absent_because" : "{undone, tool, result}, where result is the inverse command's own payload.",
+      "verify_with" : "action_log"
+    }
+  ]
+}

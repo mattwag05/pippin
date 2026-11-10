@@ -1,0 +1,173 @@
+{
+  "tool": "remindctl",
+  "version": "0.3.9",
+  "kind": "cli",
+  "apps": [
+    "reminders"
+  ],
+  "manifest": {
+    "kind": "cli",
+    "help_outcome": "ok",
+    "help_chars": 670,
+    "help_tokens": 109
+  },
+  "speed": {
+    "reminders.lists": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 32.17,
+        "p50_ms": 32.37,
+        "p95_ms": 35.57,
+        "max_ms": 35.57
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 30.64,
+        "p50_ms": 31.25,
+        "p95_ms": 32.41,
+        "max_ms": 32.58
+      }
+    },
+    "reminders.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 31.17,
+        "p50_ms": 31.34,
+        "p95_ms": 32.33,
+        "max_ms": 32.33
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 30.81,
+        "p50_ms": 31.29,
+        "p95_ms": 31.86,
+        "max_ms": 31.99
+      }
+    },
+    "reminders.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 30.86,
+        "p50_ms": 31.26,
+        "p95_ms": 31.68,
+        "max_ms": 31.68
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 30.7,
+        "p50_ms": 31.27,
+        "p95_ms": 32.0,
+        "max_ms": 32.06
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "reminders.lists": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "reminders.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "reminders.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      }
+    },
+    "bad_input": {
+      "reminders.list": {
+        "outcome": "error",
+        "ms": 28.12,
+        "error_is_structured": false,
+        "detail": "exit 1: List not found: \"PB-NO-SUCH-LIST\".\n"
+      }
+    }
+  },
+  "coverage": {
+    "reminders.lists": "yes",
+    "reminders.list": "yes",
+    "reminders.search": "yes",
+    "reminders.create": "claimed",
+    "reminders.edit": "claimed",
+    "reminders.complete": "claimed",
+    "reminders.delete": "claimed",
+    "calendar.calendars": "no",
+    "calendar.events": "no",
+    "calendar.search": "no",
+    "calendar.create": "no",
+    "calendar.edit": "no",
+    "calendar.delete": "no",
+    "contacts.list": "no",
+    "contacts.search": "no",
+    "contacts.show": "no",
+    "contacts.create": "no",
+    "contacts.edit": "no",
+    "contacts.delete": "no",
+    "contacts.groups": "no",
+    "notes.folders": "no",
+    "notes.list": "no",
+    "notes.search": "no",
+    "notes.show": "no",
+    "notes.create": "no",
+    "notes.edit": "no",
+    "notes.delete": "no",
+    "messages.chats": "no",
+    "messages.history": "no",
+    "messages.search": "no",
+    "messages.send": "no",
+    "mail.accounts": "no",
+    "mail.mailboxes": "no",
+    "mail.list": "no",
+    "mail.search": "no",
+    "mail.show": "no",
+    "mail.send": "no",
+    "mail.move": "no",
+    "mail.mark": "no",
+    "mail.attachments": "no",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}

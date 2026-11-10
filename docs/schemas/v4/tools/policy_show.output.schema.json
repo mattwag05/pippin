@@ -1,0 +1,62 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "error" : {
+      "type" : "string"
+    },
+    "path" : {
+      "type" : "string"
+    },
+    "source" : {
+      "type" : "string"
+    },
+    "tools" : {
+      "items" : {
+        "properties" : {
+          "effect" : {
+            "type" : "string"
+          },
+          "limit" : {
+            "properties" : {
+              "max" : {
+                "type" : "integer"
+              },
+              "per_seconds" : {
+                "type" : "integer"
+              }
+            },
+            "required" : [
+              "max",
+              "per_seconds"
+            ],
+            "type" : "object"
+          },
+          "rule" : {
+            "type" : "string"
+          },
+          "source" : {
+            "type" : "string"
+          },
+          "tool" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "effect",
+          "rule",
+          "source",
+          "tool"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    }
+  },
+  "required" : [
+    "path",
+    "source",
+    "tools"
+  ],
+  "title" : "policy_show: data",
+  "type" : "object"
+}

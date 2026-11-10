@@ -1,0 +1,55 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "actionItems" : {
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "messages" : {
+      "items" : {
+        "properties" : {
+          "category" : {
+            "type" : "string"
+          },
+          "compoundId" : {
+            "type" : "string"
+          },
+          "from" : {
+            "type" : "string"
+          },
+          "oneLiner" : {
+            "type" : "string"
+          },
+          "subject" : {
+            "type" : "string"
+          },
+          "urgency" : {
+            "type" : "integer"
+          }
+        },
+        "required" : [
+          "category",
+          "compoundId",
+          "from",
+          "oneLiner",
+          "subject",
+          "urgency"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    },
+    "summary" : {
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "actionItems",
+    "messages",
+    "summary"
+  ],
+  "title" : "mail_triage: data",
+  "type" : "object"
+}

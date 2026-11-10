@@ -17,6 +17,15 @@ public struct NotesCommand: ParsableCommand {
     /// Mirrors `MailCommand.Search.timedOutHint`.
     static let timedOutHint = "Notes scan exceeded soft timeout, returning partial results — narrow with --folder or --limit for complete results"
 
+    /// The row fields a list or search will actually emit, so the bridge can
+    /// skip the reads behind the rest: the `--fields` list, the essential
+    /// fields by default, or nil (everything) for `--fields all`.
+    static func emittedFields(_ output: OutputOptions) -> Set<String>? {
+        let requested = FieldProjection.parse(output.fields)
+        if requested == [FieldProjection.all] { return nil }
+        return Set(requested ?? NoteInfo.essentialFields)
+    }
+
     // MARK: - List
 
     public struct List: AgentCommand {
@@ -47,8 +56,9 @@ public struct NotesCommand: ParsableCommand {
             if pagination.isActive {
                 return try await runPaginated()
             }
+            let fields = NotesCommand.emittedFields(output)
             let outcome = try await detachBlocking { [folder, limit] in
-                try NotesBridge.listNotes(folder: folder, limit: limit)
+                try NotesBridge.listNotes(folder: folder, limit: limit, fields: fields)
             }
             let notes = outcome.results
             // The shared helper applies --fields projection and the structured
@@ -67,8 +77,9 @@ public struct NotesCommand: ParsableCommand {
             // pagination ceiling — body fetches are bounded to the page window,
             // and the all-notes sort enumeration is bounded by the soft cap
             // (surfaced as timedOut), not by a fixed offset ceiling.
+            let fields = NotesCommand.emittedFields(output)
             let outcome = try await detachBlocking { [folder] in
-                try NotesBridge.listNotes(folder: folder, limit: pageSize + 1, offset: offset)
+                try NotesBridge.listNotes(folder: folder, limit: pageSize + 1, offset: offset, fields: fields)
             }
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
@@ -88,14 +99,17 @@ public struct NotesCommand: ParsableCommand {
         @Argument(help: "Note ID (from `pippin notes list`).")
         public var id: String
 
+        @Flag(name: .long, help: "Also return the note's HTML body, the form `notes edit --html` writes back.")
+        public var html: Bool = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
         public mutating func execute() async throws -> AgentResult {
             let note = try await detachBlocking { [id] in try NotesBridge.showNote(id: id) }
-            // Exclude the large HTML body, include plainText instead.
-            return AgentResult(NoteAgentView(note: note))
+            // Exclude the large HTML body unless asked, include plainText instead.
+            return AgentResult(NoteAgentView(note: note, includeHTML: html))
         }
     }
 
@@ -127,8 +141,9 @@ public struct NotesCommand: ParsableCommand {
         }
 
         public mutating func execute() async throws -> AgentResult {
+            let fields = NotesCommand.emittedFields(output)
             let outcome = try await detachBlocking { [query, folder, limit] in
-                try NotesBridge.searchNotes(query: query, folder: folder, limit: limit)
+                try NotesBridge.searchNotes(query: query, folder: folder, limit: limit, fields: fields)
             }
             let notes = outcome.results
             return .emit(notes, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint)
@@ -209,6 +224,9 @@ public struct NotesCommand: ParsableCommand {
         @Flag(name: .long, help: "Treat --body as raw HTML (skip plain-text-to-HTML conversion).")
         public var html: Bool = false
 
+        @Flag(name: .long, help: "Report the note's title, current body length and resulting body length without writing.")
+        public var dryRun: Bool = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -220,8 +238,8 @@ public struct NotesCommand: ParsableCommand {
         }
 
         public mutating func execute() async throws -> AgentResult {
-            let result = try await detachBlocking { [id, title, body, append, html] in
-                try NotesBridge.editNote(id: id, title: title, body: body, append: append, html: html)
+            let result = try await detachBlocking { [id, title, body, append, html, dryRun] in
+                try NotesBridge.editNote(id: id, title: title, body: body, append: append, html: html, dryRun: dryRun)
             }
             return AgentResult(result)
         }
@@ -266,13 +284,16 @@ struct NoteAgentView: Encodable {
     let id: String
     let title: String
     let plainText: String
+    /// HTML body; only with `--html`.
+    let body: String?
     let folder: String
     let modifiedAt: String
 
-    init(note: NoteInfo) {
+    init(note: NoteInfo, includeHTML: Bool = false) {
         id = note.id
         title = note.title
         plainText = note.plainText
+        body = includeHTML ? note.body : nil
         folder = note.folder
         modifiedAt = note.modificationDate
     }

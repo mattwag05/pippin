@@ -1,0 +1,30 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Search Messages bodies by substring. Read-only.",
+  "properties" : {
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Maximum messages (default: 50).",
+      "type" : "integer"
+    },
+    "query" : {
+      "description" : "Search substring.",
+      "type" : "string"
+    },
+    "sinceHours" : {
+      "default" : 168,
+      "description" : "Restrict to last N hours.",
+      "type" : "integer"
+    }
+  },
+  "required" : [
+    "query"
+  ],
+  "title" : "messages_search: arguments",
+  "type" : "object"
+}

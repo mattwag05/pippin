@@ -1,0 +1,34 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Search reminders by title/notes text.",
+  "properties" : {
+    "completed" : {
+      "default" : false,
+      "description" : "Search completed reminders instead.",
+      "type" : "boolean"
+    },
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Max results (default: 50).",
+      "type" : "integer"
+    },
+    "list" : {
+      "description" : "Restrict to a single list ID.",
+      "type" : "string"
+    },
+    "query" : {
+      "description" : "Search query.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "query"
+  ],
+  "title" : "reminders_search: arguments",
+  "type" : "object"
+}

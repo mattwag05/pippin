@@ -1,4 +1,4 @@
-# Pippin MailAIBridge — Design Spec
+# Pippin MailAIBridge: Design Spec
 
 **Date:** 2026-03-25
 **Status:** Approved (spec review passed, iteration 3)
@@ -10,10 +10,10 @@
 
 Pippin's Apple Mail bridge exposes 12 subcommands for reading, searching, and composing email through JXA automation. It is a capable transport layer but has no intelligence. Email processing for AI agents benefits from four capabilities absent in current tooling:
 
-1. **Semantic search** — finding relevant emails by meaning, not exact keyword matches
-2. **Data extraction** — pulling structured facts (dates, amounts, action items) from email bodies automatically
-3. **Prompt injection scanning** — detecting and neutralizing adversarial content in inbound email before passing it to an LLM
-4. **Smart triage** — classifying and summarizing inbox state to reduce cognitive overhead
+1. **Semantic search**: finding relevant emails by meaning, not exact keyword matches
+2. **Data extraction**: pulling structured facts (dates, amounts, action items) from email bodies automatically
+3. **Prompt injection scanning**: detecting and neutralizing adversarial content in inbound email before passing it to an LLM
+4. **Smart triage**: classifying and summarizing inbox state to reduce cognitive overhead
 
 Commercial services (LobsterMail, AgentMail) offer these as SaaS APIs aimed at autonomous agent infrastructure. Pippin already integrates with a user's real Apple Mail accounts locally. The right solution is to build these capabilities directly into Pippin using its existing AI provider abstraction, so they work offline (Ollama) or via the cloud (Claude) without surrendering email content to a third-party service.
 
@@ -22,16 +22,16 @@ Commercial services (LobsterMail, AgentMail) offer these as SaaS APIs aimed at a
 ## Goals
 
 - Add semantic search, data extraction, prompt injection scanning, and smart triage to Pippin
-- Reuse the existing `AIProvider`/`AIProviderFactory` abstraction — user picks provider via `--provider` flag
+- Reuse the existing `AIProvider`/`AIProviderFactory` abstraction: user picks provider via `--provider` flag
 - Keep all email data local by default (Ollama); Claude API is an explicit opt-in
-- Follow Pippin's bridge-per-concern pattern — existing `MailBridge/` is untouched
+- Follow Pippin's bridge-per-concern pattern: existing `MailBridge/` is untouched
 - All new capabilities available in `text`, `json`, and `agent` output formats
 
 ## Non-Goals
 
 - Provisioning new email addresses (that's LobsterMail/AgentMail's primary purpose)
 - Real-time email webhooks or push notifications
-- Cloud embedding providers (Voyage AI etc.) — Ollama-only for initial implementation
+- Cloud embedding providers (Voyage AI etc.): Ollama-only for initial implementation
 - Integration with non-Apple mail clients
 
 ---
@@ -62,7 +62,7 @@ pippin/
 ### Command Surface Changes
 
 **New subcommand added to MailCommand:**
-- `mail index` — pre-populates the embedding store (see Feature 1)
+- `mail index`: pre-populates the embedding store (see Feature 1)
 
 **Modified flags on existing commands:**
 
@@ -99,12 +99,12 @@ pippin mail search --semantic <query> [--provider ollama] [--limit N]
 ```
 
 **`mail index` behavior:**
-1. Fetch messages via `MailBridge.listMessages` (subject/sender/date only — no body)
-2. For each message: call `MailBridge.readMessage` to get body, compute SHA256 hash, check `EmbeddingStore.needsReindex(compoundId: String, bodyHash: String) -> Bool` — returns `true` if (a) no row exists for the compound ID, or (b) a row exists but `body_hash` differs from the current hash
+1. Fetch messages via `MailBridge.listMessages` (subject/sender/date only: no body)
+2. For each message: call `MailBridge.readMessage` to get body, compute SHA256 hash, check `EmbeddingStore.needsReindex(compoundId: String, bodyHash: String) -> Bool`: returns `true` if (a) no row exists for the compound ID, or (b) a row exists but `body_hash` differs from the current hash
 3. If unindexed or body changed: embed via `OllamaEmbeddingProvider`, upsert into `EmbeddingStore`
 4. If `--provider` is not `"ollama"`, throw `MailAIError.unsupportedEmbeddingProvider(providerFlag)`
 5. Print progress and total count indexed
-6. Default `--limit 500` per run to cap indexing time (~2–5 min for 500 messages with Ollama)
+6. Default `--limit 500` per run to cap indexing time (~2 to 5 min for 500 messages with Ollama)
 
 **Swift 6 threading note:** `OllamaEmbeddingProvider.embed()` uses `sendSynchronousRequest()` (DispatchSemaphore-based blocking call). Calling this in a 500-iteration loop from `run() async throws` would block the Swift cooperative thread pool worker for the duration. Wrap each `embed()` call in `Task.detached(priority: .background) { try embed(text:) }` and `await` the result so the blocking work runs off the cooperative pool.
 
@@ -113,7 +113,7 @@ pippin mail search --semantic <query> [--provider ollama] [--limit N]
 2. Scan `EmbeddingStore` for nearest neighbors using brute-force cosine similarity
 3. Fetch full `MailMessage` objects for top-N compound IDs via `MailBridge.readMessage`
 4. Return messages ranked by similarity score
-5. **No lazy indexing during search** — the index must be populated via `mail index` first. If the store is empty, print a clear error: `"Embedding index is empty. Run 'pippin mail index' first."`
+5. **No lazy indexing during search**: the index must be populated via `mail index` first. If the store is empty, print a clear error: `"Embedding index is empty. Run 'pippin mail index' first."`
 
 **Embedding index schema** (`~/.config/pippin/mail-embeddings.db`):
 ```sql
@@ -205,7 +205,7 @@ struct ExtractedContact: Codable, Sendable {
 }
 ```
 
-Note: All field names use camelCase (Swift/JSON default). No custom `CodingKeys` needed unless deviating from camelCase. `MailModels.swift` and the rest of Pippin's JSON output use camelCase — do not add snake_case `CodingKeys`.
+Note: All field names use camelCase (Swift/JSON default). No custom `CodingKeys` needed unless deviating from camelCase. `MailModels.swift` and the rest of Pippin's JSON output use camelCase: do not add snake_case `CodingKeys`.
 
 ### Feature 3: Prompt Injection Scanning
 
@@ -215,7 +215,7 @@ Note: All field names use camelCase (Swift/JSON default). No custom `CodingKeys`
 
 Note: `--provider`, `--model`, `--api-key` must be added as `@Option` fields directly on the `Show` struct (alongside the existing `@OptionGroup var output: OutputOptions`). This is the same pattern used by `CalendarCommand`'s `Summarize` subcommand.
 
-**Behavior — two-pass scan:**
+**Behavior: two-pass scan:**
 
 **Pass 1 (rule-based, always runs, no API call):**
 - Regex patterns for 6 threat categories:
@@ -262,7 +262,7 @@ enum RiskLevel: String, Codable, Sendable {
 }
 ```
 
-**Risk level derivation:** max `confidence` across all threats: `none` (<0.1), `low` (0.1–0.4), `medium` (0.4–0.7), `high` (0.7–0.9), `critical` (≥0.9). Rule-based threats are assigned confidence 1.0 (exact match).
+**Risk level derivation:** max `confidence` across all threats: `none` (<0.1), `low` (0.1 to 0.4), `medium` (0.4 to 0.7), `high` (0.7 to 0.9), `critical` (≥0.9). Rule-based threats are assigned confidence 1.0 (exact match).
 
 ### Feature 4: Smart Triage
 
@@ -271,17 +271,17 @@ enum RiskLevel: String, Codable, Sendable {
 - `pippin mail show <id> --summarize [--provider ollama]`
 - `pippin mail list --summarize [--provider ollama]`
 
-**Triage behavior (no `readMessage` calls — subject/sender/date only):**
-1. Fetch messages via `MailBridge.listMessages` (subject + sender + date — no body)
+**Triage behavior (no `readMessage` calls: subject/sender/date only):**
+1. Fetch messages via `MailBridge.listMessages` (subject + sender + date: no body)
 2. Batch into groups of ≤10
 3. For each batch: call AI with `triageSystemPrompt` (subject + sender + date per message) → strip markdown fences → decode JSON → `[TriagedMessage]` + per-batch `summary` + per-batch `actionItems`
 4. On `DecodingError`: throw `MailAIError.malformedAIResponse(String)`
 5. **Multi-batch merge (no additional AI call):** After all batches complete, assemble the final `TriageResult` as follows:
    - `messages`: concatenation of all batches' `[TriagedMessage]` arrays
-   - `summary`: summary from the **last batch only** (it sees only its 10 messages — this is a known limitation for inboxes >10 messages; document in help text)
+   - `summary`: summary from the **last batch only** (it sees only its 10 messages: this is a known limitation for inboxes >10 messages; document in help text)
    - `actionItems`: union of all batches' `actionItems`, deduplicated by exact string match
 
-**Performance:** `listMessages` is one JXA call. Zero `readMessage` calls. This is important — each `readMessage` triggers a full IMAP body download (~0.5–2s). 20 messages via `listMessages` takes ~1s total.
+**Performance:** `listMessages` is one JXA call. Zero `readMessage` calls. This is important: each `readMessage` triggers a full IMAP body download (~0.5 to 2s). 20 messages via `listMessages` takes ~1s total.
 
 **`--summarize` on `show`:** Single message: call `MailBridge.readMessage` + `AIProvider.complete` with `singleSummarySystemPrompt`. Appended to the text output; in JSON/agent mode, added as a `"summary"` field.
 
@@ -328,7 +328,7 @@ enum MailAIError: LocalizedError, Sendable {
 }
 ```
 
-**JSON parsing policy for all AI features:** Strip markdown code fences before decoding. On `DecodingError`, throw `MailAIError.malformedAIResponse` with the raw response string. Do not retry automatically — surface the error to the user so they can retry manually or switch providers.
+**JSON parsing policy for all AI features:** Strip markdown code fences before decoding. On `DecodingError`, throw `MailAIError.malformedAIResponse` with the raw response string. Do not retry automatically: surface the error to the user so they can retry manually or switch providers.
 
 ---
 
@@ -340,10 +340,10 @@ All prompts live in `MailAIPrompts.swift` as static `let` constants. Four prompt
 Instructs AI to return JSON with dates/amounts/tracking/action items/contacts/URLs. Specifies exact schema. Includes instruction to return empty arrays (not omit keys) for absent categories.
 
 ### `triageSystemPrompt`
-Defines 5 categories and 1–5 urgency scale. Requests JSON with per-message classification **AND** overall summary and top action items in the same response (single AI call per batch).
+Defines 5 categories and 1 to 5 urgency scale. Requests JSON with per-message classification **AND** overall summary and top action items in the same response (single AI call per batch).
 
 ### `singleSummarySystemPrompt`
-"Summarize this email in 2–3 sentences. Focus on: who sent it, what they want, any deadlines or action items."
+"Summarize this email in 2 to 3 sentences. Focus on: who sent it, what they want, any deadlines or action items."
 
 ### `injectionDetectionSystemPrompt`
 Security-focused prompt describing 6 injection categories. Instructs conservative flagging with confidence scores. Returns `{"threats": []}` for clean emails.
@@ -354,11 +354,11 @@ Security-focused prompt describing 6 injection categories. Instructs conservativ
 
 | Pattern | Source to follow |
 |---------|-----------------|
-| GRDB store | `TranscriptCache.swift` — `final class`, `DatabaseQueue`, `migrate()` with `CREATE TABLE IF NOT EXISTS` |
+| GRDB store | `TranscriptCache.swift`: `final class`, `DatabaseQueue`, `migrate()` with `CREATE TABLE IF NOT EXISTS` |
 | AI provider flags | `AIProviderFactory.make(providerFlag:modelFlag:apiKeyFlag:)` for completion calls |
 | HTTP calls | `sendSynchronousRequest()` from `AIProvider.swift` for embedding HTTP call |
-| Subcommand shape | `Mark`/`Move` structs in `MailCommand.swift` — all must be **`AsyncParsableCommand`** |
-| Model structs | `MailModels.swift` — `Codable + Sendable`, **camelCase** field names (no snake_case CodingKeys unless overriding) |
+| Subcommand shape | `Mark`/`Move` structs in `MailCommand.swift`: all must be **`AsyncParsableCommand`** |
+| Model structs | `MailModels.swift`: `Codable + Sendable`, **camelCase** field names (no snake_case CodingKeys unless overriding) |
 | Bridge pattern | `enum` with `static` methods, no instances |
 | Adding AI flags to existing commands | Add `@Option var provider: String?`, `@Option var model: String?`, `@Option var apiKey: String?` directly on the command struct (see `CalendarCommand.Summarize` for reference) |
 
@@ -369,9 +369,9 @@ Security-focused prompt describing 6 injection categories. Instructs conservativ
 | Phase | Deliverables | Rationale |
 |-------|-------------|-----------|
 | 1 | `EmbeddingStore`, `EmbeddingProvider`, `mail index`, tests | Foundation for semantic search; `mail index` provides standalone value |
-| 2 | `PromptInjectionScanner`, `MailAIError`, `Sanitize` subcommand, `--sanitize` on Show | Zero AI dependency — ships value immediately |
-| 3 | `DataExtractor`, `Extract` subcommand, `MailAIPrompts` (extraction prompt) | Simplest AI feature — single message in, JSON out |
-| 4 | `TriageEngine`, `Triage` subcommand, `--summarize` on Show/List, triage/summary prompts | Most complex (batching) — built on Phase 3 JSON parsing patterns |
+| 2 | `PromptInjectionScanner`, `MailAIError`, `Sanitize` subcommand, `--sanitize` on Show | Zero AI dependency: ships value immediately |
+| 3 | `DataExtractor`, `Extract` subcommand, `MailAIPrompts` (extraction prompt) | Simplest AI feature: single message in, JSON out |
+| 4 | `TriageEngine`, `Triage` subcommand, `--summarize` on Show/List, triage/summary prompts | Most complex (batching): built on Phase 3 JSON parsing patterns |
 | 5 | `SemanticSearch`, `--semantic` on Search | Requires Phase 1 infrastructure; intentionally last |
 
 ---
@@ -391,13 +391,13 @@ Security-focused prompt describing 6 injection categories. Instructs conservativ
   - `Show --sanitize` and `Show --summarize` flags parse correctly
   - `List --summarize` flag parses correctly
   - `Triage --limit` rejects values < 1
-- Estimated: ~45–55 new tests
+- Estimated: ~45 to 55 new tests
 
 ---
 
 ## Verification Checklist
 
-- [ ] `make test` passes (914 existing + ~45–55 new tests)
+- [ ] `make test` passes (914 existing + ~45 to 55 new tests)
 - [ ] `make lint` passes (swiftformat)
 - [ ] `make build` succeeds (Swift 6 strict concurrency, no warnings)
 - [ ] `pippin mail index --limit 10 --provider ollama` indexes 10 messages

@@ -1,7 +1,7 @@
 ---
 name: pippin
-description: macOS CLI toolkit for Apple app automation — Mail, Calendar, Reminders, Notes, Contacts, Messages, Voice Memos, plus daily digest, action extraction, background jobs, plan-and-execute, and an MCP server.
-version: 0.24.0
+description: macOS CLI toolkit for Apple app automation: Mail, Calendar, Reminders, Notes, Contacts, Messages, Voice Memos, plus daily digest, action extraction, background jobs, plan-and-execute, and an MCP server.
+version: 0.41.1
 platform: macOS 15+
 runtime: native (Swift)
 install: brew install mattwag05/tap/pippin
@@ -30,7 +30,7 @@ output_formats:
 
 # pippin
 
-macOS CLI toolkit for Apple app automation. Provides structured, agent-friendly access to Mail, Calendar, Reminders, Notes, Contacts, Apple Messages (read + gated send), and Voice Memos — plus an aggregated daily digest, commitment/action extraction, background jobs, a natural-language plan-and-execute mode, and a built-in MCP server. Audio (TTS/STT) and a headless WebKit browser ship as experimental, opt-in commands.
+macOS CLI toolkit for Apple app automation. Provides structured, agent-friendly access to Mail, Calendar, Reminders, Notes, Contacts, Apple Messages (read + gated send), and Voice Memos, plus an aggregated daily digest, commitment/action extraction, background jobs, a natural-language plan-and-execute mode, and a built-in MCP server. Audio (TTS/STT) and a headless WebKit browser ship as experimental, opt-in commands.
 
 ## Quick Start
 
@@ -70,7 +70,7 @@ pippin mail cache clear                       # empty the cache (--older-than-da
 pippin job run -- mail cache fill             # build the metadata index that speeds list and search without Full Disk Access
 ```
 
-Message bodies are cached locally (`~/.config/pippin/mail-cache.db`) so repeat `mail show`/`mail index` reads skip the slow IMAP fetch (~75× faster on a hit). Pass `mail show --no-cache` to force a live fetch. Read/unread state is never cached — `mail list`/`search` always report it live.
+Message bodies are cached locally (`~/.config/pippin/mail-cache.db`) so repeat `mail show`/`mail index` reads skip the slow IMAP fetch (~75× faster on a hit). Pass `mail show --no-cache` to force a live fetch. Read/unread state is never cached: `mail list`/`search` always report it live.
 
 ### Calendar
 
@@ -146,7 +146,7 @@ pippin messages show "iMessage;-;+15551234567"
 pippin messages exclude add "iMessage;-;groupA"   # hide a thread from every read
 pippin messages exclude list
 
-# Send — defaults to --draft (logged only, NOT delivered)
+# Send: defaults to --draft (logged only, NOT delivered)
 pippin messages send --to "+15551234567" --body "Running 10 min late" --draft
 
 # Autonomous send requires ALL three gates:
@@ -156,7 +156,7 @@ pippin messages send --to "+15551234567" --body "Running 10 min late" --draft
 PIPPIN_AUTONOMOUS_MESSAGES=1 pippin messages send --to "+15551234567" --body "On my way" --autonomous
 ```
 
-Every read and send attempt is appended to `~/.local/share/pippin/messages-audit.jsonl` (operation, params, SHA-256(body) — message bodies are never stored).
+Every read and send attempt is appended to `~/.local/share/pippin/messages-audit.jsonl` (operation, params, SHA-256(body): message bodies are never stored).
 
 ### Voice Memos
 
@@ -199,7 +199,7 @@ pippin actions extract --provider claude        # use Claude instead of Ollama
 `pippin job` detaches long-running work (`mail index`, `memos summarize`, `actions extract`) so the caller doesn't block. State lives under `~/.cache/pippin/jobs/<id>/`. IDs are 16-char hex and accept unambiguous prefix matches.
 
 ```bash
-pippin job run -- mail index                  # fork; prints {job_id, pid, "running"}
+pippin job run -- mail index                  # fork; prints {id, pid, status: "running", ...}
 pippin job show <id>                          # status + stdout/stderr tails
 pippin job list --status running              # recent jobs (running|done|error|killed)
 pippin job wait <id> --timeout 600            # block until terminal state
@@ -219,7 +219,7 @@ pippin do "summarize yesterday's voice memos" --provider claude --max-steps 3
 
 ### Batch
 
-Run multiple pippin commands concurrently from a JSON array on stdin — fan-out parallel dispatch with per-entry result envelopes.
+Run multiple pippin commands concurrently from a JSON array on stdin: fan-out parallel dispatch with per-entry result envelopes.
 
 ```bash
 echo '[{"cmd":"mail","args":["accounts"]},{"cmd":"calendar","args":["today"]}]' \
@@ -228,7 +228,7 @@ echo '[{"cmd":"mail","args":["accounts"]},{"cmd":"calendar","args":["today"]}]' 
 
 ### Audio (experimental)
 
-Hidden by default — requires `PIPPIN_EXPERIMENTAL=1`. Text-to-speech / speech-to-text via mlx-audio (Kokoro voices).
+Hidden by default: requires `PIPPIN_EXPERIMENTAL=1`. Text-to-speech / speech-to-text via mlx-audio (Kokoro voices).
 
 ```bash
 PIPPIN_EXPERIMENTAL=1 pippin audio speak "Hello, world" --voice af_heart
@@ -239,7 +239,7 @@ PIPPIN_EXPERIMENTAL=1 pippin audio models       # list STT/TTS models
 
 ### Browser (experimental)
 
-Hidden by default — requires Node.js, Playwright WebKit (`npx playwright install webkit`), and `PIPPIN_EXPERIMENTAL=1`.
+Hidden by default: requires Node.js, Playwright WebKit (`npx playwright install webkit`), and `PIPPIN_EXPERIMENTAL=1`.
 
 ```bash
 PIPPIN_EXPERIMENTAL=1 pippin browser open "https://example.com"   # open URL, return page info
@@ -249,7 +249,7 @@ PIPPIN_EXPERIMENTAL=1 pippin browser click <ref-id>               # click by acc
 PIPPIN_EXPERIMENTAL=1 pippin browser fetch "https://api.example.com/data"   # HTTP fetch (no browser)
 ```
 
-> Audio and Browser will be removed in the next major release unless an issue requests otherwise — see `CHANGELOG.md`.
+> Audio and Browser will be removed in the next major release unless an issue requests otherwise: see `CHANGELOG.md`.
 
 ### Utility
 
@@ -258,7 +258,7 @@ pippin status                                 # system dashboard: accounts, even
 pippin status --format agent                  # compact JSON for agent consumption
 pippin doctor                                 # check permissions and dependencies
 pippin init                                   # guided first-run setup
-pippin completions zsh                        # generate shell completions (zsh|bash|fish — positional arg)
+pippin completions zsh                        # generate shell completions (zsh|bash|fish: positional arg)
 pippin shell                                  # interactive REPL
 pippin                                        # bare invocation also starts REPL
 ```
@@ -274,7 +274,7 @@ pippin [Work]> use                            # clear active account
 pippin [Work]> quit
 ```
 
-Session persists to `~/.config/pippin/session.json` — active account, last-used IDs, and command history survive across REPL sessions.
+Session persists to `~/.config/pippin/session.json`: active account, last-used IDs, and command history survive across REPL sessions.
 
 ### MCP Server Mode
 
@@ -283,18 +283,21 @@ Run pippin as a [Model Context Protocol](https://modelcontextprotocol.io) server
 ```bash
 pippin mcp-server                             # run the server (stdin/stdout JSON-RPC)
 pippin mcp-server --list-tools                # dump the registered tools as JSON
+pippin mcp-server --apps calendar,reminders   # expose only these tool groups (less context per turn)
 ```
 
-Ships with 76 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch`, and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+Ships with 79 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + draft only), status, doctor, `digest`, `batch`, `job_*` (background work with poll-or-wait), and the safety tools `policy_show`, `action_log` and `undo`. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions and [`docs/agent-integration.md`](docs/agent-integration.md) for how an agent should use the results.
+
+Over MCP, every tool that changes something goes through a safety gate. Under the default policy, sends (`mail_send`, `mail_reply`, `mail_forward`, `messages_send`) and every `*_delete` tool first return `confirmation_required` with `error.details.confirmToken`; repeat the call with the same arguments plus `confirmToken` to carry it out. Every mutating tool also takes `dryRun` and `idempotencyKey`. The gate does not apply to the plain CLI. See [`docs/safety-model.md`](docs/safety-model.md).
 
 ## Agent Integration
 
-### Envelope v1
+### Envelope v4
 
 Every response is wrapped in a versioned envelope:
 
 - **Success:** `{"v":4,"status":"ok","duration_ms":N,"data":<payload>}`
-- **Error:** `{"v":4,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","next_step":{…},"remediation":{…}?}}`. Act on `next_step`: `retryable` with `retry_after_seconds` (same call can work again), `next_call` as `{tool, args, argv}` (make this call instead), `human_action` (only a person can do this; tell them). `send_outcome_unknown` means a send timed out and may have gone out, so check before sending again.
+- **Error:** `{"v":4,"status":"error","duration_ms":N,"error":{"code":"…","message":"…","next_step":{…},"remediation":{…}?}}`. Act on `next_step`: `retryable` with `retry_after_seconds` (same call can work again), `next_call` as `{tool, args, argv}` (make this call instead), `human_action` (only a person can do this; tell them). `send_outcome_unknown` (CLI) and `outcome_unknown` (MCP, any write that timed out) mean the change may have happened, so read the current state before trying again.
 
 `pippin mail accounts --format agent` →
 ```json
@@ -309,14 +312,14 @@ On failure, `pippin` sets a typed process exit code so a calling shell can branc
 
 | Code | Meaning | Retryable | Example `error.code` |
 |------|---------|-----------|----------------------|
-| `0` | success | — | — |
+| `0` | success | n/a | n/a |
 | `2` | usage / bad input | no | `invalid_cursor`, `invalid_json`, `missing_required` |
 | `3` | resource not found | no | `event_not_found`, `memo_not_found`, `job_not_found` |
 | `4` | auth / permission / config | no | `access_denied`, `missing_api_key`, `not_available` |
 | `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
 | `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
 
-Argument validation and parse failures (bad flags, missing required args, unknown subcommands) map to `2` (usage) with an error envelope. `--help` and `--version` print plain text and exit `0`.
+Argument validation and parse failures (bad flags, missing required args, unknown subcommands) map to `2` (usage) with an error envelope. `--help` and `--version` print plain text and exit `0`. The MCP server does not forward exit codes: an MCP client sees `isError` and the envelope, and `error.code` carries the class.
 
 ### Pagination
 
@@ -334,9 +337,9 @@ pippin mail list --account icloud --cursor <token> --format agent
 {"v":4,"status":"ok","duration_ms":176,"next_cursor":"eyJvZmZ…","data":[{…},{…}]}
 ```
 
-`next_cursor` is **omitted, not null**, on the last page — its absence is the end-of-results signal. (Envelope v2 and earlier switched `.data` to `{items, next_cursor}` whenever a pagination flag was passed, so iterating `.data` yielded the dict's keys instead of rows.)
+`next_cursor` is **omitted, not null**, on the last page: its absence is the end-of-results signal. (Envelope v2 and earlier switched `.data` to `{items, next_cursor}` whenever a pagination flag was passed, so iterating `.data` yielded the dict's keys instead of rows.)
 
-Cursor tokens are bound to the query by a filter-hash — changing a filter mid-walk is rejected as `cursor_mismatch` rather than silently returning mixed pages.
+Cursor tokens are bound to the query by a filter-hash: changing a filter mid-walk is rejected as `cursor_mismatch` rather than silently returning mixed pages.
 
 ### Field projection (`--fields`)
 
@@ -348,7 +351,7 @@ pippin mail list --limit 20 --fields id,subject,from --format agent   # → [{id
 
 ### Capability probe
 
-`pippin agent-info --format agent` returns a single structured description of pippin's contract — version, `schema_version`, output `formats`, the typed `exit_codes` map, `global_flags`, whether experimental commands are enabled, the MCP `tool_count`, and the top-level `commands`. Call it once to discover what you can rely on instead of scraping `--help`. (For the full per-tool MCP surface, use `pippin mcp-server --list-tools`.)
+`pippin agent-info --format agent` returns a single structured description of pippin's contract: version, `schema_version`, output `formats`, the typed `exit_codes` map, `global_flags`, whether experimental commands are enabled, the MCP `tool_count`, and the top-level `commands`. Call it once to discover what you can rely on instead of scraping `--help`. (For the full per-tool MCP surface, use `pippin mcp-server --list-tools`.)
 
 ### Recommended patterns
 
@@ -368,4 +371,4 @@ pippin mail list --limit 20 --fields id,subject,from --format agent   # → [{id
 {"ai":{"provider":"ollama","ollama":{"model":"gemma4:latest","url":"http://localhost:11434"},"claude":{"model":"claude-sonnet-4-6"}}}
 ```
 
-Supported providers: `ollama` (local, default — Gemma 4 recommended) and `claude` (API, requires `ANTHROPIC_API_KEY`). Override per-command with `--provider` / `--model`.
+Supported providers: `ollama` (local, default; Gemma 4 recommended), `claude` (API, requires `ANTHROPIC_API_KEY`) and `openai` (any OpenAI-compatible endpoint; set `ai.openai.baseURL`). Override per-command with `--provider` / `--model`. `claude` sends the text it works on to `api.anthropic.com`; see [SECURITY.md](SECURITY.md#data-handling).

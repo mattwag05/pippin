@@ -4,7 +4,7 @@ Load when editing `pippin/MCP/`, `McpServerCommand.swift`, or `ToolRegistry.swif
 
 ## Never `print()` inside the mcp-server command
 
-stdout is reserved for JSON-RPC framing — any stray print corrupts the transport. Diagnostics go to stderr via `MCPStdioWriter.log()`.
+stdout is reserved for JSON-RPC framing: any stray print corrupts the transport. Diagnostics go to stderr via `MCPStdioWriter.log()`.
 
 ## Tool argv must always include `--format agent`
 
@@ -12,11 +12,11 @@ The child `pippin` process produces compact agent JSON that the server wraps ver
 
 ## Exit-code-to-error mapping
 
-When the child exits non-zero, stdout contains the error envelope (`{"v":4,"status":"error","duration_ms":N,"error":{"code":"snake_case","message":"...","next_step":{...}}}`) from `printAgentError`. The server passes this through as the tool result text with `isError: true`. Do NOT convert it to a JSON-RPC-level `-326xx` error — those are reserved for protocol-level failures (unknown method, malformed request, launch failure).
+When the child exits non-zero, stdout contains the error envelope (`{"v":4,"status":"error","duration_ms":N,"error":{"code":"snake_case","message":"...","next_step":{...}}}`) from `printAgentError`. The server passes this through as the tool result text with `isError: true`. Do NOT convert it to a JSON-RPC-level `-326xx` error: those are reserved for protocol-level failures (unknown method, malformed request, launch failure).
 
 ## ArgumentParser error messages in agent mode (pippin-kzi)
 
-ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`ValidationError` whose `localizedDescription` is the opaque "(ArgumentParser.CommandError error 1.)" — so `--format agent` (and every MCP tool call) lost the actionable text humans see. `AgentError.from` recovers it via `AgentError.argumentParserMessage`, an injected `{ Pippin.message(for: $0) }` hook set in `Pippin.main()` (same injection pattern as `ShellCommand.parser`), gated on `String(reflecting: type(of: error)).hasPrefix("ArgumentParser.")`. Don't replace the hook with `error.localizedDescription` — it regresses to the opaque form.
+ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`ValidationError` whose `localizedDescription` is the opaque "(ArgumentParser.CommandError error 1.)", so `--format agent` (and every MCP tool call) lost the actionable text humans see. `AgentError.from` recovers it via `AgentError.argumentParserMessage`, an injected `{ Pippin.message(for: $0) }` hook set in `Pippin.main()` (same injection pattern as `ShellCommand.parser`), gated on `String(reflecting: type(of: error)).hasPrefix("ArgumentParser.")`. Don't replace the hook with `error.localizedDescription`: it regresses to the opaque form.
 
 ## Binary path resolution
 
@@ -28,13 +28,35 @@ ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`Val
 
 **Bridge tools must self-bound well below 60s.** Search uses a 22s JXA-loop soft cap (`softTimeoutMs`) and a 30s ScriptRunner cap; on soft-timeout it returns partial results plus `meta.timedOut=true` and an envelope-level `warnings: [...]` advisory. The MCP hard timeout exists only as a last-resort failsafe.
 
+### What the timeout kills, and what it tells the caller
+
+`runChild` uses `posix_spawn`, not `Foundation.Process`, because only that can put the child in its own process group. The MCP dispatcher (and `batch` under MCP) pass `ownProcessGroup: true`, and the timeout signals the group, so the `osascript` a bridge spawned dies with its parent. Terminal callers (`pippin do`, CLI `batch`) keep the child in the foreground group so Ctrl-C still reaches it.
+
+Every tool declares `effect:` (`.readOnly` or `.mutating(verifyWith:)`); `ToolEffectTests` pins the mutating set and fails on an unclassified tool. A timeout on a mutating tool is `outcome_unknown`, not retryable, with a `next_call` to the verify tool. Only read-only tools get the retryable `child_timed_out`. The same field feeds the `readOnlyHint` / `destructiveHint` annotations in `tools/list`.
+
+## Every mutating tool call goes through `SafetyGate`
+
+`MCPDispatcher.makeToolCallResponse` hands any tool whose `effect` is not `.readOnly` to `SafetyGate.run` (`pippin/Safety/`): policy, confirm token, rate limit, action log, undo record, idempotency key, and `dryRun` for tools with no dry run of their own. Put shared write behavior there, not in a tool. It strips `confirmToken` and `idempotencyKey` before `SchemaValidator` runs and adds them (and `dryRun`) to the schema in `MCPTool.descriptor`, so no tool declares them; the golden input schemas are generated from the descriptor. Under a `confirm` rule it sets the tool's own `confirm: true` once a token is valid. A dry run is recognized by `--dry-run` in the built argv. Tests that reach the dispatcher without injecting a gate write under a temp directory (`SafetyPaths`), never the real log. Claims and their tests: [safety-model.md](../safety-model.md).
+
+`batch` and `job_run` skip the dispatcher, so `MCPCommandPolicy.check` refuses a command whose tool the policy gates (`direct_call_required`).
+
+A new tool must also be classified in `UntrustedContent` (`fields` or `noExternalText`): the dispatcher adds `content_trust` and `untrusted_fields` to every result of a tool listed in `fields`.
+
+## `batch` and `job_run` only reach commands that have a tool
+
+Under MCP both resolve their raw argv through `MCPCommandPolicy.check`: the argv must start with a registered tool's command path, `batch` and `job run` cannot be nested, `--autonomous` is refused and `messages send` needs `--draft`. A new tool whose CLI path is not `<group> <rest-with-dashes>` needs a `pathOverrides` entry (`testCommandPathIsThePrefixOfEveryToolsArgv` says so). `batch` entries share the 50s `BatchBudget`; entries that run out of time carry their own error and the envelope is `partial`.
+
+## Arguments that cannot reach argv
+
+A NUL in any string argument is refused (`SchemaValidator`, and again in `runChild`): argv cannot hold one. A bare positional id that starts with `-` is refused by `ArgHelpers.positional`, because ids sit before the options where `--` cannot go.
+
 ## Optional `warnings` + `partial` in agent envelope
 
 `AgentOkEnvelope` carries an optional top-level `warnings: [String]?` and, since pippin-1son (2026-07-30), an optional `partial: Bool?`. Both are omitted when empty or false, so consumers reading only `.data` are unaffected and no schema bump was needed. `output.emit(timedOut:)` sets `partial: true` automatically; `emit(extraWarnings:)` merges non-timeout advisories such as fast-path fallback reasons into `warnings`. A timed-out search with nonempty results remains partial success. A timed-out search with an empty result or page throws `MailBridgeError.searchIncomplete`, yielding `status:error` and code `search_incomplete` so an agent cannot mistake incomplete coverage for no matches.
 
-## Schema `default:` is advisory — it never reaches argv
+## Schema `default:` is advisory: it never reaches argv
 
-An MCP arg the client omits is simply absent from `buildArgs`' input; the child then applies the **CLI** default, whatever the schema's `default:` claims. When the MCP-facing default must differ from the CLI default, `buildArgs` has to inject the flag explicitly — e.g. `mail_activity` emits `--preview=0` when `preview` is omitted (MCP default 0, CLI default 200). Test the omitted-arg case in `ToolRegistryTests`, not just the explicit one.
+An MCP arg the client omits is simply absent from `buildArgs`' input; the child then applies the **CLI** default, whatever the schema's `default:` claims. When the MCP-facing default must differ from the CLI default, `buildArgs` has to inject the flag explicitly: e.g. `mail_activity` emits `--preview=0` when `preview` is omitted (MCP default 0, CLI default 200). Test the omitted-arg case in `ToolRegistryTests`, not just the explicit one.
 
 ## Installed schema changes require a client reconnect
 
@@ -54,13 +76,13 @@ The MCP layer SIGKILLs any child exceeding ~60s. A tool whose command runs per-i
 
 ## Adding a tool: one test hardcodes the count, three don't
 
-`JSONRPCTests` and `CLIIntegrationTests` compare against `MCPToolRegistry.tools.count` (no edit needed), but **`InProcessToolsTests.testRegistryToolCount` hardcodes the literal** — it is the one that fails, and it is not in the MCP test file you'd think to check. Also update `docs/mcp-server.md` (the "N tools" line + tool table), `README.md`, and the pippin `CLAUDE.md` ToolRegistry row. Do NOT touch `AgentInfoCommandTests.testEnvelopeEncodesSnakeCaseKeys` — its `toolCount: 44` is a snake_case *encoding fixture*, not the real count.
+`JSONRPCTests` and `CLIIntegrationTests` compare against `MCPToolRegistry.tools.count` (no edit needed), but **`InProcessToolsTests.testRegistryToolCount` hardcodes the literal**: it is the one that fails, and it is not in the MCP test file you'd think to check. Also update `docs/mcp-server.md` (the "N tools" line + tool table), `README.md`, and your local (gitignored) `CLAUDE.md` if you keep one. Do NOT touch `AgentInfoCommandTests.testEnvelopeEncodesSnakeCaseKeys`: its `toolCount: 44` is a snake_case *encoding fixture*, not the real count.
 
 ## Every tool's argv is parsed against its real command group
 
-`ToolRegistryTests.testAllArgvParseAsRealCLICommands` runs each built argv through its group's `parseAsRoot` (the root `Pippin` lives in the executable target and can't be imported by tests). This catches a typo'd subcommand, a renamed flag, or a `validate()` precondition the tool fails to satisfy — none of which any test caught before. A new top-level command must be added to its `groups` map.
+`ToolRegistryTests.testAllArgvParseAsRealCLICommands` runs each built argv through its group's `parseAsRoot` (the root `Pippin` lives in the executable target and can't be imported by tests). This catches a typo'd subcommand, a renamed flag, or a `validate()` precondition the tool fails to satisfy: none of which any test caught before. A new top-level command must be added to its `groups` map.
 
-`sampleArgs` is ONE permissive superset object, not a per-tool switch — add a case only when a key genuinely conflicts. Two do: **`to` means three different things** (recipient array for `mail_send`/`reply`/`forward`, message handle for `messages_send`, destination mailbox for `mail_move`).
+`sampleArgs` is ONE permissive superset object, not a per-tool switch: add a case only when a key genuinely conflicts. Two do: **`to` means three different things** (recipient array for `mail_send`/`reply`/`forward`, message handle for `messages_send`, destination mailbox for `mail_move`).
 
 ## Write-safety gates live in `buildArgs`, before the child spawns
 

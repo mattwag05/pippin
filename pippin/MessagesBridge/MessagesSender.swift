@@ -7,6 +7,8 @@ public enum MessagesSendError: LocalizedError, Sendable {
     case recipientNotAllowed(String)
     case autonomousNotAuthorized
     case accessDenied
+    /// The attempt line could not be written, so the send was not started.
+    case auditLogUnavailable(path: String, detail: String)
 
     public var errorDescription: String? {
         switch self {
@@ -22,6 +24,8 @@ public enum MessagesSendError: LocalizedError, Sendable {
             return "Autonomous send requires PIPPIN_AUTONOMOUS_MESSAGES=1 and --autonomous flag."
         case .accessDenied:
             return "Messages automation is not authorized. Grant Automation control of Messages and retry."
+        case let .auditLogUnavailable(path, detail):
+            return "Nothing was sent: the Messages audit log at \(path) could not be written (\(detail))."
         }
     }
 }
@@ -36,6 +40,7 @@ extension MessagesSendError: RemediableError {
         case .recipientNotAllowed: return "recipient_not_allowed"
         case .autonomousNotAuthorized: return "autonomous_not_authorized"
         case .accessDenied: return "access_denied"
+        case .auditLogUnavailable: return "audit_log_unavailable"
         }
     }
 
@@ -50,6 +55,8 @@ extension MessagesSendError: RemediableError {
             return .human("Set PIPPIN_AUTONOMOUS_MESSAGES=1 in the environment that runs pippin if autonomous sending is intended.")
         case .accessDenied:
             return .human("Enable Automation control of Messages for pippin in System Settings > Privacy & Security > Automation, or approve the prompt during an autonomous send from an interactive terminal.")
+        case let .auditLogUnavailable(path, _):
+            return .human("Make \(path) and its folder writable by the user running pippin, then send again. pippin does not send a message it cannot log.")
         }
     }
 

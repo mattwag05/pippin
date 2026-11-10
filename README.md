@@ -22,7 +22,60 @@
 
 ---
 
-pippin lets AI agents read and change data in Apple apps that otherwise need GUI automation. Every command returns compact JSON in a versioned envelope, from the CLI or over MCP.
+pippin gives an AI agent your Mail, Calendar, Reminders, Contacts, Notes, Messages and Voice Memos on macOS, from one local binary, over MCP or the command line. It is built for the agent, not a person at a keyboard: every call answers with one JSON envelope, every error says what to do next, and every write goes through a safety gate that can preview, ask for confirmation, rate-limit, log and undo. Nothing leaves your Mac unless you point an AI feature at a remote provider ([SECURITY.md](SECURITY.md#data-handling)).
+
+## Quickstart for agents (60 seconds)
+
+```bash
+brew install mattwag05/tap/pippin
+pippin permissions                      # answer the macOS prompts once, in a terminal
+claude mcp add pippin -- pippin mcp-server --apps calendar,reminders
+```
+
+Any MCP client works; the JSON form is in [docs/agent-integration.md](docs/agent-integration.md#60-second-setup). `--apps` exposes only the tool groups you name, which keeps the tool list small: scoped to one app it costs 1.4k to 6.1k tokens per turn instead of 22.6k for all 79 tools ([measured](docs/competitive/results.md#agent-ergonomics)). Then ask your agent "what's on my calendar tomorrow?".
+
+## How it compares
+
+A head-to-head against the most-used open-source Apple automation tools and MCP servers, run in a disposable VM against a seeded fixture, with the method committed before any result ([results](docs/competitive/results.md), [method](docs/competitive/methodology.md)):
+
+- **Coverage:** 5 apps scored (Reminders, Calendar, Contacts, Notes, Messages), every probed operation answered. The next widest tool covers 3.
+- **Correctness and reliability:** 45 of 45 correctness checks and 50 of 50 reliability checks passed.
+- **Speed:** fastest on 12 of 15 read operations warm, tied on a 13th, and fastest on all 15 cold. It loses to sweetrb/apple-notes-mcp on Notes list and search when warm (232 ms and 250 ms against 150 ms and 183 ms).
+- **Agent tasks:** with `--apps`, the fewest model tokens on all three tasks (11k to 21k). With all tools exposed it is the most expensive (84k to 88k).
+- **Safety:** the only measured tool with confirm tokens, rate limits, an action log, undo and untrusted-content marking together ([guardrail matrix](docs/competitive/results.md#safety-and-guardrails)).
+
+Where pippin trails is listed first on the [results page](docs/competitive/results.md#where-pippin-trails). Mail and Voice Memos were not measured for any tool.
+
+## Safety model
+
+Writes made over MCP pass through one gate ([docs/safety-model.md](docs/safety-model.md), with the test behind each line):
+
+- **Policy.** `~/.config/pippin/policy.json` sets each tool to `allow`, `deny` or `confirm`. With no file, sends and deletes need confirmation and other writes are allowed. `pippin policy show` prints the active policy.
+- **Confirm tokens.** A confirmed tool's first call does nothing but return a preview and a single-use token bound to the exact arguments; the second call with the token acts. `messages_send` can only draft.
+- **Dry run everywhere.** Every mutating tool takes `dryRun: true`.
+- **Rate limits.** 10 per hour per send tool and 30 per hour per delete tool by default, surviving restarts.
+- **Action log and undo.** Every write is logged before it runs (`pippin log`). Edits record their inverse, and `pippin undo <id>` reverts them. Sends, deletes and creates cannot be undone.
+- **Untrusted content.** Results that carry other people's text (mail, messages, notes, events) are marked `content_trust: "untrusted"`.
+
+The gate covers MCP only. An agent with a shell can run the CLI directly, which keeps its own `--confirm` and `--force` flags but has no policy, tokens or rate limits. The full threat model, including what pippin does not defend against, is in [SECURITY.md](SECURITY.md#threat-model).
+
+## What each app supports
+
+| App | Read | Write | Over MCP |
+| --- | --- | --- | --- |
+| Mail | accounts, mailboxes, list, search, show, verify, attachments, activity, triage, sanitize, extract | send, reply, forward (confirm), mark, move, apply rules | 17 tools |
+| Calendar | calendars, events, today, remaining, upcoming, search, show, conflicts, agenda | create, smart create, edit, delete (confirm) | 13 tools |
+| Reminders | lists, list, show, search | create, smart create, edit, complete, delete (confirm) | 9 tools |
+| Contacts | list, search, show, groups | create, edit, delete (confirm) | 7 tools |
+| Notes | folders, list, search, show | create, edit, delete (confirm, recoverable for 30 days) | 7 tools |
+| Messages | list, search, show | draft only over MCP; exclude list | 7 tools |
+| Voice Memos | list, info, export, transcribe, summarize | delete (confirm), capture to reminders | 7 tools (group `memos`) |
+
+Plus `digest`, `status`, `doctor`, `actions_extract`, `batch`, `job_*`, and the safety tools `policy_show`, `action_log` and `undo`. Tool counts are from `pippin mcp-server --apps <app> --list-tools`. The full list is in [docs/mcp-server.md](docs/mcp-server.md).
+
+## Command line
+
+The same commands run from a shell, with the same JSON:
 
 ```
 pippin mail list --unread
@@ -372,110 +425,7 @@ pippin mcp-server                    # JSON-RPC over stdin and stdout
 pippin mcp-server --list-tools       # print the registered tools as JSON
 ```
 
-The 76 tools cover mail, calendar, reminders, contacts, notes, voice memos, Messages, `actions_extract`, `status`, `doctor`, `digest`, `batch` for parallel calls, and `job_*` for background work. Outbound mail only previews and deletes fail unless the call passes `confirm: true`. `messages_send` can only draft. Quick Calendar, Reminders and Contacts reads run inside the server, and everything else runs in a child process. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring and the full tool list.
-
-## AI Configuration
-
-`memos summarize`, `calendar smart-create`, `mail triage`, `mail extract`, `actions extract` and `do` use an LLM. pippin works with Ollama locally, Claude, and any OpenAI-compatible Chat Completions endpoint, such as OpenAI, OpenRouter, vLLM, LM Studio or llama.cpp server.
-
-```json
-{
-  "ai": {
-    "provider": "ollama",
-    "ollama": {
-      "model": "gemma4:latest",
-      "url": "http://localhost:11434"
-    },
-    "claude": {
-      "model": "claude-sonnet-4-6"
-    },
-    "openai": {
-      "baseURL": "https://api.openai.com/v1",
-      "model": "gpt-4o-mini"
-    }
-  }
-}
-```
-
-Save to `~/.config/pippin/config.json`, or override per-command:
-
-```bash
-pippin memos summarize <id> --provider ollama --model qwen3.5:latest
-pippin memos summarize <id> --provider claude
-```
-
-| Provider | Setup | Speed |
-|----------|-------|-------|
-| `ollama` (default) | [Install Ollama](https://ollama.com), then `ollama pull gemma4` | ~22s/summary (Gemma 4) |
-| `claude` | Set `ANTHROPIC_API_KEY` env var | ~2-3s/summary |
-| `openai` | Set `ai.openai.baseURL` (+ `apiKey` / `$OPENAI_API_KEY` if the endpoint authenticates) | endpoint-dependent |
-
-`apiKey` is optional for local endpoints that don't authenticate.
-
-### Embeddings and transcription backends
-
-Semantic mail search and memo transcription have their own backends, chosen independently of `ai.provider`:
-
-```json
-{
-  "ai": {
-    "embeddings":    { "provider": "openai", "model": "text-embedding-3-small" },
-    "transcription": { "provider": "apple", "locale": "en-US" }
-  }
-}
-```
-
-| Setting | Providers | Default |
-|---------|-----------|---------|
-| `ai.embeddings` (`mail index`, `mail search --semantic`) | `ollama`, `openai` (any `/v1/embeddings` endpoint; `model` required) | `ollama` with `nomic-embed-text` |
-| `ai.transcription` (`memos transcribe`, `export --transcribe`, `summarize`, `capture`) | `mlx-audio`, `apple` (on-device SpeechAnalyzer, macOS 26+), `openai` (any `/v1/audio/transcriptions` endpoint) | `mlx-audio` |
-
-For `openai`, an omitted `baseURL` or `apiKey` falls back to the `ai.openai` values. `mail index` and `mail search` also accept `--provider`, `--model` (`--embedding-model` on search), and `--ollama-url`.
-
-Vectors from different embedding models cannot be compared. The index records which model embedded each message, so run `pippin mail index` again after switching backends. Semantic search ranks only messages indexed with the active model and reports an error when there are none.
-
-`pippin doctor` has an AI provider, Embeddings, and Transcription check. Each names the configured backend and says whether it is reachable. Set `PIPPIN_CONFIG` to read a different config file.
-
-The planner sends temperature `0` so plans stay deterministic, and other callers use each provider's default. OpenAI-compatible responses must have assistant text and a completed finish reason. Anything else returns `incomplete_completion`, and pippin never exposes hidden reasoning fields.
-
-For summaries, use Gemma 4 over Qwen 3.5. Qwen's reasoning roughly doubled the time without better structured output.
-
-## Contact Name Resolution
-
-`mail list`, `search`, `activity` and `show`, and `messages list`, `search` and `show`, turn each phone number or email into its Apple Contacts name. The index lives in `~/.config/pippin/contact-index.db` and rebuilds only when your contacts change. If Contacts isn't authorized, names just stay unresolved and the command still works.
-
-To turn it off everywhere instead of passing `--no-contacts` each time:
-
-```json
-{
-  "resolveContacts": false
-}
-```
-
-A per-command `--no-contacts` or `--contacts` wins over the config key, and resolution is on by default.
-
-Phone numbers match on digits, first the full string and then the last 10 digits, so `+1 555 123 4567` and `555-123-4567` resolve to the same person. Two numbers that differ only by country code collide. The first contact enumerated keeps the match, and nothing marks it as a near match, so a name on a foreign number could belong to a domestic contact. Use `--no-contacts` when you need the raw handle.
-
-## Sample Workflows
-
-```bash
-# Morning briefing in one process
-echo -e "calendar today\nreminders list\nmail list --unread --limit 10" | pippin shell
-
-# Or as separate commands
-pippin calendar today
-pippin reminders list
-pippin mail list --unread --limit 10
-
-# Export and transcribe today's voice memos
-pippin memos list --since $(date +%Y-%m-%d) \
-  | jq -r '.data[].id' \
-  | xargs -I{} pippin memos export {} --output ~/memos --transcribe
-
-# Find unread emails from a specific sender
-pippin mail list --unread \
-  | jq '.data[] | select(.from | contains("boss@company.com"))'
-```
+The 79 tools cover mail, calendar, reminders, contacts, notes, voice memos, Messages, `actions_extract`, `status`, `doctor`, `digest`, `batch` for parallel calls, `job_*` for background work, and the safety tools `policy_show`, `action_log` and `undo`. `--apps calendar,reminders` lists only the groups you name. Sends and deletes return a preview and a confirm token on the first call ([safety model](docs/safety-model.md)). `messages_send` can only draft. Calendar, Reminders, Contacts and Messages reads run inside the server, and everything else runs in a child process. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring and the full tool list, and [`docs/agent-integration.md`](docs/agent-integration.md) for how an agent should read the results.
 
 ## Architecture
 
@@ -495,8 +445,10 @@ pippin mail list --unread \
 | `pippin/Commands/AgentCommand.swift` | `AgentResult`, the value every command returns to the CLI and to in-process MCP tools |
 | `pippin/Commands/ShellCommand.swift` | Interactive REPL |
 | `pippin/Formatting/` | Agent envelope, field projection, error next steps and exit codes |
+| `pippin/MCP/` | MCP server: tool registry, dispatcher, in-process tools, `--apps` filter |
+| `pippin/Safety/` | Policy, confirm tokens, rate limits, action log, undo, untrusted-content marking |
 
-The whole codebase builds under Swift 6 strict concurrency. JXA bridges run `osascript`, and EventKit bridges use the framework directly.
+The whole codebase builds under Swift 6 strict concurrency. JXA bridges run `osascript`, and EventKit bridges use the framework directly. The full design is in [docs/architecture.md](docs/architecture.md).
 
 ## Requirements
 
@@ -516,6 +468,8 @@ make lint       # swiftformat lint
 make ci         # build, tests, swiftformat and the repo lint scripts
 make install    # build and install to ~/.local/bin
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the test suites and conventions, and [docs/performance.md](docs/performance.md) for benchmarks.
 
 ## License
 

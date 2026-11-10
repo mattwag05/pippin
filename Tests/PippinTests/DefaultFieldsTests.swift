@@ -26,7 +26,7 @@ final class DefaultFieldsTests: XCTestCase {
     func testEssentialFieldsAreRealKeys() throws {
         let event = CalendarEvent(
             id: "1", calendarId: "c", calendarTitle: "C", title: "t", startDate: "s", endDate: "e",
-            isAllDay: false, location: "l"
+            isAllDay: false, location: "l", isRecurring: true, occurrenceDate: "s"
         )
         let reminder = ReminderItem(id: "1", listId: "l", listTitle: "L", title: "t", dueDate: "d", priority: 1)
         let note = NoteInfo(

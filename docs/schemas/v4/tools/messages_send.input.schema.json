@@ -1,0 +1,34 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Draft a message (DRAFT ONLY: MCP clients cannot trigger autonomous delivery).",
+  "properties" : {
+    "body" : {
+      "description" : "Message body.",
+      "type" : "string"
+    },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
+    },
+    "to" : {
+      "description" : "Recipient handle or chat GUID.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "to",
+    "body"
+  ],
+  "title" : "messages_send: arguments",
+  "type" : "object"
+}

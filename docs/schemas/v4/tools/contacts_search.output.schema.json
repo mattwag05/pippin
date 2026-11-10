@@ -1,0 +1,119 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "birthday" : {
+        "type" : "string"
+      },
+      "emails" : {
+        "items" : {
+          "properties" : {
+            "label" : {
+              "type" : "string"
+            },
+            "value" : {
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "value"
+          ],
+          "type" : "object"
+        },
+        "type" : "array"
+      },
+      "familyName" : {
+        "type" : "string"
+      },
+      "fullName" : {
+        "type" : "string"
+      },
+      "givenName" : {
+        "type" : "string"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "jobTitle" : {
+        "type" : "string"
+      },
+      "organization" : {
+        "type" : "string"
+      },
+      "phones" : {
+        "items" : {
+          "properties" : {
+            "label" : {
+              "type" : "string"
+            },
+            "value" : {
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "value"
+          ],
+          "type" : "object"
+        },
+        "type" : "array"
+      },
+      "postalAddresses" : {
+        "items" : {
+          "properties" : {
+            "city" : {
+              "type" : "string"
+            },
+            "country" : {
+              "type" : "string"
+            },
+            "label" : {
+              "type" : "string"
+            },
+            "postalCode" : {
+              "type" : "string"
+            },
+            "state" : {
+              "type" : "string"
+            },
+            "street" : {
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "city",
+            "country",
+            "postalCode",
+            "state",
+            "street"
+          ],
+          "type" : "object"
+        },
+        "type" : "array"
+      },
+      "socialProfiles" : {
+        "items" : {
+          "properties" : {
+            "service" : {
+              "type" : "string"
+            },
+            "urlString" : {
+              "type" : "string"
+            },
+            "username" : {
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "service",
+            "username"
+          ],
+          "type" : "object"
+        },
+        "type" : "array"
+      }
+    },
+    "type" : "object"
+  },
+  "title" : "contacts_search: data",
+  "type" : "array"
+}

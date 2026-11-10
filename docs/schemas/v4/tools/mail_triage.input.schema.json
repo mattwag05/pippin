@@ -1,0 +1,39 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "AI triage of a mailbox: classify and prioritize messages from metadata only (no bodies read). Read-only.",
+  "properties" : {
+    "account" : {
+      "description" : "Filter by account name.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 20,
+      "description" : "Maximum messages to triage (default: 20).",
+      "type" : "integer"
+    },
+    "mailbox" : {
+      "description" : "Mailbox to triage (default: INBOX).",
+      "type" : "string"
+    },
+    "model" : {
+      "description" : "Model name.",
+      "type" : "string"
+    },
+    "noRules" : {
+      "default" : false,
+      "description" : "Skip the rule-based pre-pass and send every message to the AI.",
+      "type" : "boolean"
+    },
+    "provider" : {
+      "description" : "AI provider: ollama, claude, or openai.",
+      "type" : "string"
+    },
+    "rulesFile" : {
+      "description" : "Path to a triage-rules.json (default: ~/.config/pippin/triage-rules.json).",
+      "type" : "string"
+    }
+  },
+  "title" : "mail_triage: arguments",
+  "type" : "object"
+}

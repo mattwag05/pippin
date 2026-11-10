@@ -9,6 +9,10 @@ public struct MessagesAuditEntry: Codable, Sendable {
     public let recipient: String?
     public let bodyHash: String?
     public let sent: Bool?
+    /// For sends: `attempt` (written before the send), then one of `success`,
+    /// `failed`, `outcome_unknown`; or `refused` / `draft` when nothing was
+    /// attempted. An `attempt` with no later line means pippin died mid-send.
+    public let outcome: String?
     public let overrides: [String]?
 
     public init(
@@ -19,6 +23,7 @@ public struct MessagesAuditEntry: Codable, Sendable {
         recipient: String? = nil,
         bodyHash: String? = nil,
         sent: Bool? = nil,
+        outcome: String? = nil,
         overrides: [String]? = nil
     ) {
         self.timestamp = timestamp
@@ -28,6 +33,7 @@ public struct MessagesAuditEntry: Codable, Sendable {
         self.recipient = recipient
         self.bodyHash = bodyHash
         self.sent = sent
+        self.outcome = outcome
         self.overrides = overrides
     }
 
@@ -37,6 +43,7 @@ public struct MessagesAuditEntry: Codable, Sendable {
         case recipient
         case bodyHash = "body_hash"
         case sent
+        case outcome
         case overrides
     }
 }
@@ -62,8 +69,10 @@ public enum MessagesAuditLog {
         return digest.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    /// Convenience: build an entry with `now()` timestamp and append in one call.
-    /// Used by every `messages` subcommand (`list`, `search`, `show`, `send`).
+    /// Build an entry with a `now()` timestamp and append it, best effort.
+    /// Returns false when the line could not be written. Reads use this; a send
+    /// uses `recordOrThrow` for its attempt line so it can refuse to send blind.
+    @discardableResult
     public static func record(
         operation: String,
         params: [String: String] = [:],
@@ -71,10 +80,28 @@ public enum MessagesAuditLog {
         recipient: String? = nil,
         bodyHash: String? = nil,
         sent: Bool? = nil,
+        outcome: String? = nil,
         overrides: [String]? = nil,
         path: String? = nil
-    ) {
-        try? append(
+    ) -> Bool {
+        (try? recordOrThrow(
+            operation: operation, params: params, resultCount: resultCount, recipient: recipient,
+            bodyHash: bodyHash, sent: sent, outcome: outcome, overrides: overrides, path: path
+        )) != nil
+    }
+
+    public static func recordOrThrow(
+        operation: String,
+        params: [String: String] = [:],
+        resultCount: Int? = nil,
+        recipient: String? = nil,
+        bodyHash: String? = nil,
+        sent: Bool? = nil,
+        outcome: String? = nil,
+        overrides: [String]? = nil,
+        path: String? = nil
+    ) throws {
+        try append(
             MessagesAuditEntry(
                 timestamp: now(),
                 operation: operation,
@@ -83,6 +110,7 @@ public enum MessagesAuditLog {
                 recipient: recipient,
                 bodyHash: bodyHash,
                 sent: sent,
+                outcome: outcome,
                 overrides: overrides
             ),
             path: path
@@ -91,24 +119,11 @@ public enum MessagesAuditLog {
 
     public static func append(_ entry: MessagesAuditEntry, path: String? = nil) throws {
         let target = path ?? defaultPath()
-        let dir = (target as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(
-            atPath: dir,
-            withIntermediateDirectories: true
-        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let data = try encoder.encode(entry) + Data("\n".utf8)
-        // O_APPEND guarantees each write atomically seeks to end, preventing
-        // line interleaving when multiple `pippin messages` processes run
-        // concurrently (e.g. under MCP).
-        let fd = open(target, O_WRONLY | O_CREAT | O_APPEND, 0o644)
-        guard fd >= 0 else {
-            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: nil)
-        }
-        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        defer { try? handle.close() }
-        try handle.write(contentsOf: data)
+        // Same writer as the action log: O_APPEND and 0600 (the log names
+        // every recipient and search query).
+        try AppendOnlyFile.append(encoder.encode(entry) + Data("\n".utf8), to: target)
     }
 
     public static func now() -> String {

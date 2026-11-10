@@ -25,7 +25,7 @@ public enum PermissionPrimer {
     /// state. Never throws — a denial is a state, not an error.
     public static func primeReminders() async -> PermissionState {
         let status = EKEventStore.authorizationStatus(for: .reminder)
-        if status == .fullAccess || status == .authorized { return .granted }
+        if status == .fullAccess { return .granted }
         if status == .denied || status == .restricted { return .denied }
         do {
             let granted = try await EKEventStore().requestFullAccessToReminders()
@@ -38,7 +38,7 @@ public enum PermissionPrimer {
     /// Trigger the Calendar prompt if not yet determined.
     public static func primeCalendar() async -> PermissionState {
         let status = EKEventStore.authorizationStatus(for: .event)
-        if status == .fullAccess || status == .authorized { return .granted }
+        if status == .fullAccess { return .granted }
         if status == .denied || status == .restricted { return .denied }
         do {
             let granted = try await EKEventStore().requestFullAccessToEvents()

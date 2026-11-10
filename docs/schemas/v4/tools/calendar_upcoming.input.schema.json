@@ -1,0 +1,25 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List events for the next 7 days.",
+  "properties" : {
+    "cursor" : {
+      "description" : "Opaque next_cursor from a previous response.",
+      "type" : "string"
+    },
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "page" : {
+      "description" : "1-based page number. Ignored when cursor is set.",
+      "type" : "integer"
+    },
+    "pageSize" : {
+      "description" : "Rows per page when paginating.",
+      "type" : "integer"
+    }
+  },
+  "title" : "calendar_upcoming: arguments",
+  "type" : "object"
+}

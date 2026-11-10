@@ -1,0 +1,69 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "created_count" : {
+      "type" : "integer"
+    },
+    "dry_run" : {
+      "type" : "boolean"
+    },
+    "items" : {
+      "items" : {
+        "properties" : {
+          "due_hint" : {
+            "type" : "string"
+          },
+          "notes" : {
+            "type" : "string"
+          },
+          "reminder_id" : {
+            "type" : "string"
+          },
+          "title" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "title"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    },
+    "list" : {
+      "type" : "string"
+    },
+    "memo" : {
+      "properties" : {
+        "duration_seconds" : {
+          "type" : "number"
+        },
+        "id" : {
+          "type" : "string"
+        },
+        "title" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "duration_seconds",
+        "id",
+        "title"
+      ],
+      "type" : "object"
+    },
+    "transcription_chars" : {
+      "type" : "integer"
+    }
+  },
+  "required" : [
+    "created_count",
+    "dry_run",
+    "items",
+    "list",
+    "memo",
+    "transcription_chars"
+  ],
+  "title" : "memos_capture_to_reminders: data",
+  "type" : "object"
+}
