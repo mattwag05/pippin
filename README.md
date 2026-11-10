@@ -149,6 +149,8 @@ pippin mail send --to you@example.com --subject Hello --body "Hi" --dry-run  # a
 
 ## Commands
 
+Examples by app follow. Every command, with its help text, is in [docs/cli-reference.md](docs/cli-reference.md), generated from the command definitions.
+
 ### Mail
 
 ```bash

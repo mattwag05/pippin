@@ -24,6 +24,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [docs] `docs/cli-reference.md` lists every command with its help text. `CLIReferenceTests` generates it from the command definitions and fails when it is stale. Before it, 21 commands were documented nowhere.
 - [test] `LiveConformanceTests` runs every read tool against real app data and validates each envelope and `data` against the published schemas. It runs only inside a VM and only with `PIPPIN_LIVE_CONFORMANCE=1` ([result](bench/competitive/results/2026-11-10-doctor/summary.md)).
 
 ## [1.0.0] - 2026-11-10
