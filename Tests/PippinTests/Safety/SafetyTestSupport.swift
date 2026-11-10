@@ -90,7 +90,6 @@ func safetyTool(_ name: String) throws -> MCPTool {
     try XCTUnwrap(MCPToolRegistry.tool(named: name), name)
 }
 
-
 extension SafetyGate {
     /// `run` against the real registry, returning the thrown refusal as a value.
     func attempt(_ name: String, _ arguments: JSONValue, runner: FakeRunner) async -> Result<(text: String, isError: Bool), Error> {

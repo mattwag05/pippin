@@ -4,8 +4,8 @@ import Foundation
 // MARK: - policy show
 
 /// The policy as the MCP server applies it, one row per tool.
-struct PolicyReport: Encodable {
-    struct Row: Encodable {
+struct PolicyReport: Codable {
+    struct Row: Codable {
         let tool: String
         let effect: String
         let rule: String

@@ -320,7 +320,8 @@ enum MCPDispatcher {
         let result = MCPInitializeResult(
             protocolVersion: mcpProtocolVersion,
             capabilities: .init(tools: .init(listChanged: false)),
-            serverInfo: .init(name: "pippin", version: PippinVersion.version)
+            serverInfo: .init(name: "pippin", version: PippinVersion.version),
+            instructions: UntrustedContent.serverInstructions
         )
         guard let value = encodeToJSONValue(result) else {
             return JSONRPCResponse(
@@ -382,7 +383,7 @@ enum MCPDispatcher {
         guard tool.effect == .readOnly else {
             do {
                 let result = try await safety.run(tool: tool, arguments: toolArguments, tools: tools, runArgv: runArgv)
-                return wrapToolResult(id: id, payload: MCPToolCallResult(text: result.text, isError: result.isError))
+                return toolResult(id: id, tool: tool, text: result.text, isError: result.isError)
             } catch {
                 return errorResult(id: id, error, startedAt: toolStartedAt)
             }
@@ -403,7 +404,7 @@ enum MCPDispatcher {
                     let text = try await MCPInProcessTools.withDeadline(seconds: inProcessDeadline) {
                         try await handler(argv)
                     }
-                    return wrapToolResult(id: id, payload: MCPToolCallResult(text: text, isError: false))
+                    return toolResult(id: id, tool: tool, text: text, isError: false)
                 } catch {
                     if case MCPServerRuntimeError.inProcessTimedOut = error {
                         MCPInProcessTools.demote(tool.name)
@@ -412,7 +413,7 @@ enum MCPDispatcher {
                 }
             }
             let result = try await runArgv(argv)
-            return wrapToolResult(id: id, payload: MCPToolCallResult(text: result.text, isError: result.isError))
+            return toolResult(id: id, tool: tool, text: result.text, isError: result.isError)
         } catch {
             // Every failure to run the tool is tool-level: the caller can act
             // on it, and the envelope says how.
@@ -440,6 +441,13 @@ enum MCPDispatcher {
         }
         guard !trimmed.isEmpty else { throw MCPServerRuntimeError.childNoOutput(exitCode: childResult.exitCode) }
         return (trimmed, true)
+    }
+
+    /// Every tool result leaves through here, so every result that holds text
+    /// from outside is marked untrusted.
+    private static func toolResult(id: JSONRPCID, tool: MCPTool, text: String, isError: Bool) -> JSONRPCResponse {
+        let marked = isError ? text : UntrustedContent.mark(text, tool: tool.name)
+        return wrapToolResult(id: id, payload: MCPToolCallResult(text: marked, isError: isError))
     }
 
     private static func errorResult(id: JSONRPCID, _ error: Error, startedAt: Date) -> JSONRPCResponse {

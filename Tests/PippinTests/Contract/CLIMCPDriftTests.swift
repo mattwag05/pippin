@@ -41,6 +41,9 @@ final class CLIMCPDriftTests: XCTestCase {
         "--latency": (["doctor"], "Adds up to 70 s, past the MCP call budget; run it from the CLI."),
         "--poll-ms": (["job_wait"], "Polling cadence is an implementation detail."),
         "--input": (["batch"], "Reads a file; the tool passes entries inline."),
+        "--locate-by-message-id": (["mail_move"], "What `pippin undo` runs to move a message back; a client calls undo instead."),
+        "--incomplete": (["reminders_complete"], "What `pippin undo` runs to un-complete; a client calls undo instead."),
+        "--html": (["notes_show"], "The HTML body, read by undo to restore a note; clients get plainText."),
     ]
 
     /// Properties whose mapping is not one option of the same JSON type.

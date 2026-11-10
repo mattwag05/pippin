@@ -25,7 +25,7 @@ The plain CLI does not pass through it. `pippin mail send --confirm` typed in a 
 - **A token is not human approval.** The agent that receives a confirm token can send it straight back. The token forces a two-step commit, bound to the exact arguments and preceded by a preview, and it gives the host application a defined point at which to ask a person. Whether a person is asked is up to the host.
 - **The policy file is not protected from the agent's user account.** It is a file in your home directory. A process running as you can edit it. The MCP server offers no tool that writes it.
 - **The log is not tamper proof.** It is opened append-only and is mode 0600, so pippin never rewrites a line and other users cannot read it. A process running as you can still edit or delete the file. Nothing signs or chains the lines.
-- **Prompt injection.** Mail bodies, message text and note bodies are returned as they are, with no marker that they are untrusted data (see "Untrusted content" below).
+- **Prompt injection.** Results that hold other people's text are marked untrusted (section 7), and the server tells the client to treat it as data. The marker is a label. Whether the model obeys it is not something pippin can enforce.
 - **Rate limit races.** Two MCP servers acting in the same instant can each count one call and lose the other's. The limit is a brake, not an exact quota.
 
 ## 1. Policy file
@@ -52,6 +52,16 @@ A key is an MCP tool name, a prefix ending in `*`, or `*`. A rule is `allow`, `d
 - `pippin doctor` fails its "Policy file" check on a broken file. `SafetyPolicyTests.testDoctorReportsABrokenPolicyFile`
 
 `batch` and `job_run` run a command without the dispatcher's gate. So under MCP they refuse, with `direct_call_required`, any command whose tool the policy denies, confirms or rate limits (unless the entry passes `--dry-run`), and they refuse `undo`. `BatchCommandTests.testMCPBatchRefusesACommandThePolicyGates` (`Tests/PippinTests/BatchCommandTests.swift`). A write the policy allows without a limit still runs inside a batch, and is logged only as one `batch` action.
+
+### Dry run on every write
+
+Every mutating tool accepts `dryRun: true`. Where the command has a preview of its own (`--dry-run`, or the plan `mail apply-rules` prints without `--live`), that preview runs and is the result. Where it has none, the gate checks the policy and the arguments, starts no child, and answers `{"dry_run": true, "tool", "rule", "would_do", "arguments"}`. A dry run needs no token, is not rate limited, and is logged with outcome `dry_run`.
+
+- No mutating tool lacks a preview path, and none of them starts a child that acts. `UntrustedContentTests.testEveryMutatingToolHasAPreviewPath`
+- A dry run still fails on bad arguments and on `deny`. `UntrustedContentTests.testGateDryRunStillChecksTheArgumentsAndThePolicy`
+- A delete dry run needs no token and deletes nothing. `UntrustedContentTests.testADeleteDryRunNeedsNoTokenAndDeletesNothing`
+
+A gate-answered dry run does not look at the target: it cannot say whether the id exists or what the item currently holds.
 
 ## 2. Confirm tokens
 
@@ -151,8 +161,22 @@ Every mutating tool accepts an optional `idempotencyKey` (1 to 128 characters). 
 
 The stored result is the tool's full answer, so `idempotency.json` can hold whatever that tool returns.
 
-## Untrusted content
+## 7. Untrusted content
 
-Nothing pippin returns is marked as untrusted data today. Mail bodies, subjects and sender names, message text, note titles and bodies, calendar and reminder titles and notes, and contact notes all come back as plain fields beside pippin's own. There is no marker field on the envelope and no per-field annotation. The only related feature is `mail_sanitize`, which scans one message for injection patterns when asked.
+A result that holds text pippin did not write carries two extra top-level fields in its envelope:
 
-Marking is not a small change at the envelope layer: results are typed per command, and the envelope does not know which fields hold third-party text. It is listed as follow-up work.
+```json
+{"v":4,"status":"ok","duration_ms":12,"data":[...],"content_trust":"untrusted","untrusted_fields":["data[].subject","data[].from","data[].body"]}
+```
+
+`untrusted_fields` lists the paths that hold such text. `data[].subject` is `subject` in each row; a path that ends at an object (`data`, `data.mail`) covers everything under it. The MCP `initialize` result carries `instructions` telling the client to treat those fields as data and never as instructions. The fields are added by the dispatcher, so they are on MCP results only; the same command run from the CLI is not marked. Before this change nothing was marked (`grep -ri untrusted pippin/ Tests/` found no output marking).
+
+Marked: mail subject, sender, sender contact name, body, preview and attachment names (`mail_list`, `mail_search`, `mail_activity`, `mail_show`, `mail_triage`, `mail_extract`, `mail_sanitize`, `mail_verify`, `mail_attachments`); message text, sender names, conversation names and previews; note titles and bodies; event and reminder titles, notes, locations and urls, and attendee names; contact names, organization and job title (contacts return no notes field); memo titles and transcripts; and whole results of `digest`, `batch`, `actions_extract`, `calendar_agenda`, `memos_summarize` and the output tails of `job_show`.
+
+- Every tool is classified as returning outside text or not, with a reason for each "not". `UntrustedContentTests.testEveryToolIsClassified`
+- The read tools left unmarked are a fixed, reviewed list (account, mailbox, calendar, list, group and folder names, the exclude list, `status`, `doctor`, job records, `policy_show`, `action_log`). `UntrustedContentTests.testUnmarkedReadToolsAreExactlyTheReviewedList`
+- Each listed path exists in the tool's published output schema. `UntrustedContentTests.testMarkedPathsExistInTheOutputSchemas`
+- Every classified tool's result carries the marker when called through the dispatcher, the payload is untouched, and the envelope still fits `docs/schemas/v4/envelope.schema.json`. `UntrustedContentTests.testEveryToolThatReturnsExternalTextCarriesTheMarkerThroughTheDispatcher`
+- Errors are not marked, and `initialize` carries the instruction. `UntrustedContentTests.testAnErrorIsNotMarkedAndTheServerSaysHowToTreatMarkedFields`
+
+Limits: the list is per tool, not per value, so a field is listed even when a `fields` projection dropped it. Names the user chose themselves (mailboxes, calendars, folders) are not marked, although a shared or subscribed calendar's name comes from someone else. An error message can quote outside text and is not marked.

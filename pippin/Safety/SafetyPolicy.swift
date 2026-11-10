@@ -223,7 +223,8 @@ enum SafetyError: LocalizedError, RemediableError {
         case let .priorOutcomeUnknown(tool, key):
             return "An earlier \(tool) call with idempotencyKey \"\(key)\" ended with an unknown outcome: it may or may not have taken effect. It was not run again; check the current state."
         case let .invalidReservedArgument(name):
-            return "Argument '\(name)' must be a string of 1 to 128 characters."
+            return name == "dryRun" ? "Argument 'dryRun' must be true or false."
+                : "Argument '\(name)' must be a string of 1 to 128 characters."
         case let .actionNotFound(id):
             return "No logged action has id \(id)."
         case let .undoNotSupported(id, reason):

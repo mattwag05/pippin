@@ -34,6 +34,14 @@ ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`Val
 
 Every tool declares `effect:` (`.readOnly` or `.mutating(verifyWith:)`); `ToolEffectTests` pins the mutating set and fails on an unclassified tool. A timeout on a mutating tool is `outcome_unknown`, not retryable, with a `next_call` to the verify tool. Only read-only tools get the retryable `child_timed_out`. The same field feeds the `readOnlyHint` / `destructiveHint` annotations in `tools/list`.
 
+## Every mutating tool call goes through `SafetyGate`
+
+`MCPDispatcher.makeToolCallResponse` hands any tool whose `effect` is not `.readOnly` to `SafetyGate.run` (`pippin/Safety/`): policy, confirm token, rate limit, action log, undo record, idempotency key, and `dryRun` for tools with no dry run of their own. Put shared write behavior there, not in a tool. It strips `confirmToken` and `idempotencyKey` before `SchemaValidator` runs and adds them (and `dryRun`) to the schema in `MCPTool.descriptor`, so no tool declares them; the golden input schemas are generated from the descriptor. Under a `confirm` rule it sets the tool's own `confirm: true` once a token is valid. A dry run is recognized by `--dry-run` in the built argv. Tests that reach the dispatcher without injecting a gate write under a temp directory (`SafetyPaths`), never the real log. Claims and their tests: [safety-model.md](../safety-model.md).
+
+`batch` and `job_run` skip the dispatcher, so `MCPCommandPolicy.check` refuses a command whose tool the policy gates (`direct_call_required`).
+
+A new tool must also be classified in `UntrustedContent` (`fields` or `noExternalText`): the dispatcher adds `content_trust` and `untrusted_fields` to every result of a tool listed in `fields`.
+
 ## `batch` and `job_run` only reach commands that have a tool
 
 Under MCP both resolve their raw argv through `MCPCommandPolicy.check`: the argv must start with a registered tool's command path, `batch` and `job run` cannot be nested, `--autonomous` is refused and `messages send` needs `--draft`. A new tool whose CLI path is not `<group> <rest-with-dashes>` needs a `pathOverrides` entry (`testCommandPathIsThePrefixOfEveryToolsArgv` says so). `batch` entries share the 50s `BatchBudget`; entries that run out of time carry their own error and the envelope is `partial`.

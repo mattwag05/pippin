@@ -105,6 +105,10 @@ final class SafetyGate: @unchecked Sendable {
     static func withReservedArguments(_ schema: JSONValue) -> JSONValue {
         guard case var .object(root) = schema, case var .object(properties)? = root["properties"] else { return schema }
         properties["confirmToken"] = Schema.string("Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.")
+        // A tool with no dry run of its own still gets one, answered by the gate.
+        if properties["dryRun"] == nil {
+            properties["dryRun"] = Schema.boolean("Check the call and report what it would do, without doing it.", default: false)
+        }
         properties["idempotencyKey"] = Schema.string("Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.")
         root["properties"] = .object(properties)
         return .object(root)
@@ -204,6 +208,12 @@ final class SafetyGate: @unchecked Sendable {
             }
             reserved[name] = text
         }
+        // `dryRun` on a tool that has no dry run of its own is answered here.
+        var gateDryRun = false
+        if tool.inputSchema["properties"]?["dryRun"] == nil, let value = dict.removeValue(forKey: "dryRun") {
+            guard let flag = value.boolValue else { throw SafetyError.invalidReservedArgument("dryRun") }
+            gateDryRun = flag
+        }
         let isObject: Bool = { if case .object? = arguments { return true } else { return arguments == nil } }()
         var args: JSONValue? = isObject ? .object(dict) : arguments
 
@@ -245,7 +255,7 @@ final class SafetyGate: @unchecked Sendable {
             let hasDryRunFlag = tool.inputSchema["properties"]?["dryRun"] != nil
             // An explicit `confirm: false` or `dryRun: true` still asks for a preview only.
             let previewOnly = dict["dryRun"]?.boolValue == true || dict["confirm"]?.boolValue == false
-            if rule.rule == .confirm, hasConfirmFlag, isObject, !previewOnly {
+            if rule.rule == .confirm || gateDryRun, hasConfirmFlag, isObject, !previewOnly {
                 dict["confirm"] = .bool(true)
                 args = .object(dict)
             }
@@ -257,6 +267,33 @@ final class SafetyGate: @unchecked Sendable {
             var hashed = dict
             hashed["confirm"] = nil
             let hash = ArgRedactor.sha256(tool.name + "\n" + ArgRedactor.canonicalJSON(.object(hashed)))
+
+            /// The tool's own preview of this call, where it has one.
+            func nativePreview() -> [String]? {
+                var previewArgs = dict
+                previewArgs["confirm"] = nil
+                if hasDryRunFlag { previewArgs["dryRun"] = .bool(true) }
+                guard let previewArgv = try? tool.buildArgs(.object(previewArgs)), Self.isDryRun(previewArgv) else { return nil }
+                return previewArgv
+            }
+            if gateDryRun, !dryRun {
+                if let previewArgv = nativePreview() {
+                    ran = true
+                    let result = try await runArgv(previewArgv)
+                    finish(Self.outcome(of: result, dryRun: true).outcome, undo: .no("a dry run changes nothing"))
+                    return result
+                }
+                // No preview in the command: the arguments were checked and the
+                // argv built, and this says what would run.
+                finish("dry_run", undo: .no("a dry run changes nothing"))
+                return (ArgRedactor.canonicalJSON(.object([
+                    "v": .int(Int64(AGENT_SCHEMA_VERSION)), "status": .string("ok"), "duration_ms": .int(0),
+                    "data": .object([
+                        "dry_run": .bool(true), "tool": .string(tool.name), "rule": .string(rule.rule.rawValue),
+                        "would_do": .string(Self.summary(tool: tool.name, redactedArgs: redacted)), "arguments": redacted,
+                    ]),
+                ])), false)
+            }
 
             if dryRun {
                 ran = true
@@ -283,11 +320,8 @@ final class SafetyGate: @unchecked Sendable {
             if rule.rule == .confirm {
                 guard let token = reserved["confirmToken"] else {
                     // Show what would happen through the tool's own preview, where it has one.
-                    var previewArgs = dict
-                    previewArgs["confirm"] = nil
-                    if hasDryRunFlag { previewArgs["dryRun"] = .bool(true) }
                     var preview: JSONValue?
-                    if let previewArgv = try? tool.buildArgs(.object(previewArgs)), Self.isDryRun(previewArgv) {
+                    if let previewArgv = nativePreview() {
                         preview = await Undo.data(of: try? runArgv(previewArgv))
                     }
                     let issued = issueToken(hash: hash)

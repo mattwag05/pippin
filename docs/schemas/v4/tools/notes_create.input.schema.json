@@ -7,6 +7,15 @@
       "description" : "Note body. Plain text; newlines become formatted HTML unless html=true.",
       "type" : "string"
     },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
     "folder" : {
       "description" : "Folder name to create the note in.",
       "type" : "string"
@@ -15,6 +24,10 @@
       "default" : false,
       "description" : "Treat body as raw HTML (skip plain-text-to-HTML conversion).",
       "type" : "boolean"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
     },
     "title" : {
       "description" : "Note title.",

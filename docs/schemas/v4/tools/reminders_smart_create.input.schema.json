@@ -3,6 +3,10 @@
   "additionalProperties" : false,
   "description" : "Create a reminder from a natural-language description using AI (resolves list names, unlike reminders_create which needs an EventKit ID).",
   "properties" : {
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
     "description" : {
       "description" : "Natural-language reminder, e.g. 'call the dentist Friday morning'.",
       "type" : "string"
@@ -11,6 +15,10 @@
       "default" : false,
       "description" : "Show the parsed reminder without creating it.",
       "type" : "boolean"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
     },
     "list" : {
       "description" : "Target list name (resolved for you).",

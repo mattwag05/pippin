@@ -1681,6 +1681,58 @@
       "name" : "batch",
       "output_schema" : null,
       "output_schema_absent_because" : "An array of envelopes, each validated by envelope.schema.json."
+    },
+    {
+      "arguments" : {
+
+      },
+      "cli" : "pippin policy show",
+      "effect" : "read",
+      "input_schema" : "tools/policy_show.input.schema.json",
+      "name" : "policy_show",
+      "output_schema" : "tools/policy_show.output.schema.json"
+    },
+    {
+      "arguments" : {
+        "cursor" : [
+          "--cursor"
+        ],
+        "limit" : [
+          "--limit"
+        ],
+        "page" : [
+          "--page"
+        ],
+        "pageSize" : [
+          "--page-size"
+        ],
+        "since" : [
+          "--since"
+        ],
+        "tool" : [
+          "--tool"
+        ]
+      },
+      "cli" : "pippin log",
+      "effect" : "read",
+      "input_schema" : "tools/action_log.input.schema.json",
+      "name" : "action_log",
+      "output_schema" : null,
+      "output_schema_absent_because" : "Rows carry the logged arguments, whose shape is each tool's own."
+    },
+    {
+      "arguments" : {
+        "id" : [
+          "<0>"
+        ]
+      },
+      "cli" : "pippin undo",
+      "effect" : "write",
+      "input_schema" : "tools/undo.input.schema.json",
+      "name" : "undo",
+      "output_schema" : null,
+      "output_schema_absent_because" : "{undone, tool, result}, where result is the inverse command's own payload.",
+      "verify_with" : "action_log"
     }
   ]
 }

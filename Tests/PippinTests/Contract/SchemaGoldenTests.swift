@@ -79,6 +79,7 @@ final class SchemaGoldenTests: XCTestCase {
         "job_list": rows(Job.self),
         "job_run": object(Job.self),
         "job_wait": object(Job.self),
+        "policy_show": object(PolicyReport.self),
         "job_show": {
             try [true, false].map { full in
                 try encoded(JobView(job: Filler.make(Job.self, full: full), stdoutTail: "text", stderrTail: "text"))
@@ -96,6 +97,8 @@ final class SchemaGoldenTests: XCTestCase {
         "memos_summarize": "One result or an array of them depending on --all.",
         "actions_extract": "Extracted actions, or created reminders with create=true.",
         "batch": "An array of envelopes, each validated by envelope.schema.json.",
+        "action_log": "Rows carry the logged arguments, whose shape is each tool's own.",
+        "undo": "{undone, tool, result}, where result is the inverse command's own payload.",
     ]
 
     static func encoded(_ value: some Encodable) throws -> JSONValue {
@@ -144,7 +147,9 @@ final class SchemaGoldenTests: XCTestCase {
 
     func testInputSchemasMatchRegistry() throws {
         for tool in MCPToolRegistry.tools {
-            guard case var .object(schema) = tool.inputSchema else { return XCTFail("\(tool.name): schema is not an object") }
+            // The descriptor's schema: what tools/list publishes, with the
+            // arguments the safety gate adds to every mutating tool.
+            guard case var .object(schema) = tool.descriptor.inputSchema else { return XCTFail("\(tool.name): schema is not an object") }
             schema["$schema"] = .string(SchemaFiles.dialect)
             schema["title"] = .string("\(tool.name): arguments")
             schema["description"] = .string(tool.description)

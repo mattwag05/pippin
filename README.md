@@ -372,7 +372,7 @@ pippin mcp-server                    # JSON-RPC over stdin and stdout
 pippin mcp-server --list-tools       # print the registered tools as JSON
 ```
 
-The 76 tools cover mail, calendar, reminders, contacts, notes, voice memos, Messages, `actions_extract`, `status`, `doctor`, `digest`, `batch` for parallel calls, and `job_*` for background work. Outbound mail only previews and deletes fail unless the call passes `confirm: true`. `messages_send` can only draft. Quick Calendar, Reminders and Contacts reads run inside the server, and everything else runs in a child process. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring and the full tool list.
+The 79 tools cover mail, calendar, reminders, contacts, notes, voice memos, Messages, `actions_extract`, `status`, `doctor`, `digest`, `batch` for parallel calls, and `job_*` for background work. Outbound mail only previews and deletes fail unless the call passes `confirm: true`. `messages_send` can only draft. Quick Calendar, Reminders and Contacts reads run inside the server, and everything else runs in a child process. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring and the full tool list.
 
 ## AI Configuration
 

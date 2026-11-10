@@ -66,7 +66,11 @@ final class FuzzTests: XCTestCase {
         let response: JSONRPCResponse
         do {
             let request = try JSONDecoder().decode(JSONRPCRequest.self, from: Data(trimmed.utf8))
-            guard let handled = await MCPDispatcher.handle(request, pippinPath: "/usr/bin/false", tools: tools) else {
+            guard let handled = await MCPDispatcher.handle(
+                request, pippinPath: "/usr/bin/false", tools: tools,
+                // Mutating tools go through the safety gate to a child; answer for it.
+                runner: { _ in (Self.cannedEnvelope, false) }
+            ) else {
                 return nil
             }
             response = handled
@@ -86,7 +90,7 @@ final class FuzzTests: XCTestCase {
     /// tool another test demoted to the child path cannot change the outcome.
     private static let doubles: [MCPTool] = MCPToolRegistry.tools.map { tool in
         MCPTool(
-            name: "fuzz_\(tool.name)", description: tool.description, inputSchema: tool.inputSchema,
+            name: "fuzz_\(tool.name)", effect: tool.effect, description: tool.description, inputSchema: tool.inputSchema,
             buildArgs: tool.buildArgs, inProcess: { _ in cannedEnvelope }
         )
     }

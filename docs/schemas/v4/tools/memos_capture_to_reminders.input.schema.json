@@ -3,10 +3,18 @@
   "additionalProperties" : false,
   "description" : "Transcribe a Voice Memos recording, extract action items via the configured LLM, and create Reminders. Commits by default in agent mode; pass dryRun=true to preview.",
   "properties" : {
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
     "dryRun" : {
       "default" : false,
       "description" : "Preview items without creating reminders.",
       "type" : "boolean"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
     },
     "list" : {
       "description" : "Reminder list name (default: Inbox).",

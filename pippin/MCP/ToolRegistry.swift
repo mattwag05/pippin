@@ -2011,9 +2011,13 @@ enum MCPToolRegistry {
                 "since": Schema.string("Only actions at or after this time: YYYY-MM-DD or ISO 8601."),
                 "tool": Schema.string("Only actions of this tool, e.g. mail_send."),
                 "cursor": Schema.string("Opaque next_cursor from a previous response."),
+                "pageSize": Schema.integer("Rows per page when paginating."),
+                "page": Schema.integer("1-based page number. Ignored when cursor is set."),
             ]),
             buildArgs: { args in
                 var argv = pippinArgv("log")
+                argv += ArgHelpers.optionIfInt(args, "pageSize", flagName: "--page-size")
+                argv += ArgHelpers.optionIfInt(args, "page", flagName: "--page")
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
                 argv += ArgHelpers.optionIfString(args, "tool", flagName: "--tool")
