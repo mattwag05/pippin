@@ -22,18 +22,23 @@ Running log for the mission in [MISSION.md](MISSION.md). Branch: `claude/pippin-
 | pippin-psba | MCP child timeout is retryable for sends and writes, and an orphaned osascript survives the kill |
 | pippin-t8iq | Calendar edit and delete on a recurring event have no occurrence identity |
 
-### In flight when the usage limit stopped the run
+### Later the same day
 
-- Red team: reproducing findings on throwaway objects only.
-- Fix batch A (Messages: pippin-2cdf, pippin-uy77, pippin-7k69, pippin-lzuv), worktree branch `worktree-agent-acf2e6f381c1c45fd`. Stopped early.
-- Fix batch B (runtime and MCP: pippin-psba, pippin-z84j, pippin-yswv, pippin-fy00, pippin-qpt5, pippin-zc0i, pippin-l4i8), worktree branch `worktree-agent-a9cf908baf2d7ca1b`. Stopped early.
-- Fix batch C (Calendar, Notes, Memos: pippin-t8iq, pippin-78y5, pippin-lwci, pippin-cdv0, pippin-f8p6).
-- Fix batch D (Mail and `do`: pippin-rcoa, pippin-h8ro, pippin-dqbz, pippin-x8wi, pippin-t4u0, pippin-qpt5, pippin-i114).
-- Competitor install and adapters in the VM. Stopped early.
-- Fixture seeding in the VM. Stopped early.
+- Red team finished: 58 attacks, results merged into `docs/audit-2026-11-09.md` (commit `dfe3836`).
+- Fix batch A (Messages) merged: commit `f9ebac8`. Closed pippin-2cdf, pippin-uy77, pippin-7k69. pippin-lzuv is fixed in code and stays open until it is verified on the fixture store.
+- Fix batch D (Mail and `do`) merged: commit `0a04fdc`, 2,463 tests pass, lint clean. Closed pippin-rcoa, pippin-h8ro, pippin-dqbz, pippin-x8wi, pippin-t4u0, pippin-i114.
+- Fixture state seeded in the VM and verified against `bench/competitive/fixtures/manifest.json` (commit `edc7691`).
+- Harness: adapters for 12 tools, runner stages (manifest, speed, reliability, coverage), checks (correctness, safety, write probes), tripwire proxy, agent task runner and report generator.
+- Methodology amendment 1 committed before any result (commit `3d3f553`).
+
+### In flight
+
+- Fix batch B (runtime and MCP), worktree branch `worktree-agent-a9cf908baf2d7ca1b`.
+- Fix batch C (Calendar, Notes, Memos), worktree branch `worktree-agent-a1f593972d0afa777`.
+- Baseline head-to-head run in the VM against Pippin 0.41.1.
+- Fuzz, chaos and SBOM work in its own worktree.
 
 ### Not started
 
-- Merged audit report `docs/audit-2026-11-09.md` (waiting on the red team).
-- Harness stages, baseline run, results.
-- Wave 5 differentiators, Wave 6 re-run, Wave 7 docs.
+- Wave 5 safety model, action log and undo, schemas and conformance suite.
+- Wave 6 re-run and `docs/competitive/results.md`. Wave 7 docs.

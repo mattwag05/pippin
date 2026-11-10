@@ -186,11 +186,18 @@ def stage_reliability(driver: Driver, read_args: dict, bad_args: dict) -> dict:
 
         with concurrent.futures.ThreadPoolExecutor(CONCURRENCY) as pool:
             results = list(pool.map(one, range(CONCURRENCY)))
-        texts = {value for _, outcome, value in results if outcome == "ok"}
+        parse = getattr(driver.adapter, "PARSE", {}).get(op)
+        shapes = set()
+        for _, outcome, value in results:
+            if outcome == "ok" and parse:
+                try:  # compare parsed records, not raw text: raw replies carry timings
+                    shapes.add(json.dumps(parse(value), sort_keys=True, ensure_ascii=False))
+                except Exception:
+                    shapes.add("unparsed")
         out["concurrency"][op] = {
             "ok": sum(1 for _, outcome, _ in results if outcome == "ok"),
             "of": CONCURRENCY,
-            "distinct_outputs": len(texts),  # reads of fixed state should agree
+            "distinct_record_sets": len(shapes) if parse else None,  # reads of fixed state should agree
         }
     for op, args in bad_args.items():
         if op not in driver.adapter.OPS:

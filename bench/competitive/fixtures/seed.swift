@@ -368,6 +368,23 @@ func untypedstream() {
     })
 }
 
+// ---------------------------------------------------------------- remove-titled
+// Removes events in the marker calendars whose title contains any given text (agent task cleanup).
+func removeTitled(_ needles: [String]) throws {
+    let (store, _) = requireAccess()
+    let cals = markerCalendars(store, .event)
+    guard !cals.isEmpty else { return }
+    let predicate = store.predicateForEvents(withStart: parseISO("2027-01-01T00:00:00Z"),
+                                             end: parseISO("2027-07-01T00:00:00Z"), calendars: cals)
+    var removed = 0
+    for ev in store.events(matching: predicate) where needles.contains(where: { (ev.title ?? "").contains($0) }) {
+        try store.remove(ev, span: .thisEvent, commit: false)
+        removed += 1
+    }
+    try store.commit()
+    emit(["removed": removed])
+}
+
 // ---------------------------------------------------------------- main
 let args = CommandLine.arguments
 do {
@@ -375,9 +392,10 @@ do {
     case "seed" where args.count == 3: try seed(args[2])
     case "dump": dump()
     case "teardown" where args.count == 3: try teardown(args[2])
+    case "remove-titled" where args.count > 2: try removeTitled(Array(args[2...]))
     case "typedstream": typedstream()
     case "untypedstream": untypedstream()
-    default: fail("usage: pb-seed seed <manifest.json> | dump | teardown <state.json> | typedstream | untypedstream")
+    default: fail("usage: pb-seed seed <manifest.json> | dump | teardown <state.json> | remove-titled <text>... | typedstream | untypedstream")
     }
 } catch {
     fail("\(error)")
