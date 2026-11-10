@@ -63,6 +63,11 @@ enum MCPServerRuntime {
         timeoutSeconds: Int = defaultChildTimeoutSeconds,
         ownProcessGroup: Bool = false
     ) throws -> ChildResult {
+        // An argv string ends at its first NUL, so one inside an argument would
+        // silently run a different command (and aborted Foundation.Process).
+        guard !argv.contains(where: { $0.contains("\0") }) else {
+            throw MCPServerRuntimeError.nulInArgument
+        }
         // Mark the child so AI providers and other MCP-sensitive code paths
         // can shorten budgets / run preflight pings to stay under the
         // `defaultChildTimeoutSeconds` hard cap.
@@ -187,6 +192,7 @@ enum MCPServerRuntimeError: LocalizedError, RemediableError {
     case childTimedOut(seconds: Int)
     case outcomeUnknown(tool: String, seconds: Int, verify: NextStep)
     case childCrashed(signal: Int32)
+    case nulInArgument
     case childNoOutput(exitCode: Int32)
     case inProcessTimedOut(seconds: Int)
     case notInProcessCapable(String)
@@ -197,6 +203,7 @@ enum MCPServerRuntimeError: LocalizedError, RemediableError {
         case .childTimedOut: return "child_timed_out"
         case .outcomeUnknown: return "outcome_unknown"
         case .childCrashed: return "child_crashed"
+        case .nulInArgument: return "invalid_argument"
         case .childNoOutput: return "child_no_output"
         case .inProcessTimedOut: return "in_process_timed_out"
         case .notInProcessCapable: return "not_in_process_capable"
@@ -211,7 +218,7 @@ enum MCPServerRuntimeError: LocalizedError, RemediableError {
             return .retry(after: 5)
         case let .outcomeUnknown(_, _, verify):
             return verify
-        case .notInProcessCapable:
+        case .notInProcessCapable, .nulInArgument:
             return .none
         }
     }
@@ -224,6 +231,8 @@ enum MCPServerRuntimeError: LocalizedError, RemediableError {
             return "pippin child exceeded \(seconds)s and was terminated. Narrow the request (--account, --mailbox, --limit) or rerun with a more specific query."
         case let .outcomeUnknown(tool, seconds, _):
             return "\(tool) was stopped after \(seconds)s and may or may not have taken effect. Check the current state before calling it again; do not repeat it blindly."
+        case .nulInArgument:
+            return "An argument contains a NUL character (U+0000), which no pippin argument can hold."
         case let .childCrashed(signal):
             return "pippin child crashed with signal \(signal)."
         case let .childNoOutput(exitCode):
