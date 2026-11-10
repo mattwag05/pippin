@@ -3,8 +3,15 @@
 # Needs the VM booted WITH a display (`tart run pippin-bench`, not --no-graphics): Voice Memos will not
 # launch without one. Never run this on a real Mac.
 #
-# Mail: Dovecot on 127.0.0.1:1143, no TLS, any password accepted, one Maildir. The Mail account `PippinBench`
-# points at it. Nothing listens beyond localhost and nothing is ever sent.
+# Mail: Dovecot on 127.0.0.1 (ports 143 and 1143), no TLS, any password accepted, one Maildir. The Mail
+# account `PippinBench` points at it. Nothing listens beyond localhost and nothing is ever sent.
+#
+# Mail ignores accounts made by AppleScript (they stay disabled and are never saved), so the account is added
+# once through Mail's own Add Account sheet, in the VM's display (2026-11-10 this was driven with cliclick):
+#   Mail > Add Account > choose from a list > Other Mail Account; Email bench@pippinbench.invalid, any password;
+#   Sign In; Incoming and Outgoing Mail Server 127.0.0.1; Continue past the plaintext warning; Next;
+#   leave only Mail ticked (untick Notes, so the Notes fixture keeps one account); Done;
+#   "Don't protect Mail activity"; Continue. This script then renames the account to PippinBench.
 # Voice Memos: opened once so it creates its own CloudRecordings.db; fixtures/make_memos.py fills it.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -22,9 +29,12 @@ sed "s#/Users/admin#$HOME#g; s#= admin\$#= $(id -un)#" "$HERE/dovecot.conf" > "$
 pgrep -f "[s]bin/dovecot -c" >/dev/null || sudo -n /opt/homebrew/opt/dovecot/sbin/dovecot -c "$HOME/bench-mail/dovecot.conf" </dev/null >/dev/null 2>&1
 sleep 5
 
-if ! limit 30 osascript -e 'tell application "Mail" to name of every account' | grep -q PippinBench; then
-  limit 60 osascript -e 'tell application "Mail" to make new imap account with properties {name:"PippinBench", user name:"bench", server name:"127.0.0.1", port:1143, uses ssl:false, full name:"Pippin Bench", email addresses:{"bench@pippinbench.invalid"}, password:"local-fixture"}'  # pragma: allowlist secret (fixture; the local server accepts any password)
-fi
+accounts=$(limit 30 osascript -e 'tell application "Mail" to name of every account' || true)
+case "$accounts" in
+  *PippinBench*) ;;
+  *Pippinbench*) limit 30 osascript -e 'tell application "Mail" to set name of account "Pippinbench" to "PippinBench"' ;;
+  *) echo "mail-setup.sh: add the Mail account by hand as described at the top of this file, then run it again" >&2; exit 1 ;;
+esac
 
 R="$HOME/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings"
 if [ ! -f "$R/CloudRecordings.db" ]; then

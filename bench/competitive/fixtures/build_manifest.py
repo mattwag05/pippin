@@ -369,7 +369,7 @@ manifest = {
         "handles": HANDLES, "chats": chats, "messages": messages,
     },
     "mail": {
-        "account": "PippinBench", "mailbox": "INBOX", "server": "Dovecot on 127.0.0.1:1143 inside the VM, no TLS, any password",
+        "account": "PippinBench", "mailbox": "INBOX", "server": "Dovecot on 127.0.0.1 (ports 143 and 1143) inside the VM, no TLS, any password",
         "search_word": "Quarterly", "messages": mail,
     },
     "memos": {
