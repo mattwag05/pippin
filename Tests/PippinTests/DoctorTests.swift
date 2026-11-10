@@ -170,11 +170,14 @@ final class DoctorTests: XCTestCase {
             XCTFail("mlx-audio check must be present in runAllChecks()")
             return
         }
-        // mlx-audio is now required for transcription — must be .ok or .fail, never .skip
-        XCTAssertTrue(
-            check.status == .ok || check.status == .fail,
-            "mlx-audio must be .ok or .fail (not .skip), got: \(check.status)"
-        )
+        // cachedChecks runs with no config, so mlx-audio is only the default
+        // backend: absent, it is an optional feature (.skip) that still says
+        // how to install it. Configured and absent is a .fail (see
+        // testMissingMLXAudioIsASkipUnlessTheUserConfiguredIt).
+        if check.status == .skip {
+            XCTAssertTrue(check.detail.hasPrefix("not installed"), check.detail)
+            XCTAssertNotNil(check.remediation?.shellCommand, "a skipped mlx-audio must still say how to install it")
+        }
     }
 
     func testMLXAudioRemediationHasRunnableCommand() {
@@ -306,5 +309,32 @@ final class DoctorTests: XCTestCase {
         // But a genuine --format elsewhere does satisfy it.
         let help2 = help + "  --format FMT   the real one\n"
         XCTAssertEqual(sttFlagsMissing(fromHelp: help2, expected: ["--format"]), [])
+    }
+
+    // MARK: - Optional features on a clean machine
+
+    func testMissingMLXAudioIsASkipUnlessTheUserConfiguredIt() {
+        XCTAssertEqual(mlxAudioNotFound(configured: false).status, .skip)
+        XCTAssertEqual(mlxAudioNotFound(configured: true).status, .fail)
+    }
+
+    func testVoiceMemosNeverUsedIsASkipButABlockedFolderFails() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path) }
+        defer { try? FileManager.default.removeItem(at: root) }
+        let db = root.appendingPathComponent("CloudRecordings.db").path
+
+        // The folder does not exist: Voice Memos was never opened.
+        XCTAssertEqual(classifyMissingVoiceMemosDB(db).status, .skip)
+
+        // The folder exists and lists, with no database in it.
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        XCTAssertEqual(classifyMissingVoiceMemosDB(db).status, .skip)
+
+        // The folder cannot be listed: a blocked read, not an unused app.
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: root.path)
+        let blocked = classifyMissingVoiceMemosDB(db)
+        XCTAssertEqual(blocked.status, .fail)
+        XCTAssertTrue(blocked.detail.contains("permission denied"), blocked.detail)
     }
 }

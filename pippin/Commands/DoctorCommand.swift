@@ -335,12 +335,7 @@ func checkVoiceMemosDB() -> DiagnosticCheck {
     } catch let error as VoiceMemosError {
         switch error {
         case .databaseNotFound:
-            return DiagnosticCheck(
-                name: "Voice Memos access",
-                status: .fail,
-                detail: "database not found",
-                remediation: RemediationCatalog.forCategory(.databaseNotFound)
-            )
+            return classifyMissingVoiceMemosDB(dbPath)
         case let .unsupportedSchemaVersion(v):
             return DiagnosticCheck(
                 name: "Voice Memos access",
@@ -628,7 +623,47 @@ func checkPython3() -> DiagnosticCheck {
     return classifyPython3Output(exitCode: process.terminationStatus, output: output)
 }
 
-func checkMLXAudio() -> DiagnosticCheck {
+/// The Voice Memos database file is absent. A folder that does not exist or
+/// lists fine means Voice Memos has not been used here yet: an optional app,
+/// so `skip`, not a failure. A folder that cannot be listed is a blocked read
+/// (no Full Disk Access), which still fails.
+func classifyMissingVoiceMemosDB(_ dbPath: String) -> DiagnosticCheck {
+    let dir = (dbPath as NSString).deletingLastPathComponent
+    do {
+        _ = try FileManager.default.contentsOfDirectory(atPath: dir)
+    } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+        // Not used yet; handled below.
+    } catch {
+        return DiagnosticCheck(
+            name: "Voice Memos access",
+            status: .fail,
+            detail: "permission denied (cannot list \(dir))",
+            remediation: RemediationCatalog.forCategory(.accessDenied)
+        )
+    }
+    return DiagnosticCheck(
+        name: "Voice Memos access",
+        status: .skip,
+        detail: "no Voice Memos database yet (Voice Memos has not been used on this Mac)",
+        remediation: RemediationCatalog.forCategory(.databaseNotFound)
+    )
+}
+
+/// mlx-audio is absent. When the user picked it as the transcription backend
+/// that is a failure; when it is only the default, transcription is an
+/// optional feature they have not set up, so the check is skipped.
+func mlxAudioNotFound(configured: Bool) -> DiagnosticCheck {
+    DiagnosticCheck(
+        name: "mlx-audio",
+        status: configured ? .fail : .skip,
+        detail: configured
+            ? "not found (the configured transcription backend; set ai.transcription.provider to apple or openai to use another)"
+            : "not installed (optional: needed only for memos transcribe, summarize and capture)",
+        remediation: RemediationCatalog.forCategory(.notAvailable)
+    )
+}
+
+func checkMLXAudio(configured: Bool = true) -> DiagnosticCheck {
     let pinned = AudioBridge.pinnedMLXAudioVersion
     guard let entry = AudioBridge.resolveSTTEntry() else {
         // mlx_audio itself might still be importable (version skew) — prefer
@@ -645,12 +680,7 @@ func checkMLXAudio() -> DiagnosticCheck {
                 )
             )
         }
-        return DiagnosticCheck(
-            name: "mlx-audio",
-            status: .fail,
-            detail: "not found (the configured transcription backend; set ai.transcription.provider to apple or openai to use another)",
-            remediation: RemediationCatalog.forCategory(.notAvailable)
-        )
+        return mlxAudioNotFound(configured: configured)
     }
 
     // Entry resolves — record installed version + run a dry invocation to

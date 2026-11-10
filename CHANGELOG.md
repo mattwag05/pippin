@@ -13,6 +13,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - [refactor] The MCP tool registry is generated from the CLI: each tool is a short spec naming the CLI arguments it exposes, and its input schema (type, `enum`, required-ness, description, numeric default) and argv come from the ArgumentParser definitions. A handful of gates and special bindings keep a small closure. Internal only: `tools/list` output and every tool's argv are unchanged. Refs pippin-kkik.
 
+### Fixed
+
+- [fix] `pippin doctor` no longer fails on a Mac where optional features are not set up. Voice Memos never used reports `skip`, and so does mlx-audio when it is not installed and `ai.transcription.provider` is unset; both keep their remediation. A Voice Memos folder that cannot be read, or a configured mlx-audio that is missing, still fails. Tests: `DoctorTests.testVoiceMemosNeverUsedIsASkipButABlockedFolderFails`, `DoctorTests.testMissingMLXAudioIsASkipUnlessTheUserConfiguredIt`.
+
 ## [1.0.0] - 2026-11-10
 
 ### Added
