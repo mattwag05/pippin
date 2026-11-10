@@ -17,10 +17,6 @@
                   "type" : "string"
                 }
               },
-              "required" : [
-                "filename",
-                "mime_type"
-              ],
               "type" : "object"
             },
             "type" : "array"

@@ -131,10 +131,14 @@ enum JSONSchema {
 }
 
 /// Builds a value of any `Decodable` model without a fixture: every field gets
-/// a placeholder. `full` fills optionals too; otherwise they stay nil. Encoding
-/// the two with the real encoder gives the model's widest and narrowest output.
+/// a placeholder. Optionals are filled at nesting depths below `fill` and left
+/// nil from there down. `fillLevels` gives the widest and the narrowest output
+/// and, between them, each nested optional object present with its own
+/// optionals unset, so a field inside one is not wrongly marked required.
 struct Filler: Decoder {
-    let full: Bool
+    let fill: Int
+    let depth: Int
+    static let fillLevels = [Int.max, 0, 1, 2, 3]
     var codingPath: [CodingKey] { [] }
     var userInfo: [CodingUserInfoKey: Any] { [:] }
 
@@ -143,6 +147,10 @@ struct Filler: Decoder {
     }
 
     static func make<T: Decodable>(_ type: T.Type, full: Bool) throws -> T {
+        try make(type, fill: full ? Int.max : 0)
+    }
+
+    static func make<T: Decodable>(_ type: T.Type, fill: Int, depth: Int = 0) throws -> T {
         // Types a placeholder string cannot build. A raw-value enum that is
         // not CaseIterable needs one of its cases listed here.
         let known: [Any] = [
@@ -151,7 +159,7 @@ struct Filler: Decoder {
         ]
         if let value = known.lazy.compactMap({ $0 as? T }).first { return value }
         if let iterable = type as? any CaseIterable.Type, let first = firstCase(iterable) as? T { return first }
-        return try T(from: Filler(full: full))
+        return try T(from: Filler(fill: fill, depth: depth))
     }
 
     private static func firstCase<C: CaseIterable>(_: C.Type) -> Any? {
@@ -159,28 +167,29 @@ struct Filler: Decoder {
     }
 
     func container<Key: CodingKey>(keyedBy _: Key.Type) -> KeyedDecodingContainer<Key> {
-        KeyedDecodingContainer(Keyed<Key>(full: full))
+        KeyedDecodingContainer(Keyed<Key>(fill: fill, depth: depth))
     }
 
     func unkeyedContainer() -> UnkeyedDecodingContainer {
-        Unkeyed(full: full)
+        Unkeyed(fill: fill, depth: depth)
     }
 
     func singleValueContainer() -> SingleValueDecodingContainer {
-        Single(full: full)
+        Single(fill: fill, depth: depth)
     }
 
     private struct Keyed<Key: CodingKey>: KeyedDecodingContainerProtocol {
-        let full: Bool
+        let fill: Int
+        let depth: Int
         var codingPath: [CodingKey] { [] }
         /// A dictionary decodes through `allKeys`, so it comes out empty.
         var allKeys: [Key] { [] }
         func contains(_: Key) -> Bool {
-            full
+            depth < fill
         }
 
         func decodeNil(forKey _: Key) -> Bool {
-            !full
+            depth >= fill
         }
 
         func decode(_: Bool.Type, forKey _: Key) -> Bool {
@@ -240,29 +249,30 @@ struct Filler: Decoder {
         }
 
         func decode<T: Decodable>(_ type: T.Type, forKey _: Key) throws -> T {
-            try Filler.make(type, full: full)
+            try Filler.make(type, fill: fill, depth: depth + 1)
         }
 
         func nestedContainer<Nested: CodingKey>(keyedBy _: Nested.Type, forKey _: Key) -> KeyedDecodingContainer<Nested> {
-            KeyedDecodingContainer(Keyed<Nested>(full: full))
+            KeyedDecodingContainer(Keyed<Nested>(fill: fill, depth: depth + 1))
         }
 
         func nestedUnkeyedContainer(forKey _: Key) -> UnkeyedDecodingContainer {
-            Unkeyed(full: full)
+            Unkeyed(fill: fill, depth: depth)
         }
 
         func superDecoder() -> Decoder {
-            Filler(full: full)
+            Filler(fill: fill, depth: depth)
         }
 
         func superDecoder(forKey _: Key) -> Decoder {
-            Filler(full: full)
+            Filler(fill: fill, depth: depth)
         }
     }
 
     /// One element, so an array's item shape shows in the output.
     private struct Unkeyed: UnkeyedDecodingContainer {
-        let full: Bool
+        let fill: Int
+        let depth: Int
         var codingPath: [CodingKey] { [] }
         var count: Int? { 1 }
         var currentIndex = 0
@@ -328,19 +338,19 @@ struct Filler: Decoder {
         }
 
         mutating func decode<T: Decodable>(_ type: T.Type) throws -> T {
-            try advance(Filler.make(type, full: full))
+            try advance(Filler.make(type, fill: fill, depth: depth + 1))
         }
 
         mutating func nestedContainer<Nested: CodingKey>(keyedBy _: Nested.Type) -> KeyedDecodingContainer<Nested> {
-            advance(KeyedDecodingContainer(Keyed<Nested>(full: full)))
+            advance(KeyedDecodingContainer(Keyed<Nested>(fill: fill, depth: depth + 1)))
         }
 
         mutating func nestedUnkeyedContainer() -> UnkeyedDecodingContainer {
-            advance(Unkeyed(full: full))
+            advance(Unkeyed(fill: fill, depth: depth))
         }
 
         mutating func superDecoder() -> Decoder {
-            advance(Filler(full: full))
+            advance(Filler(fill: fill, depth: depth))
         }
 
         private mutating func advance<T>(_ value: T) -> T {
@@ -350,7 +360,8 @@ struct Filler: Decoder {
     }
 
     private struct Single: SingleValueDecodingContainer {
-        let full: Bool
+        let fill: Int
+        let depth: Int
         var codingPath: [CodingKey] { [] }
         func decodeNil() -> Bool {
             false
@@ -413,7 +424,7 @@ struct Filler: Decoder {
         }
 
         func decode<T: Decodable>(_ type: T.Type) throws -> T {
-            try Filler.make(type, full: full)
+            try Filler.make(type, fill: fill, depth: depth + 1)
         }
     }
 }
