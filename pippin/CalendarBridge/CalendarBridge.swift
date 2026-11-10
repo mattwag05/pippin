@@ -8,6 +8,8 @@ public enum CalendarBridgeError: LocalizedError, Sendable {
     case saveFailed(String)
     case ambiguousId(String, count: Int)
     case idPrefixTooShort(String)
+    case occurrenceRequired(String)
+    case occurrenceNotFound(String)
     case dateParseError(String)
     case aiParseError(String)
 
@@ -37,6 +39,12 @@ public enum CalendarBridgeError: LocalizedError, Sendable {
         case let .idPrefixTooShort(id):
             return "ID prefix '\(id)' is too short to edit or delete an event. "
                 + "Use the full ID or at least \(IDPrefix.minimumMutatingLength) characters of it."
+        case let .occurrenceRequired(id):
+            return "Event \(id) is recurring, and every occurrence shares that ID. "
+                + "Pass --occurrence <occurrenceDate from calendar events> (MCP: occurrence) to act on one occurrence, "
+                + "with --span future to include the ones after it, or --span all for the whole series."
+        case let .occurrenceNotFound(detail):
+            return "Occurrence not found: \(detail)"
         case let .dateParseError(value):
             return "Could not parse date from AI response: \(value)"
         case let .aiParseError(detail):
@@ -54,6 +62,8 @@ extension CalendarBridgeError: RemediableError {
         case .saveFailed: return "save_failed"
         case .ambiguousId: return "ambiguous_id"
         case .idPrefixTooShort: return "invalid_id_prefix"
+        case .occurrenceRequired: return "occurrence_required"
+        case .occurrenceNotFound: return "occurrence_not_found"
         case .dateParseError: return "date_parse_error"
         case .aiParseError: return "ai_parse_error"
         }
@@ -65,11 +75,20 @@ extension CalendarBridgeError: RemediableError {
             return .human("Run `pippin permissions` in a terminal and approve Calendar access.")
         case .eventNotFound, .ambiguousId, .idPrefixTooShort:
             return .call(tool: "calendar_events", argv: ["calendar", "events"])
+        case .occurrenceRequired, .occurrenceNotFound:
+            // The rows of this call carry the value `--occurrence` takes.
+            return .call(
+                tool: "calendar_events",
+                args: ["fields": Self.occurrenceFields],
+                argv: ["calendar", "events", "--fields", Self.occurrenceFields]
+            )
         case .calendarNotFound:
             return .call(tool: "calendar_list", argv: ["calendar", "list"])
         case .saveFailed, .dateParseError, .aiParseError: return .none
         }
     }
+
+    static let occurrenceFields = "id,title,startDate,occurrenceDate"
 
     public var remediation: Remediation? {
         switch self {
@@ -238,9 +257,9 @@ public final class CalendarBridge: @unchecked Sendable {
         return Outcome(results: mapped, timedOut: timedOut)
     }
 
-    public func getEvent(id: String) async throws -> CalendarEvent {
+    public func getEvent(id: String, occurrence: OccurrenceSpec? = nil) async throws -> CalendarEvent {
         try await ensureAccess()
-        return try mapEvent(findEvent(id: id, minimumPrefixLength: 0))
+        return try mapEvent(targetEvent(id: id, occurrence: occurrence, span: .this, mutating: false))
     }
 
     // MARK: - CRUD
@@ -298,10 +317,12 @@ public final class CalendarBridge: @unchecked Sendable {
         url: String? = nil,
         isAllDay: Bool? = nil,
         alertOffset: TimeInterval? = nil,
-        span: EKSpan = .thisEvent
+        span: EventSpan = .this,
+        occurrence: OccurrenceSpec? = nil
     ) async throws -> BridgeActionResult {
         try await ensureAccess()
-        let event = try findEvent(id: id, minimumPrefixLength: IDPrefix.minimumMutatingLength)
+        let event = try targetEvent(id: id, occurrence: occurrence, span: span, mutating: true)
+        var details = Self.occurrenceDetails(event)
         if let title { event.title = title }
         if let start { event.startDate = start }
         if let end { event.endDate = end }
@@ -319,32 +340,31 @@ public final class CalendarBridge: @unchecked Sendable {
             event.addAlarm(EKAlarm(relativeOffset: -alertOffset))
         }
         do {
-            try store.save(event, span: span)
+            try store.save(event, span: span.ekSpan)
         } catch {
             throw CalendarBridgeError.saveFailed(error.localizedDescription)
         }
-        return BridgeActionResult(
-            success: true,
-            action: "update",
-            details: ["id": event.calendarItemIdentifier, "title": event.title ?? ""]
-        )
+        details["id"] = event.calendarItemIdentifier
+        details["title"] = event.title ?? ""
+        return BridgeActionResult(success: true, action: "update", details: details)
     }
 
-    public func deleteEvent(id: String, span: EKSpan = .thisEvent) async throws -> BridgeActionResult {
+    public func deleteEvent(
+        id: String,
+        span: EventSpan = .this,
+        occurrence: OccurrenceSpec? = nil
+    ) async throws -> BridgeActionResult {
         try await ensureAccess()
-        let event = try findEvent(id: id, minimumPrefixLength: IDPrefix.minimumMutatingLength)
-        let savedTitle = event.title ?? ""
-        let savedId = event.calendarItemIdentifier
+        let event = try targetEvent(id: id, occurrence: occurrence, span: span, mutating: true)
+        var details = Self.occurrenceDetails(event)
+        details["id"] = event.calendarItemIdentifier
+        details["title"] = event.title ?? ""
         do {
-            try store.remove(event, span: span)
+            try store.remove(event, span: span.ekSpan)
         } catch {
             throw CalendarBridgeError.saveFailed(error.localizedDescription)
         }
-        return BridgeActionResult(
-            success: true,
-            action: "delete",
-            details: ["id": savedId, "title": savedTitle]
-        )
+        return BridgeActionResult(success: true, action: "delete", details: details)
     }
 
     // MARK: - Private
@@ -372,6 +392,48 @@ public final class CalendarBridge: @unchecked Sendable {
             : "\(matchingIds.count) calendars NAMED '\(argument)' exist"
         return "\(argument) — \(existence) (id: \(matchingIds.joined(separator: ", "))). "
             + "--calendar takes IDs from 'pippin calendar list'; pass that ID (or use --calendar-name where available)."
+    }
+
+    /// The exact EKEvent a show, edit or delete acts on. The id names an event
+    /// or a whole recurring series; `occurrenceTarget` decides whether that is
+    /// enough, and a named occurrence is then fetched with a date-bounded
+    /// predicate, because that is the only EventKit read that returns a
+    /// specific occurrence of a series (RC-17).
+    private func targetEvent(id: String, occurrence: OccurrenceSpec?, span: EventSpan, mutating: Bool) throws -> EKEvent {
+        let found = try findEvent(id: id, minimumPrefixLength: mutating ? IDPrefix.minimumMutatingLength : 0)
+        let fullId = found.calendarItemIdentifier
+        let target = try occurrenceTarget(
+            id: fullId, isRecurring: Self.isRecurring(found), occurrence: occurrence, span: span, mutating: mutating
+        )
+        switch target {
+        case .item:
+            // The id lookup returns a series' FIRST occurrence, which is what
+            // the whole-series span starts from; a prefix match may have found
+            // a later one.
+            return (store.calendarItem(withIdentifier: fullId) as? EKEvent) ?? found
+        case let .occurrence(spec):
+            let window = spec.window()
+            let predicate = store.predicateForEvents(withStart: window.start, end: window.end, calendars: nil)
+            // A timed-out fetch yields no candidates, so it fails closed.
+            let candidates = fetchEventsSync(predicate: predicate).events
+                .filter { $0.calendarItemIdentifier == fullId }
+            return try candidates[spec.pick(from: candidates.map(\.startDate), id: fullId)]
+        }
+    }
+
+    /// A detached occurrence (one edited on its own) may carry no rules of its
+    /// own, but it still belongs to a series.
+    private static func isRecurring(_ event: EKEvent) -> Bool {
+        event.hasRecurrenceRules || event.isDetached
+    }
+
+    private static func eventStart(_ event: EKEvent) -> String {
+        event.isAllDay ? formatEventDay(event.startDate) : formatEventDate(event.startDate)
+    }
+
+    /// Which occurrence a mutation hit, captured before the change is saved.
+    private static func occurrenceDetails(_ event: EKEvent) -> [String: String] {
+        isRecurring(event) ? ["occurrenceDate": eventStart(event)] : [:]
     }
 
     /// The event an id or id prefix names. A prefix that matches more than one
@@ -449,7 +511,7 @@ public final class CalendarBridge: @unchecked Sendable {
             // All-day events are calendar DAYS, not instants — serialize them
             // date-only (local day) so positive-UTC-offset consumers don't see
             // the wrong day (e.g. "2026-07-23T04:00:00Z" reading as Jul 24).
-            startDate: event.isAllDay ? formatEventDay(event.startDate) : formatEventDate(event.startDate),
+            startDate: Self.eventStart(event),
             endDate: event.isAllDay ? formatEventDay(event.endDate) : formatEventDate(event.endDate),
             isAllDay: event.isAllDay,
             location: event.location,
@@ -458,7 +520,9 @@ public final class CalendarBridge: @unchecked Sendable {
             attendees: attendees?.isEmpty == false ? attendees : nil,
             recurrence: recurrenceDesc,
             status: statusStr,
-            alerts: alerts
+            alerts: alerts,
+            isRecurring: Self.isRecurring(event),
+            occurrenceDate: Self.isRecurring(event) ? Self.eventStart(event) : nil
         )
     }
 

@@ -860,12 +860,14 @@ enum MCPToolRegistry {
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Event ID."),
+                    "occurrence": Schema.string("For a recurring event: which occurrence to show, as the occurrenceDate from calendar_events."),
                 ],
                 required: ["id"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "show")
                 try argv.append(ArgHelpers.requiredString(args, "id"))
+                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
                 return argv
             }
         ),
@@ -883,7 +885,8 @@ enum MCPToolRegistry {
                     "notes": Schema.string("New notes."),
                     "url": Schema.string("New URL."),
                     "alert": Schema.string("New alert offset."),
-                    "span": Schema.string("For a recurring event: 'this' (default) or 'future'."),
+                    "span": Schema.string("For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
+                    "occurrence": Schema.string("For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
                     "allDay": Schema.boolean("Convert to an all-day event.", default: false),
                     "noAllDay": Schema.boolean("Convert away from an all-day event.", default: false),
                 ],
@@ -901,6 +904,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
                 argv += ArgHelpers.optionIfString(args, "alert", flagName: "--alert")
                 argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
+                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
                 argv += ArgHelpers.flagIfTrue(args, "allDay", flagName: "--all-day")
                 argv += ArgHelpers.flagIfTrue(args, "noAllDay", flagName: "--no-all-day")
                 return argv
@@ -913,7 +917,8 @@ enum MCPToolRegistry {
                 properties: [
                     "id": Schema.string("Event ID from calendar_events / calendar_search."),
                     "confirm": Schema.boolean("Must be true. Deletion cannot be undone.", default: false),
-                    "span": Schema.string("For a recurring event: 'this' (default) or 'future'."),
+                    "span": Schema.string("For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
+                    "occurrence": Schema.string("For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
                 ],
                 required: ["id", "confirm"]
             ),
@@ -922,6 +927,7 @@ enum MCPToolRegistry {
                 try argv.append(ArgHelpers.requiredString(args, "id"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
+                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
                 return argv
             }
         ),

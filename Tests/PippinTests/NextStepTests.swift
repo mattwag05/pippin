@@ -100,7 +100,8 @@ final class NextStepTests: XCTestCase {
         JobStoreError.statusWriteFailed("p"),
         // CalendarBridgeError
         CalendarBridgeError.accessDenied, CalendarBridgeError.eventNotFound("i"), CalendarBridgeError.calendarNotFound("c"),
-        CalendarBridgeError.saveFailed("e"), CalendarBridgeError.ambiguousId("i", count: 2), CalendarBridgeError.idPrefixTooShort("i"), CalendarBridgeError.dateParseError("d"),
+        CalendarBridgeError.saveFailed("e"), CalendarBridgeError.ambiguousId("i", count: 2), CalendarBridgeError.idPrefixTooShort("i"),
+        CalendarBridgeError.occurrenceRequired("i"), CalendarBridgeError.occurrenceNotFound("i"), CalendarBridgeError.dateParseError("d"),
         CalendarBridgeError.aiParseError("e"),
         // MailEnvelopeIndexError
         MailEnvelopeIndexError.databaseNotFound("p"), MailEnvelopeIndexError.unsupportedVersion(1),

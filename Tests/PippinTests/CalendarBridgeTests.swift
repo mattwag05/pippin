@@ -181,6 +181,8 @@ final class CalendarBridgeTests: XCTestCase {
             .saveFailed("disk full"),
             .ambiguousId("ab", count: 2),
             .idPrefixTooShort("ab"),
+            .occurrenceRequired("evt-1"),
+            .occurrenceNotFound("evt-1"),
             .dateParseError("bad date"),
             .aiParseError("bad json"),
         ]
@@ -373,25 +375,22 @@ final class CalendarBridgeTests: XCTestCase {
         _ = try await bridge.listEvents(from: start, to: end)
     }
 
-    // MARK: - parseSpan helper
+    // MARK: - EventSpan
 
-    func testParseSpanThis() {
-        XCTAssertEqual(parseSpan("this"), .thisEvent)
+    func testEventSpanParsing() {
+        XCTAssertEqual(EventSpan(argument: "this"), .this)
+        XCTAssertEqual(EventSpan(argument: "FUTURE"), .future)
+        XCTAssertEqual(EventSpan(argument: "all"), .all)
+        XCTAssertNil(EventSpan(argument: ""))
+        XCTAssertNil(EventSpan(argument: "both"))
     }
 
-    func testParseSpanFuture() {
-        XCTAssertEqual(parseSpan("future"), .futureEvents)
-    }
-
-    func testParseSpanCaseInsensitive() {
-        XCTAssertEqual(parseSpan("THIS"), .thisEvent)
-        XCTAssertEqual(parseSpan("FUTURE"), .futureEvents)
-    }
-
-    func testParseSpanInvalid() {
-        XCTAssertNil(parseSpan("all"))
-        XCTAssertNil(parseSpan(""))
-        XCTAssertNil(parseSpan("both"))
+    func testEventSpanMapsOntoEventKit() {
+        XCTAssertEqual(EventSpan.this.ekSpan, .thisEvent)
+        XCTAssertEqual(EventSpan.future.ekSpan, .futureEvents)
+        // EventKit has no whole-series span: it is the first occurrence
+        // saved with .futureEvents.
+        XCTAssertEqual(EventSpan.all.ekSpan, .futureEvents)
     }
 
     // MARK: - parseAlertDuration helper
