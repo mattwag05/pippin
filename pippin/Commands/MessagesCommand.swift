@@ -18,11 +18,10 @@ public struct MessagesCommand: AsyncParsableCommand {
     }
 
     /// Build the contact index honoring the command's `--no-contacts` /
-    /// `--contacts` flags and the `resolveContacts` config default. Pass `config`
-    /// to reuse one the caller already loaded (avoids re-reading `config.json`).
-    static func contactIndex(_ options: ContactResolutionOptions, config: PippinConfig? = nil) -> ContactIndex {
-        let resolve = options.shouldResolve(config: config ?? AIProviderFactory.loadConfig())
-        return contactIndex(disabled: !resolve)
+    /// `--contacts` flags and the `resolveContacts` default in the caller's
+    /// already-loaded `config`.
+    static func contactIndex(_ options: ContactResolutionOptions, config: PippinConfig?) -> ContactIndex {
+        contactIndex(disabled: !options.shouldResolve(config: config))
     }
 
     // MARK: - List
@@ -46,7 +45,8 @@ public struct MessagesCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func execute() async throws -> AgentResult {
-            let config = AIProviderFactory.loadConfig()
+            // Throws on an unparseable config: an unreadable exclude list must not read as empty.
+            let config = try AIProviderFactory.loadConfigOrThrow()
             let messagesConfig = config?.messages
             let windowHours = sinceHours ?? messagesConfig?.defaultWindowHours ?? 48
             let since = Date().addingTimeInterval(-Double(windowHours) * 3600)
@@ -96,7 +96,8 @@ public struct MessagesCommand: AsyncParsableCommand {
 
         public mutating func execute() async throws -> AgentResult {
             let since = Date().addingTimeInterval(-Double(sinceHours) * 3600)
-            let config = AIProviderFactory.loadConfig()
+            // Throws on an unparseable config: an unreadable exclude list must not read as empty.
+            let config = try AIProviderFactory.loadConfigOrThrow()
             let excluded = Set(config?.messages?.excludedThreads ?? [])
             let db = try MessagesDatabase(dbPath: MessagesDatabase.defaultDBPath())
             let (matches, excludedCount, scanTruncated) = try db.searchMessages(
@@ -143,7 +144,8 @@ public struct MessagesCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func execute() async throws -> AgentResult {
-            let config = AIProviderFactory.loadConfig()
+            // Throws on an unparseable config: an unreadable exclude list must not read as empty.
+            let config = try AIProviderFactory.loadConfigOrThrow()
             let excluded = Set(config?.messages?.excludedThreads ?? [])
             let db = try MessagesDatabase(dbPath: MessagesDatabase.defaultDBPath())
             let (conv, messages, truncated) = try db.showConversation(
@@ -254,7 +256,7 @@ public struct MessagesCommand: AsyncParsableCommand {
         private func gateAutonomous(recipient: String) throws {
             let envOK = ProcessInfo.processInfo.environment["PIPPIN_AUTONOMOUS_MESSAGES"] == "1"
             guard envOK else { throw MessagesSendError.autonomousNotAuthorized }
-            let allow = AIProviderFactory.loadConfig()?.messages?.autonomousAllowlist ?? []
+            let allow = try AIProviderFactory.loadConfigOrThrow()?.messages?.autonomousAllowlist ?? []
             guard allow.contains(recipient) else {
                 throw MessagesSendError.recipientNotAllowed(recipient)
             }
@@ -284,7 +286,7 @@ public struct MessagesCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func execute() async throws -> AgentResult {
-            let threads = AIProviderFactory.loadConfig()?.messages?.excludedThreads ?? []
+            let threads = try AIProviderFactory.loadConfigOrThrow()?.messages?.excludedThreads ?? []
             return emitExclude(action: "list", threads: threads)
         }
     }
@@ -334,7 +336,9 @@ public struct MessagesCommand: AsyncParsableCommand {
     // MARK: - Helpers
 
     static func mutateExclude(_ mutate: ([String]) -> [String]) throws -> [String] {
-        var config = AIProviderFactory.loadConfig() ?? PippinConfig()
+        // Throws before saving when the file exists but does not parse: writing
+        // back a blank config would wipe every other setting in it.
+        var config = try AIProviderFactory.loadConfigOrThrow() ?? PippinConfig()
         var messages = config.messages ?? PippinConfig.MessagesConfig()
         let current = messages.excludedThreads ?? []
         let updated = mutate(current)

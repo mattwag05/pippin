@@ -104,6 +104,30 @@ public struct PippinConfig: Codable, Sendable {
     }
 }
 
+/// The config file exists but cannot be used. An absent file is not an error:
+/// it means defaults.
+public enum ConfigError: LocalizedError, Sendable {
+    case invalid(path: String, detail: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .invalid(path, detail):
+            return "pippin's config file at \(path) could not be read as valid config: \(detail)"
+        }
+    }
+}
+
+extension ConfigError: RemediableError {
+    public var agentCode: String { "invalid_config" }
+
+    public var nextStep: NextStep {
+        switch self {
+        case let .invalid(path, _):
+            return .human("Fix the JSON in \(path), or move that file aside to run on defaults. pippin leaves the file untouched until it parses.")
+        }
+    }
+}
+
 // MARK: - Factory
 
 public enum AIProviderFactory {
@@ -117,21 +141,43 @@ public enum AIProviderFactory {
         return "\(home)/.config/pippin/config.json"
     }
 
-    /// Load config from disk. Returns nil if file absent or unparseable.
-    public static func loadConfig(path: String? = nil) -> PippinConfig? {
+    /// Load config from disk: nil when the file is absent (defaults apply),
+    /// `ConfigError.invalid` when it exists but cannot be read or parsed.
+    /// Anything that enforces a setting (the Messages exclude list and
+    /// allowlist), rewrites the file, or picks an AI backend must use this, so a
+    /// typo in the file is never mistaken for "no settings".
+    public static func loadConfigOrThrow(path: String? = nil) throws -> PippinConfig? {
         let configPath = path ?? defaultConfigPath()
-        guard
-            let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)),
-            let config = try? JSONDecoder().decode(PippinConfig.self, from: data)
-        else {
+        let data: Data
+        do {
+            data = try Data(contentsOf: URL(fileURLWithPath: configPath))
+        } catch CocoaError.fileReadNoSuchFile {
             return nil
+        } catch {
+            throw ConfigError.invalid(path: configPath, detail: error.localizedDescription)
         }
-        return config
+        do {
+            return try JSONDecoder().decode(PippinConfig.self, from: data)
+        } catch {
+            // Not "\(error)": a DecodingError can quote values, and the file may hold an API key.
+            throw ConfigError.invalid(path: configPath, detail: error.localizedDescription)
+        }
     }
 
-    /// Persist a config to disk, creating parent directories as needed.
+    /// Lenient load: nil if the file is absent OR unparseable. Only for callers
+    /// where falling back to defaults is harmless (display and performance
+    /// preferences). Never use it to read a setting that restricts access.
+    public static func loadConfig(path: String? = nil) -> PippinConfig? {
+        try? loadConfigOrThrow(path: path)
+    }
+
+    /// Persist a config to disk, creating parent directories as needed. The
+    /// file is replaced in one rename and is always mode 0600 (it can hold an
+    /// API key).
+    /// shortcut: no cross-process lock, so two concurrent edits can lose one; add an flock if writers multiply.
     public static func saveConfig(_ config: PippinConfig, path: String? = nil) throws {
-        let configPath = path ?? defaultConfigPath()
+        // Resolve symlinks so a linked config (dotfiles) is updated in place, not replaced by a regular file.
+        let configPath = URL(fileURLWithPath: path ?? defaultConfigPath()).resolvingSymlinksInPath().path
         let dir = (configPath as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(
             atPath: dir,
@@ -140,7 +186,24 @@ public enum AIProviderFactory {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(config)
-        try data.write(to: URL(fileURLWithPath: configPath), options: .atomic)
+
+        let tempPath = "\(configPath).tmp-\(UUID().uuidString)"
+        let fd = open(tempPath, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+        guard fd >= 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: tempPath])
+        }
+        do {
+            let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
+            guard rename(tempPath, configPath) == 0 else {
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: configPath])
+            }
+        } catch {
+            try? FileManager.default.removeItem(atPath: tempPath)
+            throw error
+        }
     }
 
     /// Create the appropriate AIProvider from CLI flags, falling back to config file then defaults.
@@ -153,7 +216,7 @@ public enum AIProviderFactory {
         modelFlag: String? = nil,
         apiKeyFlag: String? = nil
     ) throws -> any AIProvider {
-        let config = loadConfig()
+        let config = try loadConfigOrThrow()
         let providerName = providerFlag ?? config?.ai?.provider ?? "ollama"
 
         switch providerName.lowercased() {
@@ -191,8 +254,19 @@ public enum AIProviderFactory {
     public static func makeEmbeddingProvider(
         providerFlag: String? = nil,
         modelFlag: String? = nil,
+        urlFlag: String? = nil
+    ) throws -> any EmbeddingProvider {
+        try makeEmbeddingProvider(
+            providerFlag: providerFlag, modelFlag: modelFlag, urlFlag: urlFlag, config: loadConfigOrThrow()
+        )
+    }
+
+    /// As above with an already-loaded config (a default argument cannot throw).
+    public static func makeEmbeddingProvider(
+        providerFlag: String? = nil,
+        modelFlag: String? = nil,
         urlFlag: String? = nil,
-        config: PippinConfig? = loadConfig()
+        config: PippinConfig?
     ) throws -> any EmbeddingProvider {
         let section = config?.ai?.embeddings
         let name = (providerFlag ?? section?.provider ?? "ollama").lowercased()
@@ -218,7 +292,11 @@ public enum AIProviderFactory {
     public static let transcriptionProviders = ["mlx-audio", "apple", "openai"]
 
     /// Create the memo transcription backend from `ai.transcription`, defaulting to mlx-audio.
-    public static func makeTranscriber(config: PippinConfig? = loadConfig()) throws -> any Transcriber {
+    public static func makeTranscriber() throws -> any Transcriber {
+        try makeTranscriber(config: loadConfigOrThrow())
+    }
+
+    public static func makeTranscriber(config: PippinConfig?) throws -> any Transcriber {
         let section = config?.ai?.transcription
         let name = (section?.provider ?? "mlx-audio").lowercased()
         switch name {
