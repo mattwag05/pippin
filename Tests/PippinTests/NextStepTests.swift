@@ -18,10 +18,13 @@ final class NextStepTests: XCTestCase {
         // MessagesError
         MessagesError.databaseNotFound("p"), MessagesError.accessDenied("p"),
         MessagesError.conversationNotFound("c"), MessagesError.databaseError("e"),
+        MessagesError.conversationExcluded("c"), MessagesError.ambiguousConversation("c", ["a", "b"]),
+        // ConfigError
+        ConfigError.invalid(path: "p", detail: "e"),
         // MessagesSendError
         MessagesSendError.timeout, MessagesSendError.scriptFailed("e"), MessagesSendError.phiFiltered(["ssn"]),
         MessagesSendError.recipientNotAllowed("r"), MessagesSendError.autonomousNotAuthorized,
-        MessagesSendError.accessDenied,
+        MessagesSendError.accessDenied, MessagesSendError.auditLogUnavailable(path: "p", detail: "e"),
         // ScriptRunnerError
         ScriptRunnerError.timeout, ScriptRunnerError.nonZeroExit("e"), ScriptRunnerError.stderrOnSuccess("e"),
         ScriptRunnerError.launchFailed("e"), ScriptRunnerError.automationDenied("com.apple.mail"),
