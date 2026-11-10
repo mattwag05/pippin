@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-10
+
 ### Changed
 
 - [refactor] The MCP tool registry is generated from the CLI: each tool is a short spec naming the CLI arguments it exposes, and its input schema (type, `enum`, required-ness, description, numeric default) and argv come from the ArgumentParser definitions. A handful of gates and special bindings keep a small closure. Internal only: `tools/list` output and every tool's argv are unchanged. Refs pippin-kkik.
@@ -1103,7 +1105,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
      so this is a stable end state, not a backlog item. Don't "fix" it by
      inventing links: check `git tag -l` for both endpoints first. -->
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/mattwag05/pippin/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/mattwag05/pippin/compare/v0.41.1...v1.0.0
 [0.41.1]: https://github.com/mattwag05/pippin/compare/v0.41.0...v0.41.1
 [0.41.0]: https://github.com/mattwag05/pippin/compare/v0.40.0...v0.41.0
