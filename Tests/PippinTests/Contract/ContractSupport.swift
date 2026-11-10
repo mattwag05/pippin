@@ -3,20 +3,11 @@ import Foundation
 @testable import PippinLib
 import XCTest
 
-/// The command groups an MCP tool can reach. The real root lives in the
-/// executable target, which tests cannot import; `ConformanceTests` runs every
-/// tool against the built binary, so a group listed here but missing there fails.
-struct ContractRoot: ParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "pippin",
-        subcommands: [
-            MailCommand.self, MemosCommand.self, CalendarCommand.self, ContactsCommand.self,
-            RemindersCommand.self, NotesCommand.self, MessagesCommand.self, ActionsCommand.self,
-            DigestCommand.self, DoctorCommand.self, StatusCommand.self, BatchCommand.self,
-            JobCommand.self, PolicyCommand.self, LogCommand.self, UndoCommand.self,
-        ]
-    )
-}
+/// The command groups an MCP tool can reach, the same root the registry reads
+/// its definitions from. The real root lives in the executable target, which
+/// tests cannot import; `ConformanceTests` runs every tool against the built
+/// binary, so a group listed there but missing here fails.
+typealias ContractRoot = MCPCommandRoot
 
 /// The parts of ArgumentParser's `--experimental-dump-help` JSON the contract reads.
 struct DumpCommand: Decodable {
