@@ -112,7 +112,7 @@ Rules the argv builders follow, each enforced by a test:
 
 ### In-process tools
 
-[InProcessTools.swift](../pippin/MCP/InProcessTools.swift) runs some tools without a child: the EventKit reads (Calendar and Reminders) and the Contacts reads. These are the tools whose registry entry sets `inProcess: MCPInProcessTools.execute`. The handler parses the same argv a child would receive against a small root command (`InProcessRoot`) and calls the same `AgentCommand.execute()`.
+[InProcessTools.swift](../pippin/MCP/InProcessTools.swift) runs some tools without a child: the EventKit reads (Calendar and Reminders), the Contacts reads and the Messages reads. These are the tools whose registry entry sets `inProcess: MCPInProcessTools.execute`. The handler parses the same argv a child would receive against a small root command (`InProcessRoot`) and calls the same `AgentCommand.execute()`.
 
 A blocking framework call can be abandoned but not killed. So each in-process call has a 25 second deadline (`deadlineSeconds`, `withDeadline`). If it expires, the call returns `in_process_timed_out`, and `demote` moves that tool to the child path for the rest of the session. JXA, AI, browser, audio and every write stay in children, where a hard kill exists.
 
@@ -353,6 +353,8 @@ The suite is XCTest, more than 2,600 tests (`make test` prints the count). Tests
 **Schema golden tests.** [SchemaGoldenTests](../Tests/PippinTests/Contract/SchemaGoldenTests.swift) regenerate `docs/schemas/v4/` from the registry and the payload models and fail when the checked-in files differ.
 
 **CLI and MCP drift tests.** [CLIMCPDriftTests](../Tests/PippinTests/Contract/CLIMCPDriftTests.swift) check the hand-written registry against the ArgumentParser command definitions. `ToolRegistryTests` parses every tool's argv with its real command group.
+
+This is a known exception to the mission's "CLI and MCP generated from the same definitions" goal (pippin-kkik). The CLI flags come from ArgumentParser and the MCP schemas from the hand-written registry; the two are held together by these tests, not generated from one source. The JSON schemas are generated (above), so clients see one published contract. ArgumentParser exposes its command metadata only through the experimental `--experimental-dump-help` output, and the registry carries things the CLI does not (effects, verify tools, in-process handlers, untrusted-field lists), so generating it is on the roadmap rather than done.
 
 **Conformance tests.** [ConformanceTests](../Tests/PippinTests/Contract/ConformanceTests.swift) run the built binary and check that every tool answers a bad argument with one schema-valid error envelope.
 
