@@ -1,18 +1,23 @@
 import ArgumentParser
 import Foundation
 
-/// In-process execution for the safe (non-JXA) read-only MCP tools: EventKit
-/// (Calendar/Reminders), CNContactStore (Contacts) and chat.db (Messages) reads. These run the same
-/// `AgentCommand` the CLI runs, parsed from the same argv a child would get, so
-/// the two paths cannot drift. Everything wedge-prone (JXA, AI, browser, audio)
-/// and all writes stay on the child path, where a hard kill exists: a blocking
-/// framework call in this process can only be abandoned, never killed.
+/// In-process execution for the safe read-only MCP tools: EventKit
+/// (Calendar/Reminders), CNContactStore (Contacts), chat.db (Messages) and
+/// Notes reads. These run the same `AgentCommand` the CLI runs, parsed from the
+/// same argv a child would get, so the two paths cannot drift. Notes reads are
+/// JXA, but the script runs in an `osascript` child with its own hard kill
+/// (`ScriptRunner`), and the Automation pre-check cannot prompt here (stdin is
+/// not a TTY), so nothing in this process blocks on Notes. Saving the `pippin`
+/// child start is what makes a warm Notes read faster (pippin-ai5s). Everything
+/// else wedge-prone (Mail JXA, AI, browser, audio) and all writes stay on the
+/// child path, where a hard kill exists: a blocking framework call in this
+/// process can only be abandoned, never killed.
 enum MCPInProcessTools {
     /// Parses only what runs in-process; PippinLib cannot see the real root.
     private struct InProcessRoot: ParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "pippin",
-            subcommands: [CalendarCommand.self, RemindersCommand.self, ContactsCommand.self, MessagesCommand.self]
+            subcommands: [CalendarCommand.self, RemindersCommand.self, ContactsCommand.self, MessagesCommand.self, NotesCommand.self, MailCommand.self]
         )
     }
 
@@ -21,11 +26,31 @@ enum MCPInProcessTools {
     /// what bounds a stalled contactsd.
     static let deadlineSeconds = 25
 
-    /// Parse `argv` and run the command, returning its envelope.
-    static func execute(_ argv: [String]) async throws -> String {
-        guard var command = try InProcessRoot.parseAsRoot(argv) as? any AgentCommand else {
+    /// Thrown by an in-process handler for a call it should not take; the
+    /// dispatcher runs the child instead.
+    struct UseChildPath: Error {}
+
+    /// Mail reads answer from Mail's on-disk index in milliseconds, and the
+    /// accounts list is one short script (pippin-k177). Calls that fetch or
+    /// scan bodies, or ask an embedding provider, can run for many seconds,
+    /// so they keep the child path and its hard kill.
+    static func executeMailRead(_ argv: [String]) async throws -> String {
+        let slow = argv.contains { $0 == "--body" || $0 == "--semantic" || ($0.hasPrefix("--preview=") && $0 != "--preview=0") }
+        if slow { throw UseChildPath() }
+        return try await execute(argv)
+    }
+
+    /// The command `argv` names, if it is one that runs in-process.
+    static func parse(_ argv: [String]) throws -> any AgentCommand {
+        guard let command = try InProcessRoot.parseAsRoot(argv) as? any AgentCommand else {
             throw MCPServerRuntimeError.notInProcessCapable(argv.joined(separator: " "))
         }
+        return command
+    }
+
+    /// Parse `argv` and run the command, returning its envelope.
+    static func execute(_ argv: [String]) async throws -> String {
+        var command = try parse(argv)
         let result = try await command.execute()
         return try command.output.render(result)
     }

@@ -6404,5 +6404,355 @@
     "is_read": false
    }
   ]
+ },
+ "mail": {
+  "account": "Pippinbench",
+  "mailbox": "INBOX",
+  "server": "Dovecot on 127.0.0.1 (ports 143 and 1143) inside the VM, no TLS, any password",
+  "search_word": "Quarterly",
+  "messages": [
+   {
+    "key": "mail-01",
+    "subject": "PB Mail 01 Invoice",
+    "from": "pbx01@example.invalid",
+    "from_name": "PBX Sender 01",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1803909600,
+    "body": "Body of PB Mail 01 about invoice.",
+    "message_id": "<pb-mail-01@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-02",
+    "subject": "PB Mail 02 Quarterly report",
+    "from": "pbx02@example.invalid",
+    "from_name": "PBX Sender 02",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1803934800,
+    "body": "Body of PB Mail 02 about quarterly report.",
+    "message_id": "<pb-mail-02@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-03",
+    "subject": "PB Mail 03 Lunch",
+    "from": "pbx03@example.invalid",
+    "from_name": "PBX Sender 03",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1803960000,
+    "body": "Body of PB Mail 03 about lunch. Forwarded from the quarterly review.",
+    "message_id": "<pb-mail-03@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-04",
+    "subject": "PB Mail 04 Travel plan",
+    "from": "pbx04@example.invalid",
+    "from_name": "PBX Sender 04",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1803985200,
+    "body": "Body of PB Mail 04 about travel plan.",
+    "message_id": "<pb-mail-04@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-05",
+    "subject": "PB Mail 05 Quarterly budget",
+    "from": "pbx05@example.invalid",
+    "from_name": "PBX Sender 05",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804010400,
+    "body": "Body of PB Mail 05 about quarterly budget.",
+    "message_id": "<pb-mail-05@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-06",
+    "subject": "PB Mail 06 Receipt",
+    "from": "pbx06@example.invalid",
+    "from_name": "PBX Sender 06",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804035600,
+    "body": "Body of PB Mail 06 about receipt.",
+    "message_id": "<pb-mail-06@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-07",
+    "subject": "PB Mail 07 Meeting notes",
+    "from": "pbx07@example.invalid",
+    "from_name": "PBX Sender 07",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804060800,
+    "body": "Body of PB Mail 07 about meeting notes.",
+    "message_id": "<pb-mail-07@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-08",
+    "subject": "PB Mail 08 Shipping update",
+    "from": "pbx08@example.invalid",
+    "from_name": "PBX Sender 08",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804086000,
+    "body": "Body of PB Mail 08 about shipping update.",
+    "message_id": "<pb-mail-08@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-09",
+    "subject": "PB Mail 09 Invoice",
+    "from": "pbx09@example.invalid",
+    "from_name": "PBX Sender 09",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804111200,
+    "body": "Body of PB Mail 09 about invoice.",
+    "message_id": "<pb-mail-09@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-10",
+    "subject": "PB Mail 10 Quarterly report",
+    "from": "pbx10@example.invalid",
+    "from_name": "PBX Sender 10",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804136400,
+    "body": "Body of PB Mail 10 about quarterly report.",
+    "message_id": "<pb-mail-10@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-11",
+    "subject": "PB Mail 11 Lunch",
+    "from": "pbx11@example.invalid",
+    "from_name": "PBX Sender 11",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804161600,
+    "body": "Body of PB Mail 11 about lunch. Forwarded from the quarterly review.",
+    "message_id": "<pb-mail-11@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-12",
+    "subject": "PB Mail 12 Travel plan",
+    "from": "pbx12@example.invalid",
+    "from_name": "PBX Sender 12",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804186800,
+    "body": "Body of PB Mail 12 about travel plan.",
+    "message_id": "<pb-mail-12@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-13",
+    "subject": "PB Mail 13 Quarterly budget",
+    "from": "pbx13@example.invalid",
+    "from_name": "PBX Sender 13",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804212000,
+    "body": "Body of PB Mail 13 about quarterly budget.",
+    "message_id": "<pb-mail-13@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-14",
+    "subject": "PB Mail 14 Receipt",
+    "from": "pbx14@example.invalid",
+    "from_name": "PBX Sender 14",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804237200,
+    "body": "Body of PB Mail 14 about receipt.",
+    "message_id": "<pb-mail-14@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-15",
+    "subject": "PB Mail 15 Meeting notes",
+    "from": "pbx15@example.invalid",
+    "from_name": "PBX Sender 15",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804262400,
+    "body": "Body of PB Mail 15 about meeting notes.",
+    "message_id": "<pb-mail-15@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-16",
+    "subject": "PB Mail 16 Shipping update",
+    "from": "pbx16@example.invalid",
+    "from_name": "PBX Sender 16",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804287600,
+    "body": "Body of PB Mail 16 about shipping update.",
+    "message_id": "<pb-mail-16@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-17",
+    "subject": "PB Mail 17 Invoice",
+    "from": "pbx17@example.invalid",
+    "from_name": "PBX Sender 17",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804312800,
+    "body": "Body of PB Mail 17 about invoice.",
+    "message_id": "<pb-mail-17@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-18",
+    "subject": "PB Mail 18 Quarterly report",
+    "from": "pbx18@example.invalid",
+    "from_name": "PBX Sender 18",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804338000,
+    "body": "Body of PB Mail 18 about quarterly report.",
+    "message_id": "<pb-mail-18@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-19",
+    "subject": "PB Mail 19 Lunch",
+    "from": "pbx19@example.invalid",
+    "from_name": "PBX Sender 19",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804363200,
+    "body": "Body of PB Mail 19 about lunch. Forwarded from the quarterly review.",
+    "message_id": "<pb-mail-19@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-20",
+    "subject": "PB Mail 20 Travel plan",
+    "from": "pbx20@example.invalid",
+    "from_name": "PBX Sender 20",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804388400,
+    "body": "Body of PB Mail 20 about travel plan.",
+    "message_id": "<pb-mail-20@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-21",
+    "subject": "PB Mail 21 Quarterly budget",
+    "from": "pbx21@example.invalid",
+    "from_name": "PBX Sender 21",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804413600,
+    "body": "Body of PB Mail 21 about quarterly budget.",
+    "message_id": "<pb-mail-21@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-22",
+    "subject": "PB Mail 22 Receipt",
+    "from": "pbx22@example.invalid",
+    "from_name": "PBX Sender 22",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804438800,
+    "body": "Body of PB Mail 22 about receipt.",
+    "message_id": "<pb-mail-22@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-23",
+    "subject": "PB Mail 23 Meeting notes",
+    "from": "pbx23@example.invalid",
+    "from_name": "PBX Sender 23",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804464000,
+    "body": "Body of PB Mail 23 about meeting notes.",
+    "message_id": "<pb-mail-23@pippinbench.invalid>"
+   },
+   {
+    "key": "mail-24",
+    "subject": "PB Mail 24 Shipping update",
+    "from": "pbx24@example.invalid",
+    "from_name": "PBX Sender 24",
+    "to": "bench@pippinbench.invalid",
+    "date_epoch": 1804489200,
+    "body": "Body of PB Mail 24 about shipping update.",
+    "message_id": "<pb-mail-24@pippinbench.invalid>"
+   }
+  ]
+ },
+ "memos": {
+  "store": "~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/CloudRecordings.db",
+  "note": "Rows inserted into the store Voice Memos itself created on this macOS; each file is silent AAC audio",
+  "recordings": [
+   {
+    "key": "memo-01",
+    "title": "PB Memo 01",
+    "uuid": "19132A56-42D8-5E7D-ABB2-3F801F81F424",
+    "date_epoch": 1803909600,
+    "duration": 2.0,
+    "file": "PB Memo 01.m4a"
+   },
+   {
+    "key": "memo-02",
+    "title": "PB Memo 02",
+    "uuid": "2CF868D1-392E-5FC3-B065-CA249273C72A",
+    "date_epoch": 1803927600,
+    "duration": 3.0,
+    "file": "PB Memo 02.m4a"
+   },
+   {
+    "key": "memo-03",
+    "title": "PB Memo 03",
+    "uuid": "1C9CCC30-7CAA-59C5-BB68-949C1E692228",
+    "date_epoch": 1803945600,
+    "duration": 4.0,
+    "file": "PB Memo 03.m4a"
+   },
+   {
+    "key": "memo-04",
+    "title": "PB Memo 04",
+    "uuid": "7C097D70-53CC-52FC-B920-B82A4C841257",
+    "date_epoch": 1803963600,
+    "duration": 5.0,
+    "file": "PB Memo 04.m4a"
+   },
+   {
+    "key": "memo-05",
+    "title": "PB Memo 05",
+    "uuid": "33087977-863C-5306-86E8-9D4D76ABBB4D",
+    "date_epoch": 1803981600,
+    "duration": 2.0,
+    "file": "PB Memo 05.m4a"
+   },
+   {
+    "key": "memo-06",
+    "title": "PB Memo 06",
+    "uuid": "5875ADB6-0C5D-5F01-B610-CDB5FFFEEDEC",
+    "date_epoch": 1803999600,
+    "duration": 3.0,
+    "file": "PB Memo 06.m4a"
+   },
+   {
+    "key": "memo-07",
+    "title": "PB Memo 07",
+    "uuid": "411AF55C-9F18-55B6-B56C-DB622707E6FB",
+    "date_epoch": 1804017600,
+    "duration": 4.0,
+    "file": "PB Memo 07.m4a"
+   },
+   {
+    "key": "memo-08",
+    "title": "PB Memo 08",
+    "uuid": "F1430224-F303-54C6-ADE8-D37F1C86D0DB",
+    "date_epoch": 1804035600,
+    "duration": 5.0,
+    "file": "PB Memo 08.m4a"
+   },
+   {
+    "key": "memo-09",
+    "title": "PB Memo 09",
+    "uuid": "C8021437-28BB-53F1-B649-884876AD3386",
+    "date_epoch": 1804053600,
+    "duration": 2.0,
+    "file": "PB Memo 09.m4a"
+   },
+   {
+    "key": "memo-10",
+    "title": "PB Memo 10",
+    "uuid": "41476DEA-79E2-5B50-8F92-C3359E077959",
+    "date_epoch": 1804071600,
+    "duration": 3.0,
+    "file": "PB Memo 10.m4a"
+   },
+   {
+    "key": "memo-11",
+    "title": "PB Memo 11",
+    "uuid": "5202CF5F-1A3A-5CC1-AC7A-FDD01F8DCC56",
+    "date_epoch": 1804089600,
+    "duration": 4.0,
+    "file": "PB Memo 11.m4a"
+   },
+   {
+    "key": "memo-12",
+    "title": "PB Memo 12",
+    "uuid": "81A1FAB9-3F3A-5CF8-A9C0-C0FF22596338",
+    "date_epoch": 1804107600,
+    "duration": 5.0,
+    "file": "PB Memo 12.m4a"
+   }
+  ]
  }
 }

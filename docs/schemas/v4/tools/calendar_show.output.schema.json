@@ -21,8 +21,6 @@
           }
         },
         "required" : [
-          "email",
-          "name",
           "status"
         ],
         "type" : "object"

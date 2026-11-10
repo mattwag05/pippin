@@ -207,4 +207,25 @@ final class MemosDeleteTests: XCTestCase {
         XCTAssertFalse(real.contains("--dry-run"))
         XCTAssertThrowsError(try tool.buildArgs(.object(["id": .string(memoId), "confirm": .bool(false)])))
     }
+
+    /// A read that lands while another process holds the store's lock waits for it
+    /// instead of failing at once (one of 8 parallel memos.list calls failed, 2026-11-10).
+    func testReadWaitsOutABriefLockOnTheStore() throws {
+        let writer = try DatabaseQueue(path: dbPath)
+        let locked = DispatchSemaphore(value: 0)
+        let released = expectation(description: "lock released")
+        DispatchQueue.global().async {
+            try? writer.inDatabase { db in
+                try db.execute(sql: "BEGIN EXCLUSIVE")
+                locked.signal()
+                Thread.sleep(forTimeInterval: 0.3)
+                try db.execute(sql: "COMMIT")
+            }
+            released.fulfill()
+        }
+        locked.wait()
+        let memos = try VoiceMemosDB(dbPath: dbPath).listMemos()
+        XCTAssertEqual(memos.count, 2)
+        wait(for: [released], timeout: 5)
+    }
 }

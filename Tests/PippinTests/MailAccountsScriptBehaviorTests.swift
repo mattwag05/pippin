@@ -64,11 +64,12 @@ final class MailAccountsScriptBehaviorTests: XCTestCase {
         return (rows, Int(context.evaluateScript("events").toInt32()))
     }
 
-    func testBulkReadReturnsEveryAccountInFourEvents() throws {
+    func testBulkReadReturnsEveryAccountInThreeEvents() throws {
         let result = try runAccountsScript()
         XCTAssertEqual(result.rows, expected)
-        // The ready poll plus one event per property, whatever the account count.
-        XCTAssertEqual(result.events, 4)
+        // One event per property, whatever the account count; the names read doubles as the
+        // readiness check, so the poll runs only when it comes back empty (pippin-k177).
+        XCTAssertEqual(result.events, 3)
     }
 
     func testBulkListsOfDifferentLengthsFallBackToThePerAccountRead() throws {
@@ -76,7 +77,7 @@ final class MailAccountsScriptBehaviorTests: XCTestCase {
         // longer line up, so no row may be built from them.
         let result = try runAccountsScript(setup: "bulk.id = ['AAAA', 'BBBB'];")
         XCTAssertEqual(result.rows, expected)
-        XCTAssertGreaterThan(result.events, 4)
+        XCTAssertGreaterThan(result.events, 3)
     }
 
     func testAFailedBulkReadFallsBackToThePerAccountRead() throws {

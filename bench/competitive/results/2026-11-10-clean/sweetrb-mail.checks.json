@@ -1,0 +1,31 @@
+{
+  "tool": "sweetrb-mail",
+  "version": "2.20.55",
+  "correctness": {
+    "mail.list": {
+      "outcome": "ok",
+      "expected": 20,
+      "returned": 20,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "mail.search": {
+      "outcome": "ok",
+      "expected": 6,
+      "returned": 2,
+      "missing": [
+        "PB Mail 10 Quarterly report",
+        "PB Mail 13 Quarterly budget",
+        "PB Mail 18 Quarterly report",
+        "PB Mail 21 Quarterly budget"
+      ],
+      "unexpected": [],
+      "duplicated": []
+    }
+  },
+  "safety": {
+    "not_run": "no search operation to carry a hostile query"
+  },
+  "writes": {}
+}

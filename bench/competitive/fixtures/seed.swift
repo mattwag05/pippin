@@ -41,7 +41,7 @@ func dayFormatter() -> DateFormatter {
     let f = DateFormatter()
     f.calendar = Calendar(identifier: .gregorian)
     f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = TimeZone.current  // all-day events are floating: they sit on the local calendar day
+    f.timeZone = TimeZone.current // all-day events are floating: they sit on the local calendar day
     f.dateFormat = "yyyy-MM-dd"
     return f
 }
@@ -121,8 +121,12 @@ func removePrior(_ store: EKEventStore, _ contacts: CNContactStore) throws {
         try store.removeCalendar(cal, commit: true)
     }
     let request = CNSaveRequest()
-    for c in prefixedContacts(contacts) { request.delete(c.mutableCopy() as! CNMutableContact) }
-    for g in markerGroups(contacts) { request.delete(g.mutableCopy() as! CNMutableGroup) }
+    for c in prefixedContacts(contacts) {
+        request.delete(c.mutableCopy() as! CNMutableContact)
+    }
+    for g in markerGroups(contacts) {
+        request.delete(g.mutableCopy() as! CNMutableGroup)
+    }
     try contacts.execute(request)
 }
 
@@ -224,7 +228,9 @@ func seed(_ manifestPath: String) throws {
     }
     try contacts.execute(request)
     var contactState: [String: Any] = [:]
-    for (key, c) in createdContacts { contactState[key] = ["id": c.identifier] }
+    for (key, c) in createdContacts {
+        contactState[key] = ["id": c.identifier]
+    }
     state["contact_group"] = ["id": group.identifier, "name": marker]
     state["contacts"] = contactState
     emit(state)
@@ -280,7 +286,7 @@ func dump() {
     var groupOut: [[String: Any]] = []
     for g in groups {
         let members = (try? contacts.unifiedContacts(matching: CNContact.predicateForContactsInGroup(withIdentifier: g.identifier),
-                                                    keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])) ?? []
+                                                     keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])) ?? []
         members.forEach { memberIDs.insert($0.identifier) }
         groupOut.append(["id": g.identifier, "name": g.name, "member_count": members.count])
     }
@@ -309,8 +315,10 @@ func teardown(_ statePath: String) throws {
     let groupID = (state["contact_group"] as? [String: Any])?["id"] as? String
     let request = CNSaveRequest()
     let found = (try? contacts.unifiedContacts(matching: CNContact.predicateForContacts(withIdentifiers: contactIDs),
-                                              keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])) ?? []
-    for c in found { request.delete(c.mutableCopy() as! CNMutableContact) }
+                                               keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])) ?? []
+    for c in found {
+        request.delete(c.mutableCopy() as! CNMutableContact)
+    }
     if let groupID, let g = (try? contacts.groups(matching: CNGroup.predicateForGroups(withIdentifiers: [groupID])))?.first {
         request.delete(g.mutableCopy() as! CNMutableGroup)
     }
@@ -320,11 +328,17 @@ func teardown(_ statePath: String) throws {
     let check = EKEventStore()
     let checkContacts = CNContactStore()
     var remaining: [String] = []
-    for id in calendarIDs where check.calendar(withIdentifier: id) != nil { remaining.append("calendar:" + id) }
-    for id in ids(state, "events") where check.event(withIdentifier: id) != nil { remaining.append("event:" + id) }
-    for id in ids(state, "reminders") where check.calendarItem(withIdentifier: id) != nil { remaining.append("reminder:" + id) }
+    for id in calendarIDs where check.calendar(withIdentifier: id) != nil {
+        remaining.append("calendar:" + id)
+    }
+    for id in ids(state, "events") where check.event(withIdentifier: id) != nil {
+        remaining.append("event:" + id)
+    }
+    for id in ids(state, "reminders") where check.calendarItem(withIdentifier: id) != nil {
+        remaining.append("reminder:" + id)
+    }
     let left = (try? checkContacts.unifiedContacts(matching: CNContact.predicateForContacts(withIdentifiers: contactIDs),
-                                                  keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])) ?? []
+                                                   keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])) ?? []
     remaining += left.map { "contact:" + $0.identifier }
     if let groupID, let groups = try? checkContacts.groups(matching: CNGroup.predicateForGroups(withIdentifiers: [groupID])), !groups.isEmpty {
         remaining.append("group:" + groupID)
@@ -360,7 +374,7 @@ func untypedstream() {
         var i = hex.startIndex
         while i < hex.endIndex {
             let j = hex.index(i, offsetBy: 2)
-            bytes.append(UInt8(hex[i..<j], radix: 16)!)
+            bytes.append(UInt8(hex[i ..< j], radix: 16)!)
             i = j
         }
         let obj = unarchiver.perform(NSSelectorFromString("unarchiveObjectWithData:"), with: Data(bytes))?.takeUnretainedValue()

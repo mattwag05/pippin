@@ -1,0 +1,192 @@
+{
+  "tool": "imsg",
+  "version": "0.21.0",
+  "correctness": {
+    "messages.history": {
+      "outcome": "ok",
+      "expected": 50,
+      "returned": 50,
+      "missing": [
+        "PB0140 ok"
+      ],
+      "unexpected": [],
+      "duplicated": [],
+      "outgoing_with_recipient_as_sender": 0
+    },
+    "messages.chats": {
+      "outcome": "ok",
+      "chats": {
+        "chat-a": {
+          "found": true,
+          "expected_unread": 2,
+          "reported_unread": null
+        },
+        "chat-b": {
+          "found": true,
+          "expected_unread": 0,
+          "reported_unread": null
+        },
+        "chat-c": {
+          "found": true,
+          "expected_unread": 5,
+          "reported_unread": null
+        },
+        "chat-d": {
+          "found": true,
+          "expected_unread": 2,
+          "reported_unread": null
+        }
+      }
+    }
+  },
+  "safety": {
+    "ops": [
+      "messages.search"
+    ],
+    "items": {
+      "hostile-01": {
+        "class": "double_quotes",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-02": {
+        "class": "single_quotes",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-03": {
+        "class": "backslashes",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-04": {
+        "class": "backticks",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-05": {
+        "class": "shell_substitution",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-06": {
+        "class": "shell_separator",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-07": {
+        "class": "shell_pipe_and",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-08": {
+        "class": "applescript_breakout",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-09": {
+        "class": "applescript_newline_breakout",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-10": {
+        "class": "jxa_breakout_single",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-11": {
+        "class": "jxa_breakout_double",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-12": {
+        "class": "jxa_template_literal",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-13": {
+        "class": "newlines",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-14": {
+        "class": "nul_escape",
+        "outcomes": {
+          "messages.search": "not_passable"
+        }
+      },
+      "hostile-15": {
+        "class": "unicode_line_separators",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-16": {
+        "class": "bidi_override",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-17": {
+        "class": "leading_dash_help",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-18": {
+        "class": "leading_dash_rf",
+        "outcomes": {
+          "messages.search": "error"
+        }
+      },
+      "hostile-19": {
+        "class": "sql_like_wildcards",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-20": {
+        "class": "sql_injection",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-21": {
+        "class": "html_markup",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-22": {
+        "class": "format_string",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      },
+      "hostile-23": {
+        "class": "very_long",
+        "outcomes": {
+          "messages.search": "ok"
+        }
+      }
+    },
+    "canary_created": [],
+    "alive_after": {
+      "messages.search": "ok"
+    }
+  },
+  "writes": {}
+}

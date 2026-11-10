@@ -421,6 +421,8 @@ enum MCPDispatcher {
                         try await handler(argv)
                     }
                     return toolResult(id: id, tool: tool, text: text, isError: false)
+                } catch is MCPInProcessTools.UseChildPath {
+                    // The handler declined this call (a slow variant); run the child below.
                 } catch {
                     if case MCPServerRuntimeError.inProcessTimedOut = error {
                         MCPInProcessTools.demote(tool.name)

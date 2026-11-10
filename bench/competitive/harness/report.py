@@ -3,8 +3,9 @@
     python3 harness/report.py results/<date> > results/<date>/summary.md
 
 Only arithmetic on the raw JSON written by run.py, checks.py and tasks.py. The rubric
-and tie rule are the ones in docs/competitive/methodology.md. Mail and Voice Memos are
-"not run" for every tool (methodology amendment 1), so they are left out of every score.
+and tie rule are the ones in docs/competitive/methodology.md. Mail and Voice Memos were
+"not run" (amendment 1) until amendment 4 seeded them; an app counts only in a run whose
+correctness stage checked it, so reports of earlier runs come out as before.
 """
 
 from __future__ import annotations
@@ -42,6 +43,11 @@ def rubric(failed: int, total: int):
     return 4 if failed == 0 else 3 if share <= 0.10 else 2 if share <= 0.40 else 1
 
 
+def mark_run_apps(tools: dict) -> None:
+    """Amendment 4: mail and memos count in a run that checked their correctness."""
+    NOT_RUN_APPS.difference_update({op.split(".")[0] for t in tools.values() for op in (t.get("correctness") or {})})
+
+
 def ran(tool: dict) -> bool:
     return bool(tool.get("speed")) and "not_run" not in tool and bool(scored_apps(tool))
 
@@ -61,7 +67,9 @@ def coverage(tool: dict) -> dict:
             cells[domain + ".delete"] = "yes"
     out = {}
     for app in scored_apps(tool):
-        probed = {op: v for op, v in cells.items() if op.startswith(app + ".") and (op in tool.get("speed", {}) or op.split(".")[1] in PROBED_WRITES or v == "no")}
+        # A write counts as probed only where the write stage ran for that app (amendment 4 leaves mail and memos writes not run).
+        writes_probed = app in (tool.get("writes") or {}) or app not in ("mail", "memos")
+        probed = {op: v for op, v in cells.items() if op.startswith(app + ".") and (op in tool.get("speed", {}) or (op.split(".")[1] in PROBED_WRITES and writes_probed) or v == "no")}
         out[app] = (sum(1 for v in probed.values() if v == "yes"), len(probed))
     return out
 
@@ -174,6 +182,7 @@ def speed_table(tools: dict) -> tuple:
 def main():
     directory = sys.argv[1]
     tools = load(directory)
+    mark_run_apps(tools)
     names = [n for n in tools if ran(tools[n])]
     skipped = [n for n in tools if not ran(tools[n])]
     table, speed_scores = speed_table({n: tools[n] for n in names})
@@ -210,7 +219,7 @@ def main():
         out.append("| %s | %s | n/r | n/r | n/r | n/r | n/r | n/r | not run: %s |" % (name, tools[name].get("version", ""), reason))
 
     out.append("\n## Coverage by app (yes / probed cells)\n")
-    apps = ["reminders", "calendar", "contacts", "notes", "messages"]
+    apps = ["reminders", "calendar", "contacts", "notes", "messages"] + [a for a in ("mail", "memos") if a not in NOT_RUN_APPS]
     out.append("| Tool | " + " | ".join(apps) + " |")
     out.append("| --- |" + " --- |" * len(apps))
     for name in names:

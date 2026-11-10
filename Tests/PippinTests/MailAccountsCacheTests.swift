@@ -110,4 +110,15 @@ final class MailAccountsCacheTests: XCTestCase {
         XCTAssertTrue(MailAccountsCache.isStale(fetchedAt: now.addingTimeInterval(-7200), now: now))
         XCTAssertFalse(MailAccountsCache.isStale(fetchedAt: now.addingTimeInterval(-60), now: now))
     }
+
+    // MARK: - mail accounts from names plus the cache (pippin-k177)
+
+    func testCachedAccountsOnlyWhenMailReportsTheSameNames() {
+        let hit = MailBridge.cachedAccounts(names: sample.map(\.name), cached: sample)
+        XCTAssertEqual(hit?.map(\.email), sample.map(\.email))
+        XCTAssertNil(MailBridge.cachedAccounts(names: [sample[0].name], cached: sample), "an account was removed")
+        XCTAssertNil(MailBridge.cachedAccounts(names: sample.map(\.name) + ["New"], cached: sample), "an account was added")
+        XCTAssertNil(MailBridge.cachedAccounts(names: sample.map(\.name).reversed(), cached: sample), "Mail's order changed")
+        XCTAssertNil(MailBridge.cachedAccounts(names: [], cached: []), "nothing to serve")
+    }
 }

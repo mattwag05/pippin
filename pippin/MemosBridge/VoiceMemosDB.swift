@@ -141,6 +141,8 @@ public final class VoiceMemosDB: Sendable {
     private static func openQueue(path: String, readonly: Bool) throws -> DatabaseQueue {
         var config = Configuration()
         config.readonly = readonly
+        // Voice Memos or a parallel pippin can hold the lock briefly; wait instead of failing (as CacheDB does).
+        config.busyMode = .timeout(5)
         do {
             return try DatabaseQueue(path: path, configuration: config)
         } catch {

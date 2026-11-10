@@ -22,8 +22,7 @@
         },
         "required" : [
           "doctor_check",
-          "human_hint",
-          "shell_command"
+          "human_hint"
         ],
         "type" : "object"
       },

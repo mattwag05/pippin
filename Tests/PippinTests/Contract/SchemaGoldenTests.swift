@@ -8,8 +8,8 @@ import XCTest
 final class SchemaGoldenTests: XCTestCase {
     // MARK: - Output payloads
 
-    /// What each tool puts under `data`, as samples from the real encoder: one
-    /// with every optional field set and one with none.
+    /// What each tool puts under `data`, as samples from the real encoder: each
+    /// level of `Filler.fillLevels`, from every optional set to none.
     static var outputs: [String: () throws -> [JSONValue]] { [
         "mail_accounts": rows(MailAccount.self),
         "mail_mailboxes": rows(Mailbox.self),
@@ -81,8 +81,8 @@ final class SchemaGoldenTests: XCTestCase {
         "job_wait": object(Job.self),
         "policy_show": object(PolicyReport.self),
         "job_show": {
-            try [true, false].map { full in
-                try encoded(JobView(job: Filler.make(Job.self, full: full), stdoutTail: "text", stderrTail: "text"))
+            try Filler.fillLevels.map { fill in
+                try encoded(JobView(job: Filler.make(Job.self, fill: fill), stdoutTail: "text", stderrTail: "text"))
             }
         },
     ] }
@@ -106,11 +106,11 @@ final class SchemaGoldenTests: XCTestCase {
     }
 
     static func object<T: Codable>(_ type: T.Type) -> () throws -> [JSONValue] {
-        { try [true, false].map { try encoded(Filler.make(type, full: $0)) } }
+        { try Filler.fillLevels.map { try encoded(Filler.make(type, fill: $0)) } }
     }
 
     static func rows<T: Codable>(_ type: T.Type) -> () throws -> [JSONValue] {
-        { try [true, false].map { try encoded([Filler.make(type, full: $0)]) } }
+        { try Filler.fillLevels.map { try encoded([Filler.make(type, fill: $0)]) } }
     }
 
     /// The schema for a tool's `data`. Rows of a tool that takes `fields` carry

@@ -323,6 +323,30 @@ for c in CHATS:
                 "last_message": ms[-1]["key"], "last_displayable_message": disp[-1]["key"]})
     chats.append(out)
 
+# ---------------------------------------------------------------- mail (local IMAP server) and voice memos (Amendment 4)
+MAIL_BASE = epoch("2027-03-01T09:00:00-05:00")
+MAIL_TOPICS = ["Invoice", "Quarterly report", "Lunch", "Travel plan", "Quarterly budget", "Receipt", "Meeting notes", "Shipping update"]
+mail = []
+for i in range(24):
+    n = i + 1
+    topic = MAIL_TOPICS[i % len(MAIL_TOPICS)]
+    sender = "pbx%02d@example.invalid" % (i % 25 + 1)
+    # Messages 3, 11 and 19 mention the search word only in the body, so a subject search may skip them.
+    body = "Body of PB Mail %02d about %s." % (n, topic.lower())
+    if n in (3, 11, 19):
+        body += " Forwarded from the quarterly review."
+    mail.append({"key": "mail-%02d" % n, "subject": "PB Mail %02d %s" % (n, topic), "from": sender,
+                 "from_name": "PBX Sender %02d" % (i % 25 + 1), "to": "bench@pippinbench.invalid",
+                 "date_epoch": MAIL_BASE + i * 7 * 3600, "body": body,
+                 "message_id": "<pb-mail-%02d@pippinbench.invalid>" % n})
+memos = []
+for i in range(12):
+    n = i + 1
+    memos.append({"key": "memo-%02d" % n, "title": "PB Memo %02d" % n,
+                  "uuid": str(uuid.uuid5(uuid.NAMESPACE_URL, "pippinbench/memo/%02d" % n)).upper(),
+                  "date_epoch": MAIL_BASE + i * 5 * 3600, "duration": float(2 + i % 4),
+                  "file": "PB Memo %02d.m4a" % n})
+
 manifest = {
     "version": 1,
     "marker": MARKER,
@@ -343,6 +367,15 @@ manifest = {
         "displayable_rule": "item_type = 0, not a tapback (associated_message_type = 0), not retracted, and has text or an attachment",
         "text_storage_note": "attributedBody rows have text NULL and the text only in a typedstream blob; text rows have attributedBody NULL; both rows carry both",
         "handles": HANDLES, "chats": chats, "messages": messages,
+    },
+    "mail": {
+        "account": "Pippinbench", "mailbox": "INBOX", "server": "Dovecot on 127.0.0.1 (ports 143 and 1143) inside the VM, no TLS, any password",
+        "search_word": "Quarterly", "messages": mail,
+    },
+    "memos": {
+        "store": "~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/CloudRecordings.db",
+        "note": "Rows inserted into the store Voice Memos itself created on this macOS; each file is silent AAC audio",
+        "recordings": memos,
     },
 }
 text = json.dumps(manifest, ensure_ascii=False, indent=1)

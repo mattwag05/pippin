@@ -1,0 +1,177 @@
+{
+  "tool": "sweetrb-notes",
+  "version": "2.16.1",
+  "kind": "mcp",
+  "apps": [
+    "notes"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 107.7,
+    "tool_count": 89,
+    "manifest_chars": 174555,
+    "manifest_tokens": 56023,
+    "tools_with_description": 89,
+    "tools_with_annotations": 46
+  },
+  "speed": {
+    "notes.folders": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 467.0,
+        "p50_ms": 481.07,
+        "p95_ms": 493.47,
+        "max_ms": 493.47
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 363.1,
+        "p50_ms": 368.56,
+        "p95_ms": 386.1,
+        "max_ms": 386.68
+      }
+    },
+    "notes.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 250.15,
+        "p50_ms": 260.29,
+        "p95_ms": 267.17,
+        "max_ms": 267.17
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 146.48,
+        "p50_ms": 149.98,
+        "p95_ms": 152.48,
+        "max_ms": 154.43
+      }
+    },
+    "notes.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 328.05,
+        "p50_ms": 335.5,
+        "p95_ms": 346.16,
+        "max_ms": 346.16
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 180.85,
+        "p50_ms": 183.28,
+        "p95_ms": 184.76,
+        "max_ms": 184.83
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "notes.folders": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "notes.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "notes.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      }
+    },
+    "bad_input": {
+      "notes.show": {
+        "outcome": "error",
+        "ms": 93.89,
+        "error_is_structured": true,
+        "detail": "Error retrieving note content: Invalid note ID format: \"PB-NOPE-0000\". Expected CoreData URL (x-coredata://...) or temp ID.structuredContent: {\"code\":\"validation_error\"}"
+      }
+    }
+  },
+  "coverage": {
+    "reminders.lists": "no",
+    "reminders.list": "no",
+    "reminders.search": "no",
+    "reminders.create": "no",
+    "reminders.edit": "no",
+    "reminders.complete": "no",
+    "reminders.delete": "no",
+    "calendar.calendars": "no",
+    "calendar.events": "no",
+    "calendar.search": "no",
+    "calendar.create": "no",
+    "calendar.edit": "no",
+    "calendar.delete": "no",
+    "contacts.list": "no",
+    "contacts.search": "no",
+    "contacts.show": "no",
+    "contacts.create": "no",
+    "contacts.edit": "no",
+    "contacts.delete": "no",
+    "contacts.groups": "no",
+    "notes.folders": "yes",
+    "notes.list": "yes",
+    "notes.search": "yes",
+    "notes.show": "claimed",
+    "notes.create": "claimed",
+    "notes.edit": "claimed",
+    "notes.delete": "claimed",
+    "messages.chats": "no",
+    "messages.history": "no",
+    "messages.search": "no",
+    "messages.send": "no",
+    "mail.accounts": "no",
+    "mail.mailboxes": "no",
+    "mail.list": "no",
+    "mail.search": "no",
+    "mail.show": "no",
+    "mail.send": "no",
+    "mail.move": "no",
+    "mail.mark": "no",
+    "mail.attachments": "no",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}

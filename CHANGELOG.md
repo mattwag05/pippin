@@ -9,6 +9,30 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- [refactor] The MCP tool registry is generated from the CLI: each tool is a short spec naming the CLI arguments it exposes, and its input schema (type, `enum`, required-ness, description, numeric default) and argv come from the ArgumentParser definitions. A handful of gates and special bindings keep a small closure. Internal only: `tools/list` output and every tool's argv are unchanged. Refs pippin-kkik.
+
+### Performance
+
+- [perf] Notes reads over MCP (`notes_list`, `notes_search`, `notes_show`, `notes_folders`) run inside the server, and the list and search scripts make 7 Apple Events instead of 11. In the benchmark VM, warm list went from 232 ms to 167 ms and search from 250 ms to 183 ms, which ties sweetrb/apple-notes-mcp under the tie rule ([result](bench/competitive/results/2026-11-10-notes/summary.md)). Test: `NotesScriptBehaviorTests.testTheDefaultListMakesSevenAppleEvents`. Closes pippin-ai5s.
+- [perf] Mail reads over MCP (`mail_list`, `mail_search`, `mail_mailboxes`, `mail_accounts`) run inside the server unless they ask for bodies, semantic search or previews. `mail accounts` asks Mail for names only and takes email and id from the account cache when the names match it and it is under an hour old; an address changed without a name change can show the old address for up to that hour. In the benchmark VM, warm list went from 42.6 ms to 2.5 ms, search from 39.9 ms to 1.7 ms and accounts from 117.0 ms to 57.2 ms: Pippin now leads or ties every Mail read and scores 4 on Speed ([result](bench/competitive/results/2026-11-10-mail/summary.md)). Tests: `InProcessToolsTests.testSlowMailReadsDeclineTheInProcessPath`, `MailAccountsCacheTests.testCachedAccountsOnlyWhenMailReportsTheSameNames`. Closes pippin-k177.
+
+### Fixed
+
+- [fix] Voice Memos reads wait up to 5 seconds for a lock on the store instead of failing at once with a misleading `accessDenied`; one of 8 parallel `memos_list` calls failed this way in the clean benchmark run of `09fbc84` ([run](bench/competitive/results/2026-11-10-clean/summary.md)). Test: `MemosDeleteTests.testReadWaitsOutABriefLockOnTheStore`.
+- [fix] `pippin doctor` no longer fails on a Mac where optional features are not set up. Voice Memos never used reports `skip`, and so does mlx-audio when it is not installed and `ai.transcription.provider` is unset, and Mail when it answers but has no account; all keep their remediation. A Voice Memos folder that cannot be read, or a configured mlx-audio that is missing, still fails. Tests: `DoctorTests.testVoiceMemosNeverUsedIsASkipButABlockedFolderFails`, `DoctorTests.testMissingMLXAudioIsASkipUnlessTheUserConfiguredIt`, `DoctorTests.testClassifyMailErrorNoAccountsIsASkip`. On the clean benchmark VM, doctor now exits 0 with no failed checks ([result](bench/competitive/results/2026-11-10-doctor/summary.md)).
+- [fix] Thirteen output schemas under `docs/schemas/v4/tools/` no longer mark as required a field inside an optional object that can be absent, such as `remediation.shell_command` in `doctor`. A live run against fixture data found the doctor case.
+
+### Added
+
+- [docs] A full head-to-head run from a fresh clone of `3ec767f` scores Pippin 4 on every axis, Speed included, in one run: fastest on 15 of 19 warm reads and tied on 4, fastest on 16 of 19 cold and tied on 3 ([run](bench/competitive/results/2026-11-10-final/summary.md), [results](docs/competitive/results.md)). The clean run of `09fbc84` before it scored Reliability 3 from the Voice Memos lock fixed above ([run](bench/competitive/results/2026-11-10-clean/summary.md)).
+- [docs] The head-to-head now measures Mail and Voice Memos (methodology Amendment 4: a local IMAP server and Mail account, and the Voice Memos store, in the VM). Pippin scores 4 on Coverage (7 apps), Correctness (54/54), Reliability, Safety and Operability, and 3 on Speed, tied at the top: it loses three warm Mail reads, since fixed (see Performance) ([results](docs/competitive/results.md)).
+- [docs] Agent tasks rerun on 2026-11-10 with grader 2 (methodology Amendment 2): Pippin 9 of 9 in both modes, with the lowest median tokens on every task when scoped with `--apps` ([results](docs/competitive/results.md#agent-tasks)).
+- [docs] The competitive results now score the Operability axis (install, self-check, docs, tests and CI, release hygiene, maintenance), under methodology Amendment 3. Pippin passes 13 of 13 checks and scores 4, tied with five other tools ([result](bench/competitive/results/2026-11-10-operability/summary.md)).
+- [docs] `docs/cli-reference.md` lists every command with its help text. `CLIReferenceTests` generates it from the command definitions and fails when it is stale. Before it, 21 commands were documented nowhere.
+- [test] `LiveConformanceTests` runs every read tool against real app data and validates each envelope and `data` against the published schemas. It runs only inside a VM and only with `PIPPIN_LIVE_CONFORMANCE=1` ([result](bench/competitive/results/2026-11-10-doctor/summary.md)).
+
 ## [1.0.0] - 2026-11-10
 
 ### Added

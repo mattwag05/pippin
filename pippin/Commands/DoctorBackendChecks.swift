@@ -180,7 +180,7 @@ func checkTranscription(config: PippinConfig?, probe: BackendProbe) -> Diagnosti
     let name = (section?.provider ?? "mlx-audio").lowercased()
     switch name {
     case "mlx-audio", "mlx":
-        return checkMLXAudio()
+        return checkMLXAudio(configured: section?.provider != nil)
     case "apple":
         guard #available(macOS 26, *) else {
             return DiagnosticCheck(name: checkName, status: .fail, detail: "apple transcription requires macOS 26 or later")

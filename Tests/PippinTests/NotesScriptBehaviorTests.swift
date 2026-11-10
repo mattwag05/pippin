@@ -108,6 +108,12 @@ final class NotesScriptBehaviorTests: XCTestCase {
                 return __folders.filter(function(f) { return f.name === cond.name; }).map(__folder);
             };
         };
+        // byName resolves nothing until a property is read; a missing folder's
+        // notes answer -1728, as Notes does.
+        spec.byName = function(name) {
+            var f = __folders.filter(function(x) { return x.name === name; })[0];
+            return f ? __folder(f) : {notes: __notesSpec(function() { return []; })};
+        };
         // Chained plural specifier: one Apple Event for every folder's note ids.
         spec.notes = {
             id: function() {
@@ -501,6 +507,27 @@ final class NotesScriptBehaviorTests: XCTestCase {
         XCTAssertEqual(ids(notes), [5, 3, 2, 1], "the trashed note is still skipped")
         XCTAssertEqual(notes.map(\.folder), ["Work", "Notes", "Work", "Notes"])
         XCTAssertEqual(try events(context)["note.container"], 5, "only the scanned window is asked")
+    }
+
+    /// A default list costs seven Apple Events whatever the vault size: ids,
+    /// names, dates and containers, ids again to check nothing moved, and the
+    /// folder ids and names. No `whose` lookup and no length reads (pippin-ai5s).
+    func testTheDefaultListMakesSevenAppleEvents() throws {
+        for folder in [nil, "Work"] {
+            let context = try makeContext()
+            let notes = try list(folder: folder, fields: Set(NoteInfo.essentialFields), in: context).results
+            XCTAssertEqual(ids(notes), folder == nil ? [5, 3, 2, 1] : [5, 2])
+            XCTAssertEqual(try events(context), [
+                "notes.id": 2, "notes.name": 1, "notes.modificationDate": 1, "notes.container": 1,
+                "folders.id": 1, "folders.name": 1,
+            ], folder ?? "all notes")
+        }
+    }
+
+    func testAFolderFilterThatMatchesNothingIsAnEmptyList() throws {
+        let context = try makeContext()
+        let script = NotesBridge.buildListScript(folder: "No Such Folder", limit: 50, fields: Set(NoteInfo.essentialFields))
+        XCTAssertTrue(try run(script, in: context).contains(#""results":[]"#))
     }
 
     func testListFallsBackToPerNotePlaintext() throws {

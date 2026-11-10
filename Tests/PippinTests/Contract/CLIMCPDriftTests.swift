@@ -3,9 +3,11 @@ import Foundation
 @testable import PippinLib
 import XCTest
 
-/// Locks the hand-written MCP registry to the ArgumentParser command
-/// definitions. The CLI is the source: each tool's schema and `buildArgs` are
-/// checked against the help dump and the real parser of the command it runs.
+/// Checks the generated MCP registry against the ArgumentParser command
+/// definitions. The CLI is the source and the registry derives each tool's
+/// schema and `buildArgs` from it; these tests read the help dump on their own
+/// and run the real parser, so a wrong `as: .integer`, a `.custom` closure or a
+/// generator bug that disagrees with the CLI fails here.
 final class CLIMCPDriftTests: XCTestCase {
     /// CLI arguments deliberately not offered to MCP clients, with the tools
     /// they apply to (nil: every tool) and why. An entry that stops being

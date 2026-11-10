@@ -1,6 +1,7 @@
 import Foundation
 
-/// One registered MCP tool. Schema + argv builder live side-by-side so they can't drift.
+/// One registered MCP tool, generated from an `MCPToolSpec` and the
+/// ArgumentParser definition of the command it runs (see ToolSpec.swift).
 struct MCPTool {
     /// What a call can change. Drives the `tools/list` annotations and what a
     /// timeout means: a read can be retried, a mutation may already have happened.
@@ -18,7 +19,7 @@ struct MCPTool {
     let description: String
     let inputSchema: JSONValue
     /// Given the MCP `arguments` object (or nil), return the argv passed to the child
-    /// `pippin` process. Always ends with `--format agent` so stdout is compact JSON.
+    /// `pippin` process. Always includes `--format agent` so stdout is compact JSON.
     /// Runs for every call — including in-process tools — so argument errors surface
     /// identically on both dispatch paths.
     let buildArgs: @Sendable (JSONValue?) throws -> [String]
@@ -77,50 +78,18 @@ enum MCPToolArgError: LocalizedError, RemediableError {
     var nextStep: NextStep { .none }
 }
 
-/// Build the argv prefix `[<parts>..., "--format", "agent"]`. Centralizes the contract
-/// that every tool call must run the child in agent-output mode — enforced by
-/// `testAllArgvEndWithFormatAgent`.
-private func pippinArgv(_ parts: String...) -> [String] {
-    parts + ["--format", "agent"]
-}
-
 enum ArgHelpers {
-    /// Shared "id-or-all" decoder for tools that accept a single positional
-    /// target or `--all`. Appends the positional id (if any) and `--all`
-    /// (if set) to `argv` in place. Throws `missingRequired("id (or all=true)")`
-    /// when neither is supplied.
-    static func appendIDOrAll(_ args: JSONValue?, into argv: inout [String]) throws {
-        let all = bool(args, "all") == true
-        if let id = string(args, "id") {
-            try argv.append(notFlagLike(id, "id"))
-        } else if !all {
-            throw MCPToolArgError.missingRequired("id (or all=true)")
-        }
-        if all { argv.append("--all") }
-    }
-
     static func string(_ args: JSONValue?, _ key: String) -> String? {
         args?[key]?.stringValue
     }
 
-    /// A required value passed as a bare positional (an id). These sit before
-    /// the options, where a `--` separator cannot go, so one that starts with
-    /// "-" would be parsed as a flag: an id of `--version` used to return the
+    /// A value passed as a bare positional (an id). These sit before the
+    /// options, where a `--` separator cannot go, so one that starts with "-"
+    /// would be parsed as a flag: an id of `--version` used to return the
     /// version text as a successful result. No real id starts with "-".
-    static func positional(_ args: JSONValue?, _ key: String) throws -> String {
-        try notFlagLike(requiredString(args, key), key)
-    }
-
     static func notFlagLike(_ value: String, _ key: String) throws -> String {
         guard !value.hasPrefix("-") else {
             throw MCPToolArgError.wrongType(field: key, expected: "a value that does not start with '-'")
-        }
-        return value
-    }
-
-    static func requiredString(_ args: JSONValue?, _ key: String) throws -> String {
-        guard let value = args?[key]?.stringValue else {
-            throw MCPToolArgError.missingRequired(key)
         }
         return value
     }
@@ -143,36 +112,8 @@ enum ArgHelpers {
         args?[key]?.doubleValue
     }
 
-    static func optionIfDouble(
-        _ args: JSONValue?,
-        _ key: String,
-        flagName: String
-    ) -> [String] {
-        if let value = double(args, key) { return [option(flagName, String(value))] }
-        return []
-    }
-
     static func flagIfTrue(_ args: JSONValue?, _ key: String, flagName: String) -> [String] {
         bool(args, key) == true ? [flagName] : []
-    }
-
-    /// Expand a string array into one repeated `--flag=value` option per element
-    /// (`--to`, `--cc`, `--bcc`, `--attach` are all repeatable on the CLI).
-    /// Returns [] when the key is absent or holds no strings.
-    static func optionPerElement(
-        _ args: JSONValue?,
-        _ key: String,
-        flagName: String
-    ) -> [String] {
-        (stringArray(args, key) ?? []).map { option(flagName, $0) }
-    }
-
-    /// The six contact fields `contacts create` and `contacts edit` share verbatim.
-    static func contactFieldOptions(_ args: JSONValue?) -> [String] {
-        [
-            ("first", "--first"), ("last", "--last"), ("email", "--email"),
-            ("phone", "--phone"), ("organization", "--organization"), ("jobTitle", "--job-title"),
-        ].flatMap { optionIfString(args, $0.0, flagName: $0.1) }
     }
 
     /// Outbound-send gate: an agent must see a preview and re-call with
@@ -201,36 +142,6 @@ enum ArgHelpers {
     static func option(_ flagName: String, _ value: String) -> String {
         "\(flagName)=\(value)"
     }
-
-    static func optionIfString(
-        _ args: JSONValue?,
-        _ key: String,
-        flagName: String
-    ) -> [String] {
-        if let value = string(args, key) { return [option(flagName, value)] }
-        return []
-    }
-
-    static func optionIfInt(
-        _ args: JSONValue?,
-        _ key: String,
-        flagName: String
-    ) -> [String] {
-        if let value = int(args, key) { return [option(flagName, String(value))] }
-        return []
-    }
-
-    /// Append a free-form positional value LAST, guarded by a `--` separator, so
-    /// a value beginning with "-" (a search query, a markdown-bullet title) is
-    /// read as the positional rather than a stray flag. ArgumentParser treats
-    /// everything after `--` as positional, so EVERY option/flag (including
-    /// `--format agent`) must already be in `argv` before this call. Verified:
-    /// `pippin contacts search --limit=5 --format agent -- -foo` parses, while
-    /// the same query without `--` errors with CommandError.
-    static func appendPositionalLast(_ value: String, into argv: inout [String]) {
-        argv.append("--")
-        argv.append(value)
-    }
 }
 
 // MARK: - Schema builder sugar
@@ -258,17 +169,6 @@ enum Schema {
         .object(["type": .string("string"), "description": .string(description)])
     }
 
-    static func integer(_ description: String, default defaultValue: Int? = nil) -> JSONValue {
-        var dict: [String: JSONValue] = [
-            "type": .string("integer"),
-            "description": .string(description),
-        ]
-        if let defaultValue {
-            dict["default"] = .int(Int64(defaultValue))
-        }
-        return .object(dict)
-    }
-
     static func boolean(_ description: String, default defaultValue: Bool? = nil) -> JSONValue {
         var dict: [String: JSONValue] = [
             "type": .string("boolean"),
@@ -280,33 +180,50 @@ enum Schema {
         return .object(dict)
     }
 
-    static func number(_ description: String, default defaultValue: Double? = nil) -> JSONValue {
-        var dict: [String: JSONValue] = [
-            "type": .string("number"),
-            "description": .string(description),
-        ]
-        if let defaultValue {
-            dict["default"] = .double(defaultValue)
-        }
-        return .object(dict)
-    }
-
-    static func stringArray(_ description: String) -> JSONValue {
-        .object([
-            "type": .string("array"),
-            "description": .string(description),
-            "items": .object(["type": .string("string")]),
-        ])
-    }
-
     static let empty: JSONValue = object(properties: [:])
+}
+
+// MARK: - Special bindings
+
+extension MCPProperty {
+    /// `confirm` on a delete: refuses the call unless true, then passes `--force`.
+    static func confirmGate(
+        _ description: String,
+        emit: @escaping @Sendable (JSONValue?) throws -> [String] = { try ArgHelpers.forceFromConfirm($0) }
+    ) -> MCPProperty {
+        .special("confirm", schema: Schema.boolean(description, default: false), required: true, emit: .custom(emit))
+    }
+
+    /// `confirm` on a send: `--confirm` when true, else a `--dry-run` preview.
+    static let confirmSend = MCPProperty.arg(
+        "confirm", "--confirm", "Must be true to actually send. Omitted or false returns a dry-run preview.",
+        emit: .custom { ArgHelpers.dryRunUnlessConfirmed($0) }
+    )
+
+    /// The memo id positional of a command that also takes `--all`: one of
+    /// the two is required.
+    static func idOrAll(_ description: String) -> MCPProperty {
+        .arg("id", .positional, description, emit: .custom { args in
+            guard let id = ArgHelpers.string(args, "id") else {
+                if ArgHelpers.bool(args, "all") == true { return [] }
+                throw MCPToolArgError.missingRequired("id (or all=true)")
+            }
+            return try [ArgHelpers.notFlagLike(id, "id")]
+        })
+    }
+
+    static let expectMessageId = MCPProperty.arg(
+        "expectMessageId", "--expect-message-id",
+        "Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."
+    )
 }
 
 // MARK: - Registry
 
-/// Source of truth for the MCP tool surface. Adding a new tool is one entry.
+/// Source of truth for the MCP tool surface. Adding a new tool is one spec;
+/// its schema and argv come from the CLI command it names.
 enum MCPToolRegistry {
-    static let tools: [MCPTool] = baseTools.map(addingListOptions)
+    static let tools: [MCPTool] = specs.map { MCPTool(addingListOptions($0)) }
 
     /// List and search tools accept `--fields` at the CLI through the shared
     /// output options; these expose it, plus cursor paging where it exists.
@@ -321,1567 +238,495 @@ enum MCPToolRegistry {
         "contacts_search", "notes_list", "memos_list",
     ]
 
-    private static func addingListOptions(_ tool: MCPTool) -> MCPTool {
-        guard projectableTools.contains(tool.name),
-              case var .object(root) = tool.inputSchema,
-              case var .object(properties)? = root["properties"]
-        else { return tool }
-
-        var extra: [(key: String, flag: String, isInt: Bool, schema: JSONValue)] = [
-            ("fields", "--fields", false, Schema.string("Comma-separated row keys, or `all`. Default: essential fields.")),
+    private static func addingListOptions(_ spec: MCPToolSpec) -> MCPToolSpec {
+        guard projectableTools.contains(spec.name) else { return spec }
+        var extra: [MCPProperty] = [
+            .arg("fields", "--fields", "Comma-separated row keys, or `all`. Default: essential fields."),
         ]
-        if pagedTools.contains(tool.name) {
+        if pagedTools.contains(spec.name) {
             extra += [
-                ("cursor", "--cursor", false, Schema.string("Opaque next_cursor from a previous response.")),
-                ("pageSize", "--page-size", true, Schema.integer("Rows per page when paginating.")),
-                ("page", "--page", true, Schema.integer("1-based page number. Ignored when cursor is set.")),
+                .arg("cursor", "--cursor", "Opaque next_cursor from a previous response."),
+                .arg("pageSize", "--page-size", "Rows per page when paginating.", as: .integer),
+                .arg("page", "--page", "1-based page number. Ignored when cursor is set.", as: .integer),
             ]
         }
-        extra.removeAll { properties[$0.key] != nil }
-        for option in extra {
-            properties[option.key] = option.schema
-        }
-        root["properties"] = .object(properties)
-
-        let build = tool.buildArgs
-        let added = extra.map { (key: $0.key, flag: $0.flag, isInt: $0.isInt) }
-        return MCPTool(
-            name: tool.name,
-            effect: tool.effect,
-            description: tool.description,
-            inputSchema: .object(root),
-            buildArgs: { args in
-                var argv = try build(args)
-                // Before `--format`, so a trailing `-- <positional>` stays last.
-                let insertAt = argv.firstIndex(of: "--format") ?? argv.endIndex
-                let options = added.flatMap { option in
-                    option.isInt
-                        ? ArgHelpers.optionIfInt(args, option.key, flagName: option.flag)
-                        : ArgHelpers.optionIfString(args, option.key, flagName: option.flag)
-                }
-                argv.insert(contentsOf: options, at: insertAt)
-                return argv
-            },
-            inProcess: tool.inProcess
-        )
+        var spec = spec
+        // Before `--format`, so a trailing `-- <positional>` stays last.
+        spec.properties += extra.filter { option in !spec.properties.contains { $0.name == option.name } }
+            .map { option in
+                var option = option
+                option.leading = true
+                return option
+            }
+        return spec
     }
 
-    private static let baseTools: [MCPTool] = [
+    private static let specs: [MCPToolSpec] = [
         // MARK: Mail
 
-        MCPTool(
-            name: "mail_accounts",
-            effect: .readOnly,
-            description: "List configured Apple Mail accounts.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("mail", "accounts") }
-        ),
-        MCPTool(
-            name: "mail_mailboxes",
-            effect: .readOnly,
-            description: "List mailboxes, optionally filtered to one account.",
-            inputSchema: Schema.object(properties: [
-                "account": Schema.string("Mail account name."),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "mailboxes")
-                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_list",
-            effect: .readOnly,
-            description: "List messages in a mailbox. Defaults to INBOX, limit 20. Set preview to ~200 for agent scan workflows to avoid N+1 mail_show calls.",
-            inputSchema: Schema.object(properties: [
-                "account": Schema.string("Mail account name."),
-                "mailbox": Schema.string("Mailbox name (default: INBOX)."),
-                "unread": Schema.boolean("Only return unread messages.", default: false),
-                "limit": Schema.integer("Maximum messages to return (default: 20; capped at 500).", default: 20),
-                "page": Schema.integer("Page number (1-based).", default: 1),
-                "preview": Schema.integer("Include a plain-text body preview of up to N chars per message (forces per-message IMAP fetch; use ~200 for scan workflows)."),
-                "after": Schema.string("Only messages on/after YYYY-MM-DD."),
-                "before": Schema.string("Only messages on/before YYYY-MM-DD."),
-                "fields": Schema.string("Comma-separated JSON field names to include (e.g. id,subject,from). Trims the payload to fewer tokens."),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "list")
-                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
-                argv += ArgHelpers.optionIfString(args, "mailbox", flagName: "--mailbox")
-                argv += ArgHelpers.flagIfTrue(args, "unread", flagName: "--unread")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                argv += ArgHelpers.optionIfInt(args, "page", flagName: "--page")
-                argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
-                argv += ArgHelpers.optionIfString(args, "after", flagName: "--after")
-                argv += ArgHelpers.optionIfString(args, "before", flagName: "--before")
-                argv += ArgHelpers.optionIfString(args, "fields", flagName: "--fields")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_activity",
-            effect: .readOnly,
-            description: "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default). Use this for scan workflows instead of N calls to mail_list. Default is metadata-only (preview 0, sub-second); pass preview > 0 for body snippets, which force per-message body fetches (~30-40s).",
-            inputSchema: Schema.object(properties: [
-                "account": Schema.string("Mail account name."),
-                "mailboxes": Schema.string("Comma-separated mailbox names (default: INBOX,Sent)."),
-                "since": Schema.string("Only include messages on or after this date: YYYY-MM-DD or ISO 8601."),
-                "limit": Schema.integer("Maximum messages to return (default: 50; capped at 500).", default: 50),
-                "preview": Schema.integer("Plain-text preview length in chars (default: 0 = metadata-only, sub-second). Values > 0 force per-message body fetches (~30-40s).", default: 0),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "activity")
-                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
-                argv += ArgHelpers.optionIfString(args, "mailboxes", flagName: "--mailboxes")
-                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                // The CLI's own default is 200 (human use keeps snippets), so an
-                // omitted MCP arg must inject --preview 0 explicitly — the schema
-                // `default` above is advisory only and never reaches argv.
-                argv.append(ArgHelpers.option("--preview", String(ArgHelpers.int(args, "preview") ?? 0)))
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_show",
-            effect: .readOnly,
-            description: "Show one or more mail messages by compound ID (account||mailbox||numericId). Pass messageIds with 2+ IDs to batch-fetch in one call (single batched Mail fetch; data becomes an array).",
-            inputSchema: Schema.object(
-                properties: [
-                    "messageId": Schema.string("Compound message ID from mail_list output."),
-                    "messageIds": Schema.stringArray("Two or more compound message IDs to fetch in one batched call. `data` is an array in input order."),
-                    "subject": Schema.string("Alternative: find first message matching this subject."),
-                ]
+        MCPToolSpec("mail_accounts", .readOnly, "List configured Apple Mail accounts.", inProcess: MCPInProcessTools.executeMailRead),
+        MCPToolSpec("mail_mailboxes", .readOnly, "List mailboxes, optionally filtered to one account.", inProcess: MCPInProcessTools.executeMailRead, properties: [
+            .arg("account", "--account", "Mail account name."),
+        ]),
+        MCPToolSpec("mail_list", .readOnly, "List messages in a mailbox. Defaults to INBOX, limit 20. Set preview to ~200 for agent scan workflows to avoid N+1 mail_show calls.", inProcess: MCPInProcessTools.executeMailRead, properties: [
+            .arg("account", "--account", "Mail account name."),
+            .arg("mailbox", "--mailbox"),
+            .arg("unread", "--unread", "Only return unread messages."),
+            .arg("limit", "--limit", "Maximum messages to return (default: 20; capped at 500).", as: .integer),
+            .arg("page", "--page", "Page number (1-based).", as: .integer, default: .int(1)),
+            .arg("preview", "--preview", "Include a plain-text body preview of up to N chars per message (forces per-message IMAP fetch; use ~200 for scan workflows).", as: .integer),
+            .arg("after", "--after", "Only messages on/after YYYY-MM-DD."),
+            .arg("before", "--before", "Only messages on/before YYYY-MM-DD."),
+            .arg("fields", "--fields", "Comma-separated JSON field names to include (e.g. id,subject,from). Trims the payload to fewer tokens."),
+        ]),
+        MCPToolSpec("mail_activity", .readOnly, "Combined recent mail activity across multiple mailboxes (INBOX + Sent by default). Use this for scan workflows instead of N calls to mail_list. Default is metadata-only (preview 0, sub-second); pass preview > 0 for body snippets, which force per-message body fetches (~30-40s).", properties: [
+            .arg("account", "--account", "Mail account name."),
+            .arg("mailboxes", "--mailboxes", "Comma-separated mailbox names (default: INBOX,Sent)."),
+            .arg("since", "--since"),
+            .arg("limit", "--limit", "Maximum messages to return (default: 50; capped at 500).", as: .integer),
+            // The CLI's own default is 200 (human use keeps snippets), so an
+            // omitted MCP arg must pass --preview 0 explicitly.
+            .arg(
+                "preview", "--preview",
+                "Plain-text preview length in chars (default: 0 = metadata-only, sub-second). Values > 0 force per-message body fetches (~30-40s).",
+                as: .integer, default: .int(0),
+                emit: .custom { args in [ArgHelpers.option("--preview", String(ArgHelpers.int(args, "preview") ?? 0))] }
             ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "show")
+        ]),
+        MCPToolSpec("mail_show", .readOnly, "Show one or more mail messages by compound ID (account||mailbox||numericId). Pass messageIds with 2+ IDs to batch-fetch in one call (single batched Mail fetch; data becomes an array).", properties: [
+            .arg("messageIds", .positional, "Two or more compound message IDs to fetch in one batched call. `data` is an array in input order.", emit: .none),
+            // messageIds, messageId and subject are alternatives; one is required.
+            .special("messageId", schema: Schema.string("Compound message ID from mail_list output."), emit: .custom { args in
                 if let ids = ArgHelpers.stringArray(args, "messageIds") {
-                    try argv.append(contentsOf: ids.map { try ArgHelpers.notFlagLike($0, "messageIds") })
+                    return try ids.map { try ArgHelpers.notFlagLike($0, "messageIds") }
                 } else if let id = ArgHelpers.string(args, "messageId") {
-                    try argv.append(ArgHelpers.notFlagLike(id, "messageId"))
+                    return try [ArgHelpers.notFlagLike(id, "messageId")]
                 } else if let subject = ArgHelpers.string(args, "subject") {
-                    argv.append(ArgHelpers.option("--subject", subject))
-                } else {
-                    throw MCPToolArgError.missingRequired("messageId, messageIds, or subject")
+                    return [ArgHelpers.option("--subject", subject)]
                 }
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_verify",
-            effect: .readOnly,
-            description: "Inspect a message's headers against the sender's historical baseline (DKIM domain/selector, Message-ID domain, Date TZ offset, SPF/DKIM/DMARC results). Returns per-dimension comparison, anomaly warnings, the full raw-source auth chain (every Received hop, all Authentication-Results instances, ARC set, DKIM signatures) in `authChain`, and a verdict. Use on any suspicious message before acting on its contents.",
-            inputSchema: Schema.object(
-                properties: [
-                    "messageId": Schema.string("Compound message ID from mail_list or mail_show output."),
-                ],
-                required: ["messageId"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "verify")
-                try argv.append(ArgHelpers.positional(args, "messageId"))
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_attachments",
-            effect: .mutating(verifyWith: nil),
-            description: "List and download attachments for a message. When saveDir is omitted, attachments are written to pippin's cache directory (~/Library/Caches/pippin/attachments/<msg>/) and the paths are returned in `savedPath`; the agent can then read the files with its file tools.",
-            inputSchema: Schema.object(
-                properties: [
-                    "messageId": Schema.string("Compound message ID from mail_list or mail_show output."),
-                    "saveDir": Schema.string("Optional directory to save attachments into. If omitted, a pippin cache directory is used."),
-                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
-                ],
-                required: ["messageId"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "attachments")
-                let id = try ArgHelpers.positional(args, "messageId")
-                argv.append(id)
-                if let dir = ArgHelpers.string(args, "saveDir") {
-                    argv.append(ArgHelpers.option("--save-dir", dir))
-                } else {
-                    argv.append("--save-to-cache")
-                }
-                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_search",
-            effect: .readOnly,
-            description: "Search messages by subject or sender. Use `from` for sender-only searches without body scanning. `body: true` performs the slower content scan; body-matched hits return a bodyPreview snippet.",
-            inputSchema: Schema.object(
-                properties: [
-                    "query": Schema.string("Search query (case-insensitive)."),
-                    "account": Schema.string("Restrict to a single account."),
-                    "mailbox": Schema.string("Restrict to a single mailbox."),
-                    "body": Schema.boolean("Search message body too (slower). Hits matched via the body include a bodyPreview snippet.", default: false),
-                    "preview": Schema.integer("Include a plain-text bodyPreview of up to N chars on every hit. Uncached hits cost one batched body fetch (slower)."),
-                    "after": Schema.string("Only messages on/after YYYY-MM-DD."),
-                    "before": Schema.string("Only messages on/before YYYY-MM-DD."),
-                    "to": Schema.string("Filter by recipient email."),
-                    "from": Schema.string("Filter by sender email/name substring."),
-                    "limit": Schema.integer("Maximum results (default: 10; capped at 500).", default: 10),
-                    "fields": Schema.string("Comma-separated JSON field names to include (e.g. id,subject,from). Trims the payload to fewer tokens."),
-                    "semantic": Schema.boolean(
-                        "Use embedding-based semantic search (requires prior `mail index`).",
-                        default: false
-                    ),
-                ],
-                required: ["query"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "search")
-                let query = try ArgHelpers.requiredString(args, "query")
-                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
-                argv += ArgHelpers.optionIfString(args, "mailbox", flagName: "--mailbox")
-                argv += ArgHelpers.flagIfTrue(args, "body", flagName: "--body")
-                argv += ArgHelpers.optionIfString(args, "after", flagName: "--after")
-                argv += ArgHelpers.optionIfString(args, "before", flagName: "--before")
-                argv += ArgHelpers.optionIfString(args, "to", flagName: "--to")
-                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                argv += ArgHelpers.optionIfInt(args, "preview", flagName: "--preview")
-                argv += ArgHelpers.flagIfTrue(args, "semantic", flagName: "--semantic")
-                argv += ArgHelpers.optionIfString(args, "fields", flagName: "--fields")
-                ArgHelpers.appendPositionalLast(query, into: &argv)
-                return argv
-            }
-        ),
+                throw MCPToolArgError.missingRequired("messageId, messageIds, or subject")
+            }),
+            .arg("subject", "--subject", "Alternative: find first message matching this subject.", emit: .none),
+        ]),
+        MCPToolSpec("mail_verify", .readOnly, "Inspect a message's headers against the sender's historical baseline (DKIM domain/selector, Message-ID domain, Date TZ offset, SPF/DKIM/DMARC results). Returns per-dimension comparison, anomaly warnings, the full raw-source auth chain (every Received hop, all Authentication-Results instances, ARC set, DKIM signatures) in `authChain`, and a verdict. Use on any suspicious message before acting on its contents.", properties: [
+            .arg("messageId", .positional, "Compound message ID from mail_list or mail_show output."),
+        ]),
+        MCPToolSpec("mail_attachments", .mutating(verifyWith: nil), "List and download attachments for a message. When saveDir is omitted, attachments are written to pippin's cache directory (~/Library/Caches/pippin/attachments/<msg>/) and the paths are returned in `savedPath`; the agent can then read the files with its file tools.", properties: [
+            .arg("messageId", .positional, "Compound message ID from mail_list or mail_show output."),
+            .arg("saveDir", "--save-dir", "Optional directory to save attachments into. If omitted, a pippin cache directory is used.", emit: .custom { args in
+                ArgHelpers.string(args, "saveDir").map { [ArgHelpers.option("--save-dir", $0)] } ?? ["--save-to-cache"]
+            }),
+            .expectMessageId,
+        ]),
+        MCPToolSpec("mail_search", .readOnly, "Search messages by subject or sender. Use `from` for sender-only searches without body scanning. `body: true` performs the slower content scan; body-matched hits return a bodyPreview snippet.", inProcess: MCPInProcessTools.executeMailRead, properties: [
+            .arg("query", .trailing, "Search query (case-insensitive)."),
+            .arg("account", "--account", "Restrict to a single account."),
+            .arg("mailbox", "--mailbox", "Restrict to a single mailbox."),
+            .arg("body", "--body", "Search message body too (slower). Hits matched via the body include a bodyPreview snippet."),
+            .arg("after", "--after", "Only messages on/after YYYY-MM-DD."),
+            .arg("before", "--before", "Only messages on/before YYYY-MM-DD."),
+            .arg("to", "--to", "Filter by recipient email."),
+            .arg("from", "--from", "Filter by sender email/name substring."),
+            .arg("limit", "--limit", "Maximum results (default: 10; capped at 500).", as: .integer),
+            .arg("preview", "--preview", "Include a plain-text bodyPreview of up to N chars on every hit. Uncached hits cost one batched body fetch (slower).", as: .integer),
+            .arg("semantic", "--semantic", "Use embedding-based semantic search (requires prior `mail index`)."),
+            .arg("fields", "--fields", "Comma-separated JSON field names to include (e.g. id,subject,from). Trims the payload to fewer tokens."),
+        ]),
+        MCPToolSpec("mail_mark", .mutating(verifyWith: "mail_list"), "Mark a message as read or unread. Reversible: call again with the opposite `read` value.", properties: [
+            .arg("messageId", .positional, "Compound message ID from mail_list output."),
+            // `mail mark` validate() rejects both-or-neither, so emit exactly one.
+            .special("read", schema: Schema.boolean("true marks the message read; false marks it unread."), required: true, emit: .custom { args in
+                guard let read = ArgHelpers.bool(args, "read") else { throw MCPToolArgError.missingRequired("read") }
+                return [read ? "--read" : "--unread"]
+            }),
+            .arg("dryRun", "--dry-run", "Report what would change without touching the message."),
+            .expectMessageId,
+        ]),
+        MCPToolSpec("mail_move", .mutating(verifyWith: "mail_list"), "Move a message to another mailbox in the same account: this is how you archive, trash, or file a message (pass the destination mailbox name from mail_mailboxes, e.g. Archive, Trash, Junk). Reversible by moving it back.", properties: [
+            .arg("messageId", .positional, "Compound message ID from mail_list output."),
+            .arg("to", "--to", "Destination mailbox name, exactly as reported by mail_mailboxes (names differ per account, e.g. '[Gmail]/Trash')."),
+            .arg("dryRun", "--dry-run", "Report what would move without touching the message."),
+            .expectMessageId,
+        ]),
+        MCPToolSpec("mail_send", .mutating(verifyWith: "mail_list"), "Send an email. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.", properties: [
+            .arg("to", "--to", "Recipient email addresses.", required: true),
+            .arg("subject", "--subject"),
+            .arg("body", "--body"),
+            .arg("cc", "--cc", "CC recipients."),
+            .arg("bcc", "--bcc", "BCC recipients."),
+            .arg("from", "--from", "Sending account name (from mail_accounts). Defaults to the primary account."),
+            .arg("attach", "--attach", "Absolute paths of files to attach."),
+            .confirmSend,
+        ]),
+        MCPToolSpec("mail_reply", .mutating(verifyWith: "mail_list"), "Reply to a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.", properties: [
+            .arg("messageId", .positional, "Compound message ID from mail_list output."),
+            .arg("body", "--body"),
+            .arg("to", "--to", "Override the reply-to addresses. Defaults to the original sender."),
+            .arg("cc", "--cc", "CC recipients."),
+            .arg("bcc", "--bcc", "BCC recipients."),
+            .arg("from", "--from", "Sending account name (from mail_accounts)."),
+            .arg("attach", "--attach", "Absolute paths of files to attach."),
+            .confirmSend,
+            .expectMessageId,
+        ]),
+        MCPToolSpec("mail_forward", .mutating(verifyWith: "mail_list"), "Forward a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.", properties: [
+            .arg("messageId", .positional, "Compound message ID from mail_list output."),
+            .arg("to", "--to", "Recipient email addresses.", required: true),
+            .arg("body", "--body", "Optional note prepended before the forwarded content."),
+            .arg("cc", "--cc", "CC recipients."),
+            .arg("bcc", "--bcc", "BCC recipients."),
+            .arg("from", "--from", "Sending account name (from mail_accounts)."),
+            .arg("attach", "--attach", "Absolute paths of files to attach."),
+            .confirmSend,
+            .expectMessageId,
+        ]),
+        MCPToolSpec("mail_triage", .readOnly, "AI triage of a mailbox: classify and prioritize messages from metadata only (no bodies read). Read-only.", properties: [
+            .arg("account", "--account"),
+            .arg("mailbox", "--mailbox"),
+            .arg("limit", "--limit", "Maximum messages to triage (default: 20).", as: .integer),
+            .arg("provider", "--provider"),
+            .arg("model", "--model"),
+            .arg("noRules", "--no-rules", "Skip the rule-based pre-pass and send every message to the AI."),
+            .arg("rulesFile", "--rules-file", "Path to a triage-rules.json (default: ~/.config/pippin/triage-rules.json)."),
+        ]),
+        MCPToolSpec("mail_apply_rules", .mutating(verifyWith: "mail_list"), "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true (or, where the policy sets this tool to confirm, the confirmToken a first call returns): review the plan first. Messages newer than minAgeDays are never touched.", properties: [
+            .arg("account", "--account"),
+            .arg("mailbox", "--mailbox"),
+            .arg("scanLimit", "--scan-limit", as: .integer),
+            .arg("maxActions", "--max-actions", "Cap on messages actuated per run (default: 200). Oldest first.", as: .integer),
+            .arg("minAgeDays", "--min-age-days", as: .integer),
+            .arg("skipUnread", "--skip-unread"),
+            .arg("rulesFile", "--rules-file", "Path to a triage-rules.json (default: ~/.config/pippin/triage-rules.json)."),
+            // This CLI is preview-by-default and takes an opt-in `--live`.
+            .arg("confirm", "--live", "Set true to actually move/mark. Omitted or false returns the plan only."),
+        ]),
+        MCPToolSpec("mail_sanitize", .readOnly, "Scan a message for prompt-injection patterns before acting on its contents. Read-only. Use alongside mail_verify on anything suspicious.", properties: [
+            .arg("messageId", .positional, "Compound message ID from mail_list output."),
+            .arg("aiAssisted", "--ai-assisted", "Add an AI-assisted scan on top of the rule-based patterns."),
+            .arg("provider", "--provider", "AI provider for aiAssisted: ollama, claude, or openai."),
+            .arg("model", "--model"),
+        ]),
+        MCPToolSpec("mail_extract", .readOnly, "Extract structured data (dates, amounts, contacts, action items) from one message using AI. Read-only.", properties: [
+            .arg("messageId", .positional, "Compound message ID from mail_list output."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, or openai."),
+            .arg("model", "--model", "Model name."),
+        ]),
 
         // MARK: Calendar
 
-        MCPTool(
-            name: "mail_mark",
-            effect: .mutating(verifyWith: "mail_list"),
-            description: "Mark a message as read or unread. Reversible: call again with the opposite `read` value.",
-            inputSchema: Schema.object(
-                properties: [
-                    "messageId": Schema.string("Compound message ID from mail_list output."),
-                    "read": Schema.boolean("true marks the message read; false marks it unread."),
-                    "dryRun": Schema.boolean("Report what would change without touching the message.", default: false),
-                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
-                ],
-                required: ["messageId", "read"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "mark")
-                try argv.append(ArgHelpers.positional(args, "messageId"))
-                guard let read = ArgHelpers.bool(args, "read") else {
-                    throw MCPToolArgError.missingRequired("read")
-                }
-                // `mail mark` validate() rejects both-or-neither, so emit exactly one.
-                argv.append(read ? "--read" : "--unread")
-                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
-                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_move",
-            effect: .mutating(verifyWith: "mail_list"),
-            description: "Move a message to another mailbox in the same account: this is how you archive, trash, or file a message (pass the destination mailbox name from mail_mailboxes, e.g. Archive, Trash, Junk). Reversible by moving it back.",
-            inputSchema: Schema.object(
-                properties: [
-                    "messageId": Schema.string("Compound message ID from mail_list output."),
-                    "to": Schema.string("Destination mailbox name, exactly as reported by mail_mailboxes (names differ per account, e.g. '[Gmail]/Trash')."),
-                    "dryRun": Schema.boolean("Report what would move without touching the message.", default: false),
-                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
-                ],
-                required: ["messageId", "to"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "move")
-                try argv.append(ArgHelpers.positional(args, "messageId"))
-                try argv.append(ArgHelpers.option("--to", ArgHelpers.requiredString(args, "to")))
-                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
-                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_send",
-            effect: .mutating(verifyWith: "mail_list"),
-            description: "Send an email. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
-            inputSchema: Schema.object(
-                properties: [
-                    "to": Schema.stringArray("Recipient email addresses."),
-                    "subject": Schema.string("Message subject."),
-                    "body": Schema.string("Message body text."),
-                    "cc": Schema.stringArray("CC recipients."),
-                    "bcc": Schema.stringArray("BCC recipients."),
-                    "from": Schema.string("Sending account name (from mail_accounts). Defaults to the primary account."),
-                    "attach": Schema.stringArray("Absolute paths of files to attach."),
-                    "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
-                ],
-                required: ["to", "subject", "body"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "send")
-                guard let to = ArgHelpers.stringArray(args, "to") else {
-                    throw MCPToolArgError.missingRequired("to")
-                }
-                argv += to.map { ArgHelpers.option("--to", $0) }
-                try argv.append(ArgHelpers.option("--subject", ArgHelpers.requiredString(args, "subject")))
-                try argv.append(ArgHelpers.option("--body", ArgHelpers.requiredString(args, "body")))
-                argv += ArgHelpers.optionPerElement(args, "cc", flagName: "--cc")
-                argv += ArgHelpers.optionPerElement(args, "bcc", flagName: "--bcc")
-                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
-                argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
-                argv += ArgHelpers.dryRunUnlessConfirmed(args)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_reply",
-            effect: .mutating(verifyWith: "mail_list"),
-            description: "Reply to a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
-            inputSchema: Schema.object(
-                properties: [
-                    "messageId": Schema.string("Compound message ID from mail_list output."),
-                    "body": Schema.string("Reply body text."),
-                    "to": Schema.stringArray("Override the reply-to addresses. Defaults to the original sender."),
-                    "cc": Schema.stringArray("CC recipients."),
-                    "bcc": Schema.stringArray("BCC recipients."),
-                    "from": Schema.string("Sending account name (from mail_accounts)."),
-                    "attach": Schema.stringArray("Absolute paths of files to attach."),
-                    "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
-                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
-                ],
-                required: ["messageId", "body"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "reply")
-                try argv.append(ArgHelpers.positional(args, "messageId"))
-                try argv.append(ArgHelpers.option("--body", ArgHelpers.requiredString(args, "body")))
-                argv += ArgHelpers.optionPerElement(args, "to", flagName: "--to")
-                argv += ArgHelpers.optionPerElement(args, "cc", flagName: "--cc")
-                argv += ArgHelpers.optionPerElement(args, "bcc", flagName: "--bcc")
-                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
-                argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
-                argv += ArgHelpers.dryRunUnlessConfirmed(args)
-                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_forward",
-            effect: .mutating(verifyWith: "mail_list"),
-            description: "Forward a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
-            inputSchema: Schema.object(
-                properties: [
-                    "messageId": Schema.string("Compound message ID from mail_list output."),
-                    "to": Schema.stringArray("Recipient email addresses."),
-                    "body": Schema.string("Optional note prepended before the forwarded content."),
-                    "cc": Schema.stringArray("CC recipients."),
-                    "bcc": Schema.stringArray("BCC recipients."),
-                    "from": Schema.string("Sending account name (from mail_accounts)."),
-                    "attach": Schema.stringArray("Absolute paths of files to attach."),
-                    "confirm": Schema.boolean("Must be true to actually send. Omitted or false returns a dry-run preview.", default: false),
-                    "expectMessageId": Schema.string("Optional RFC Message-ID the id must still name: a row's messageIdHeader (request it with fields). On mismatch nothing happens and the error code is message_identity_mismatch."),
-                ],
-                required: ["messageId", "to"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "forward")
-                try argv.append(ArgHelpers.positional(args, "messageId"))
-                guard let to = ArgHelpers.stringArray(args, "to") else {
-                    throw MCPToolArgError.missingRequired("to")
-                }
-                argv += to.map { ArgHelpers.option("--to", $0) }
-                argv += ArgHelpers.optionIfString(args, "body", flagName: "--body")
-                argv += ArgHelpers.optionPerElement(args, "cc", flagName: "--cc")
-                argv += ArgHelpers.optionPerElement(args, "bcc", flagName: "--bcc")
-                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
-                argv += ArgHelpers.optionPerElement(args, "attach", flagName: "--attach")
-                argv += ArgHelpers.dryRunUnlessConfirmed(args)
-                argv += ArgHelpers.optionIfString(args, "expectMessageId", flagName: "--expect-message-id")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_triage",
-            effect: .readOnly,
-            description: "AI triage of a mailbox: classify and prioritize messages from metadata only (no bodies read). Read-only.",
-            inputSchema: Schema.object(
-                properties: [
-                    "account": Schema.string("Filter by account name."),
-                    "mailbox": Schema.string("Mailbox to triage (default: INBOX)."),
-                    "limit": Schema.integer("Maximum messages to triage (default: 20).", default: 20),
-                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
-                    "model": Schema.string("Model name."),
-                    "noRules": Schema.boolean("Skip the rule-based pre-pass and send every message to the AI.", default: false),
-                    "rulesFile": Schema.string("Path to a triage-rules.json (default: ~/.config/pippin/triage-rules.json)."),
-                ],
-                required: []
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "triage")
-                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
-                argv += ArgHelpers.optionIfString(args, "mailbox", flagName: "--mailbox")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
-                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
-                argv += ArgHelpers.flagIfTrue(args, "noRules", flagName: "--no-rules")
-                argv += ArgHelpers.optionIfString(args, "rulesFile", flagName: "--rules-file")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_apply_rules",
-            effect: .mutating(verifyWith: "mail_list"),
-            description: "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true (or, where the policy sets this tool to confirm, the confirmToken a first call returns): review the plan first. Messages newer than minAgeDays are never touched.",
-            inputSchema: Schema.object(
-                properties: [
-                    "account": Schema.string("Filter by account name."),
-                    "mailbox": Schema.string("Mailbox to scan (default: INBOX)."),
-                    "scanLimit": Schema.integer("Messages to enumerate from the mailbox (default: 500).", default: 500),
-                    "maxActions": Schema.integer("Cap on messages actuated per run (default: 200). Oldest first.", default: 200),
-                    "minAgeDays": Schema.integer("Never touch messages newer than this many days (default: 14).", default: 14),
-                    "skipUnread": Schema.boolean("Leave unread messages alone.", default: false),
-                    "rulesFile": Schema.string("Path to a triage-rules.json (default: ~/.config/pippin/triage-rules.json)."),
-                    "confirm": Schema.boolean("Set true to actually move/mark. Omitted or false returns the plan only.", default: false),
-                ],
-                required: []
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "apply-rules")
-                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
-                argv += ArgHelpers.optionIfString(args, "mailbox", flagName: "--mailbox")
-                argv += ArgHelpers.optionIfInt(args, "scanLimit", flagName: "--scan-limit")
-                argv += ArgHelpers.optionIfInt(args, "maxActions", flagName: "--max-actions")
-                argv += ArgHelpers.optionIfInt(args, "minAgeDays", flagName: "--min-age-days")
-                argv += ArgHelpers.flagIfTrue(args, "skipUnread", flagName: "--skip-unread")
-                argv += ArgHelpers.optionIfString(args, "rulesFile", flagName: "--rules-file")
-                // Inverse of `dryRunUnlessConfirmed`: this CLI is preview-by-default
-                // and takes an opt-in `--live`, so confirm maps to the positive flag.
-                argv += ArgHelpers.flagIfTrue(args, "confirm", flagName: "--live")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_sanitize",
-            effect: .readOnly,
-            description: "Scan a message for prompt-injection patterns before acting on its contents. Read-only. Use alongside mail_verify on anything suspicious.",
-            inputSchema: Schema.object(
-                properties: [
-                    "messageId": Schema.string("Compound message ID from mail_list output."),
-                    "aiAssisted": Schema.boolean("Add an AI-assisted scan on top of the rule-based patterns.", default: false),
-                    "provider": Schema.string("AI provider for aiAssisted: ollama, claude, or openai."),
-                    "model": Schema.string("Model name."),
-                ],
-                required: ["messageId"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "sanitize")
-                try argv.append(ArgHelpers.positional(args, "messageId"))
-                argv += ArgHelpers.flagIfTrue(args, "aiAssisted", flagName: "--ai-assisted")
-                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
-                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "mail_extract",
-            effect: .readOnly,
-            description: "Extract structured data (dates, amounts, contacts, action items) from one message using AI. Read-only.",
-            inputSchema: Schema.object(
-                properties: [
-                    "messageId": Schema.string("Compound message ID from mail_list output."),
-                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
-                    "model": Schema.string("Model name."),
-                ],
-                required: ["messageId"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("mail", "extract")
-                try argv.append(ArgHelpers.positional(args, "messageId"))
-                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
-                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "calendar_list",
-            effect: .readOnly,
-            description: "List calendars configured in Apple Calendar.",
-            inputSchema: Schema.object(properties: [
-                "type": Schema.string("Filter by type: local, calDAV, exchange, subscription, birthday."),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "list")
-                argv += ArgHelpers.optionIfString(args, "type", flagName: "--type")
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "calendar_events",
-            effect: .readOnly,
-            description: "List calendar events in a date range. Defaults to today.",
-            inputSchema: Schema.object(properties: [
-                "from": Schema.string("Start date (YYYY-MM-DD or ISO 8601)."),
-                "to": Schema.string("End date (YYYY-MM-DD or ISO 8601)."),
-                "calendar": Schema.string("Calendar ID to filter by."),
-                "calendarName": Schema.string("Calendar name to filter by (case-insensitive)."),
-                "range": Schema.string("Shorthand range: today, today+N, week, month."),
-                "limit": Schema.integer("Max events (default: 50).", default: 50),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "events")
-                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
-                argv += ArgHelpers.optionIfString(args, "to", flagName: "--to")
-                argv += ArgHelpers.optionIfString(args, "calendar", flagName: "--calendar")
-                argv += ArgHelpers.optionIfString(args, "calendarName", flagName: "--calendar-name")
-                argv += ArgHelpers.optionIfString(args, "range", flagName: "--range")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "calendar_today",
-            effect: .readOnly,
-            description: "List events scheduled for today.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("calendar", "today") },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "calendar_remaining",
-            effect: .readOnly,
-            description: "List events from now until end of today.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("calendar", "remaining") },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "calendar_upcoming",
-            effect: .readOnly,
-            description: "List events for the next 7 days.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("calendar", "upcoming") },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "calendar_search",
-            effect: .readOnly,
-            description: "Search calendar events by text across a date range.",
-            inputSchema: Schema.object(
-                properties: [
-                    "query": Schema.string("Search query (matches title, notes, location)."),
-                    "from": Schema.string("Start date (default: 6 months ago)."),
-                    "to": Schema.string("End date (default: 6 months from now)."),
-                    "calendarName": Schema.string("Filter by calendar name."),
-                    "limit": Schema.integer("Max results (default: 50).", default: 50),
-                ],
-                required: ["query"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "search")
-                try argv.append(ArgHelpers.option("--query", ArgHelpers.requiredString(args, "query")))
-                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
-                argv += ArgHelpers.optionIfString(args, "to", flagName: "--to")
-                argv += ArgHelpers.optionIfString(args, "calendarName", flagName: "--calendar-name")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "calendar_create",
-            effect: .mutating(verifyWith: "calendar_upcoming"),
-            description: "Create a new calendar event.",
-            inputSchema: Schema.object(
-                properties: [
-                    "title": Schema.string("Event title."),
-                    "start": Schema.string("Start date/time (YYYY-MM-DD or ISO 8601)."),
-                    "end": Schema.string("End date/time (default: start + 1 hour)."),
-                    "calendar": Schema.string("Calendar ID to create in."),
-                    "location": Schema.string("Event location."),
-                    "notes": Schema.string("Event notes."),
-                    "url": Schema.string("Event URL."),
-                    "allDay": Schema.boolean("Create as all-day event.", default: false),
-                    "alert": Schema.string("Alert before event (e.g. '15m', '1h', '2d')."),
-                ],
-                required: ["title", "start"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "create")
-                try argv.append(ArgHelpers.option("--title", ArgHelpers.requiredString(args, "title")))
-                try argv.append(ArgHelpers.option("--start", ArgHelpers.requiredString(args, "start")))
-                argv += ArgHelpers.optionIfString(args, "end", flagName: "--end")
-                argv += ArgHelpers.optionIfString(args, "calendar", flagName: "--calendar")
-                argv += ArgHelpers.optionIfString(args, "location", flagName: "--location")
-                argv += ArgHelpers.optionIfString(args, "notes", flagName: "--notes")
-                argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
-                argv += ArgHelpers.flagIfTrue(args, "allDay", flagName: "--all-day")
-                argv += ArgHelpers.optionIfString(args, "alert", flagName: "--alert")
-                return argv
-            }
-        ),
+        MCPToolSpec("calendar_list", .readOnly, "List calendars configured in Apple Calendar.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("type", "--type", "Filter by type: local, calDAV, exchange, subscription, birthday."),
+        ]),
+        MCPToolSpec("calendar_events", .readOnly, "List calendar events in a date range. Defaults to today.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("from", "--from", "Start date (YYYY-MM-DD or ISO 8601)."),
+            .arg("to", "--to", "End date (YYYY-MM-DD or ISO 8601)."),
+            .arg("calendar", "--calendar", "Calendar ID to filter by."),
+            .arg("calendarName", "--calendar-name", "Calendar name to filter by (case-insensitive)."),
+            .arg("range", "--range", "Shorthand range: today, today+N, week, month."),
+            .arg("limit", "--limit", "Max events (default: 50).", as: .integer),
+        ]),
+        MCPToolSpec("calendar_today", .readOnly, "List events scheduled for today.", inProcess: MCPInProcessTools.execute),
+        MCPToolSpec("calendar_remaining", .readOnly, "List events from now until end of today.", inProcess: MCPInProcessTools.execute),
+        MCPToolSpec("calendar_upcoming", .readOnly, "List events for the next 7 days.", inProcess: MCPInProcessTools.execute),
+        MCPToolSpec("calendar_search", .readOnly, "Search calendar events by text across a date range.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("query", "--query", "Search query (matches title, notes, location).", required: true),
+            .arg("from", "--from", "Start date (default: 6 months ago)."),
+            .arg("to", "--to", "End date (default: 6 months from now)."),
+            .arg("calendarName", "--calendar-name", "Filter by calendar name."),
+            .arg("limit", "--limit", "Max results (default: 50).", as: .integer),
+        ]),
+        MCPToolSpec("calendar_create", .mutating(verifyWith: "calendar_upcoming"), "Create a new calendar event.", properties: [
+            .arg("title", "--title", "Event title."),
+            .arg("start", "--start", "Start date/time (YYYY-MM-DD or ISO 8601)."),
+            .arg("end", "--end"),
+            .arg("calendar", "--calendar", "Calendar ID to create in."),
+            .arg("location", "--location"),
+            .arg("notes", "--notes"),
+            .arg("url", "--url"),
+            .arg("allDay", "--all-day", "Create as all-day event."),
+            .arg("alert", "--alert", "Alert before event (e.g. '15m', '1h', '2d')."),
+        ]),
+        MCPToolSpec("calendar_show", .readOnly, "Show full details for a single event by ID (from calendar_events / calendar_search).", properties: [
+            .arg("id", .positional, "Event ID."),
+            .arg("occurrence", "--occurrence", "For a recurring event: which occurrence to show, as the occurrenceDate from calendar_events."),
+        ]),
+        MCPToolSpec("calendar_edit", .mutating(verifyWith: "calendar_upcoming"), "Edit an existing calendar event. Only the fields you pass are changed.", properties: [
+            .arg("id", .positional, "Event ID from calendar_events / calendar_search."),
+            .arg("title", "--title", "New event title."),
+            .arg("start", "--start"),
+            .arg("end", "--end"),
+            .arg("calendar", "--calendar", "Move to this calendar (EventKit ID from calendar_list, not a name)."),
+            .arg("location", "--location"),
+            .arg("notes", "--notes"),
+            .arg("url", "--url"),
+            .arg("alert", "--alert", "New alert offset."),
+            .arg("span", "--span", "For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
+            .arg("occurrence", "--occurrence", "For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
+            .arg("allDay", "--all-day", "Convert to an all-day event."),
+            .arg("noAllDay", "--no-all-day", "Convert away from an all-day event."),
+        ]),
+        MCPToolSpec("calendar_delete", .mutating(verifyWith: "calendar_upcoming"), "Delete a calendar event. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.", properties: [
+            .arg("id", .positional, "Event ID from calendar_events / calendar_search."),
+            .confirmGate("Must be true. Deletion cannot be undone."),
+            .arg("span", "--span", "For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
+            .arg("occurrence", "--occurrence", "For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
+        ]),
+        MCPToolSpec("calendar_smart_create", .mutating(verifyWith: "calendar_upcoming"), "Create an event from a natural-language description using AI (resolves calendar names, unlike calendar_create which needs an EventKit ID). Reports scheduling conflicts unless allowConflicts is set.", properties: [
+            .arg("description", .trailing, "Natural-language event description, e.g. 'lunch with Sam next Tuesday at noon'."),
+            .arg("calendar", "--calendar", "Target calendar name (resolved for you)."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, or openai."),
+            .arg("model", "--model", "Model name."),
+            .arg("dryRun", "--dry-run", "Show the parsed event without creating it."),
+            .arg("allowConflicts", "--allow-conflicts", "Create even if it overlaps an existing event."),
+        ]),
+        MCPToolSpec("calendar_agenda", .readOnly, "AI-generated briefing of upcoming events. Read-only.", properties: [
+            .arg("days", "--days", "Days to cover, 1-7 (default: 1).", as: .integer),
+            .arg("provider", "--provider", "AI provider: ollama, claude, or openai."),
+            .arg("model", "--model", "Model name."),
+        ]),
+        MCPToolSpec("calendar_conflicts", .readOnly, "Find overlapping events in a time window. Read-only. Use before scheduling.", properties: [
+            .arg("from", "--from", "Window start (default: start of today)."),
+            .arg("to", "--to", "Window end (default: end of today)."),
+            .arg("range", "--range", "Relative window instead of from/to: today, today+N, week, or month."),
+        ]),
 
         // MARK: Reminders
 
-        MCPTool(
-            name: "calendar_show",
-            effect: .readOnly,
-            description: "Show full details for a single event by ID (from calendar_events / calendar_search).",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Event ID."),
-                    "occurrence": Schema.string("For a recurring event: which occurrence to show, as the occurrenceDate from calendar_events."),
-                ],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "show")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "calendar_edit",
-            effect: .mutating(verifyWith: "calendar_upcoming"),
-            description: "Edit an existing calendar event. Only the fields you pass are changed.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Event ID from calendar_events / calendar_search."),
-                    "title": Schema.string("New event title."),
-                    "start": Schema.string("New start date/time."),
-                    "end": Schema.string("New end date/time."),
-                    "calendar": Schema.string("Move to this calendar (EventKit ID from calendar_list, not a name)."),
-                    "location": Schema.string("New location."),
-                    "notes": Schema.string("New notes."),
-                    "url": Schema.string("New URL."),
-                    "alert": Schema.string("New alert offset."),
-                    "span": Schema.string("For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
-                    "occurrence": Schema.string("For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
-                    "allDay": Schema.boolean("Convert to an all-day event.", default: false),
-                    "noAllDay": Schema.boolean("Convert away from an all-day event.", default: false),
-                ],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "edit")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
-                argv += ArgHelpers.optionIfString(args, "start", flagName: "--start")
-                argv += ArgHelpers.optionIfString(args, "end", flagName: "--end")
-                argv += ArgHelpers.optionIfString(args, "calendar", flagName: "--calendar")
-                argv += ArgHelpers.optionIfString(args, "location", flagName: "--location")
-                argv += ArgHelpers.optionIfString(args, "notes", flagName: "--notes")
-                argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
-                argv += ArgHelpers.optionIfString(args, "alert", flagName: "--alert")
-                argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
-                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
-                argv += ArgHelpers.flagIfTrue(args, "allDay", flagName: "--all-day")
-                argv += ArgHelpers.flagIfTrue(args, "noAllDay", flagName: "--no-all-day")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "calendar_delete",
-            effect: .mutating(verifyWith: "calendar_upcoming"),
-            description: "Delete a calendar event. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Event ID from calendar_events / calendar_search."),
-                    "confirm": Schema.boolean("Must be true. Deletion cannot be undone.", default: false),
-                    "span": Schema.string("For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
-                    "occurrence": Schema.string("For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
-                ],
-                required: ["id", "confirm"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "delete")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                try argv += ArgHelpers.forceFromConfirm(args)
-                argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
-                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "calendar_smart_create",
-            effect: .mutating(verifyWith: "calendar_upcoming"),
-            description: "Create an event from a natural-language description using AI (resolves calendar names, unlike calendar_create which needs an EventKit ID). Reports scheduling conflicts unless allowConflicts is set.",
-            inputSchema: Schema.object(
-                properties: [
-                    "description": Schema.string("Natural-language event description, e.g. 'lunch with Sam next Tuesday at noon'."),
-                    "calendar": Schema.string("Target calendar name (resolved for you)."),
-                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
-                    "model": Schema.string("Model name."),
-                    "dryRun": Schema.boolean("Show the parsed event without creating it.", default: false),
-                    "allowConflicts": Schema.boolean("Create even if it overlaps an existing event.", default: false),
-                ],
-                required: ["description"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "smart-create")
-                let description = try ArgHelpers.requiredString(args, "description")
-                argv += ArgHelpers.optionIfString(args, "calendar", flagName: "--calendar")
-                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
-                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
-                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
-                argv += ArgHelpers.flagIfTrue(args, "allowConflicts", flagName: "--allow-conflicts")
-                ArgHelpers.appendPositionalLast(description, into: &argv)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "calendar_agenda",
-            effect: .readOnly,
-            description: "AI-generated briefing of upcoming events. Read-only.",
-            inputSchema: Schema.object(
-                properties: [
-                    "days": Schema.integer("Days to cover, 1-7 (default: 1).", default: 1),
-                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
-                    "model": Schema.string("Model name."),
-                ],
-                required: []
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "agenda")
-                argv += ArgHelpers.optionIfInt(args, "days", flagName: "--days")
-                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
-                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "calendar_conflicts",
-            effect: .readOnly,
-            description: "Find overlapping events in a time window. Read-only. Use before scheduling.",
-            inputSchema: Schema.object(
-                properties: [
-                    "from": Schema.string("Window start (default: start of today)."),
-                    "to": Schema.string("Window end (default: end of today)."),
-                    "range": Schema.string("Relative window instead of from/to: today, today+N, week, or month."),
-                ],
-                required: []
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("calendar", "conflicts")
-                argv += ArgHelpers.optionIfString(args, "from", flagName: "--from")
-                argv += ArgHelpers.optionIfString(args, "to", flagName: "--to")
-                argv += ArgHelpers.optionIfString(args, "range", flagName: "--range")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "reminders_lists",
-            effect: .readOnly,
-            description: "List all Apple Reminders lists.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("reminders", "lists") },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "reminders_list",
-            effect: .readOnly,
-            description: "List reminders, defaulting to incomplete items.",
-            inputSchema: Schema.object(properties: [
-                "list": Schema.string("Reminder list ID from reminders_lists."),
-                "completed": Schema.boolean("Include completed reminders.", default: false),
-                "dueBefore": Schema.string("Due before date (YYYY-MM-DD or ISO 8601)."),
-                "dueAfter": Schema.string("Due after date (YYYY-MM-DD or ISO 8601)."),
-                "createdAfter": Schema.string("Only reminders created on or after this date (YYYY-MM-DD or ISO 8601)."),
-                "modifiedAfter": Schema.string("Only reminders modified on or after this date (YYYY-MM-DD or ISO 8601)."),
-                "priority": Schema.string("Filter by priority: high, medium, low, none."),
-                "limit": Schema.integer("Max reminders (default: 50).", default: 50),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("reminders", "list")
-                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
-                argv += ArgHelpers.flagIfTrue(args, "completed", flagName: "--completed")
-                argv += ArgHelpers.optionIfString(args, "dueBefore", flagName: "--due-before")
-                argv += ArgHelpers.optionIfString(args, "dueAfter", flagName: "--due-after")
-                argv += ArgHelpers.optionIfString(args, "createdAfter", flagName: "--created-after")
-                argv += ArgHelpers.optionIfString(args, "modifiedAfter", flagName: "--modified-after")
-                argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "reminders_show",
-            effect: .readOnly,
-            description: "Show full details for a single reminder by ID.",
-            inputSchema: Schema.object(
-                properties: ["id": Schema.string("Reminder ID or prefix.")],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("reminders", "show")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "reminders_search",
-            effect: .readOnly,
-            description: "Search reminders by title/notes text.",
-            inputSchema: Schema.object(
-                properties: [
-                    "query": Schema.string("Search query."),
-                    "list": Schema.string("Restrict to a single list ID."),
-                    "completed": Schema.boolean("Search completed reminders instead.", default: false),
-                    "limit": Schema.integer("Max results (default: 50).", default: 50),
-                ],
-                required: ["query"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("reminders", "search")
-                let query = try ArgHelpers.requiredString(args, "query")
-                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
-                argv += ArgHelpers.flagIfTrue(args, "completed", flagName: "--completed")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                ArgHelpers.appendPositionalLast(query, into: &argv)
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "reminders_create",
-            effect: .mutating(verifyWith: "reminders_list"),
-            description: "Create a new reminder.",
-            inputSchema: Schema.object(
-                properties: [
-                    "title": Schema.string("Reminder title."),
-                    "list": Schema.string("Target list ID (default: default list)."),
-                    "due": Schema.string("Due date/time (YYYY-MM-DD or ISO 8601)."),
-                    "priority": Schema.string("Priority: high, medium, low, none."),
-                    "notes": Schema.string("Reminder notes."),
-                    "url": Schema.string("Reminder URL."),
-                ],
-                required: ["title"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("reminders", "create")
-                let title = try ArgHelpers.requiredString(args, "title")
-                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
-                argv += ArgHelpers.optionIfString(args, "due", flagName: "--due")
-                argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
-                argv += ArgHelpers.optionIfString(args, "notes", flagName: "--notes")
-                argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
-                ArgHelpers.appendPositionalLast(title, into: &argv)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "reminders_complete",
-            effect: .mutating(verifyWith: "reminders_list"),
-            description: "Mark a reminder as completed.",
-            inputSchema: Schema.object(
-                properties: ["id": Schema.string("Reminder ID or prefix.")],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("reminders", "complete")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                return argv
-            }
-        ),
+        MCPToolSpec("reminders_lists", .readOnly, "List all Apple Reminders lists.", inProcess: MCPInProcessTools.execute),
+        MCPToolSpec("reminders_list", .readOnly, "List reminders, defaulting to incomplete items.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("list", "--list", "Reminder list ID from reminders_lists."),
+            .arg("completed", "--completed", "Include completed reminders."),
+            .arg("dueBefore", "--due-before", "Due before date (YYYY-MM-DD or ISO 8601)."),
+            .arg("dueAfter", "--due-after", "Due after date (YYYY-MM-DD or ISO 8601)."),
+            .arg("createdAfter", "--created-after", "Only reminders created on or after this date (YYYY-MM-DD or ISO 8601)."),
+            .arg("modifiedAfter", "--modified-after", "Only reminders modified on or after this date (YYYY-MM-DD or ISO 8601)."),
+            .arg("priority", "--priority", "Filter by priority: high, medium, low, none."),
+            .arg("limit", "--limit", "Max reminders (default: 50).", as: .integer),
+        ]),
+        MCPToolSpec("reminders_show", .readOnly, "Show full details for a single reminder by ID.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("id", .positional, "Reminder ID or prefix."),
+        ]),
+        MCPToolSpec("reminders_search", .readOnly, "Search reminders by title/notes text.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("query", .trailing, "Search query."),
+            .arg("list", "--list", "Restrict to a single list ID."),
+            .arg("completed", "--completed", "Search completed reminders instead."),
+            .arg("limit", "--limit", "Max results (default: 50).", as: .integer),
+        ]),
+        MCPToolSpec("reminders_create", .mutating(verifyWith: "reminders_list"), "Create a new reminder.", properties: [
+            .arg("title", .trailing),
+            .arg("list", "--list", "Target list ID (default: default list)."),
+            .arg("due", "--due", "Due date/time (YYYY-MM-DD or ISO 8601)."),
+            .arg("priority", "--priority", "Priority: high, medium, low, none."),
+            .arg("notes", "--notes"),
+            .arg("url", "--url"),
+        ]),
+        MCPToolSpec("reminders_complete", .mutating(verifyWith: "reminders_list"), "Mark a reminder as completed.", properties: [
+            .arg("id", .positional, "Reminder ID or prefix."),
+        ]),
+        MCPToolSpec("reminders_edit", .mutating(verifyWith: "reminders_list"), "Edit an existing reminder. Only the fields you pass are changed.", properties: [
+            .arg("id", .positional, "Reminder ID from reminders_list / reminders_search."),
+            .arg("title", "--title"),
+            .arg("due", "--due", "New due date/time."),
+            .arg("priority", "--priority", "New priority: high, medium, low, or none."),
+            .arg("notes", "--notes"),
+            .arg("url", "--url"),
+            .arg("list", "--list", "Move to this list (EventKit ID from reminders_lists, not a name)."),
+        ]),
+        MCPToolSpec("reminders_delete", .mutating(verifyWith: "reminders_list"), "Delete a reminder. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. To just tick one off, use reminders_complete instead.", properties: [
+            .arg("id", .positional, "Reminder ID from reminders_list / reminders_search."),
+            .confirmGate("Must be true. Deletion cannot be undone."),
+        ]),
+        MCPToolSpec("reminders_smart_create", .mutating(verifyWith: "reminders_list"), "Create a reminder from a natural-language description using AI (resolves list names, unlike reminders_create which needs an EventKit ID).", properties: [
+            .arg("description", .trailing, "Natural-language reminder, e.g. 'call the dentist Friday morning'."),
+            .arg("list", "--list", "Target list name (resolved for you)."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, or openai."),
+            .arg("model", "--model", "Model name."),
+            .arg("dryRun", "--dry-run", "Show the parsed reminder without creating it."),
+        ]),
 
         // MARK: Contacts
 
-        MCPTool(
-            name: "reminders_edit",
-            effect: .mutating(verifyWith: "reminders_list"),
-            description: "Edit an existing reminder. Only the fields you pass are changed.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Reminder ID from reminders_list / reminders_search."),
-                    "title": Schema.string("New title."),
-                    "due": Schema.string("New due date/time."),
-                    "priority": Schema.string("New priority: high, medium, low, or none."),
-                    "notes": Schema.string("New notes."),
-                    "url": Schema.string("New URL."),
-                    "list": Schema.string("Move to this list (EventKit ID from reminders_lists, not a name)."),
-                ],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("reminders", "edit")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
-                argv += ArgHelpers.optionIfString(args, "due", flagName: "--due")
-                argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
-                argv += ArgHelpers.optionIfString(args, "notes", flagName: "--notes")
-                argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
-                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "reminders_delete",
-            effect: .mutating(verifyWith: "reminders_list"),
-            description: "Delete a reminder. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. To just tick one off, use reminders_complete instead.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Reminder ID from reminders_list / reminders_search."),
-                    "confirm": Schema.boolean("Must be true. Deletion cannot be undone.", default: false),
-                ],
-                required: ["id", "confirm"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("reminders", "delete")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                try argv += ArgHelpers.forceFromConfirm(args)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "reminders_smart_create",
-            effect: .mutating(verifyWith: "reminders_list"),
-            description: "Create a reminder from a natural-language description using AI (resolves list names, unlike reminders_create which needs an EventKit ID).",
-            inputSchema: Schema.object(
-                properties: [
-                    "description": Schema.string("Natural-language reminder, e.g. 'call the dentist Friday morning'."),
-                    "list": Schema.string("Target list name (resolved for you)."),
-                    "provider": Schema.string("AI provider: ollama, claude, or openai."),
-                    "model": Schema.string("Model name."),
-                    "dryRun": Schema.boolean("Show the parsed reminder without creating it.", default: false),
-                ],
-                required: ["description"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("reminders", "smart-create")
-                let description = try ArgHelpers.requiredString(args, "description")
-                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
-                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
-                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
-                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
-                ArgHelpers.appendPositionalLast(description, into: &argv)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "contacts_search",
-            effect: .readOnly,
-            description: "Search contacts by name (default), email, or phone.",
-            inputSchema: Schema.object(
-                properties: [
-                    "query": Schema.string("Search query (a name, an email, or a phone number)."),
-                    "email": Schema.boolean("Treat the query as an email address.", default: false),
-                    "phone": Schema.boolean(
-                        "Treat the query as a phone number (digits-only match, last-10 fallback).",
-                        default: false
-                    ),
-                    "fields": Schema.string("Comma-separated fields to include (e.g. id,fullName,emails)."),
-                ],
-                required: ["query"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("contacts", "search")
-                let query = try ArgHelpers.requiredString(args, "query")
-                argv += ArgHelpers.optionIfString(args, "fields", flagName: "--fields")
-                // --phone / --email carry the value as the option arg (they reject a
-                // positional query); plain name search takes the positional.
-                if ArgHelpers.bool(args, "phone") == true {
-                    argv += ["--phone", query]
-                } else {
-                    argv += ArgHelpers.flagIfTrue(args, "email", flagName: "--email")
-                    ArgHelpers.appendPositionalLast(query, into: &argv)
-                }
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "contacts_show",
-            effect: .readOnly,
-            description: "Show full contact details by identifier.",
-            inputSchema: Schema.object(
-                properties: ["identifier": Schema.string("Contact identifier.")],
-                required: ["identifier"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("contacts", "show")
-                try argv.append(ArgHelpers.positional(args, "identifier"))
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
+        MCPToolSpec("contacts_search", .readOnly, "Search contacts by name (default), email, or phone.", inProcess: MCPInProcessTools.execute, properties: [
+            // --phone carries the query as its value (it rejects a positional
+            // query); email and plain name search take the positional.
+            .arg("query", .trailing, "Search query (a name, an email, or a phone number).", required: true, emit: .custom { args in
+                guard let query = ArgHelpers.string(args, "query") else { throw MCPToolArgError.missingRequired("query") }
+                if ArgHelpers.bool(args, "phone") == true { return ["--phone", query] }
+                return ArgHelpers.flagIfTrue(args, "email", flagName: "--email") + ["--", query]
+            }),
+            .arg("fields", "--fields", "Comma-separated fields to include (e.g. id,fullName,emails)."),
+            .special("phone", schema: Schema.boolean("Treat the query as a phone number (digits-only match, last-10 fallback).", default: false), emit: .none),
+            .arg("email", "--email", "Treat the query as an email address.", emit: .none),
+        ]),
+        MCPToolSpec("contacts_show", .readOnly, "Show full contact details by identifier.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("identifier", .positional, "Contact identifier."),
+        ]),
+        MCPToolSpec("contacts_list", .readOnly, "List all contacts with their primary email and phone. Read-only. Prefer contacts_search when you know who you're looking for.", properties: [
+            .arg("group", "--group", "Restrict to a contact group name (from contacts_groups)."),
+        ]),
+        MCPToolSpec("contacts_groups", .readOnly, "List contact groups. Read-only."),
+        MCPToolSpec("contacts_create", .mutating(verifyWith: "contacts_list"), "Create a new contact. Every field is optional, but supply at least a name or an email so the card is identifiable.", properties: [
+            .arg("first", "--first", "First name."),
+            .arg("last", "--last", "Last name."),
+            .arg("email", "--email"),
+            .arg("phone", "--phone"),
+            .arg("organization", "--organization", "Organization."),
+            .arg("jobTitle", "--job-title"),
+        ]),
+        MCPToolSpec("contacts_edit", .mutating(verifyWith: "contacts_list"), "Edit an existing contact. Only the fields you pass are changed.", properties: [
+            .arg("identifier", .positional, "Contact identifier from contacts_search / contacts_show."),
+            .arg("first", "--first", "New first name."),
+            .arg("last", "--last", "New last name."),
+            .arg("email", "--email", "New email address."),
+            .arg("phone", "--phone", "New phone number."),
+            .arg("organization", "--organization", "New organization."),
+            .arg("jobTitle", "--job-title"),
+        ]),
+        MCPToolSpec("contacts_delete", .mutating(verifyWith: "contacts_list"), "Delete a contact. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.", properties: [
+            .arg("identifier", .positional, "Contact identifier from contacts_search / contacts_show."),
+            .confirmGate("Must be true. Deletion cannot be undone."),
+        ]),
 
         // MARK: Notes
 
-        MCPTool(
-            name: "contacts_list",
-            effect: .readOnly,
-            description: "List all contacts with their primary email and phone. Read-only. Prefer contacts_search when you know who you're looking for.",
-            inputSchema: Schema.object(
-                properties: [
-                    "group": Schema.string("Restrict to a contact group name (from contacts_groups)."),
-                ],
-                required: []
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("contacts", "list")
-                argv += ArgHelpers.optionIfString(args, "group", flagName: "--group")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "contacts_groups",
-            effect: .readOnly,
-            description: "List contact groups. Read-only.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("contacts", "groups") }
-        ),
-        MCPTool(
-            name: "contacts_create",
-            effect: .mutating(verifyWith: "contacts_list"),
-            description: "Create a new contact. Every field is optional, but supply at least a name or an email so the card is identifiable.",
-            inputSchema: Schema.object(
-                properties: [
-                    "first": Schema.string("First name."),
-                    "last": Schema.string("Last name."),
-                    "email": Schema.string("Email address."),
-                    "phone": Schema.string("Phone number."),
-                    "organization": Schema.string("Organization."),
-                    "jobTitle": Schema.string("Job title."),
-                ],
-                required: []
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("contacts", "create")
-                argv += ArgHelpers.contactFieldOptions(args)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "contacts_edit",
-            effect: .mutating(verifyWith: "contacts_list"),
-            description: "Edit an existing contact. Only the fields you pass are changed.",
-            inputSchema: Schema.object(
-                properties: [
-                    "identifier": Schema.string("Contact identifier from contacts_search / contacts_show."),
-                    "first": Schema.string("New first name."),
-                    "last": Schema.string("New last name."),
-                    "email": Schema.string("New email address."),
-                    "phone": Schema.string("New phone number."),
-                    "organization": Schema.string("New organization."),
-                    "jobTitle": Schema.string("New job title."),
-                ],
-                required: ["identifier"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("contacts", "edit")
-                try argv.append(ArgHelpers.positional(args, "identifier"))
-                argv += ArgHelpers.contactFieldOptions(args)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "contacts_delete",
-            effect: .mutating(verifyWith: "contacts_list"),
-            description: "Delete a contact. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.",
-            inputSchema: Schema.object(
-                properties: [
-                    "identifier": Schema.string("Contact identifier from contacts_search / contacts_show."),
-                    "confirm": Schema.boolean("Must be true. Deletion cannot be undone.", default: false),
-                ],
-                required: ["identifier", "confirm"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("contacts", "delete")
-                try argv.append(ArgHelpers.positional(args, "identifier"))
-                try argv += ArgHelpers.forceFromConfirm(args)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "notes_list",
-            effect: .readOnly,
-            description: "List Apple Notes, defaulting to 50 most recently modified.",
-            inputSchema: Schema.object(properties: [
-                "folder": Schema.string("Filter by folder name."),
-                "limit": Schema.integer("Max notes (default: 50).", default: 50),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("notes", "list")
-                argv += ArgHelpers.optionIfString(args, "folder", flagName: "--folder")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "notes_search",
-            effect: .readOnly,
-            description: "Search notes by title or body content.",
-            inputSchema: Schema.object(
-                properties: [
-                    "query": Schema.string("Search query."),
-                    "folder": Schema.string("Filter by folder name."),
-                    "limit": Schema.integer("Max results (default: 50).", default: 50),
-                ],
-                required: ["query"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("notes", "search")
-                let query = try ArgHelpers.requiredString(args, "query")
-                argv += ArgHelpers.optionIfString(args, "folder", flagName: "--folder")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                ArgHelpers.appendPositionalLast(query, into: &argv)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "notes_show",
-            effect: .readOnly,
-            description: "Show full details of a note by ID (returns plainText, not HTML).",
-            inputSchema: Schema.object(
-                properties: ["id": Schema.string("Note ID from notes_list.")],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("notes", "show")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "notes_folders",
-            effect: .readOnly,
-            description: "List all Apple Notes folders.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("notes", "folders") }
-        ),
-        MCPTool(
-            name: "notes_create",
-            effect: .mutating(verifyWith: "notes_list"),
-            description: "Create a new Apple Note.",
-            inputSchema: Schema.object(
-                properties: [
-                    "title": Schema.string("Note title."),
-                    "body": Schema.string("Note body. Plain text; newlines become formatted HTML unless html=true."),
-                    "folder": Schema.string("Folder name to create the note in."),
-                    "html": Schema.boolean("Treat body as raw HTML (skip plain-text-to-HTML conversion).", default: false),
-                ],
-                required: ["title"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("notes", "create")
-                let title = try ArgHelpers.requiredString(args, "title")
-                argv += ArgHelpers.optionIfString(args, "body", flagName: "--body")
-                argv += ArgHelpers.optionIfString(args, "folder", flagName: "--folder")
-                argv += ArgHelpers.flagIfTrue(args, "html", flagName: "--html")
-                ArgHelpers.appendPositionalLast(title, into: &argv)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "notes_edit",
-            effect: .mutating(verifyWith: "notes_list"),
-            description: "Edit an existing note's title or body. body REPLACES the whole note body unless append=true; pass dryRun=true first to see the current and resulting body length without writing.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Note ID from notes_list."),
-                    "title": Schema.string("New title."),
-                    "body": Schema.string("New body. Plain text; newlines become formatted HTML unless html=true."),
-                    "append": Schema.boolean("Append body instead of replacing.", default: false),
-                    "html": Schema.boolean("Treat body as raw HTML (skip plain-text-to-HTML conversion).", default: false),
-                    "dryRun": Schema.boolean("Report title, previousBodyLength and newBodyLength without writing.", default: false),
-                ],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("notes", "edit")
-                let id = try ArgHelpers.requiredString(args, "id")
-                argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
-                argv += ArgHelpers.optionIfString(args, "body", flagName: "--body")
-                argv += ArgHelpers.flagIfTrue(args, "append", flagName: "--append")
-                argv += ArgHelpers.flagIfTrue(args, "html", flagName: "--html")
-                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
-                ArgHelpers.appendPositionalLast(id, into: &argv)
-                return argv
-            }
-        ),
+        MCPToolSpec("notes_list", .readOnly, "List Apple Notes, defaulting to 50 most recently modified.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("folder", "--folder"),
+            .arg("limit", "--limit", "Max notes (default: 50).", as: .integer),
+        ]),
+        MCPToolSpec("notes_search", .readOnly, "Search notes by title or body content.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("query", .trailing),
+            .arg("folder", "--folder"),
+            .arg("limit", "--limit", "Max results (default: 50).", as: .integer),
+        ]),
+        MCPToolSpec("notes_show", .readOnly, "Show full details of a note by ID (returns plainText, not HTML).", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("id", .positional, "Note ID from notes_list."),
+        ]),
+        MCPToolSpec("notes_folders", .readOnly, "List all Apple Notes folders.", inProcess: MCPInProcessTools.execute),
+        MCPToolSpec("notes_create", .mutating(verifyWith: "notes_list"), "Create a new Apple Note.", properties: [
+            .arg("title", .trailing),
+            .arg("body", "--body", "Note body. Plain text; newlines become formatted HTML unless html=true."),
+            .arg("folder", "--folder"),
+            .arg("html", "--html", "Treat body as raw HTML (skip plain-text-to-HTML conversion)."),
+        ]),
+        MCPToolSpec("notes_edit", .mutating(verifyWith: "notes_list"), "Edit an existing note's title or body. body REPLACES the whole note body unless append=true; pass dryRun=true first to see the current and resulting body length without writing.", properties: [
+            .arg("id", .trailing, "Note ID from notes_list."),
+            .arg("title", "--title", "New title."),
+            .arg("body", "--body", "New body. Plain text; newlines become formatted HTML unless html=true."),
+            .arg("append", "--append", "Append body instead of replacing."),
+            .arg("html", "--html", "Treat body as raw HTML (skip plain-text-to-HTML conversion)."),
+            .arg("dryRun", "--dry-run", "Report title, previousBodyLength and newBodyLength without writing."),
+        ]),
+        MCPToolSpec("notes_delete", .mutating(verifyWith: "notes_list"), "Move a note to Recently Deleted. The first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. Recoverable from Recently Deleted for 30 days.", properties: [
+            .arg("id", .positional, "Note ID from notes_list / notes_search."),
+            .confirmGate("Must be true."),
+        ]),
 
         // MARK: Messages (read-only)
 
-        MCPTool(
-            name: "notes_delete",
-            effect: .mutating(verifyWith: "notes_list"),
-            description: "Move a note to Recently Deleted. The first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. Recoverable from Recently Deleted for 30 days.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Note ID from notes_list / notes_search."),
-                    "confirm": Schema.boolean("Must be true.", default: false),
-                ],
-                required: ["id", "confirm"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("notes", "delete")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                try argv += ArgHelpers.forceFromConfirm(args)
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "messages_list",
-            effect: .readOnly,
-            description: "List recent Apple Messages conversations (most recent first). Read-only.",
-            inputSchema: Schema.object(properties: [
-                "sinceHours": Schema.integer("Only conversations with a message in the last N hours (default: 48).", default: 48),
-                "limit": Schema.integer("Maximum conversations to return (default: 50).", default: 50),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("messages", "list")
-                argv += ArgHelpers.optionIfInt(args, "sinceHours", flagName: "--since-hours")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "messages_search",
-            effect: .readOnly,
-            description: "Search Messages bodies by substring. Read-only.",
-            inputSchema: Schema.object(
-                properties: [
-                    "query": Schema.string("Search substring."),
-                    "sinceHours": Schema.integer("Restrict to last N hours.", default: 168),
-                    "limit": Schema.integer("Maximum messages (default: 50).", default: 50),
-                ],
-                required: ["query"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("messages", "search")
-                let query = try ArgHelpers.requiredString(args, "query")
-                argv += ArgHelpers.optionIfInt(args, "sinceHours", flagName: "--since-hours")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                ArgHelpers.appendPositionalLast(query, into: &argv)
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "messages_show",
-            effect: .readOnly,
-            description: "Show messages in a conversation thread by GUID. Read-only.",
-            inputSchema: Schema.object(
-                properties: [
-                    "conversationId": Schema.string("Conversation GUID from messages_list."),
-                    "limit": Schema.integer("Maximum messages (default: 50).", default: 50),
-                ],
-                required: ["conversationId"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("messages", "show")
-                try argv.append(ArgHelpers.positional(args, "conversationId"))
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                return argv
-            },
-            inProcess: MCPInProcessTools.execute
-        ),
-        MCPTool(
-            name: "messages_send",
-            effect: .mutating(verifyWith: "messages_list"),
-            description: "Draft a message (DRAFT ONLY: MCP clients cannot trigger autonomous delivery).",
-            inputSchema: Schema.object(
-                properties: [
-                    "to": Schema.string("Recipient handle or chat GUID."),
-                    "body": Schema.string("Message body."),
-                ],
-                required: ["to", "body"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("messages", "send")
-                try argv.append(ArgHelpers.option("--to", ArgHelpers.requiredString(args, "to")))
-                try argv.append(ArgHelpers.option("--body", ArgHelpers.requiredString(args, "body")))
-                argv += ["--draft"]
-                return argv
-            }
-        ),
+        MCPToolSpec("messages_list", .readOnly, "List recent Apple Messages conversations (most recent first). Read-only.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("sinceHours", "--since-hours", "Only conversations with a message in the last N hours (default: 48).", as: .integer, default: .int(48)),
+            .arg("limit", "--limit", as: .integer),
+        ]),
+        MCPToolSpec("messages_search", .readOnly, "Search Messages bodies by substring. Read-only.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("query", .trailing, "Search substring."),
+            .arg("sinceHours", "--since-hours", "Restrict to last N hours.", as: .integer),
+            .arg("limit", "--limit", "Maximum messages (default: 50).", as: .integer),
+        ]),
+        MCPToolSpec("messages_show", .readOnly, "Show messages in a conversation thread by GUID. Read-only.", inProcess: MCPInProcessTools.execute, properties: [
+            .arg("conversationId", .positional, "Conversation GUID from messages_list."),
+            .arg("limit", "--limit", as: .integer),
+        ]),
+        MCPToolSpec("messages_send", .mutating(verifyWith: "messages_list"), "Draft a message (DRAFT ONLY: MCP clients cannot trigger autonomous delivery).", trail: ["--draft"], properties: [
+            .arg("to", "--to", "Recipient handle or chat GUID."),
+            .arg("body", "--body"),
+        ]),
+        MCPToolSpec("messages_exclude_list", .readOnly, "Show the thread exclude list: conversations hidden from every messages_* read. Read-only."),
+        MCPToolSpec("messages_exclude_add", .mutating(verifyWith: "messages_exclude_list"), "Hide a conversation from every messages_* read by adding its thread GUID to the exclude list.", properties: [
+            .arg("thread", .positional, "Thread GUID from messages_list / messages_show."),
+        ]),
+        MCPToolSpec("messages_exclude_remove", .mutating(verifyWith: "messages_exclude_list"), "Un-hide a conversation by removing its thread GUID from the exclude list.", properties: [
+            .arg("thread", .positional, "Thread GUID from messages_exclude_list."),
+        ]),
 
         // MARK: Memos
 
-        MCPTool(
-            name: "messages_exclude_list",
-            effect: .readOnly,
-            description: "Show the thread exclude list: conversations hidden from every messages_* read. Read-only.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("messages", "exclude", "list") }
-        ),
-        MCPTool(
-            name: "messages_exclude_add",
-            effect: .mutating(verifyWith: "messages_exclude_list"),
-            description: "Hide a conversation from every messages_* read by adding its thread GUID to the exclude list.",
-            inputSchema: Schema.object(
-                properties: [
-                    "thread": Schema.string("Thread GUID from messages_list / messages_show."),
-                ],
-                required: ["thread"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("messages", "exclude", "add")
-                try argv.append(ArgHelpers.positional(args, "thread"))
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "messages_exclude_remove",
-            effect: .mutating(verifyWith: "messages_exclude_list"),
-            description: "Un-hide a conversation by removing its thread GUID from the exclude list.",
-            inputSchema: Schema.object(
-                properties: [
-                    "thread": Schema.string("Thread GUID from messages_exclude_list."),
-                ],
-                required: ["thread"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("messages", "exclude", "remove")
-                try argv.append(ArgHelpers.positional(args, "thread"))
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "memos_list",
-            effect: .readOnly,
-            description: "List Voice Memos recordings (most recent first).",
-            inputSchema: Schema.object(properties: [
-                "since": Schema.string("Only recordings on or after YYYY-MM-DD."),
-                "limit": Schema.integer("Maximum number of results (default: 20).", default: 20),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("memos", "list")
-                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "memos_info",
-            effect: .readOnly,
-            description: "Show full metadata for a single Voice Memos recording by ID.",
-            inputSchema: Schema.object(
-                properties: ["id": Schema.string("Memo UUID from memos_list output.")],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("memos", "info")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "memos_export",
-            effect: .mutating(verifyWith: nil),
-            description: "Copy Voice Memos recording(s) to a directory, optionally with transcript sidecars.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Memo UUID (omit with all=true)."),
-                    "all": Schema.boolean("Export every recording.", default: false),
-                    "output": Schema.string("Destination directory (created if absent)."),
-                    "transcribe": Schema.boolean("Transcribe audio and write sidecar.", default: false),
-                    "sidecarFormat": Schema.string("Sidecar format: txt (default), srt, markdown, rtf."),
-                    "forceTranscribe": Schema.boolean("Bypass transcript cache.", default: false),
-                    "jobs": Schema.integer("Parallel transcription jobs (default: 2).", default: 2),
-                ],
-                required: ["output"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("memos", "export")
-                try ArgHelpers.appendIDOrAll(args, into: &argv)
-                try argv.append(ArgHelpers.option("--output", ArgHelpers.requiredString(args, "output")))
-                argv += ArgHelpers.flagIfTrue(args, "transcribe", flagName: "--transcribe")
-                argv += ArgHelpers.optionIfString(args, "sidecarFormat", flagName: "--sidecar-format")
-                argv += ArgHelpers.flagIfTrue(args, "forceTranscribe", flagName: "--force-transcribe")
-                argv += ArgHelpers.optionIfInt(args, "jobs", flagName: "--jobs")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "memos_transcribe",
-            effect: .mutating(verifyWith: nil),
-            description: "Transcribe Voice Memos audio to text. Requires mlx-audio (see `pippin doctor`).",
-            inputSchema: Schema.object(properties: [
-                "id": Schema.string("Memo UUID (omit with all=true)."),
-                "all": Schema.boolean("Transcribe every recording.", default: false),
-                "output": Schema.string("Directory to write .txt files (default: inline in JSON)."),
-                "force": Schema.boolean("Bypass transcript cache.", default: false),
-                "jobs": Schema.integer("Parallel transcription jobs (default: 2).", default: 2),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("memos", "transcribe")
-                try ArgHelpers.appendIDOrAll(args, into: &argv)
-                argv += ArgHelpers.optionIfString(args, "output", flagName: "--output")
-                argv += ArgHelpers.flagIfTrue(args, "force", flagName: "--force")
-                argv += ArgHelpers.optionIfInt(args, "jobs", flagName: "--jobs")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "memos_capture_to_reminders",
-            effect: .mutating(verifyWith: "reminders_list"),
-            description: "Transcribe a Voice Memos recording, extract action items via the configured LLM, and create Reminders. Commits by default in agent mode; pass dryRun=true to preview.",
-            inputSchema: Schema.object(properties: [
-                "memo": Schema.string("Memo UUID or prefix (default: most recent recording)."),
-                "list": Schema.string("Reminder list name (default: Inbox)."),
-                "dryRun": Schema.boolean("Preview items without creating reminders.", default: false),
-                "provider": Schema.string("AI provider: ollama, claude, or openai (default: ai.provider, else ollama)."),
-                "model": Schema.string("Model name (provider-specific default)."),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("memos", "capture", "--to-reminders")
-                argv += ArgHelpers.optionIfString(args, "memo", flagName: "--memo")
-                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
-                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
-                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
-                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "memos_summarize",
-            effect: .mutating(verifyWith: nil),
-            description: "Summarize a Voice Memos recording using the configured AI provider.",
-            inputSchema: Schema.object(properties: [
-                "id": Schema.string("Memo UUID (omit with all=true)."),
-                "all": Schema.boolean("Summarize every recording.", default: false),
-                "template": Schema.string("Template name (e.g. meeting-notes, summary, action-items)."),
-                "prompt": Schema.string("Free-form prompt (overrides template)."),
-                "provider": Schema.string("AI provider: ollama, claude, or openai (default: ai.provider, else ollama)."),
-                "model": Schema.string("Model name (provider-specific default)."),
-                "since": Schema.string("With all=true, only memos on or after YYYY-MM-DD."),
-                "output": Schema.string("Write output to a directory instead of inline JSON."),
-                "jobs": Schema.integer("Parallel summarization jobs (default: 2).", default: 2),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("memos", "summarize")
-                try ArgHelpers.appendIDOrAll(args, into: &argv)
-                argv += ArgHelpers.optionIfString(args, "template", flagName: "--template")
-                argv += ArgHelpers.optionIfString(args, "prompt", flagName: "--prompt")
-                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
-                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
-                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
-                argv += ArgHelpers.optionIfString(args, "output", flagName: "--output")
-                argv += ArgHelpers.optionIfInt(args, "jobs", flagName: "--jobs")
-                return argv
-            }
-        ),
+        MCPToolSpec("memos_list", .readOnly, "List Voice Memos recordings (most recent first).", properties: [
+            .arg("since", "--since", "Only recordings on or after YYYY-MM-DD."),
+            .arg("limit", "--limit", "Maximum number of results (default: 20).", as: .integer),
+        ]),
+        MCPToolSpec("memos_info", .readOnly, "Show full metadata for a single Voice Memos recording by ID.", properties: [
+            .arg("id", .positional, "Memo UUID from memos_list output."),
+        ]),
+        MCPToolSpec("memos_export", .mutating(verifyWith: nil), "Copy Voice Memos recording(s) to a directory, optionally with transcript sidecars.", properties: [
+            .idOrAll("Memo UUID (omit with all=true)."),
+            .arg("all", "--all"),
+            .arg("output", "--output"),
+            .arg("transcribe", "--transcribe", "Transcribe audio and write sidecar."),
+            .arg("sidecarFormat", "--sidecar-format", "Sidecar format: txt (default), srt, markdown, rtf."),
+            .arg("forceTranscribe", "--force-transcribe", "Bypass transcript cache."),
+            .arg("jobs", "--jobs", as: .integer),
+        ]),
+        MCPToolSpec("memos_transcribe", .mutating(verifyWith: nil), "Transcribe Voice Memos audio to text. Requires mlx-audio (see `pippin doctor`).", properties: [
+            .idOrAll("Memo UUID (omit with all=true)."),
+            .arg("all", "--all"),
+            .arg("output", "--output", "Directory to write .txt files (default: inline in JSON)."),
+            .arg("force", "--force"),
+            .arg("jobs", "--jobs", as: .integer),
+        ]),
+        MCPToolSpec("memos_capture_to_reminders", .mutating(verifyWith: "reminders_list"), "Transcribe a Voice Memos recording, extract action items via the configured LLM, and create Reminders. Commits by default in agent mode; pass dryRun=true to preview.", lead: ["--to-reminders"], properties: [
+            .arg("memo", "--memo"),
+            .arg("list", "--list"),
+            .arg("dryRun", "--dry-run"),
+            .arg("provider", "--provider", "AI provider: ollama, claude, or openai (default: ai.provider, else ollama)."),
+            .arg("model", "--model"),
+        ]),
+        MCPToolSpec("memos_summarize", .mutating(verifyWith: nil), "Summarize a Voice Memos recording using the configured AI provider.", properties: [
+            .idOrAll("Memo UUID (omit with all=true)."),
+            .arg("all", "--all", "Summarize every recording."),
+            .arg("template", "--template", "Template name (e.g. meeting-notes, summary, action-items)."),
+            .arg("prompt", "--prompt", "Free-form prompt (overrides template)."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, or openai (default: ai.provider, else ollama)."),
+            .arg("model", "--model"),
+            .arg("since", "--since", "With all=true, only memos on or after YYYY-MM-DD."),
+            .arg("output", "--output", "Write output to a directory instead of inline JSON."),
+            .arg("jobs", "--jobs", as: .integer),
+        ]),
+        MCPToolSpec("memos_delete", .mutating(verifyWith: "memos_list"), "Delete a voice memo: its audio file moves to the Trash and its database row is removed. Fails unless confirm=true, and refuses while the Voice Memos app is running. Pass dryRun=true (with confirm=false) to see which recording an id names without changing anything.", properties: [
+            .arg("id", .positional, "Memo ID from memos_list, or an unambiguous prefix of it."),
+            // dryRun skips the gate: it changes nothing.
+            .confirmGate("Must be true to delete. The audio is recoverable from the Trash; the recording's entry is not.") { args in
+                try ArgHelpers.bool(args, "dryRun") == true ? ["--dry-run"] : ArgHelpers.forceFromConfirm(args)
+            },
+            .arg("dryRun", "--dry-run", "Report the recording that would be deleted and change nothing.", emit: .none),
+        ]),
 
-        // MARK: Digest
+        // MARK: Digest, actions, system
 
-        MCPTool(
-            name: "memos_delete",
-            effect: .mutating(verifyWith: "memos_list"),
-            description: "Delete a voice memo: its audio file moves to the Trash and its database row is removed. Fails unless confirm=true, and refuses while the Voice Memos app is running. Pass dryRun=true (with confirm=false) to see which recording an id names without changing anything.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Memo ID from memos_list, or an unambiguous prefix of it."),
-                    "confirm": Schema.boolean("Must be true to delete. The audio is recoverable from the Trash; the recording's entry is not.", default: false),
-                    "dryRun": Schema.boolean("Report the recording that would be deleted and change nothing.", default: false),
-                ],
-                required: ["id", "confirm"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("memos", "delete")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                if ArgHelpers.bool(args, "dryRun") == true {
-                    argv.append("--dry-run")
-                } else {
-                    try argv += ArgHelpers.forceFromConfirm(args)
-                }
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "digest",
-            effect: .readOnly,
-            description: "Aggregated daily digest: unread mail, today's calendar events, due and overdue reminders, and recently modified notes.",
-            inputSchema: Schema.object(properties: [
-                "mailLimit": Schema.integer("Max unread messages per mail account (default: 5).", default: 5),
-                "notesLimit": Schema.integer("Max recent notes (default: 5).", default: 5),
-                "calendarDays": Schema.integer("Days of upcoming events beyond today (default: 7).", default: 7),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("digest")
-                argv += ArgHelpers.optionIfInt(args, "mailLimit", flagName: "--mail-limit")
-                argv += ArgHelpers.optionIfInt(args, "notesLimit", flagName: "--notes-limit")
-                argv += ArgHelpers.optionIfInt(args, "calendarDays", flagName: "--calendar-days")
-                return argv
-            }
-        ),
-
-        // MARK: Actions
-
-        MCPTool(
-            name: "actions_extract",
-            effect: .mutating(verifyWith: "reminders_list"),
-            description: "Scan recent Sent mail and recently-modified Notes for commitments you made (\"I'll send you…\", \"I'll follow up…\") and emit draft reminders with a confidence score. Read-only by default; set create=true to also create the reminders in a list. Slow (per-batch AI calls): under MCP the AI pass is bounded to ~50s and returns partial results with a timedOut warning: lower limit/days or run via job_run for an exhaustive scan.",
-            inputSchema: Schema.object(properties: [
-                "days": Schema.integer("Days back to scan (1-90, default 7).", default: 7),
-                "mail": Schema.boolean("Include Sent mail as a source.", default: true),
-                "notes": Schema.boolean("Include recently-modified Notes as a source.", default: true),
-                "account": Schema.string("Mail account to scan (default: all accounts)."),
-                "limit": Schema.integer("Max items to scan per source (default: 50).", default: 50),
-                "min_confidence": Schema.number("Minimum confidence (0.0-1.0) to include an action (default: 0.5).", default: 0.5),
-                "provider": Schema.string("AI provider: ollama, claude, or openai (default: ollama)."),
-                "model": Schema.string("Model name (provider-specific default)."),
-                "api_key": Schema.string("API key for the Claude provider."),
-                "list": Schema.string("Reminder list name to create into (used when create=true)."),
-                "create": Schema.boolean("Create reminders from the extracted actions (side-effecting).", default: false),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("actions", "extract")
-                argv += ArgHelpers.optionIfInt(args, "days", flagName: "--days")
-                if let mail = ArgHelpers.bool(args, "mail") { argv.append(mail ? "--mail" : "--no-mail") }
-                if let notes = ArgHelpers.bool(args, "notes") { argv.append(notes ? "--notes" : "--no-notes") }
-                argv += ArgHelpers.optionIfString(args, "account", flagName: "--account")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                argv += ArgHelpers.optionIfDouble(args, "min_confidence", flagName: "--min-confidence")
-                argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
-                argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
-                argv += ArgHelpers.optionIfString(args, "api_key", flagName: "--api-key")
-                argv += ArgHelpers.optionIfString(args, "list", flagName: "--list")
-                argv += ArgHelpers.flagIfTrue(args, "create", flagName: "--create")
-                return argv
-            }
-        ),
-
-        // MARK: System
-
-        MCPTool(
-            name: "status",
-            effect: .readOnly,
-            description: "System dashboard: accounts, events, reminders, permissions.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("status") }
-        ),
-        MCPTool(
-            name: "doctor",
-            effect: .readOnly,
-            description: "Check pippin's system requirements and permissions.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("doctor") }
-        ),
+        MCPToolSpec("digest", .readOnly, "Aggregated daily digest: unread mail, today's calendar events, due and overdue reminders, and recently modified notes.", properties: [
+            .arg("mailLimit", "--mail-limit", as: .integer),
+            .arg("notesLimit", "--notes-limit", "Max recent notes (default: 5).", as: .integer),
+            .arg("calendarDays", "--calendar-days", "Days of upcoming events beyond today (default: 7).", as: .integer),
+        ]),
+        MCPToolSpec("actions_extract", .mutating(verifyWith: "reminders_list"), "Scan recent Sent mail and recently-modified Notes for commitments you made (\"I'll send you…\", \"I'll follow up…\") and emit draft reminders with a confidence score. Read-only by default; set create=true to also create the reminders in a list. Slow (per-batch AI calls): under MCP the AI pass is bounded to ~50s and returns partial results with a timedOut warning: lower limit/days or run via job_run for an exhaustive scan.", properties: [
+            .arg("days", "--days", "Days back to scan (1-90, default 7).", as: .integer),
+            .arg("mail", "--mail"),
+            .arg("notes", "--notes"),
+            .arg("account", "--account"),
+            .arg("limit", "--limit", "Max items to scan per source (default: 50).", as: .integer),
+            .arg("min_confidence", "--min-confidence", "Minimum confidence (0.0-1.0) to include an action (default: 0.5).", as: .number),
+            .arg("provider", "--provider"),
+            .arg("model", "--model"),
+            .arg("api_key", "--api-key", "API key for the Claude provider."),
+            .arg("list", "--list", "Reminder list name to create into (used when create=true)."),
+            .arg("create", "--create", "Create reminders from the extracted actions (side-effecting)."),
+        ]),
+        MCPToolSpec("status", .readOnly, "System dashboard: accounts, events, reminders, permissions."),
+        MCPToolSpec("doctor", .readOnly, "Check pippin's system requirements and permissions."),
 
         // MARK: Jobs (background pippin subprocesses)
 
-        MCPTool(
-            name: "job_run",
-            effect: .mutating(verifyWith: "job_list"),
-            description: "Fork a detached pippin sub-command as a background job. Returns {id, pid, status: \"running\"} immediately; poll via job_show or block via job_wait. Use this for slow work (memos summarize, actions extract) so the caller isn't blocked. The argv must be a command that has an MCP tool of its own; batch and job run cannot be nested.",
-            inputSchema: Schema.object(
-                properties: [
-                    "argv": .object([
-                        "type": .string("array"),
-                        "description": .string("Argv for the pippin child process (e.g. [\"memos\", \"summarize\", \"--all\"])."),
-                        "items": .object(["type": .string("string")]),
-                    ]),
-                ],
-                required: ["argv"]
-            ),
-            buildArgs: { args in
+        MCPToolSpec("job_run", .mutating(verifyWith: "job_list"), "Fork a detached pippin sub-command as a background job. Returns {id, pid, status: \"running\"} immediately; poll via job_show or block via job_wait. Use this for slow work (memos summarize, actions extract) so the caller isn't blocked. The argv must be a command that has an MCP tool of its own; batch and job run cannot be nested.", properties: [
+            .arg("argv", .positional, "Argv for the pippin child process (e.g. [\"memos\", \"summarize\", \"--all\"]).", required: true, emit: .custom { args in
                 guard let argvValue = args?["argv"], case let .array(items) = argvValue else {
                     throw MCPToolArgError.missingRequired("argv")
                 }
@@ -1892,97 +737,44 @@ enum MCPToolRegistry {
                     return s
                 }
                 try MCPCommandPolicy.check(argv)
-                var out = pippinArgv("job", "run")
-                out.append("--")
-                out.append(contentsOf: argv)
-                return out
-            }
-        ),
-        MCPTool(
-            name: "job_show",
-            effect: .readOnly,
-            description: "Show a job's status + stdout/stderr tails. Use prefix match (e.g. first 6 chars) to save tokens. status error with error_code runner_lost means the job's process died without recording a result.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Job id or unambiguous prefix."),
-                    "tail": Schema.integer("Bytes of stdout/stderr to include (default: 4096).", default: 4096),
-                ],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("job", "show")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                argv += ArgHelpers.optionIfInt(args, "tail", flagName: "--tail")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "job_list",
-            effect: .readOnly,
-            description: "List recent background jobs. Filter by status to find only running/failed jobs.",
-            inputSchema: Schema.object(properties: [
-                "limit": Schema.integer("Maximum jobs to return (default: 20).", default: 20),
-                "status": .object([
-                    "type": .string("string"),
-                    "description": .string("Filter: running, done, error, killed."),
-                    "enum": .array(["running", "done", "error", "killed"].map { .string($0) }),
-                ]),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("job", "list")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                argv += ArgHelpers.optionIfString(args, "status", flagName: "--status")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "job_wait",
-            effect: .readOnly,
-            description: "Block until a job reaches a terminal state. Prefer this over polling when you know the job is quick. Returns AgentError.wait_timed_out if deadline hits.",
-            inputSchema: Schema.object(
-                properties: [
-                    "id": Schema.string("Job id or unambiguous prefix."),
-                    "timeout": Schema.integer("Maximum seconds to wait (default and maximum: 50, under the tool-call cap).", default: 50),
-                ],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("job", "wait")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                // Must end before the 60s child cap or the kill loses the job status.
-                argv.append(ArgHelpers.option("--timeout", String(min(ArgHelpers.int(args, "timeout") ?? 50, 50))))
-                return argv
-            }
-        ),
+                return ["--"] + argv
+            }),
+        ]),
+        MCPToolSpec("job_show", .readOnly, "Show a job's status + stdout/stderr tails. Use prefix match (e.g. first 6 chars) to save tokens. status error with error_code runner_lost means the job's process died without recording a result.", properties: [
+            .arg("id", .positional),
+            .arg("tail", "--tail", "Bytes of stdout/stderr to include (default: 4096).", as: .integer),
+        ]),
+        MCPToolSpec("job_list", .readOnly, "List recent background jobs. Filter by status to find only running/failed jobs.", properties: [
+            .arg("limit", "--limit", as: .integer),
+            .arg("status", "--status", "Filter: running, done, error, killed."),
+        ]),
+        MCPToolSpec("job_wait", .readOnly, "Block until a job reaches a terminal state. Prefer this over polling when you know the job is quick. Returns AgentError.wait_timed_out if deadline hits.", properties: [
+            .arg("id", .positional),
+            // Must end before the 60s child cap or the kill loses the job status.
+            .arg("timeout", "--timeout", "Maximum seconds to wait (default and maximum: 50, under the tool-call cap).", as: .integer, default: .int(50), emit: .custom { args in
+                [ArgHelpers.option("--timeout", String(min(ArgHelpers.int(args, "timeout") ?? 50, 50)))]
+            }),
+        ]),
 
         // MARK: Batch (parallel sub-command dispatch)
 
-        MCPTool(
-            name: "batch",
-            effect: .mutating(verifyWith: nil),
-            description: "Run multiple pippin commands concurrently in one call. Use this to fan out (e.g. fetch mail + calendar + reminders simultaneously) instead of sequential tool calls. Each entry's response is its own envelope. An entry must be a command that has an MCP tool of its own (same flags as the CLI); batch and job run cannot be nested, and anything else returns a per-entry error.",
-            inputSchema: Schema.object(
-                properties: [
-                    "entries": .object([
-                        "type": .string("array"),
-                        "description": .string("Array of {cmd, args} entries: each runs as `pippin <cmd> [args...] --format agent`."),
-                        "items": Schema.object(
-                            properties: [
-                                "cmd": Schema.string("Top-level pippin subcommand (e.g. mail, calendar, reminders)."),
-                                "args": .object([
-                                    "type": .string("array"),
-                                    "description": .string("Argv tail passed to the sub-command (e.g. [\"list\", \"--account\", \"icloud\"])."),
-                                    "items": .object(["type": .string("string")]),
-                                ]),
-                            ],
-                            required: ["cmd"]
-                        ),
-                    ]),
-                    "concurrency": Schema.integer("Maximum concurrent sub-commands (default: 4).", default: 4),
-                ],
-                required: ["entries"]
-            ),
-            buildArgs: { args in
+        MCPToolSpec("batch", .mutating(verifyWith: nil), "Run multiple pippin commands concurrently in one call. Use this to fan out (e.g. fetch mail + calendar + reminders simultaneously) instead of sequential tool calls. Each entry's response is its own envelope. An entry must be a command that has an MCP tool of its own (same flags as the CLI); batch and job run cannot be nested, and anything else returns a per-entry error.", properties: [
+            // An array of objects, passed as one JSON string to --entries.
+            .special("entries", schema: .object([
+                "type": .string("array"),
+                "description": .string("Array of {cmd, args} entries: each runs as `pippin <cmd> [args...] --format agent`."),
+                "items": Schema.object(
+                    properties: [
+                        "cmd": Schema.string("Top-level pippin subcommand (e.g. mail, calendar, reminders)."),
+                        "args": .object([
+                            "type": .string("array"),
+                            "description": .string("Argv tail passed to the sub-command (e.g. [\"list\", \"--account\", \"icloud\"])."),
+                            "items": .object(["type": .string("string")]),
+                        ]),
+                    ],
+                    required: ["cmd"]
+                ),
+            ]), required: true, leading: true, emit: .custom { args in
                 guard let entriesValue = args?["entries"] else {
                     throw MCPToolArgError.missingRequired("entries")
                 }
@@ -1990,58 +782,25 @@ enum MCPToolRegistry {
                 guard let json = String(data: data, encoding: .utf8) else {
                     throw MCPToolArgError.wrongType(field: "entries", expected: "JSON-encodable array")
                 }
-                var argv = pippinArgv("batch", "--entries", json)
-                argv += ArgHelpers.optionIfInt(args, "concurrency", flagName: "--concurrency")
-                return argv
-            }
-        ),
+                return ["--entries", json]
+            }),
+            .arg("concurrency", "--concurrency", as: .integer),
+        ]),
 
         // MARK: Safety (policy, action log, undo)
 
-        MCPTool(
-            name: "policy_show",
-            effect: .readOnly,
-            description: "Show the safety policy this server applies: for every tool its rule (allow, deny, confirm) and rate limit, and whether they come from the policy file or the built-in default. Read-only; the policy file can only be edited by the user.",
-            inputSchema: Schema.empty,
-            buildArgs: { _ in pippinArgv("policy", "show") }
-        ),
-        MCPTool(
-            name: "action_log",
-            effect: .readOnly,
-            description: "List the mutating tool calls this server ran or refused, newest first: id, time, tool, arguments (bodies and secrets shown only as length and hash), policy rule, outcome, and whether the action can be undone. Pass an entry's id to undo.",
-            inputSchema: Schema.object(properties: [
-                "limit": Schema.integer("Maximum actions to return (default: 50).", default: 50),
-                "since": Schema.string("Only actions at or after this time: YYYY-MM-DD or ISO 8601."),
-                "tool": Schema.string("Only actions of this tool, e.g. mail_send."),
-                "cursor": Schema.string("Opaque next_cursor from a previous response."),
-                "pageSize": Schema.integer("Rows per page when paginating."),
-                "page": Schema.integer("1-based page number. Ignored when cursor is set."),
-            ]),
-            buildArgs: { args in
-                var argv = pippinArgv("log")
-                argv += ArgHelpers.optionIfInt(args, "pageSize", flagName: "--page-size")
-                argv += ArgHelpers.optionIfInt(args, "page", flagName: "--page")
-                argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
-                argv += ArgHelpers.optionIfString(args, "since", flagName: "--since")
-                argv += ArgHelpers.optionIfString(args, "tool", flagName: "--tool")
-                argv += ArgHelpers.optionIfString(args, "cursor", flagName: "--cursor")
-                return argv
-            }
-        ),
-        MCPTool(
-            name: "undo",
-            effect: .mutating(verifyWith: "action_log"),
-            description: "Reverse one logged action by its id from action_log, where its entry says undo.supported=true (mail move and mark, reminders complete and edit, calendar, notes and contacts edit). Refuses with undo_target_changed if the target was changed since. Sends and deletes cannot be undone.",
-            inputSchema: Schema.object(
-                properties: ["id": Schema.string("Action id from action_log.")],
-                required: ["id"]
-            ),
-            buildArgs: { args in
-                var argv = pippinArgv("undo")
-                try argv.append(ArgHelpers.positional(args, "id"))
-                return argv
-            }
-        ),
+        MCPToolSpec("policy_show", .readOnly, "Show the safety policy this server applies: for every tool its rule (allow, deny, confirm) and rate limit, and whether they come from the policy file or the built-in default. Read-only; the policy file can only be edited by the user."),
+        MCPToolSpec("action_log", .readOnly, "List the mutating tool calls this server ran or refused, newest first: id, time, tool, arguments (bodies and secrets shown only as length and hash), policy rule, outcome, and whether the action can be undone. Pass an entry's id to undo.", properties: [
+            .arg("pageSize", "--page-size", "Rows per page when paginating.", as: .integer),
+            .arg("page", "--page", "1-based page number. Ignored when cursor is set.", as: .integer),
+            .arg("limit", "--limit", as: .integer),
+            .arg("since", "--since"),
+            .arg("tool", "--tool", "Only actions of this tool, e.g. mail_send."),
+            .arg("cursor", "--cursor", "Opaque next_cursor from a previous response."),
+        ]),
+        MCPToolSpec("undo", .mutating(verifyWith: "action_log"), "Reverse one logged action by its id from action_log, where its entry says undo.supported=true (mail move and mark, reminders complete and edit, calendar, notes and contacts edit). Refuses with undo_target_changed if the target was changed since. Sends and deletes cannot be undone.", properties: [
+            .arg("id", .positional, "Action id from action_log."),
+        ]),
     ]
 
     /// Look up a tool by name. Returns nil if unknown.

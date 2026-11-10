@@ -1,0 +1,277 @@
+{
+  "apple-events": {
+    "coverage": 4,
+    "coverage_cells": [
+      10,
+      10
+    ],
+    "apps": 2,
+    "correctness": 4,
+    "correctness_checks": [
+      20,
+      20
+    ],
+    "reliability": 4,
+    "reliability_checks": [
+      20,
+      20
+    ],
+    "speed": 1,
+    "safety_input": 4,
+    "safety_checks": [
+      48,
+      48
+    ],
+    "dealbreaker": false
+  },
+  "apple-pim": {
+    "coverage": 3,
+    "coverage_cells": [
+      19,
+      20
+    ],
+    "apps": 4,
+    "correctness": 3,
+    "correctness_checks": [
+      34,
+      35
+    ],
+    "reliability": 4,
+    "reliability_checks": [
+      42,
+      42
+    ],
+    "speed": 2,
+    "safety_input": 4,
+    "safety_checks": [
+      72,
+      72
+    ],
+    "dealbreaker": false
+  },
+  "imsg": {
+    "coverage": 4,
+    "coverage_cells": [
+      3,
+      3
+    ],
+    "apps": 1,
+    "correctness": 2,
+    "correctness_checks": [
+      2,
+      3
+    ],
+    "reliability": 3,
+    "reliability_checks": [
+      9,
+      10
+    ],
+    "speed": 1,
+    "safety_input": 4,
+    "safety_checks": [
+      24,
+      24
+    ],
+    "dealbreaker": false
+  },
+  "mac-messages": {
+    "coverage": 4,
+    "coverage_cells": [
+      3,
+      3
+    ],
+    "apps": 1,
+    "correctness": null,
+    "correctness_checks": [
+      0,
+      0
+    ],
+    "reliability": 3,
+    "reliability_checks": [
+      9,
+      10
+    ],
+    "speed": 2,
+    "safety_input": 4,
+    "safety_checks": [
+      24,
+      24
+    ],
+    "dealbreaker": false
+  },
+  "memo": {
+    "coverage": 1,
+    "coverage_cells": [
+      3,
+      13
+    ],
+    "apps": 2,
+    "correctness": 2,
+    "correctness_checks": [
+      6,
+      7
+    ],
+    "reliability": 2,
+    "reliability_checks": [
+      9,
+      11
+    ],
+    "speed": 1,
+    "safety_input": null,
+    "safety_checks": [
+      0,
+      0
+    ],
+    "dealbreaker": false
+  },
+  "pf-mail": {
+    "coverage": 4,
+    "coverage_cells": [
+      4,
+      4
+    ],
+    "apps": 1,
+    "correctness": 4,
+    "correctness_checks": [
+      6,
+      6
+    ],
+    "reliability": 4,
+    "reliability_checks": [
+      12,
+      12
+    ],
+    "speed": 2,
+    "safety_input": null,
+    "safety_checks": [
+      0,
+      0
+    ],
+    "dealbreaker": false
+  },
+  "pippin": {
+    "coverage": 4,
+    "coverage_cells": [
+      28,
+      28
+    ],
+    "apps": 7,
+    "correctness": 4,
+    "correctness_checks": [
+      54,
+      54
+    ],
+    "reliability": 4,
+    "reliability_checks": [
+      65,
+      65
+    ],
+    "speed": 3,
+    "safety_input": 4,
+    "safety_checks": [
+      120,
+      120
+    ],
+    "dealbreaker": false
+  },
+  "remindctl": {
+    "coverage": 4,
+    "coverage_cells": [
+      5,
+      5
+    ],
+    "apps": 1,
+    "correctness": 4,
+    "correctness_checks": [
+      10,
+      10
+    ],
+    "reliability": 4,
+    "reliability_checks": [
+      10,
+      10
+    ],
+    "speed": 1,
+    "safety_input": 4,
+    "safety_checks": [
+      24,
+      24
+    ],
+    "dealbreaker": false
+  },
+  "reminders-cli": {
+    "coverage": 2,
+    "coverage_cells": [
+      4,
+      5
+    ],
+    "apps": 1,
+    "correctness": 4,
+    "correctness_checks": [
+      7,
+      7
+    ],
+    "reliability": 4,
+    "reliability_checks": [
+      7,
+      7
+    ],
+    "speed": 1,
+    "safety_input": null,
+    "safety_checks": [
+      0,
+      0
+    ],
+    "dealbreaker": false
+  },
+  "sweetrb-mail": {
+    "coverage": 4,
+    "coverage_cells": [
+      4,
+      4
+    ],
+    "apps": 1,
+    "correctness": 2,
+    "correctness_checks": [
+      5,
+      6
+    ],
+    "reliability": 4,
+    "reliability_checks": [
+      12,
+      12
+    ],
+    "speed": 2,
+    "safety_input": null,
+    "safety_checks": [
+      0,
+      0
+    ],
+    "dealbreaker": false
+  },
+  "sweetrb-notes": {
+    "coverage": 4,
+    "coverage_cells": [
+      5,
+      5
+    ],
+    "apps": 1,
+    "correctness": 4,
+    "correctness_checks": [
+      9,
+      9
+    ],
+    "reliability": 4,
+    "reliability_checks": [
+      10,
+      10
+    ],
+    "speed": 3,
+    "safety_input": 4,
+    "safety_checks": [
+      24,
+      24
+    ],
+    "dealbreaker": false
+  }
+}

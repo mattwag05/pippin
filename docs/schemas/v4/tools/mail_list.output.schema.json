@@ -27,8 +27,6 @@
           "required" : [
             "mimeType",
             "name",
-            "saveError",
-            "savedPath",
             "size"
           ],
           "type" : "object"

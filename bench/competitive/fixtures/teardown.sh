@@ -22,6 +22,9 @@ echo "teardown: notes"
 limit 180 osascript -l JavaScript "$HERE/notes.js" teardown "$STATE" || rc=1
 echo "teardown: Messages store"
 limit 60 python3 "$HERE/make_chatdb.py" restore || rc=1
+echo "teardown: mail and voice memos (when seeded)"
+if [ -d "$HOME/bench-mail/maildir" ]; then limit 180 python3 "$HERE/make_mail.py" restore || rc=1; fi
+limit 60 python3 "$HERE/make_memos.py" restore 2>/dev/null || true
 python3 - "$STATE" <<'PY' || rc=1
 import json, os, sqlite3, sys
 m = json.load(open(sys.argv[1], encoding="utf-8"))["messages"]

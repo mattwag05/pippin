@@ -1,0 +1,177 @@
+{
+  "tool": "mac-messages",
+  "version": "1.1.0",
+  "kind": "mcp",
+  "apps": [
+    "messages"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 191.99,
+    "tool_count": 11,
+    "manifest_chars": 12809,
+    "manifest_tokens": 3437,
+    "tools_with_description": 11,
+    "tools_with_annotations": 0
+  },
+  "speed": {
+    "messages.chats": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 243.89,
+        "p50_ms": 251.47,
+        "p95_ms": 254.91,
+        "max_ms": 254.91
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 1.01,
+        "p50_ms": 1.08,
+        "p95_ms": 1.29,
+        "max_ms": 1.33
+      }
+    },
+    "messages.history": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 272.35,
+        "p50_ms": 277.11,
+        "p95_ms": 281.91,
+        "max_ms": 281.91
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 24.58,
+        "p50_ms": 25.76,
+        "p95_ms": 28.72,
+        "max_ms": 28.92
+      }
+    },
+    "messages.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 283.67,
+        "p50_ms": 323.1,
+        "p95_ms": 360.69,
+        "max_ms": 360.69
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 24.38,
+        "p50_ms": 25.35,
+        "p95_ms": 26.94,
+        "max_ms": 32.65
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "messages.chats": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "messages.history": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": null
+      },
+      "messages.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": null
+      }
+    },
+    "bad_input": {
+      "messages.history": {
+        "outcome": "ok",
+        "ms": 279.5,
+        "error_is_structured": false,
+        "detail": "<untrusted-mcp-output>\nNo group chat found with chat_id '999999999'. Use tool_get_chats to list available group chats.\n</untrusted-mcp-output>"
+      }
+    }
+  },
+  "coverage": {
+    "reminders.lists": "no",
+    "reminders.list": "no",
+    "reminders.search": "no",
+    "reminders.create": "no",
+    "reminders.edit": "no",
+    "reminders.complete": "no",
+    "reminders.delete": "no",
+    "calendar.calendars": "no",
+    "calendar.events": "no",
+    "calendar.search": "no",
+    "calendar.create": "no",
+    "calendar.edit": "no",
+    "calendar.delete": "no",
+    "contacts.list": "no",
+    "contacts.search": "no",
+    "contacts.show": "no",
+    "contacts.create": "no",
+    "contacts.edit": "no",
+    "contacts.delete": "no",
+    "contacts.groups": "no",
+    "notes.folders": "no",
+    "notes.list": "no",
+    "notes.search": "no",
+    "notes.show": "no",
+    "notes.create": "no",
+    "notes.edit": "no",
+    "notes.delete": "no",
+    "messages.chats": "yes",
+    "messages.history": "yes",
+    "messages.search": "yes",
+    "messages.send": "claimed",
+    "mail.accounts": "no",
+    "mail.mailboxes": "no",
+    "mail.list": "no",
+    "mail.search": "no",
+    "mail.show": "no",
+    "mail.send": "no",
+    "mail.move": "no",
+    "mail.mark": "no",
+    "mail.attachments": "no",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}

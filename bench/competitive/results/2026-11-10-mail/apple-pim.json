@@ -1,0 +1,387 @@
+{
+  "tool": "apple-pim",
+  "version": "3.19.2",
+  "kind": "mcp",
+  "apps": [
+    "reminders",
+    "calendar",
+    "contacts",
+    "mail"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 83.08,
+    "tool_count": 5,
+    "manifest_chars": 22782,
+    "manifest_tokens": 7823,
+    "tools_with_description": 5,
+    "tools_with_annotations": 0
+  },
+  "speed": {
+    "reminders.lists": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 119.86,
+        "p50_ms": 121.64,
+        "p95_ms": 128.18,
+        "max_ms": 128.18
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 39.25,
+        "p50_ms": 39.98,
+        "p95_ms": 42.49,
+        "max_ms": 42.51
+      }
+    },
+    "reminders.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 120.87,
+        "p50_ms": 124.71,
+        "p95_ms": 133.44,
+        "max_ms": 133.44
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 43.58,
+        "p50_ms": 44.93,
+        "p95_ms": 45.67,
+        "max_ms": 45.81
+      }
+    },
+    "reminders.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 122.38,
+        "p50_ms": 125.24,
+        "p95_ms": 125.84,
+        "max_ms": 125.84
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 41.84,
+        "p50_ms": 43.04,
+        "p95_ms": 44.77,
+        "max_ms": 45.21
+      }
+    },
+    "calendar.calendars": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 116.57,
+        "p50_ms": 117.35,
+        "p95_ms": 130.78,
+        "max_ms": 130.78
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 38.93,
+        "p50_ms": 39.34,
+        "p95_ms": 41.16,
+        "max_ms": 41.23
+      }
+    },
+    "calendar.events": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 130.58,
+        "p50_ms": 135.75,
+        "p95_ms": 138.75,
+        "max_ms": 138.75
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 53.98,
+        "p50_ms": 56.17,
+        "p95_ms": 57.52,
+        "max_ms": 57.57
+      }
+    },
+    "calendar.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 125.47,
+        "p50_ms": 130.5,
+        "p95_ms": 132.98,
+        "max_ms": 132.98
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 44.49,
+        "p50_ms": 46.0,
+        "p95_ms": 48.67,
+        "max_ms": 49.6
+      }
+    },
+    "contacts.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 194.81,
+        "p50_ms": 198.25,
+        "p95_ms": 211.13,
+        "max_ms": 211.13
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 112.61,
+        "p50_ms": 115.46,
+        "p95_ms": 118.09,
+        "max_ms": 120.29
+      }
+    },
+    "contacts.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 226.03,
+        "p50_ms": 229.49,
+        "p95_ms": 238.34,
+        "max_ms": 238.34
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 145.5,
+        "p50_ms": 148.76,
+        "p95_ms": 169.09,
+        "max_ms": 218.9
+      }
+    },
+    "contacts.groups": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 138.94,
+        "p50_ms": 142.66,
+        "p95_ms": 152.81,
+        "max_ms": 152.81
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 59.72,
+        "p50_ms": 62.56,
+        "p95_ms": 64.94,
+        "max_ms": 65.39
+      }
+    },
+    "mail.accounts": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 249.56,
+        "p50_ms": 311.95,
+        "p95_ms": 320.97,
+        "max_ms": 320.97
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 200.67,
+        "p50_ms": 227.49,
+        "p95_ms": 235.23,
+        "max_ms": 236.1
+      }
+    },
+    "mail.mailboxes": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 81.92,
+        "p50_ms": 89.66,
+        "p95_ms": 108.76,
+        "max_ms": 108.76
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 6.09,
+        "p50_ms": 6.52,
+        "p95_ms": 8.82,
+        "max_ms": 9.16
+      }
+    },
+    "mail.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 90.22,
+        "p50_ms": 91.24,
+        "p95_ms": 97.13,
+        "max_ms": 97.13
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 9.48,
+        "p50_ms": 9.95,
+        "p95_ms": 10.41,
+        "max_ms": 12.34
+      }
+    },
+    "mail.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 89.78,
+        "p50_ms": 94.22,
+        "p95_ms": 98.56,
+        "max_ms": 98.56
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 8.63,
+        "p50_ms": 9.07,
+        "p95_ms": 10.99,
+        "max_ms": 11.54
+      }
+    }
+  }
+}

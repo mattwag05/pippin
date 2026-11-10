@@ -1,0 +1,138 @@
+{
+  "tool": "pippin",
+  "version": "pippin 1.0.0 (mail accounts cache)",
+  "correctness": {
+    "reminders.list": {
+      "outcome": "ok",
+      "expected": 24,
+      "returned": 24,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": [],
+      "dates": {
+        "checked": 21,
+        "wrong": [],
+        "unparsed": 0
+      }
+    },
+    "calendar.events": {
+      "outcome": "ok",
+      "expected": 28,
+      "returned": 28,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": [],
+      "dates": {
+        "checked": 27,
+        "wrong": [],
+        "unparsed": 0
+      }
+    },
+    "contacts.list": {
+      "outcome": "ok",
+      "expected": 25,
+      "returned": 26,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "contacts.search": {
+      "outcome": "ok",
+      "expected": 25,
+      "returned": 25,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "notes.list": {
+      "outcome": "ok",
+      "expected": 27,
+      "returned": 27,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "reminders.search": {
+      "outcome": "ok",
+      "expected": 1,
+      "returned": 1,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "calendar.search": {
+      "outcome": "ok",
+      "expected": 3,
+      "returned": 3,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "notes.search": {
+      "outcome": "ok",
+      "expected": 1,
+      "returned": 1,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "messages.history": {
+      "outcome": "ok",
+      "expected": 50,
+      "returned": 50,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": [],
+      "outgoing_with_recipient_as_sender": 0
+    },
+    "mail.list": {
+      "outcome": "ok",
+      "expected": 20,
+      "returned": 20,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "mail.search": {
+      "outcome": "ok",
+      "expected": 6,
+      "returned": 6,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "memos.list": {
+      "outcome": "ok",
+      "expected": 12,
+      "returned": 12,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    },
+    "messages.chats": {
+      "outcome": "ok",
+      "chats": {
+        "chat-a": {
+          "found": true,
+          "expected_unread": 2,
+          "reported_unread": 2
+        },
+        "chat-b": {
+          "found": true,
+          "expected_unread": 0,
+          "reported_unread": 0
+        },
+        "chat-c": {
+          "found": true,
+          "expected_unread": 5,
+          "reported_unread": 5
+        },
+        "chat-d": {
+          "found": true,
+          "expected_unread": 2,
+          "reported_unread": 2
+        }
+      }
+    }
+  }
+}

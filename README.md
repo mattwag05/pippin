@@ -38,13 +38,13 @@ Any MCP client works; the JSON form is in [docs/agent-integration.md](docs/agent
 
 A head-to-head against the most-used open-source Apple automation tools and MCP servers, run in a disposable VM against a seeded fixture, with the method committed before any result ([results](docs/competitive/results.md), [method](docs/competitive/methodology.md)):
 
-- **Coverage:** 5 apps scored (Reminders, Calendar, Contacts, Notes, Messages), every probed operation answered. The next widest tool covers 3.
-- **Correctness and reliability:** 45 of 45 correctness checks and 50 of 50 reliability checks passed.
-- **Speed:** fastest on 12 of 15 read operations warm, tied on a 13th, and fastest on all 15 cold. It loses to sweetrb/apple-notes-mcp on Notes list and search when warm (232 ms and 250 ms against 150 ms and 183 ms).
-- **Agent tasks:** with `--apps`, the fewest model tokens on all three tasks (11k to 21k). With all tools exposed it is the most expensive (84k to 88k).
+- **Coverage:** 7 apps scored (Reminders, Calendar, Contacts, Notes, Messages, Mail, Voice Memos), every probed operation answered. The next widest tool covers 4.
+- **Correctness and reliability:** 54 of 54 correctness checks and 65 of 65 reliability checks passed.
+- **Speed:** with Mail and Voice Memos measured, fastest on 15 of 19 read operations warm and tied on the other 4, and fastest or tied on all 19 cold. Mail list and search take 2.4 and 1.6 ms against 8.5 and 7.7 ms for apple-pim. Every scored axis is 4 in one run of `bench/competitive/run.sh` from a clean checkout ([run](bench/competitive/results/2026-11-10-final/summary.md), [results](docs/competitive/results.md#speed)).
+- **Agent tasks:** with `--apps`, the fewest model tokens on all three tasks (11k to 21k). With all tools exposed it is the most expensive (84k to 88k) ([agent tasks](docs/competitive/results.md#agent-tasks), [run](bench/competitive/results/2026-11-10-tasks)).
 - **Safety:** the only measured tool with confirm tokens, rate limits, an action log, undo and untrusted-content marking together ([guardrail matrix](docs/competitive/results.md#safety-and-guardrails)).
 
-Where pippin trails is listed first on the [results page](docs/competitive/results.md#where-pippin-trails). Mail and Voice Memos were not measured for any tool.
+Where pippin trails is listed first on the [results page](docs/competitive/results.md#where-pippin-trails). Mail and Voice Memos writes, and iMCP, were not run.
 
 ## Safety model
 
@@ -148,6 +148,8 @@ pippin mail send --to you@example.com --subject Hello --body "Hi" --dry-run  # a
 ```
 
 ## Commands
+
+Examples by app follow. Every command, with its help text, is in [docs/cli-reference.md](docs/cli-reference.md), generated from the command definitions.
 
 ### Mail
 
@@ -425,7 +427,7 @@ pippin mcp-server                    # JSON-RPC over stdin and stdout
 pippin mcp-server --list-tools       # print the registered tools as JSON
 ```
 
-The 79 tools cover mail, calendar, reminders, contacts, notes, voice memos, Messages, `actions_extract`, `status`, `doctor`, `digest`, `batch` for parallel calls, `job_*` for background work, and the safety tools `policy_show`, `action_log` and `undo`. `--apps calendar,reminders` lists only the groups you name. Sends and deletes return a preview and a confirm token on the first call ([safety model](docs/safety-model.md)). `messages_send` can only draft. Calendar, Reminders, Contacts and Messages reads run inside the server, and everything else runs in a child process. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring and the full tool list, and [`docs/agent-integration.md`](docs/agent-integration.md) for how an agent should read the results.
+The 79 tools cover mail, calendar, reminders, contacts, notes, voice memos, Messages, `actions_extract`, `status`, `doctor`, `digest`, `batch` for parallel calls, `job_*` for background work, and the safety tools `policy_show`, `action_log` and `undo`. `--apps calendar,reminders` lists only the groups you name. Sends and deletes return a preview and a confirm token on the first call ([safety model](docs/safety-model.md)). `messages_send` can only draft. Calendar, Reminders, Contacts, Messages and Notes reads run inside the server, and everything else runs in a child process. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring and the full tool list, and [`docs/agent-integration.md`](docs/agent-integration.md) for how an agent should read the results.
 
 ## Architecture
 

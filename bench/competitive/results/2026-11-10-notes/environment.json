@@ -1,0 +1,12 @@
+{
+  "date_utc": "2026-11-10T16:45:33Z",
+  "hardware_model": "VirtualMac2,1",
+  "chip": "Apple M5 Pro (Virtual)",
+  "memory_bytes": "8589934592",
+  "macos_version": "26.6.2",
+  "macos_build": "25G83",
+  "python": "3.14.7",
+  "node": "v24.21.0",
+  "swift": "Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
+  "methodology_commit": ""
+}
