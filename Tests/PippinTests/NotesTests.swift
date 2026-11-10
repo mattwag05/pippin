@@ -445,6 +445,47 @@ final class NotesTests: XCTestCase {
         )
     }
 
+    // MARK: - Write lock (RT-30)
+
+    /// Each closure does what `notes edit --append` does: read, wait, write
+    /// back read + 1. Unserialized, concurrent runs overwrite each other.
+    func testWriteLockSerializesConcurrentReadModifyWrites() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pippin-notes-lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let lockPath = dir.appendingPathComponent("nested/notes-write.lock").path
+        nonisolated(unsafe) var body = 0
+        nonisolated(unsafe) var failures = 0
+        let writers = 5
+        DispatchQueue.concurrentPerform(iterations: writers) { _ in
+            do {
+                try NotesBridge.withWriteLock(path: lockPath) {
+                    let read = body
+                    usleep(20000)
+                    body = read + 1
+                }
+            } catch {
+                failures += 1
+            }
+        }
+        XCTAssertEqual(failures, 0)
+        XCTAssertEqual(body, writers, "every append must survive")
+    }
+
+    func testWriteLockReleasesAfterAThrowingWrite() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pippin-notes-lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let lockPath = dir.appendingPathComponent("notes-write.lock").path
+        XCTAssertThrowsError(try NotesBridge.withWriteLock(path: lockPath) { throw NotesBridgeError.timeout })
+        // A stuck lock would hang here, not fail.
+        XCTAssertEqual(try NotesBridge.withWriteLock(path: lockPath) { 7 }, 7)
+    }
+
+    func testWriteLockFailsClosedWhenTheLockFileCannotBeOpened() {
+        var ran = false
+        XCTAssertThrowsError(try NotesBridge.withWriteLock(path: "/dev/null/notes-write.lock") { ran = true })
+        XCTAssertFalse(ran, "no write without the lock")
+    }
+
     func testBuildListFoldersScriptContainsFolders() {
         let script = NotesBridge.buildListFoldersScript()
         XCTAssertTrue(

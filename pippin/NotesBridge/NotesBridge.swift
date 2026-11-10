@@ -61,7 +61,7 @@ enum NotesBridge {
 
     static func createNote(title: String, body: String? = nil, folder: String? = nil, html: Bool = false) throws -> BridgeActionResult {
         let script = buildCreateScript(title: title, body: body, folder: folder, html: html)
-        let json = try runScript(script, timeoutSeconds: 20)
+        let json = try withWriteLock { try runScript(script, timeoutSeconds: 20) }
         return try decode(BridgeActionResult.self, from: json)
     }
 
@@ -70,14 +70,42 @@ enum NotesBridge {
         dryRun: Bool = false
     ) throws -> NoteEditResult {
         let script = buildEditScript(id: id, title: title, body: body, append: append, html: html, dryRun: dryRun)
-        let json = try runScript(script, timeoutSeconds: 20)
+        let json = try withWriteLock { try runScript(script, timeoutSeconds: 20) }
         return try decode(NoteEditResult.self, from: json)
     }
 
     static func deleteNote(id: String) throws -> BridgeActionResult {
         let script = buildDeleteScript(id: id)
-        let json = try runScript(script, timeoutSeconds: 20)
+        let json = try withWriteLock { try runScript(script, timeoutSeconds: 20) }
         return try decode(BridgeActionResult.self, from: json)
+    }
+
+    // MARK: - Write lock
+
+    static let writeLockPath = NSHomeDirectory() + "/.config/pippin/notes-write.lock"
+
+    /// Run a Notes write while holding an exclusive advisory lock, so
+    /// concurrent pippin processes take turns. An append is a read-modify-write
+    /// across two Apple Events; five parallel appends all reported success and
+    /// one survived (RT-30). The lock only orders pippin's own writes: an edit
+    /// made in the Notes app, or a sync, can still land between the read and
+    /// the write. The wait is unbounded here; each holder is bounded by its
+    /// script timeout and the kernel drops the lock when a holder exits.
+    static func withWriteLock<T>(path: String = writeLockPath, _ body: () throws -> T) throws -> T {
+        try? FileManager.default.createDirectory(
+            atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true
+        )
+        let fd = open(path, O_CREAT | O_RDWR, 0o600)
+        guard fd >= 0 else {
+            throw NotesBridgeError.scriptFailed("Could not open the Notes write lock at \(path); nothing was written.")
+        }
+        defer { close(fd) } // closing the descriptor releases the lock
+        while flock(fd, LOCK_EX) != 0 {
+            guard errno == EINTR else {
+                throw NotesBridgeError.scriptFailed("Could not take the Notes write lock at \(path); nothing was written.")
+            }
+        }
+        return try body()
     }
 
     // MARK: - JXA Helpers
