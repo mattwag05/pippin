@@ -28,6 +28,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] `doctor` names failed checks in `warnings`; the MCP `doctor` tool no longer reports a failed check as a tool error (the CLI still exits 1). Closes pippin-i114.
 - [bug] `mail list` and `mail search` `--after` / `--before` are whole days in the local time zone, and `--before` includes its own day.
 - [bug] Compound message ids accept only ASCII digits.
+- [bug] `calendar edit`/`delete` on a recurring event now act on the occurrence you name with `--occurrence` (rows carry `isRecurring` and `occurrenceDate`) instead of the series' first occurrence, and refuse with `occurrence_required` when none is given; `--span all` targets the whole series. Closes pippin-t8iq.
+- [feat] `calendar show` accepts `--occurrence` to show one occurrence of a recurring event.
+- [bug] An ambiguous calendar ID prefix now returns `ambiguous_id` with the match count instead of `event_not_found`, and calendar edit/delete and reminders edit/complete/delete require the full ID or a unique prefix of at least 8 characters. Closes pippin-78y5.
+- [bug] `notes edit --append` no longer replaces the note when reading its current body fails; the edit aborts with nothing written. Closes pippin-lwci.
+- [feat] `notes edit --dry-run` reports the title, current body length and resulting body length without writing, and every edit result now includes `previousBodyLength` and `newBodyLength`.
+- [bug] `notes edit` and `notes delete` refuse a note that is already in Recently Deleted (`note_in_trash`); a second delete used to purge it permanently. The check matches the English folder name only.
+- [bug] `notes create --folder` with a folder that does not exist now fails with `folder_not_found` instead of silently using the default folder.
+- [bug] Concurrent `notes create`/`edit`/`delete` calls from pippin are serialized, so parallel appends no longer overwrite each other. Closes pippin-bm9s.
+- [bug] `memos delete` moves the audio file to the Trash before removing the recording, refuses while Voice Memos is running, and no longer matches wildcard or empty IDs. Closes pippin-cdv0.
+- [feat] `memos delete --dry-run` shows which recording an ID names without changing anything.
+
+### Performance
+
+- [perf] `notes list`, `notes search` and `notes folders` read Notes in bulk: on one 50-note vault a default list went from about 12.8 s to 0.3 s, a no-match search from 22 s (partial) to 0.3 s (complete), and folders from 1.6 s to 0.2 s. Closes pippin-f8p6.
 
 ---
 
