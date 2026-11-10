@@ -279,7 +279,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             abstract: "Edit an existing calendar event."
         )
 
-        @Argument(help: "Event ID or prefix to edit.")
+        @Argument(help: "Event ID, or a unique prefix of at least 8 characters, to edit.")
         public var id: String
 
         @Option(name: .long, help: "New title.")
@@ -366,7 +366,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             abstract: "Delete a calendar event."
         )
 
-        @Argument(help: "Event ID or prefix to delete.")
+        @Argument(help: "Event ID, or a unique prefix of at least 8 characters, to delete.")
         public var id: String
 
         @Flag(name: .long, help: "Required: confirm deletion without a prompt.")

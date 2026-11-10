@@ -6,7 +6,8 @@ public enum CalendarBridgeError: LocalizedError, Sendable {
     case eventNotFound(String)
     case calendarNotFound(String)
     case saveFailed(String)
-    case ambiguousId(String)
+    case ambiguousId(String, count: Int)
+    case idPrefixTooShort(String)
     case dateParseError(String)
     case aiParseError(String)
 
@@ -31,8 +32,11 @@ public enum CalendarBridgeError: LocalizedError, Sendable {
             return "Calendar not found: \(id)"
         case let .saveFailed(msg):
             return "Failed to save event: \(msg)"
-        case let .ambiguousId(id):
-            return "Ambiguous ID prefix '\(id)' — matches multiple events. Use more characters."
+        case let .ambiguousId(id, count):
+            return "Ambiguous ID prefix '\(id)': matches \(count) events. Use more characters or the full ID."
+        case let .idPrefixTooShort(id):
+            return "ID prefix '\(id)' is too short to edit or delete an event. "
+                + "Use the full ID or at least \(IDPrefix.minimumMutatingLength) characters of it."
         case let .dateParseError(value):
             return "Could not parse date from AI response: \(value)"
         case let .aiParseError(detail):
@@ -49,6 +53,7 @@ extension CalendarBridgeError: RemediableError {
         case .calendarNotFound: return "calendar_not_found"
         case .saveFailed: return "save_failed"
         case .ambiguousId: return "ambiguous_id"
+        case .idPrefixTooShort: return "invalid_id_prefix"
         case .dateParseError: return "date_parse_error"
         case .aiParseError: return "ai_parse_error"
         }
@@ -58,7 +63,7 @@ extension CalendarBridgeError: RemediableError {
         switch self {
         case .accessDenied:
             return .human("Run `pippin permissions` in a terminal and approve Calendar access.")
-        case .eventNotFound, .ambiguousId:
+        case .eventNotFound, .ambiguousId, .idPrefixTooShort:
             return .call(tool: "calendar_events", argv: ["calendar", "events"])
         case .calendarNotFound:
             return .call(tool: "calendar_list", argv: ["calendar", "list"])
@@ -235,10 +240,7 @@ public final class CalendarBridge: @unchecked Sendable {
 
     public func getEvent(id: String) async throws -> CalendarEvent {
         try await ensureAccess()
-        guard let event = findEventByPrefix(id: id) else {
-            throw CalendarBridgeError.eventNotFound(id)
-        }
-        return mapEvent(event)
+        return try mapEvent(findEvent(id: id, minimumPrefixLength: 0))
     }
 
     // MARK: - CRUD
@@ -299,9 +301,7 @@ public final class CalendarBridge: @unchecked Sendable {
         span: EKSpan = .thisEvent
     ) async throws -> BridgeActionResult {
         try await ensureAccess()
-        guard let event = findEventByPrefix(id: id) else {
-            throw CalendarBridgeError.eventNotFound(id)
-        }
+        let event = try findEvent(id: id, minimumPrefixLength: IDPrefix.minimumMutatingLength)
         if let title { event.title = title }
         if let start { event.startDate = start }
         if let end { event.endDate = end }
@@ -332,9 +332,7 @@ public final class CalendarBridge: @unchecked Sendable {
 
     public func deleteEvent(id: String, span: EKSpan = .thisEvent) async throws -> BridgeActionResult {
         try await ensureAccess()
-        guard let event = findEventByPrefix(id: id) else {
-            throw CalendarBridgeError.eventNotFound(id)
-        }
+        let event = try findEvent(id: id, minimumPrefixLength: IDPrefix.minimumMutatingLength)
         let savedTitle = event.title ?? ""
         let savedId = event.calendarItemIdentifier
         do {
@@ -376,7 +374,10 @@ public final class CalendarBridge: @unchecked Sendable {
             + "--calendar takes IDs from 'pippin calendar list'; pass that ID (or use --calendar-name where available)."
     }
 
-    private func findEventByPrefix(id: String) -> EKEvent? {
+    /// The event an id or id prefix names. A prefix that matches more than one
+    /// distinct event is `ambiguous_id`, never a guess and never "not found";
+    /// mutating callers also pass a minimum prefix length (RC-16).
+    private func findEvent(id: String, minimumPrefixLength: Int) throws -> EKEvent {
         // Direct lookup first (exact identifier)
         if let event = store.calendarItem(withIdentifier: id) as? EKEvent {
             return event
@@ -390,26 +391,27 @@ public final class CalendarBridge: @unchecked Sendable {
         // Bounded fetch: a 15s cap here just yields a partial set to match
         // against (→ not-found), so the flag isn't surfaced — same rationale as
         // RemindersBridge.findReminderByPrefix.
-        let matches = fetchEventsSync(predicate: predicate).events
-            .filter { $0.calendarItemIdentifier.hasPrefix(id) }
-        // A recurring event surfaces one EKEvent per occurrence, all sharing the
-        // same calendarItemIdentifier — so count alone would treat a single
-        // repeating event as ambiguous and return nil. Accept when exactly one
-        // DISTINCT event matches the prefix (return its first occurrence); only
-        // genuinely different identifiers are ambiguous.
-        guard Self.isUnambiguousPrefixMatch(matches.map(\.calendarItemIdentifier)) else {
-            return nil
+        let candidates = fetchEventsSync(predicate: predicate).events
+        let fullId = try Self.resolveEventId(
+            id, among: candidates.map(\.calendarItemIdentifier), minimumPrefixLength: minimumPrefixLength
+        )
+        // A recurring event surfaces one EKEvent per occurrence, all sharing
+        // the same calendarItemIdentifier; any of them stands for the event.
+        guard let event = candidates.first(where: { $0.calendarItemIdentifier == fullId }) else {
+            throw CalendarBridgeError.eventNotFound(id)
         }
-        return matches.first
+        return event
     }
 
-    /// A prefix resolves to a single event iff the matching occurrences all
-    /// share one distinct `calendarItemIdentifier`. Recurring events produce
-    /// many occurrences with the same identifier (one event); two different
-    /// identifiers mean the prefix is genuinely ambiguous. Pure helper so the
-    /// recurring-vs-ambiguous logic is unit-testable without an EKEventStore.
-    static func isUnambiguousPrefixMatch(_ identifiers: [String]) -> Bool {
-        !identifiers.isEmpty && Set(identifiers).count == 1
+    /// Map a prefix lookup onto the typed errors. Pure so the ambiguous and
+    /// too-short cases are unit-testable without an EKEventStore.
+    static func resolveEventId(_ id: String, among identifiers: [String], minimumPrefixLength: Int) throws -> String {
+        switch IDPrefix.resolve(id, among: identifiers, minimumLength: minimumPrefixLength) {
+        case let .unique(fullId): return fullId
+        case .notFound: throw CalendarBridgeError.eventNotFound(id)
+        case let .ambiguous(count): throw CalendarBridgeError.ambiguousId(id, count: count)
+        case .tooShort: throw CalendarBridgeError.idPrefixTooShort(id)
+        }
     }
 
     private func mapEvent(_ event: EKEvent) -> CalendarEvent {

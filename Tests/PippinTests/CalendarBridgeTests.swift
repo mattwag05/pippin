@@ -3,25 +3,71 @@ import EventKit
 import XCTest
 
 final class CalendarBridgeTests: XCTestCase {
-    // MARK: - Prefix match disambiguation (recurring events)
+    // MARK: - ID prefix resolution (RC-16)
 
-    func testPrefixMatchSingleEventIsUnambiguous() {
-        XCTAssertTrue(CalendarBridge.isUnambiguousPrefixMatch(["ABC123"]))
+    private let uuidA = "4F2A9C10-1111-4AAA-8AAA-000000000001"
+    private let uuidB = "4F2A9C10-2222-4BBB-8BBB-000000000002"
+
+    func testPrefixResolvesSingleEvent() throws {
+        XCTAssertEqual(
+            try CalendarBridge.resolveEventId("4F2A9C10-1", among: [uuidA, uuidB], minimumPrefixLength: 8), uuidA
+        )
     }
 
-    func testPrefixMatchRecurringOccurrencesAreUnambiguous() {
-        // A recurring event yields many occurrences sharing one identifier —
-        // this is a single event, not an ambiguous prefix. (Regression: the
-        // old count==1 check wrongly returned nil here.)
-        XCTAssertTrue(CalendarBridge.isUnambiguousPrefixMatch(["EVT/0", "EVT/0", "EVT/0"]))
+    func testPrefixOfRecurringOccurrencesIsOneEvent() throws {
+        // A recurring event yields many occurrences sharing one identifier:
+        // one event, not an ambiguous prefix.
+        XCTAssertEqual(
+            try CalendarBridge.resolveEventId("4F2A9C10-1", among: [uuidA, uuidA, uuidA], minimumPrefixLength: 8), uuidA
+        )
     }
 
-    func testPrefixMatchDistinctIdentifiersAreAmbiguous() {
-        XCTAssertFalse(CalendarBridge.isUnambiguousPrefixMatch(["EVT/0", "OTHER/9"]))
+    func testAmbiguousPrefixThrowsAmbiguousIdWithCount() {
+        XCTAssertThrowsError(
+            try CalendarBridge.resolveEventId("4F2A9C10", among: [uuidA, uuidA, uuidB], minimumPrefixLength: 8)
+        ) { error in
+            guard case let CalendarBridgeError.ambiguousId(id, count) = error else {
+                return XCTFail("Expected ambiguousId, got \(error)")
+            }
+            XCTAssertEqual(id, "4F2A9C10")
+            XCTAssertEqual(count, 2, "count is distinct events, not occurrences")
+            XCTAssertEqual(agentErrorCode(for: error), "ambiguous_id")
+        }
     }
 
-    func testPrefixMatchNoCandidatesIsNotAMatch() {
-        XCTAssertFalse(CalendarBridge.isUnambiguousPrefixMatch([]))
+    func testUnknownPrefixThrowsEventNotFound() {
+        XCTAssertThrowsError(
+            try CalendarBridge.resolveEventId("DEADBEEF", among: [uuidA], minimumPrefixLength: 8)
+        ) { error in
+            guard case CalendarBridgeError.eventNotFound = error else {
+                return XCTFail("Expected eventNotFound, got \(error)")
+            }
+        }
+    }
+
+    func testShortPrefixIsRefusedForMutation() {
+        // "4F" names exactly one event, but two characters must not be enough
+        // to pick an event to edit or delete.
+        XCTAssertThrowsError(
+            try CalendarBridge.resolveEventId("4F", among: [uuidA], minimumPrefixLength: IDPrefix.minimumMutatingLength)
+        ) { error in
+            guard case CalendarBridgeError.idPrefixTooShort = error else {
+                return XCTFail("Expected idPrefixTooShort, got \(error)")
+            }
+            XCTAssertEqual(agentErrorCode(for: error), "invalid_id_prefix")
+            XCTAssertEqual(PippinExitCode.from(error), 2)
+        }
+        // An empty prefix would otherwise match every event.
+        XCTAssertThrowsError(
+            try CalendarBridge.resolveEventId("", among: [uuidA], minimumPrefixLength: IDPrefix.minimumMutatingLength)
+        )
+        // Reads keep accepting short prefixes.
+        XCTAssertEqual(try CalendarBridge.resolveEventId("4F", among: [uuidA], minimumPrefixLength: 0), uuidA)
+    }
+
+    func testFullIdResolvesEvenWhenShorterThanTheMinimum() throws {
+        // Not every EventKit id is a UUID; an exact id is never "too short".
+        XCTAssertEqual(try CalendarBridge.resolveEventId("abc", among: ["abc", "abcdef"], minimumPrefixLength: 8), "abc")
     }
 
     // MARK: - Date-range chunking (pippin-5nj)
@@ -98,7 +144,7 @@ final class CalendarBridgeTests: XCTestCase {
     }
 
     func testAmbiguousIdDescription() {
-        let err = CalendarBridgeError.ambiguousId("ab")
+        let err = CalendarBridgeError.ambiguousId("ab", count: 2)
         let desc = err.errorDescription ?? ""
         XCTAssertTrue(desc.contains("ab"), "Expected ID in message, got: \(desc)")
         XCTAssertTrue(
@@ -133,7 +179,8 @@ final class CalendarBridgeTests: XCTestCase {
             .eventNotFound("evt-1"),
             .calendarNotFound("cal-1"),
             .saveFailed("disk full"),
-            .ambiguousId("ab"),
+            .ambiguousId("ab", count: 2),
+            .idPrefixTooShort("ab"),
             .dateParseError("bad date"),
             .aiParseError("bad json"),
         ]
