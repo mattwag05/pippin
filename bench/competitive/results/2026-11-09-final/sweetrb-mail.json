@@ -1,0 +1,192 @@
+{
+  "tool": "sweetrb-mail",
+  "version": "2.20.55",
+  "kind": "mcp",
+  "apps": [
+    "mail"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 94.6,
+    "tool_count": 52,
+    "manifest_chars": 104059,
+    "manifest_tokens": 32652,
+    "tools_with_description": 52,
+    "tools_with_annotations": 52
+  },
+  "speed": {
+    "mail.accounts": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 142.7,
+        "p50_ms": 146.34,
+        "p95_ms": 149.75,
+        "max_ms": 149.75
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 49.71,
+        "p50_ms": 58.0,
+        "p95_ms": 62.81,
+        "max_ms": 62.95
+      }
+    },
+    "mail.mailboxes": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 0,
+          "error": 5,
+          "hang": 0
+        },
+        "n": 0,
+        "min_ms": null,
+        "p50_ms": null,
+        "p95_ms": null,
+        "max_ms": null,
+        "first_error": "Could not list mailboxes: Mail got an error: Can’t get account \"iCloud\"."
+      },
+      "warm": null
+    },
+    "mail.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 144.62,
+        "p50_ms": 146.17,
+        "p95_ms": 149.35,
+        "max_ms": 149.35
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 50.69,
+        "p50_ms": 56.39,
+        "p95_ms": 62.23,
+        "max_ms": 62.23
+      }
+    },
+    "mail.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 144.76,
+        "p50_ms": 145.56,
+        "p95_ms": 173.81,
+        "max_ms": 173.81
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 51.01,
+        "p50_ms": 59.2,
+        "p95_ms": 62.99,
+        "max_ms": 63.18
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "mail.accounts": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "mail.mailboxes": {
+        "ok": 0,
+        "of": 8,
+        "distinct_record_sets": 0
+      },
+      "mail.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "mail.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      }
+    },
+    "bad_input": {}
+  },
+  "coverage": {
+    "reminders.lists": "no",
+    "reminders.list": "no",
+    "reminders.search": "no",
+    "reminders.create": "no",
+    "reminders.edit": "no",
+    "reminders.complete": "no",
+    "reminders.delete": "no",
+    "calendar.calendars": "no",
+    "calendar.events": "no",
+    "calendar.search": "no",
+    "calendar.create": "no",
+    "calendar.edit": "no",
+    "calendar.delete": "no",
+    "contacts.list": "no",
+    "contacts.search": "no",
+    "contacts.show": "no",
+    "contacts.create": "no",
+    "contacts.edit": "no",
+    "contacts.delete": "no",
+    "contacts.groups": "no",
+    "notes.folders": "no",
+    "notes.list": "no",
+    "notes.search": "no",
+    "notes.show": "no",
+    "notes.create": "no",
+    "notes.edit": "no",
+    "notes.delete": "no",
+    "messages.chats": "no",
+    "messages.history": "no",
+    "messages.search": "no",
+    "messages.send": "no",
+    "mail.accounts": "yes",
+    "mail.mailboxes": "claimed",
+    "mail.list": "yes",
+    "mail.search": "yes",
+    "mail.show": "claimed",
+    "mail.send": "claimed",
+    "mail.move": "claimed",
+    "mail.mark": "claimed",
+    "mail.attachments": "claimed",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}

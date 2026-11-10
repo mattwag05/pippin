@@ -1,0 +1,9 @@
+{
+  "tool": "sweetrb-mail",
+  "version": "2.20.55",
+  "correctness": {},
+  "safety": {
+    "not_run": "no search operation to carry a hostile query"
+  },
+  "writes": {}
+}

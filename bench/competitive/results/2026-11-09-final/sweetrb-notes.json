@@ -1,0 +1,177 @@
+{
+  "tool": "sweetrb-notes",
+  "version": "2.16.1",
+  "kind": "mcp",
+  "apps": [
+    "notes"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 95.23,
+    "tool_count": 89,
+    "manifest_chars": 174555,
+    "manifest_tokens": 56023,
+    "tools_with_description": 89,
+    "tools_with_annotations": 46
+  },
+  "speed": {
+    "notes.folders": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 462.97,
+        "p50_ms": 467.04,
+        "p95_ms": 468.72,
+        "max_ms": 468.72
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 359.04,
+        "p50_ms": 367.46,
+        "p95_ms": 378.36,
+        "max_ms": 380.43
+      }
+    },
+    "notes.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 243.14,
+        "p50_ms": 252.95,
+        "p95_ms": 259.13,
+        "max_ms": 259.13
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 145.09,
+        "p50_ms": 150.34,
+        "p95_ms": 152.95,
+        "max_ms": 155.27
+      }
+    },
+    "notes.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 320.08,
+        "p50_ms": 327.47,
+        "p95_ms": 341.15,
+        "max_ms": 341.15
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 177.61,
+        "p50_ms": 183.25,
+        "p95_ms": 187.58,
+        "max_ms": 187.64
+      }
+    }
+  },
+  "reliability": {
+    "concurrency": {
+      "notes.folders": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "notes.list": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      },
+      "notes.search": {
+        "ok": 8,
+        "of": 8,
+        "distinct_record_sets": 1
+      }
+    },
+    "bad_input": {
+      "notes.show": {
+        "outcome": "error",
+        "ms": 87.98,
+        "error_is_structured": true,
+        "detail": "Error retrieving note content: Invalid note ID format: \"PB-NOPE-0000\". Expected CoreData URL (x-coredata://...) or temp ID.structuredContent: {\"code\":\"validation_error\"}"
+      }
+    }
+  },
+  "coverage": {
+    "reminders.lists": "no",
+    "reminders.list": "no",
+    "reminders.search": "no",
+    "reminders.create": "no",
+    "reminders.edit": "no",
+    "reminders.complete": "no",
+    "reminders.delete": "no",
+    "calendar.calendars": "no",
+    "calendar.events": "no",
+    "calendar.search": "no",
+    "calendar.create": "no",
+    "calendar.edit": "no",
+    "calendar.delete": "no",
+    "contacts.list": "no",
+    "contacts.search": "no",
+    "contacts.show": "no",
+    "contacts.create": "no",
+    "contacts.edit": "no",
+    "contacts.delete": "no",
+    "contacts.groups": "no",
+    "notes.folders": "yes",
+    "notes.list": "yes",
+    "notes.search": "yes",
+    "notes.show": "claimed",
+    "notes.create": "claimed",
+    "notes.edit": "claimed",
+    "notes.delete": "claimed",
+    "messages.chats": "no",
+    "messages.history": "no",
+    "messages.search": "no",
+    "messages.send": "no",
+    "mail.accounts": "no",
+    "mail.mailboxes": "no",
+    "mail.list": "no",
+    "mail.search": "no",
+    "mail.show": "no",
+    "mail.send": "no",
+    "mail.move": "no",
+    "mail.mark": "no",
+    "mail.attachments": "no",
+    "memos.list": "no",
+    "memos.show": "no",
+    "memos.transcribe": "no",
+    "memos.delete": "no"
+  }
+}
