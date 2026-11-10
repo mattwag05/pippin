@@ -429,7 +429,7 @@ public struct CalendarCommand: AsyncParsableCommand {
 
     // MARK: - SmartCreate
 
-    public struct SmartCreate: AgentCommand {
+    public struct SmartCreate: AgentCommand, AIFlagged {
         public static let configuration = CommandConfiguration(
             commandName: "smart-create",
             abstract: "Create an event from a natural language description using AI."
@@ -438,14 +438,7 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Argument(help: "Natural language description, e.g. 'coffee with Alice tomorrow at 3pm'.")
         public var description: String
 
-        @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
-        public var provider: String?
-
-        @Option(name: .long, help: "Model name (provider-specific default).")
-        public var model: String?
-
-        @Option(name: .long, help: "API key for Claude provider.")
-        public var apiKey: String?
+        @OptionGroup public var ai: AIOptions
 
         @Option(name: .long, help: "Calendar ID to create event in.")
         public var calendar: String?
@@ -548,7 +541,7 @@ public struct CalendarCommand: AsyncParsableCommand {
 
     // MARK: - Agenda
 
-    public struct Agenda: AgentCommand {
+    public struct Agenda: AgentCommand, AIFlagged {
         public static let configuration = CommandConfiguration(
             commandName: "agenda",
             abstract: "AI-generated briefing of upcoming events."
@@ -557,14 +550,7 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Number of days to include, 1-7 (default: 1).")
         public var days: Int = 1
 
-        @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
-        public var provider: String?
-
-        @Option(name: .long, help: "Model name (provider-specific default).")
-        public var model: String?
-
-        @Option(name: .long, help: "API key for Claude provider.")
-        public var apiKey: String?
+        @OptionGroup public var ai: AIOptions
 
         @OptionGroup public var output: OutputOptions
 

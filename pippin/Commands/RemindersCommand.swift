@@ -376,7 +376,7 @@ public struct RemindersCommand: AsyncParsableCommand {
 
     // MARK: - SmartCreate
 
-    public struct SmartCreate: AgentCommand {
+    public struct SmartCreate: AgentCommand, AIFlagged {
         public static let configuration = CommandConfiguration(
             commandName: "smart-create",
             abstract: "Create a reminder from a natural language description using AI."
@@ -385,14 +385,7 @@ public struct RemindersCommand: AsyncParsableCommand {
         @Argument(help: "Natural language description, e.g. 'call dentist next Tuesday at 9am priority high'.")
         public var description: String
 
-        @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
-        public var provider: String?
-
-        @Option(name: .long, help: "Model name (provider-specific default).")
-        public var model: String?
-
-        @Option(name: .long, help: "API key for Claude provider.")
-        public var apiKey: String?
+        @OptionGroup public var ai: AIOptions
 
         @Option(name: .long, help: "Reminder list name to create in (overrides AI-parsed list).")
         public var list: String?
