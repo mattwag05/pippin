@@ -281,6 +281,46 @@ final class ToolRegistryTests: XCTestCase {
         }
     }
 
+    /// RT-19: `notes_show {id: "--version"}` returned the version text as a
+    /// success. Whatever a client sends as a value, no tool may hand the child
+    /// a bare flag: it must be bound (`--flag=value`), sit behind `--`, or be refused.
+    func testNoStringArgumentCanBecomeABareFlag() {
+        func hostile(_ value: JSONValue, _ flag: String) -> JSONValue {
+            switch value {
+            case .string: return .string(flag)
+            case let .array(items) where !items.contains(where: { $0.stringValue == nil }): return .array(items.map { _ in .string(flag) })
+            case let .object(dict): return .object(dict.mapValues { hostile($0, flag) })
+            default: return value
+            }
+        }
+        for flag in ["--version", "--help", "-h"] {
+            var reached = 0
+            for tool in MCPToolRegistry.tools {
+                guard let argv = try? tool.buildArgs(hostile(sampleArgs(for: tool.name), flag)) else { continue }
+                reached += 1
+                let beforeTerminator = argv.prefix { $0 != "--" }
+                XCTAssertFalse(beforeTerminator.contains(flag), "\(tool.name) passes \(flag) as a flag: \(argv)")
+            }
+            XCTAssertGreaterThan(reached, 20, "the check must cover tools that still build")
+        }
+    }
+
+    func testFlagLikeIdIsRefusedWithATypedError() throws {
+        for (name, args) in [
+            ("notes_show", JSONValue.object(["id": .string("--version")])),
+            ("mail_show", .object(["messageIds": .array([.string("a||b||1"), .string("--help")])])),
+            ("memos_transcribe", .object(["id": .string("-h")])),
+        ] {
+            let tool = try XCTUnwrap(MCPToolRegistry.tool(named: name))
+            XCTAssertThrowsError(try tool.buildArgs(args), name) { error in
+                XCTAssertEqual(agentErrorCode(for: error), "invalid_argument")
+            }
+        }
+        // An ordinary id is untouched.
+        let show = try XCTUnwrap(MCPToolRegistry.tool(named: "notes_show"))
+        XCTAssertTrue(try show.buildArgs(.object(["id": .string("x-coredata://1/ICNote/p2")])).contains("x-coredata://1/ICNote/p2"))
+    }
+
     /// One permissive superset of every required field any tool declares. `buildArgs`
     /// only reads the keys it cares about, so a single object satisfies the whole
     /// registry — no per-tool case to forget when a tool is added. Only genuinely

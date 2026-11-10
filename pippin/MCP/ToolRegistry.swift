@@ -89,7 +89,7 @@ enum ArgHelpers {
     static func appendIDOrAll(_ args: JSONValue?, into argv: inout [String]) throws {
         let all = bool(args, "all") == true
         if let id = string(args, "id") {
-            argv.append(id)
+            try argv.append(notFlagLike(id, "id"))
         } else if !all {
             throw MCPToolArgError.missingRequired("id (or all=true)")
         }
@@ -98,6 +98,21 @@ enum ArgHelpers {
 
     static func string(_ args: JSONValue?, _ key: String) -> String? {
         args?[key]?.stringValue
+    }
+
+    /// A required value passed as a bare positional (an id). These sit before
+    /// the options, where a `--` separator cannot go, so one that starts with
+    /// "-" would be parsed as a flag: an id of `--version` used to return the
+    /// version text as a successful result. No real id starts with "-".
+    static func positional(_ args: JSONValue?, _ key: String) throws -> String {
+        try notFlagLike(requiredString(args, key), key)
+    }
+
+    static func notFlagLike(_ value: String, _ key: String) throws -> String {
+        guard !value.hasPrefix("-") else {
+            throw MCPToolArgError.wrongType(field: key, expected: "a value that does not start with '-'")
+        }
+        return value
     }
 
     static func requiredString(_ args: JSONValue?, _ key: String) throws -> String {
@@ -438,9 +453,9 @@ enum MCPToolRegistry {
             buildArgs: { args in
                 var argv = pippinArgv("mail", "show")
                 if let ids = ArgHelpers.stringArray(args, "messageIds") {
-                    argv.append(contentsOf: ids)
+                    try argv.append(contentsOf: ids.map { try ArgHelpers.notFlagLike($0, "messageIds") })
                 } else if let id = ArgHelpers.string(args, "messageId") {
-                    argv.append(id)
+                    try argv.append(ArgHelpers.notFlagLike(id, "messageId"))
                 } else if let subject = ArgHelpers.string(args, "subject") {
                     argv.append(ArgHelpers.option("--subject", subject))
                 } else {
@@ -461,7 +476,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "verify")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 return argv
             }
         ),
@@ -478,7 +493,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "attachments")
-                let id = try ArgHelpers.requiredString(args, "messageId")
+                let id = try ArgHelpers.positional(args, "messageId")
                 argv.append(id)
                 if let dir = ArgHelpers.string(args, "saveDir") {
                     argv.append(ArgHelpers.option("--save-dir", dir))
@@ -547,7 +562,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "mark")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 guard let read = ArgHelpers.bool(args, "read") else {
                     throw MCPToolArgError.missingRequired("read")
                 }
@@ -571,7 +586,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "move")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 try argv.append(ArgHelpers.option("--to", ArgHelpers.requiredString(args, "to")))
                 argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
                 return argv
@@ -629,7 +644,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "reply")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 try argv.append(ArgHelpers.option("--body", ArgHelpers.requiredString(args, "body")))
                 argv += ArgHelpers.optionPerElement(args, "to", flagName: "--to")
                 argv += ArgHelpers.optionPerElement(args, "cc", flagName: "--cc")
@@ -659,7 +674,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "forward")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 guard let to = ArgHelpers.stringArray(args, "to") else {
                     throw MCPToolArgError.missingRequired("to")
                 }
@@ -748,7 +763,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "sanitize")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 argv += ArgHelpers.flagIfTrue(args, "aiAssisted", flagName: "--ai-assisted")
                 argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
                 argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
@@ -769,7 +784,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("mail", "extract")
-                try argv.append(ArgHelpers.requiredString(args, "messageId"))
+                try argv.append(ArgHelpers.positional(args, "messageId"))
                 argv += ArgHelpers.optionIfString(args, "provider", flagName: "--provider")
                 argv += ArgHelpers.optionIfString(args, "model", flagName: "--model")
                 return argv
@@ -909,7 +924,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "show")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             }
         ),
@@ -936,7 +951,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "edit")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
                 argv += ArgHelpers.optionIfString(args, "start", flagName: "--start")
                 argv += ArgHelpers.optionIfString(args, "end", flagName: "--end")
@@ -965,7 +980,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
                 return argv
@@ -1084,7 +1099,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "show")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             },
             inProcess: MCPInProcessTools.execute
@@ -1150,7 +1165,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "complete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             }
         ),
@@ -1175,7 +1190,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "edit")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 argv += ArgHelpers.optionIfString(args, "title", flagName: "--title")
                 argv += ArgHelpers.optionIfString(args, "due", flagName: "--due")
                 argv += ArgHelpers.optionIfString(args, "priority", flagName: "--priority")
@@ -1198,7 +1213,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("reminders", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 return argv
             }
@@ -1270,7 +1285,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("contacts", "show")
-                try argv.append(ArgHelpers.requiredString(args, "identifier"))
+                try argv.append(ArgHelpers.positional(args, "identifier"))
                 return argv
             },
             inProcess: MCPInProcessTools.execute
@@ -1340,7 +1355,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("contacts", "edit")
-                try argv.append(ArgHelpers.requiredString(args, "identifier"))
+                try argv.append(ArgHelpers.positional(args, "identifier"))
                 argv += ArgHelpers.contactFieldOptions(args)
                 return argv
             }
@@ -1358,7 +1373,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("contacts", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "identifier"))
+                try argv.append(ArgHelpers.positional(args, "identifier"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 return argv
             }
@@ -1409,7 +1424,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("notes", "show")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             }
         ),
@@ -1484,7 +1499,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("notes", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 return argv
             }
@@ -1538,7 +1553,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("messages", "show")
-                try argv.append(ArgHelpers.requiredString(args, "conversationId"))
+                try argv.append(ArgHelpers.positional(args, "conversationId"))
                 argv += ArgHelpers.optionIfInt(args, "limit", flagName: "--limit")
                 return argv
             }
@@ -1584,7 +1599,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("messages", "exclude", "add")
-                try argv.append(ArgHelpers.requiredString(args, "thread"))
+                try argv.append(ArgHelpers.positional(args, "thread"))
                 return argv
             }
         ),
@@ -1600,7 +1615,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("messages", "exclude", "remove")
-                try argv.append(ArgHelpers.requiredString(args, "thread"))
+                try argv.append(ArgHelpers.positional(args, "thread"))
                 return argv
             }
         ),
@@ -1629,7 +1644,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("memos", "info")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 return argv
             }
         ),
@@ -1745,7 +1760,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("memos", "delete")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 return argv
             }
@@ -1867,7 +1882,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("job", "show")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 argv += ArgHelpers.optionIfInt(args, "tail", flagName: "--tail")
                 return argv
             }
@@ -1900,7 +1915,7 @@ enum MCPToolRegistry {
             ),
             buildArgs: { args in
                 var argv = pippinArgv("job", "wait")
-                try argv.append(ArgHelpers.requiredString(args, "id"))
+                try argv.append(ArgHelpers.positional(args, "id"))
                 // Must end before the 60s child cap or the kill loses the job status.
                 argv.append(ArgHelpers.option("--timeout", String(min(ArgHelpers.int(args, "timeout") ?? 50, 50))))
                 return argv
