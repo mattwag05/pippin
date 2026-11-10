@@ -94,6 +94,32 @@ final class MailMessageScriptBehaviorTests: XCTestCase {
         let log: [String]
     }
 
+    // MARK: - Attachment saving (RC-07)
+
+    func testSaveScriptNeverPutsTheSenderChosenNameInAPath() throws {
+        let result = try run(
+            MailBridge.buildSaveAttachmentsScript(account: "A", mailbox: "INBOX", messageId: "7", saveDir: "/stage"),
+            rows: "[{id: 7, attachments: [{name: '../../Library/LaunchAgents/evil.plist'}, {name: 'b.txt'}]}]"
+        )
+        XCTAssertEqual(result.log.filter { $0.hasPrefix("save:") }, ["save:/stage/0", "save:/stage/1"])
+        XCTAssertFalse(result.log.contains { $0.contains("evil") || $0.contains("..") }, "\(result.log)")
+        let rows = try XCTUnwrap(result.output as? [[String: Any]])
+        XCTAssertEqual(rows.map { $0["savedPath"] as? String }, ["/stage/0", "/stage/1"])
+        XCTAssertEqual(rows.first?["name"] as? String, "../../Library/LaunchAgents/evil.plist")
+    }
+
+    func testSaveScriptReportsAFailedSaveAndKeepsGoing() throws {
+        let result = try run(
+            MailBridge.buildSaveAttachmentsScript(account: "A", mailbox: "INBOX", messageId: "7", saveDir: "/stage"),
+            rows: "[{id: 7, attachments: [{name: 'a.txt', fails: true}, {name: 'b.txt'}]}]"
+        )
+        let rows = try XCTUnwrap(result.output as? [[String: Any]])
+        XCTAssertTrue(rows[0]["savedPath"] is NSNull)
+        XCTAssertEqual(rows[0]["saveError"] as? String, "save failed")
+        XCTAssertEqual(rows[1]["savedPath"] as? String, "/stage/1")
+        XCTAssertTrue(rows[1]["saveError"] is NSNull)
+    }
+
     // MARK: - Repeated headers (first occurrence wins)
 
     func testReadScriptKeepsTheTopmostOfARepeatedHeader() throws {

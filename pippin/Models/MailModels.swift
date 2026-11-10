@@ -257,13 +257,15 @@ public struct Attachment: Codable, Sendable {
     public let name: String
     public let mimeType: String
     public let size: Int
-    public let savedPath: String? // nil unless --save-dir was used
+    public let savedPath: String? // nil unless --save-dir was used and the save worked
+    public let saveError: String? // why a requested save did not happen; omitted otherwise
 
-    public init(name: String, mimeType: String, size: Int, savedPath: String? = nil) {
+    public init(name: String, mimeType: String, size: Int, savedPath: String? = nil, saveError: String? = nil) {
         self.name = name
         self.mimeType = mimeType
         self.size = size
         self.savedPath = savedPath
+        self.saveError = saveError
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -272,6 +274,7 @@ public struct Attachment: Codable, Sendable {
         try container.encode(mimeType, forKey: .mimeType)
         try container.encode(size, forKey: .size)
         try container.encodeIfPresent(savedPath, forKey: .savedPath)
+        try container.encodeIfPresent(saveError, forKey: .saveError)
     }
 }
 

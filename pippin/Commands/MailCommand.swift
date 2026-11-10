@@ -973,7 +973,13 @@ public struct MailCommand: AsyncParsableCommand {
             let msgId = messageId
             // listAttachments spawns a blocking osascript subprocess; hop off the pool.
             let attachments = try await detachBlocking { try MailBridge.listAttachments(compoundId: msgId, saveDir: effectiveSaveDir) }
-            return AgentResult(attachments)
+            let unsaved = attachments.filter { $0.saveError != nil }.count
+            guard unsaved > 0 else { return AgentResult(attachments) }
+            return AgentResult(
+                attachments,
+                warnings: ["\(unsaved) of \(attachments.count) attachment(s) were not saved; each one's saveError says why"],
+                partial: true
+            )
         }
 
         /// Per-message cache dir; sanitizes shell/path-hostile chars so Gmail `[Gmail]`

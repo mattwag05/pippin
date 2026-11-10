@@ -524,11 +524,73 @@ enum MailBridge {
 
     static func listAttachments(compoundId: String, saveDir: String? = nil) throws -> [Attachment] {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
-        let script = buildSaveAttachmentsScript(account: account, mailbox: mailboxName, messageId: msgId, saveDir: saveDir)
+        // Mail saves into a staging directory under index names. The sender's
+        // file names only ever reach `finalizeSavedAttachments`, in Swift.
+        let staging = saveDir.map { URL(fileURLWithPath: $0).appendingPathComponent(".pippin-saving-\(UUID().uuidString)") }
+        if let staging {
+            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
+        }
+        // Also removes the zero-byte placeholder of any save that failed.
+        defer { if let staging { try? FileManager.default.removeItem(at: staging) } }
+        let script = buildSaveAttachmentsScript(
+            account: account, mailbox: mailboxName, messageId: msgId, saveDir: staging?.path
+        )
         // Gmail label fallback scans every mailbox for the id + IMAP body download for
         // attachment enumeration; 30s was insufficient on large accounts.
         let json = try runScript(script, timeoutSeconds: 90)
-        return try decode([Attachment].self, from: json)
+        let staged = try decode([Attachment].self, from: json)
+        guard let saveDir else { return staged }
+        return finalizeSavedAttachments(staged, saveDir: saveDir)
+    }
+
+    /// Move each staged attachment to a safe, unused name directly inside
+    /// `saveDir`. Never overwrites: a taken name gets " (1)", " (2)", and so on.
+    /// A row that could not be saved keeps `savedPath` nil and says why.
+    static func finalizeSavedAttachments(_ staged: [Attachment], saveDir: String) -> [Attachment] {
+        let fm = FileManager.default
+        let dir = URL(fileURLWithPath: saveDir).standardizedFileURL
+        return staged.enumerated().map { index, row in
+            func result(path: String? = nil, error: String? = nil) -> Attachment {
+                Attachment(name: row.name, mimeType: row.mimeType, size: row.size, savedPath: path, saveError: error)
+            }
+            guard let stagedPath = row.savedPath, fm.fileExists(atPath: stagedPath) else {
+                return result(error: row.saveError ?? "Mail did not write the file")
+            }
+            let name = safeAttachmentName(row.name, index: index)
+            let stem = (name as NSString).deletingPathExtension
+            let ext = (name as NSString).pathExtension
+            var destination = dir.appendingPathComponent(name)
+            var suffix = 0
+            // attributesOfItem does not follow links, so a dangling link counts as taken.
+            while (try? fm.attributesOfItem(atPath: destination.path)) != nil {
+                suffix += 1
+                destination = dir.appendingPathComponent(ext.isEmpty ? "\(stem) (\(suffix))" : "\(stem) (\(suffix)).\(ext)")
+            }
+            guard destination.standardizedFileURL.deletingLastPathComponent().path == dir.path else {
+                return result(error: "refused: the file name would leave the save directory")
+            }
+            do {
+                // moveItem fails rather than replace, so a name taken since the check is not overwritten.
+                try fm.moveItem(atPath: stagedPath, toPath: destination.path)
+                return result(path: destination.path)
+            } catch {
+                return result(error: error.localizedDescription)
+            }
+        }
+    }
+
+    /// A sender-chosen attachment name reduced to a plain file name: last path
+    /// component only, no control or invisible formatting characters (NUL,
+    /// newlines, bidi overrides), no leading dots. `attachment-<n>` when
+    /// nothing is left.
+    static func safeAttachmentName(_ raw: String, index: Int) -> String {
+        let base = raw.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
+        let hidden: Set<Unicode.GeneralCategory> = [.control, .format, .lineSeparator, .paragraphSeparator]
+        var kept = String.UnicodeScalarView()
+        kept.append(contentsOf: base.unicodeScalars.filter { !hidden.contains($0.properties.generalCategory) })
+        let name = String(String(kept).drop(while: { $0 == "." || $0 == " " }))
+            .trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? "attachment-\(index + 1)" : name
     }
 
     static func replyToMessage(

@@ -778,6 +778,9 @@ extension MailBridge {
 
     // MARK: - Save Attachments Script
 
+    /// `saveDir` is a staging directory the caller owns. Each attachment is
+    /// saved there under its index, never under its sender-chosen name; the
+    /// caller renames it (`MailBridge.finalizeSavedAttachments`).
     static func buildSaveAttachmentsScript(
         account: String,
         mailbox: String,
@@ -860,15 +863,19 @@ extension MailBridge {
                     try { attSize = att.downloadedSize(); } catch(e2) {}
                 }
                 var savedPath = null;
+                var saveError = null;
                 if (saveDir !== null) {
-                    var dest = saveDir + '/' + attName;
-                    prepareSaveTarget(dest);
-                    // AppleScript 'save a in POSIX file path' → JXA uses the preposition as the
-                    // key: {in: Path(dest)}. {to: ...} errors 'Some data was the wrong type' (-10000).
-                    att.save({in: Path(dest)});
-                    savedPath = dest;
+                    // One failed save must not lose the report of the others.
+                    try {
+                        var dest = saveDir + '/' + i;
+                        prepareSaveTarget(dest);
+                        // AppleScript 'save a in POSIX file path' → JXA uses the preposition as the
+                        // key: {in: Path(dest)}. {to: ...} errors 'Some data was the wrong type' (-10000).
+                        att.save({in: Path(dest)});
+                        savedPath = dest;
+                    } catch (e) { saveError = String(e && e.message ? e.message : e); }
                 }
-                result.push({name: attName, mimeType: attMime, size: attSize, savedPath: savedPath});
+                result.push({name: attName, mimeType: attMime, size: attSize, savedPath: savedPath, saveError: saveError});
             }
             break;
         }
