@@ -163,3 +163,9 @@ attachment-only messages read as "no text". SQLite `LIKE` does **not** match int
 columns, so `search` can't prefilter on the blob — it decode-scans a bounded recent
 window in Swift (`searchAttributedScanCap`). Reading chat.db needs Full Disk Access for
 the *launching* binary's path (see permissions.md / the disclaim model).
+
+## ScriptRunner runs a script once (pippin-z84j)
+
+`ScriptRunner.run` never re-runs a script. With `idempotent: true` (reads, and `mail mark`) an app that is not running is launched first, inside the same deadline; the old run, time out, relaunch, run again sequence doubled the timeout and duplicated writes. A bridge wrapper maps the timeout of a non-idempotent script (Notes create/edit/delete, `mail move`, attachment save) to `ScriptRunnerError.outcomeUnknown`, which is not retryable. A new write call site gets that by leaving `idempotent` at its default. An osascript killed by any signal other than our timer is `script_crashed`, not a timeout.
+
+Under MCP every script in the process shares one 55s budget measured from process start (`ScriptRunner.budget`), so a second script in the same command (reply reads, then sends) only gets what is left.

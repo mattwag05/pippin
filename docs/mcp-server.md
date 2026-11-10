@@ -55,7 +55,7 @@ they differ per account, e.g. `[Gmail]/Trash`).
 
 ### `job_*` — background pippin subprocesses
 
-`tools/call` is synchronous — a slow sub-command (e.g. `memos summarize --all`, `actions extract`) blocks the MCP session for its entire runtime. `job_run` forks a detached child, writes state to `~/.cache/pippin/jobs/<id>/status.json`, and returns `{job_id, pid, status:"running"}` immediately. The caller then polls `job_show` or blocks on `job_wait`.
+`tools/call` is synchronous: a slow sub-command (e.g. `memos summarize --all`, `actions extract`) blocks the MCP session for its entire runtime. `job_run` forks a detached child, writes state to `~/.cache/pippin/jobs/<id>/status.json`, and returns `{job_id, pid, status:"running"}` immediately. The caller then polls `job_show` or blocks on `job_wait`.
 
 Typical flow:
 

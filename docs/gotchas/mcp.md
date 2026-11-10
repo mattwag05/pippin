@@ -28,6 +28,20 @@ ArgumentParser wraps thrown `ValidationError`s in non-public `CommandError`/`Val
 
 **Bridge tools must self-bound well below 60s.** Search uses a 22s JXA-loop soft cap (`softTimeoutMs`) and a 30s ScriptRunner cap; on soft-timeout it returns partial results plus `meta.timedOut=true` and an envelope-level `warnings: [...]` advisory. The MCP hard timeout exists only as a last-resort failsafe.
 
+### What the timeout kills, and what it tells the caller
+
+`runChild` uses `posix_spawn`, not `Foundation.Process`, because only that can put the child in its own process group. The MCP dispatcher (and `batch` under MCP) pass `ownProcessGroup: true`, and the timeout signals the group, so the `osascript` a bridge spawned dies with its parent. Terminal callers (`pippin do`, CLI `batch`) keep the child in the foreground group so Ctrl-C still reaches it.
+
+Every tool declares `effect:` (`.readOnly` or `.mutating(verifyWith:)`); `ToolEffectTests` pins the mutating set and fails on an unclassified tool. A timeout on a mutating tool is `outcome_unknown`, not retryable, with a `next_call` to the verify tool. Only read-only tools get the retryable `child_timed_out`. The same field feeds the `readOnlyHint` / `destructiveHint` annotations in `tools/list`.
+
+## `batch` and `job_run` only reach commands that have a tool
+
+Under MCP both resolve their raw argv through `MCPCommandPolicy.check`: the argv must start with a registered tool's command path, `batch` and `job run` cannot be nested, `--autonomous` is refused and `messages send` needs `--draft`. A new tool whose CLI path is not `<group> <rest-with-dashes>` needs a `pathOverrides` entry (`testCommandPathIsThePrefixOfEveryToolsArgv` says so). `batch` entries share the 50s `BatchBudget`; entries that run out of time carry their own error and the envelope is `partial`.
+
+## Arguments that cannot reach argv
+
+A NUL in any string argument is refused (`SchemaValidator`, and again in `runChild`): argv cannot hold one. A bare positional id that starts with `-` is refused by `ArgHelpers.positional`, because ids sit before the options where `--` cannot go.
+
 ## Optional `warnings` + `partial` in agent envelope
 
 `AgentOkEnvelope` carries an optional top-level `warnings: [String]?` and, since pippin-1son (2026-07-30), an optional `partial: Bool?`. Both are omitted when empty or false, so consumers reading only `.data` are unaffected and no schema bump was needed. `output.emit(timedOut:)` sets `partial: true` automatically; `emit(extraWarnings:)` merges non-timeout advisories such as fast-path fallback reasons into `warnings`. A timed-out search with nonempty results remains partial success. A timed-out search with an empty result or page throws `MailBridgeError.searchIncomplete`, yielding `status:error` and code `search_incomplete` so an agent cannot mistake incomplete coverage for no matches.
