@@ -285,7 +285,7 @@ final class FuzzTests: XCTestCase {
     /// Largest `--page` the fuzz feeds `Pagination.resolve`. Beyond
     /// `Int.max / maxPageSize` the offset multiplication traps: see
     /// `testKnownBugHugePageNumberTraps`.
-    private static let safePageCeiling = Int.max / Pagination.maxPageSize
+    private static let safePageCeiling = Int.max
 
     func testPageNumberResolutionReturnsOrThrowsTyped() throws {
         let seed = Fuzz.seed(default: 0x5EED_0006)
@@ -315,7 +315,7 @@ final class FuzzTests: XCTestCase {
             let input = Fuzz.string(&rng, maxPieces: 4)
             let context = "seed \(seed) input \(input.debugDescription)"
             _ = parseCalendarDate(input)
-            _ = parseSpan(input)
+            _ = EventSpan(argument: input)
             _ = parseDateString(input)
             _ = parseReminderPriority(input)
             _ = MailBridge.parseFilterDate(input)
@@ -344,7 +344,7 @@ final class FuzzTests: XCTestCase {
 
     /// Largest count the fuzz feeds `parseDuration` with a week unit. Beyond
     /// it the unit multiplication traps: see `testKnownBugHugeDurationTraps`.
-    private static let safeDurationCeiling = Int.max / (86400 * 7)
+    private static let safeDurationCeiling = Int.max
 
     func testJobDurationParserReturnsOrThrowsTyped() {
         let seed = Fuzz.seed(default: 0x5EED_0008)
@@ -484,67 +484,40 @@ final class FuzzTests: XCTestCase {
         }
     }
 
-    private static let escapedScalars = Set("\\\0\"'`\n\r\u{2028}\u{2029}".unicodeScalars)
-
-    /// True where `jsEscape` is known to go wrong, so the random round trip
-    /// skips the input: a NUL before an octal digit, or a character it must
-    /// escape sitting directly before a combining mark. Both are pinned by the
-    /// `testKnownBug...` cases below.
-    private static func hitsKnownEscapeBug(_ value: String) -> Bool {
-        let scalars = Array(value.unicodeScalars)
-        return zip(scalars, scalars.dropFirst()).contains { current, next in
-            if current.value == 0, ("0" ... "7").contains(next) { return true }
-            let combining = next.properties.isGraphemeExtend
-                || [.nonspacingMark, .spacingMark, .enclosingMark].contains(next.properties.generalCategory)
-            return combining && escapedScalars.contains(current)
-        }
-    }
-
     func testRandomStringsRoundTripThroughJsEscape() {
         let seed = Fuzz.seed(default: 0x5EED_000C)
         var rng = FuzzRNG(seed: seed)
         var checked = 0
         for _ in 0 ..< 1500 {
             let value = Fuzz.string(&rng)
-            if Self.hitsKnownEscapeBug(value) { continue }
             checked += 1
             for quote in ["'", "\""] where evaluatedLiteral(value, quote: quote) != value {
                 XCTFail("seed \(seed): \(value.debugDescription) changed inside a \(quote) literal")
             }
         }
-        XCTAssertGreaterThan(checked, 1000, "seed \(seed): the known-bug carve-out swallowed the test")
+        XCTAssertEqual(checked, 1500)
     }
 
-    // MARK: - Known bugs found by the fuzzers (documented, not fixed here)
+    // MARK: - Regressions for bugs the fuzzers found
 
-    func testKnownBugNulBeforeOctalDigitIsCorrupted() {
-        XCTExpectFailure(
-            "jsEscape writes NUL as \\0; followed by a digit 0-7, JavaScript reads a legacy octal escape (\\07 is BEL), so the string changes. Fix: emit \\x00.",
-            options: Self.nonStrict
-        )
+    func testNulBeforeOctalDigitRoundTrips() {
         XCTAssertEqual(evaluatedLiteral("a\u{0}7b", quote: "'"), "a\u{0}7b")
     }
 
-    func testKnownBugCharacterBeforeCombiningMarkIsNotEscaped() {
-        XCTExpectFailure(
-            "jsEscape matches by composed character, so a quote, backslash, backtick, NUL or line break directly before a combining mark (U+0301, U+FE0F, ...) is left unescaped and reaches the script raw. Fix: escape per Unicode scalar.",
-            options: Self.nonStrict
-        )
+    func testCharacterBeforeCombiningMarkIsEscaped() {
         XCTAssertEqual(jsEscape("it'\u{301}s"), "it\\'\u{301}s")
         XCTAssertEqual(evaluatedLiteral("it'\u{301}s", quote: "'"), "it'\u{301}s")
         XCTAssertEqual(evaluatedLiteral("a\\\u{301}b", quote: "'"), "a\\\u{301}b")
     }
 
-    func testKnownBugHugePageNumberTraps() throws {
-        throw XCTSkip(
-            "Pagination.resolve computes (page - 1) * pageSize unchecked, so a page above Int.max / pageSize traps the process. Reproducer: pippin mail list --page 9223372036854775807. A trap cannot be asserted in process; remove this skip and raise safePageCeiling to Int.max once fixed."
-        )
+    func testHugePageNumberIsRejectedNotTrapped() throws {
+        var options = try PaginationOptions.parse([])
+        options.page = Int.max
+        XCTAssertThrowsError(try Pagination.resolve(options, defaultPageSize: 20, filterHash: "h"))
     }
 
-    func testKnownBugHugeDurationTraps() throws {
-        throw XCTSkip(
-            "parseDuration multiplies the count by its unit unchecked, so a count above Int.max / unit traps the process. Reproducer: pippin job gc --older-than 9223372036854775807w. A trap cannot be asserted in process; remove this skip and raise safeDurationCeiling to Int.max once fixed."
-        )
+    func testHugeDurationIsRejectedNotTrapped() {
+        XCTAssertThrowsError(try parseDuration("9223372036854775807w"))
     }
 
     private static var nonStrict: XCTExpectedFailure.Options {

@@ -34,7 +34,7 @@ final class ChaosTests: XCTestCase {
     }
 
     private func runShell(_ script: String, timeoutSeconds: Int = 10) throws -> MCPServerRuntime.ChildResult {
-        try MCPServerRuntime.runChild(argv: ["-c", script], pippinPath: "/bin/sh", timeoutSeconds: timeoutSeconds)
+        try MCPServerRuntime.runChild(argv: ["-c", script], pippinPath: "/bin/sh", timeoutSeconds: timeoutSeconds, ownProcessGroup: true)
     }
 
     /// One `tools/call` through the real dispatcher's child path, with

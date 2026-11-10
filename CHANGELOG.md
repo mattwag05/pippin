@@ -49,6 +49,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] A NUL character in an MCP argument or a `batch` entry returns `invalid_argument` instead of aborting the server. Closes pippin-l8d1.
 - [bug] An MCP id that starts with `-` (such as `--version`) is refused instead of being parsed as a flag, and a fractional number for an integer MCP argument (`limit: 2.5`) is rejected instead of being truncated. Refs pippin-o190.
 - [bug] `messages show` and `messages search` no longer report the recipient's handle as `from_handle` on messages you sent; it is omitted for outgoing messages. Closes pippin-py28.
+- [bug] Script string escaping now works per Unicode scalar: a quote, backslash, backtick or line break directly before a combining mark was passed into Notes, Mail and Messages scripts unescaped, and a NUL before a digit changed the text. Found by the new fuzz tests.
+- [bug] `--page` and `job gc --older-than` reject values that overflow instead of crashing the process.
+- [test] Seeded fuzz tests (SchemaValidator, every tool's argument builder, the MCP request path, ids, cursors, date and duration parsers, the typedstream decoder, script escaping; replay with `PIPPIN_FUZZ_SEED`) and chaos tests (killed, stalled and half-written children; deleted, truncated, garbage and locked stores). CI runs both as named steps, and `scripts/sbom.sh` emits a CycloneDX SBOM.
 
 ### Performance
 

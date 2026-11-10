@@ -219,15 +219,7 @@ public enum BrowserBridge {
 
     /// Escape a Swift string for safe embedding inside a JavaScript single-quoted string.
     static func jsEscape(_ s: String) -> String {
-        s.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\0", with: "\\0")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "`", with: "\\`")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
-            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
+        PippinLib.jsEscape(s)
     }
 
     static func buildOpenScript(url: String, sessionDir: String) -> String {
