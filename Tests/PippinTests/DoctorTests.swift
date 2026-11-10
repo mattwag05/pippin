@@ -20,6 +20,13 @@ final class DoctorTests: XCTestCase {
         )
     }
 
+    func testClassifyMailErrorNoAccountsIsASkip() {
+        // The exact text the clean benchmark VM produced.
+        let check = classifyMailError("Mail automation script failed: execution error: Error: Error: Mail not ready: no accounts visible after startup (-2700)")
+        XCTAssertEqual(check.status, .skip)
+        XCTAssertNotNil(check.remediation)
+    }
+
     func testClassifyMailErrorNotRunning() {
         let check = classifyMailError("")
         XCTAssertEqual(check.status, .fail)

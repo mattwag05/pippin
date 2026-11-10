@@ -110,6 +110,19 @@ func classifyMailError(_ detail: String) -> DiagnosticCheck {
             )
         )
     }
+    // Mail answered the Apple Event, so automation works; it just has no
+    // account. Like a Voice Memos app never used, that is setup, not a fault.
+    if detail.contains("no accounts visible after startup") {
+        return DiagnosticCheck(
+            name: "Mail automation",
+            status: .skip,
+            detail: "automation works; Mail has no accounts set up",
+            remediation: Remediation(
+                humanHint: "Add an account in Mail > Settings > Accounts to use the mail commands, then run: \(mailAutomationVerifyCommand)",
+                doctorCheck: "Mail automation"
+            )
+        )
+    }
     if detail.isEmpty {
         return DiagnosticCheck(
             name: "Mail automation",
