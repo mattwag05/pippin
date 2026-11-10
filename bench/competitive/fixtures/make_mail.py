@@ -39,6 +39,10 @@ def clear():
         os.makedirs(path, exist_ok=True)
         for name in os.listdir(path):
             os.remove(os.path.join(path, name))
+    # Dovecot's UID list and indexes too, so a reseed gets a new UIDVALIDITY and Mail re-reads every message.
+    for name in os.listdir(MAILDIR):
+        if name.startswith("dovecot"):
+            os.remove(os.path.join(MAILDIR, name))
 
 
 def mail_count():
@@ -73,8 +77,12 @@ def install(manifest_path):
         # Maildir name: <time>.<unique>.<host>, with ":2,S" for read; the first eight are left unread.
         flags = "" if i < 8 else "S"
         name = "%d.pb%02d.pippinbench:2,%s" % (m["date_epoch"], i + 1, flags)
-        with open(os.path.join(MAILDIR, "cur", name), "wb") as handle:
+        path = os.path.join(MAILDIR, "cur", name)
+        with open(path, "wb") as handle:
             handle.write(bytes(msg))
+        # Dovecot reports a Maildir file's mtime as the received date (INTERNALDATE). Matching it to the Date
+        # header gives one order whether a tool sorts by date sent or date received.
+        os.utime(path, (m["date_epoch"], m["date_epoch"]))
     synced = sync(len(manifest["messages"]))
     json.dump({"mail": {"account": manifest["account"], "count": len(manifest["messages"]), "synced": synced}}, sys.stdout)
     return 0 if synced else 1
