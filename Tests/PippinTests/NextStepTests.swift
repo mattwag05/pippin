@@ -67,7 +67,7 @@ final class NextStepTests: XCTestCase {
         MailBridgeError.sendOutcomeUnknown, MailBridgeError.decodingFailed("e"), MailBridgeError.invalidMessageId("i"),
         MailBridgeError.invalidMailbox("m"), MailBridgeError.accessDenied,
         // NotesBridgeError
-        NotesBridgeError.scriptFailed("e"), NotesBridgeError.noteNotFound("i"), NotesBridgeError.timeout,
+        NotesBridgeError.scriptFailed("e"), NotesBridgeError.noteNotFound("i"), NotesBridgeError.noteInTrash("i"), NotesBridgeError.timeout,
         NotesBridgeError.decodingFailed("e"), NotesBridgeError.accessDenied,
         // ActionExtractorError
         ActionExtractorError.malformedAIResponse("e"), ActionExtractorError.noSourcesSelected,

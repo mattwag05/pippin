@@ -115,6 +115,23 @@ enum NotesBridge {
     /// upgrade path is to detect the trash folder by identity if it matters.
     static let recentlyDeletedFolderName = "Recently Deleted"
 
+    /// JXA fragment for the mutating scripts: refuse a `note` that already sits
+    /// in Recently Deleted. A second `delete` there is how Notes purges a note
+    /// permanently (RT-32), so the delete script passes `failClosed` and treats
+    /// an unreadable folder as "might be trashed". Edit tolerates an unreadable
+    /// folder, since Notes itself rejects writes to a trashed note.
+    /// ponytail: matches the English folder name like the read paths (see
+    /// `recentlyDeletedFolderName`); the Notes scripting dictionary exposes no
+    /// locale-independent "is deleted" property to check instead.
+    static func jsRefuseTrashedNote(_ safeId: String, failClosed: Bool) -> String {
+        let read = "note.container().name() === '\(recentlyDeletedFolderName)'"
+        return """
+        var _trashed = false;
+        \(failClosed ? "_trashed = \(read);" : "try { _trashed = \(read); } catch(e) {}")
+        if (_trashed) { throw new Error('NOTESBRIDGE_ERR_IN_TRASH: \(safeId)'); }
+        """
+    }
+
     /// JXA fragment shared by `buildListScript` / `buildSearchScript`. Builds a
     /// plain JS array `pairs = [{note, mod, iso}]` from the already-materialized
     /// `notes` + bulk `_mods` arrays (see `jsResolveNotesAndBulkMods`), then
@@ -398,6 +415,7 @@ enum NotesBridge {
         var matches = app.notes.whose({id: '\(safeId)'})();
         if (matches.length === 0) { throw new Error('NOTESBRIDGE_ERR_NOT_FOUND: \(safeId)'); }
         var note = matches[0];
+        \(jsRefuseTrashedNote(safeId, failClosed: false))
         var newTitle = \(safeTitle);
         var newBody = \(safeBody);
         var isAppend = \(append ? "true" : "false");
@@ -434,7 +452,9 @@ enum NotesBridge {
         app.includeStandardAdditions = true;
         var matches = app.notes.whose({id: '\(safeId)'})();
         if (matches.length === 0) { throw new Error('NOTESBRIDGE_ERR_NOT_FOUND: \(safeId)'); }
-        app.delete(matches[0]);
+        var note = matches[0];
+        \(jsRefuseTrashedNote(safeId, failClosed: true))
+        app.delete(note);
         JSON.stringify({
             success: true,
             action: 'delete',
@@ -476,12 +496,17 @@ enum NotesBridge {
     /// `execution error: Error: NOTESBRIDGE_ERR_NOT_FOUND: <id> (-2700)`, so
     /// the id is the first whitespace-delimited token after the marker.
     static func mapScriptFailure(_ msg: String) -> NotesBridgeError {
-        guard let range = msg.range(of: "NOTESBRIDGE_ERR_NOT_FOUND") else {
-            return .scriptFailed(msg)
-        }
+        if let id = sentinelDetail("NOTESBRIDGE_ERR_NOT_FOUND", in: msg) { return .noteNotFound(id) }
+        if let id = sentinelDetail("NOTESBRIDGE_ERR_IN_TRASH", in: msg) { return .noteInTrash(id) }
+        return .scriptFailed(msg)
+    }
+
+    /// The first whitespace-delimited token after `marker`, or nil when the
+    /// message does not carry it.
+    private static func sentinelDetail(_ marker: String, in msg: String) -> String? {
+        guard let range = msg.range(of: marker) else { return nil }
         let tail = msg[range.upperBound...].drop { $0 == ":" || $0 == " " }
-        let id = tail.components(separatedBy: .whitespacesAndNewlines).first ?? ""
-        return .noteNotFound(id)
+        return tail.components(separatedBy: .whitespacesAndNewlines).first ?? ""
     }
 
     // MARK: - Decoder

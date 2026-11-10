@@ -250,4 +250,53 @@ final class NotesScriptBehaviorTests: XCTestCase {
         let plain = try tool.buildArgs(.object(["id": .string(Self.noteId(1)), "body": .string("x")]))
         XCTAssertFalse(plain.contains("--dry-run"))
     }
+
+    // MARK: - Notes already in Recently Deleted (RT-32, RT-33)
+
+    func testDeleteRefusesANoteAlreadyInRecentlyDeleted() throws {
+        // Note 4 sits in Recently Deleted. Deleting it again is how Notes
+        // purges a note for good, so the second delete must not reach Notes.
+        let context = try makeContext()
+        XCTAssertThrowsError(try run(NotesBridge.buildDeleteScript(id: Self.noteId(4)), in: context)) { error in
+            guard case let NotesBridgeError.noteInTrash(id) = NotesBridge.mapScriptFailure("\(error)") else {
+                return XCTFail("Expected noteInTrash, got \(error)")
+            }
+            XCTAssertEqual(id, Self.noteId(4))
+        }
+        XCTAssertEqual(try writes(context), [], "the purge must not happen")
+    }
+
+    func testDeleteFailsClosedWhenTheFolderCannotBeRead() throws {
+        // Unknown folder means "might be in the trash": refuse, do not purge.
+        let context = try makeContext(setup: "__rows[0].folder = 'gone';")
+        XCTAssertThrowsError(try run(NotesBridge.buildDeleteScript(id: Self.noteId(1)), in: context))
+        XCTAssertEqual(try writes(context), [])
+    }
+
+    func testDeleteOfALiveNoteStillDeletes() throws {
+        let context = try makeContext()
+        _ = try run(NotesBridge.buildDeleteScript(id: Self.noteId(1)), in: context)
+        XCTAssertEqual(try writes(context), [["op": "delete", "id": Self.noteId(1)]])
+    }
+
+    func testEditRefusesANoteAlreadyInRecentlyDeleted() throws {
+        let context = try makeContext()
+        let script = NotesBridge.buildEditScript(id: Self.noteId(4), title: "x", body: "y", append: false)
+        XCTAssertThrowsError(try run(script, in: context)) { error in
+            guard case NotesBridgeError.noteInTrash = NotesBridge.mapScriptFailure("\(error)") else {
+                return XCTFail("Expected noteInTrash, got \(error)")
+            }
+        }
+        XCTAssertEqual(try writes(context), [])
+    }
+
+    func testNoteInTrashIsATypedNonRetryableError() {
+        let error = NotesBridge.mapScriptFailure(
+            "execution error: Error: NOTESBRIDGE_ERR_IN_TRASH: x-coredata://abc/ICNote/p4 (-2700)"
+        )
+        XCTAssertEqual(agentErrorCode(for: error), "note_in_trash")
+        XCTAssertFalse(error.nextStep.retryable)
+        XCTAssertTrue(error.errorDescription?.contains("x-coredata://abc/ICNote/p4") == true)
+        XCTAssertFalse(error.errorDescription?.contains("NOTESBRIDGE") == true, "the JXA marker stays internal")
+    }
 }
