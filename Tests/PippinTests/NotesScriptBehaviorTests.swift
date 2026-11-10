@@ -299,4 +299,36 @@ final class NotesScriptBehaviorTests: XCTestCase {
         XCTAssertTrue(error.errorDescription?.contains("x-coredata://abc/ICNote/p4") == true)
         XCTAssertFalse(error.errorDescription?.contains("NOTESBRIDGE") == true, "the JXA marker stays internal")
     }
+
+    // MARK: - notes create --folder (RT-5)
+
+    func testCreateInAMissingFolderFailsInsteadOfUsingTheDefaultFolder() throws {
+        let context = try makeContext()
+        let script = NotesBridge.buildCreateScript(title: "T", body: "b", folder: "No Such Folder")
+        XCTAssertThrowsError(try run(script, in: context)) { error in
+            // osascript appends the error number to the message.
+            guard case let NotesBridgeError.folderNotFound(name) = NotesBridge.mapScriptFailure("\(error) (-2700)") else {
+                return XCTFail("Expected folderNotFound, got \(error)")
+            }
+            XCTAssertEqual(name, "No Such Folder", "a folder name with spaces survives")
+        }
+        XCTAssertEqual(try writes(context), [], "the note must not be created somewhere else")
+    }
+
+    func testCreateInAnExistingFolderAndWithNoFolderStillWork() throws {
+        let context = try makeContext()
+        _ = try run(NotesBridge.buildCreateScript(title: "T", body: "b", folder: "Work"), in: context)
+        _ = try run(NotesBridge.buildCreateScript(title: "U", body: "b", folder: nil), in: context)
+        XCTAssertEqual(try writes(context), [
+            ["op": "make", "name": "T", "at": "Work"],
+            ["op": "make", "name": "U"],
+        ])
+    }
+
+    func testFolderNotFoundIsATypedNotFoundError() {
+        let error = NotesBridgeError.folderNotFound("Nope")
+        XCTAssertEqual(agentErrorCode(for: error), "folder_not_found")
+        XCTAssertEqual(PippinExitCode.from(error), 3)
+        XCTAssertEqual(error.nextStep.nextCall?.tool, "notes_folders")
+    }
 }

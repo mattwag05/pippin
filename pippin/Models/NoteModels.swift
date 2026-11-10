@@ -12,6 +12,9 @@ public enum NotesBridgeError: LocalizedError, Sendable {
     /// permanently, so edit and delete refuse (sentinel
     /// `NOTESBRIDGE_ERR_IN_TRASH: <id>`).
     case noteInTrash(String)
+    /// `notes create --folder` named a folder that does not exist (sentinel
+    /// `NOTESBRIDGE_ERR_FOLDER_NOT_FOUND: <name>`).
+    case folderNotFound(String)
     case timeout
     case decodingFailed(String)
     case accessDenied
@@ -25,6 +28,8 @@ public enum NotesBridgeError: LocalizedError, Sendable {
         case let .noteInTrash(id):
             return "Note \(id) is already in Recently Deleted. Deleting it again would purge it permanently; "
                 + "restore it in the Notes app before changing it."
+        case let .folderNotFound(name):
+            return "Notes folder not found: \(name). The note was not created."
         case .timeout: return "Notes automation timed out. Ensure Notes.app is running."
         case .decodingFailed: return "Failed to decode Notes response"
         case .accessDenied: return "Notes automation is not authorized. Grant Automation control of Notes and retry."
@@ -47,6 +52,7 @@ extension NotesBridgeError: RemediableError {
         case .scriptFailed: return "script_failed"
         case .noteNotFound: return "note_not_found"
         case .noteInTrash: return "note_in_trash"
+        case .folderNotFound: return "folder_not_found"
         case .timeout: return "timeout"
         case .decodingFailed: return "decoding_failed"
         case .accessDenied: return "access_denied"
@@ -59,6 +65,7 @@ extension NotesBridgeError: RemediableError {
         case .noteNotFound: return .call(tool: "notes_list", argv: ["notes", "list"])
         case .noteInTrash:
             return .human("Restore the note from Recently Deleted in the Notes app if it should be kept.")
+        case .folderNotFound: return .call(tool: "notes_folders", argv: ["notes", "folders"])
         case .timeout: return .retry(after: 5)
         case .decodingFailed: return .none
         case .accessDenied:

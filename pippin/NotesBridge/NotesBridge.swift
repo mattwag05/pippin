@@ -381,9 +381,12 @@ enum NotesBridge {
         var targetFolder = null;
         if (folderFilter !== null) {
             var folders = app.folders.whose({name: folderFilter})();
-            if (folders.length > 0) { targetFolder = folders[0]; }
+            // A missing folder is an error: falling back to the default folder
+            // reported success for a note filed somewhere unasked (RT-5).
+            if (folders.length === 0) { throw new Error('NOTESBRIDGE_ERR_FOLDER_NOT_FOUND: ' + folderFilter); }
+            targetFolder = folders[0];
         }
-        var props = {name: '\(safeTitle)', body: '\(safeBody)'};
+        var props ={name: '\(safeTitle)', body: '\(safeBody)'};
         var note;
         if (targetFolder !== null) {
             note = app.make({new: 'note', withProperties: props, at: targetFolder});
@@ -498,6 +501,12 @@ enum NotesBridge {
     static func mapScriptFailure(_ msg: String) -> NotesBridgeError {
         if let id = sentinelDetail("NOTESBRIDGE_ERR_NOT_FOUND", in: msg) { return .noteNotFound(id) }
         if let id = sentinelDetail("NOTESBRIDGE_ERR_IN_TRASH", in: msg) { return .noteInTrash(id) }
+        // A folder name may contain spaces: take everything up to osascript's
+        // trailing " (-2700)" error number.
+        if let range = msg.range(of: "NOTESBRIDGE_ERR_FOLDER_NOT_FOUND: ") {
+            let name = msg[range.upperBound...].replacing(/\s*\(-\d+\)\s*$/, with: "")
+            return .folderNotFound(String(name))
+        }
         return .scriptFailed(msg)
     }
 
