@@ -5,7 +5,8 @@ public enum RemindersBridgeError: LocalizedError, Sendable {
     case reminderNotFound(String)
     case listNotFound(String)
     case saveFailed(String)
-    case ambiguousId(String)
+    case ambiguousId(String, count: Int)
+    case idPrefixTooShort(String)
     case noDefaultCalendar
 
     public var errorDescription: String? {
@@ -29,8 +30,11 @@ public enum RemindersBridgeError: LocalizedError, Sendable {
             return "Reminder list not found: \(id)"
         case let .saveFailed(msg):
             return "Failed to save reminder: \(msg)"
-        case let .ambiguousId(id):
-            return "Ambiguous ID prefix '\(id)' — matches multiple reminders. Use more characters."
+        case let .ambiguousId(id, count):
+            return "Ambiguous ID prefix '\(id)': matches \(count) reminders. Use more characters or the full ID."
+        case let .idPrefixTooShort(id):
+            return "ID prefix '\(id)' is too short to edit, complete or delete a reminder. "
+                + "Use the full ID or at least \(IDPrefix.minimumMutatingLength) characters of it."
         case .noDefaultCalendar:
             return "No default Reminders list is set. Open Reminders and set a default list, then retry."
         }
@@ -45,6 +49,7 @@ extension RemindersBridgeError: RemediableError {
         case .listNotFound: return "list_not_found"
         case .saveFailed: return "save_failed"
         case .ambiguousId: return "ambiguous_id"
+        case .idPrefixTooShort: return "invalid_id_prefix"
         case .noDefaultCalendar: return "no_default_calendar"
         }
     }
@@ -53,7 +58,7 @@ extension RemindersBridgeError: RemediableError {
         switch self {
         case .accessDenied:
             return .human("Run `pippin permissions` in a terminal and approve Reminders access.")
-        case .reminderNotFound, .ambiguousId:
+        case .reminderNotFound, .ambiguousId, .idPrefixTooShort:
             return .call(tool: "reminders_list", argv: ["reminders", "list"])
         case .listNotFound, .noDefaultCalendar:
             return .call(tool: "reminders_lists", argv: ["reminders", "lists"])

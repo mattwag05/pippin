@@ -131,10 +131,7 @@ public final class RemindersBridge: @unchecked Sendable {
 
     public func showReminder(id: String) async throws -> ReminderItem {
         try await ensureAccess()
-        guard let reminder = try findReminderByPrefix(id: id) else {
-            throw RemindersBridgeError.reminderNotFound(id)
-        }
-        return mapReminder(reminder)
+        return try mapReminder(findReminder(id: id, minimumPrefixLength: 0))
     }
 
     // MARK: - Create
@@ -193,9 +190,7 @@ public final class RemindersBridge: @unchecked Sendable {
         url: String? = nil
     ) async throws -> BridgeActionResult {
         try await ensureAccess()
-        guard let reminder = try findReminderByPrefix(id: id) else {
-            throw RemindersBridgeError.reminderNotFound(id)
-        }
+        let reminder = try findReminder(id: id, minimumPrefixLength: IDPrefix.minimumMutatingLength)
         if let title { reminder.title = title }
         if let notes { reminder.notes = notes }
         if let priority { reminder.priority = priority }
@@ -227,9 +222,7 @@ public final class RemindersBridge: @unchecked Sendable {
 
     public func completeReminder(id: String) async throws -> BridgeActionResult {
         try await ensureAccess()
-        guard let reminder = try findReminderByPrefix(id: id) else {
-            throw RemindersBridgeError.reminderNotFound(id)
-        }
+        let reminder = try findReminder(id: id, minimumPrefixLength: IDPrefix.minimumMutatingLength)
         reminder.isCompleted = true
         reminder.completionDate = Date()
         do {
@@ -248,9 +241,7 @@ public final class RemindersBridge: @unchecked Sendable {
 
     public func deleteReminder(id: String) async throws -> BridgeActionResult {
         try await ensureAccess()
-        guard let reminder = try findReminderByPrefix(id: id) else {
-            throw RemindersBridgeError.reminderNotFound(id)
-        }
+        let reminder = try findReminder(id: id, minimumPrefixLength: IDPrefix.minimumMutatingLength)
         let savedTitle = reminder.title ?? ""
         let savedId = reminder.calendarItemIdentifier
         do {
@@ -374,7 +365,10 @@ public final class RemindersBridge: @unchecked Sendable {
         return (result, timedOut)
     }
 
-    private func findReminderByPrefix(id: String) throws -> EKReminder? {
+    /// The reminder an id or id prefix names. Mutating callers pass a minimum
+    /// prefix length so a one-character prefix cannot pick a reminder to
+    /// complete or delete (RC-16).
+    private func findReminder(id: String, minimumPrefixLength: Int) throws -> EKReminder {
         // Direct lookup first
         if let item = store.calendarItem(withIdentifier: id) as? EKReminder {
             return item
@@ -384,12 +378,24 @@ public final class RemindersBridge: @unchecked Sendable {
         // set to match against (→ not-found), so the flag isn't surfaced.
         let predicate = store.predicateForReminders(in: nil)
         let allReminders = fetchRemindersSync(predicate: predicate).reminders
-
-        let matches = allReminders.filter { $0.calendarItemIdentifier.hasPrefix(id) }
-        if matches.count > 1 {
-            throw RemindersBridgeError.ambiguousId(id)
+        let fullId = try Self.resolveReminderId(
+            id, among: allReminders.map(\.calendarItemIdentifier), minimumPrefixLength: minimumPrefixLength
+        )
+        guard let reminder = allReminders.first(where: { $0.calendarItemIdentifier == fullId }) else {
+            throw RemindersBridgeError.reminderNotFound(id)
         }
-        return matches.first
+        return reminder
+    }
+
+    /// Map a prefix lookup onto the typed errors. Pure so it is unit-testable
+    /// without an EKEventStore.
+    static func resolveReminderId(_ id: String, among identifiers: [String], minimumPrefixLength: Int) throws -> String {
+        switch IDPrefix.resolve(id, among: identifiers, minimumLength: minimumPrefixLength) {
+        case let .unique(fullId): return fullId
+        case .notFound: throw RemindersBridgeError.reminderNotFound(id)
+        case let .ambiguous(count): throw RemindersBridgeError.ambiguousId(id, count: count)
+        case .tooShort: throw RemindersBridgeError.idPrefixTooShort(id)
+        }
     }
 
     private func mapReminder(_ r: EKReminder) -> ReminderItem {

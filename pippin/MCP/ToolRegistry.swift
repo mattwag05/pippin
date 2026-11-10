@@ -870,12 +870,14 @@ enum MCPToolRegistry {
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Event ID."),
+                    "occurrence": Schema.string("For a recurring event: which occurrence to show, as the occurrenceDate from calendar_events."),
                 ],
                 required: ["id"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("calendar", "show")
                 try argv.append(ArgHelpers.requiredString(args, "id"))
+                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
                 return argv
             }
         ),
@@ -893,7 +895,8 @@ enum MCPToolRegistry {
                     "notes": Schema.string("New notes."),
                     "url": Schema.string("New URL."),
                     "alert": Schema.string("New alert offset."),
-                    "span": Schema.string("For a recurring event: 'this' (default) or 'future'."),
+                    "span": Schema.string("For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
+                    "occurrence": Schema.string("For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
                     "allDay": Schema.boolean("Convert to an all-day event.", default: false),
                     "noAllDay": Schema.boolean("Convert away from an all-day event.", default: false),
                 ],
@@ -911,6 +914,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "url", flagName: "--url")
                 argv += ArgHelpers.optionIfString(args, "alert", flagName: "--alert")
                 argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
+                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
                 argv += ArgHelpers.flagIfTrue(args, "allDay", flagName: "--all-day")
                 argv += ArgHelpers.flagIfTrue(args, "noAllDay", flagName: "--no-all-day")
                 return argv
@@ -923,7 +927,8 @@ enum MCPToolRegistry {
                 properties: [
                     "id": Schema.string("Event ID from calendar_events / calendar_search."),
                     "confirm": Schema.boolean("Must be true. Deletion cannot be undone.", default: false),
-                    "span": Schema.string("For a recurring event: 'this' (default) or 'future'."),
+                    "span": Schema.string("For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series."),
+                    "occurrence": Schema.string("For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'."),
                 ],
                 required: ["id", "confirm"]
             ),
@@ -932,6 +937,7 @@ enum MCPToolRegistry {
                 try argv.append(ArgHelpers.requiredString(args, "id"))
                 try argv += ArgHelpers.forceFromConfirm(args)
                 argv += ArgHelpers.optionIfString(args, "span", flagName: "--span")
+                argv += ArgHelpers.optionIfString(args, "occurrence", flagName: "--occurrence")
                 return argv
             }
         ),
@@ -1385,7 +1391,7 @@ enum MCPToolRegistry {
         ),
         MCPTool(
             name: "notes_edit",
-            description: "Edit an existing note's title or body (replaces, or appends with append=true).",
+            description: "Edit an existing note's title or body. body REPLACES the whole note body unless append=true; pass dryRun=true first to see the current and resulting body length without writing.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Note ID from notes_list."),
@@ -1393,6 +1399,7 @@ enum MCPToolRegistry {
                     "body": Schema.string("New body. Plain text; newlines become formatted HTML unless html=true."),
                     "append": Schema.boolean("Append body instead of replacing.", default: false),
                     "html": Schema.boolean("Treat body as raw HTML (skip plain-text-to-HTML conversion).", default: false),
+                    "dryRun": Schema.boolean("Report title, previousBodyLength and newBodyLength without writing.", default: false),
                 ],
                 required: ["id"]
             ),
@@ -1403,6 +1410,7 @@ enum MCPToolRegistry {
                 argv += ArgHelpers.optionIfString(args, "body", flagName: "--body")
                 argv += ArgHelpers.flagIfTrue(args, "append", flagName: "--append")
                 argv += ArgHelpers.flagIfTrue(args, "html", flagName: "--html")
+                argv += ArgHelpers.flagIfTrue(args, "dryRun", flagName: "--dry-run")
                 ArgHelpers.appendPositionalLast(id, into: &argv)
                 return argv
             }
@@ -1659,18 +1667,23 @@ enum MCPToolRegistry {
 
         MCPTool(
             name: "memos_delete",
-            description: "Delete a voice memo — both the database row and the audio file. IRREVERSIBLE — fails unless confirm=true. Consider memos_export first.",
+            description: "Delete a voice memo: its audio file moves to the Trash and its database row is removed. Fails unless confirm=true, and refuses while the Voice Memos app is running. Pass dryRun=true (with confirm=false) to see which recording an id names without changing anything.",
             inputSchema: Schema.object(
                 properties: [
-                    "id": Schema.string("Memo ID from memos_list."),
-                    "confirm": Schema.boolean("Must be true. The audio file is unrecoverable.", default: false),
+                    "id": Schema.string("Memo ID from memos_list, or an unambiguous prefix of it."),
+                    "confirm": Schema.boolean("Must be true to delete. The audio is recoverable from the Trash; the recording's entry is not.", default: false),
+                    "dryRun": Schema.boolean("Report the recording that would be deleted and change nothing.", default: false),
                 ],
                 required: ["id", "confirm"]
             ),
             buildArgs: { args in
                 var argv = pippinArgv("memos", "delete")
                 try argv.append(ArgHelpers.requiredString(args, "id"))
-                try argv += ArgHelpers.forceFromConfirm(args)
+                if ArgHelpers.bool(args, "dryRun") == true {
+                    argv.append("--dry-run")
+                } else {
+                    try argv += ArgHelpers.forceFromConfirm(args)
+                }
                 return argv
             }
         ),

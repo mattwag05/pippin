@@ -17,7 +17,7 @@ public struct CalendarInfo: Codable, Sendable {
 }
 
 extension CalendarEvent: EssentialRow {
-    public static let essentialFields = ["id", "title", "startDate", "endDate", "isAllDay", "location", "calendarTitle"]
+    public static let essentialFields = ["id", "title", "startDate", "endDate", "isAllDay", "location", "calendarTitle", "occurrenceDate"]
 }
 
 public struct CalendarEvent: Codable, Sendable {
@@ -35,6 +35,12 @@ public struct CalendarEvent: Codable, Sendable {
     public let recurrence: String?
     public let status: String
     public let alerts: [String]?
+    /// Whether the event belongs to a recurring series. Every occurrence of a
+    /// series shares `id`, so edit/delete also need `occurrenceDate`.
+    public let isRecurring: Bool?
+    /// Recurring events only: this occurrence's start, the value
+    /// `calendar edit/delete/show --occurrence` takes.
+    public let occurrenceDate: String?
 
     public init(
         id: String,
@@ -50,7 +56,9 @@ public struct CalendarEvent: Codable, Sendable {
         attendees: [Attendee]? = nil,
         recurrence: String? = nil,
         status: String = "none",
-        alerts: [String]? = nil
+        alerts: [String]? = nil,
+        isRecurring: Bool? = nil,
+        occurrenceDate: String? = nil
     ) {
         self.id = id
         self.calendarId = calendarId
@@ -66,6 +74,8 @@ public struct CalendarEvent: Codable, Sendable {
         self.recurrence = recurrence
         self.status = status
         self.alerts = alerts
+        self.isRecurring = isRecurring
+        self.occurrenceDate = occurrenceDate
     }
 }
 

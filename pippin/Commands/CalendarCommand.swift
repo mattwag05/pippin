@@ -181,13 +181,22 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Argument(help: "Event ID or prefix from `pippin calendar events` output.")
         public var id: String
 
+        @Option(name: .long, help: "For a recurring event: the occurrence to act on, as the occurrenceDate from `pippin calendar events` (or YYYY-MM-DD). Every occurrence shares one ID.")
+        public var occurrence: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
+        public mutating func validate() throws {
+            if let occurrence, OccurrenceSpec(argument: occurrence) == nil {
+                throw ValidationError("--occurrence must be in YYYY-MM-DD or ISO 8601 format.")
+            }
+        }
+
         public mutating func execute() async throws -> AgentResult {
             let bridge = CalendarBridge()
-            let event = try await bridge.getEvent(id: id)
+            let event = try await bridge.getEvent(id: id, occurrence: occurrence.flatMap { OccurrenceSpec(argument: $0) })
             return AgentResult(event)
         }
     }
@@ -279,7 +288,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             abstract: "Edit an existing calendar event."
         )
 
-        @Argument(help: "Event ID or prefix to edit.")
+        @Argument(help: "Event ID, or a unique prefix of at least 8 characters, to edit.")
         public var id: String
 
         @Option(name: .long, help: "New title.")
@@ -306,8 +315,11 @@ public struct CalendarCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Alert before event, e.g. '15m', '1h', '2d'.")
         public var alert: String?
 
-        @Option(name: .long, help: "Span for recurring events: 'this' or 'future' (default: this).")
+        @Option(name: .long, help: "Span for recurring events: 'this' occurrence (default), this and 'future' ones (both need --occurrence), or 'all' for the whole series.")
         public var span: String = "this"
+
+        @Option(name: .long, help: "For a recurring event: the occurrence to act on, as the occurrenceDate from `pippin calendar events` (or YYYY-MM-DD). Every occurrence shares one ID.")
+        public var occurrence: String?
 
         @Flag(name: .long, help: "Set event as all-day.")
         public var allDay: Bool = false
@@ -326,8 +338,14 @@ public struct CalendarCommand: AsyncParsableCommand {
             if let end, parseCalendarDate(end) == nil {
                 throw ValidationError("--end must be in YYYY-MM-DD or ISO 8601 format.")
             }
-            if parseSpan(span) == nil {
-                throw ValidationError("--span must be 'this' or 'future'.")
+            guard let eventSpan = EventSpan(argument: span) else {
+                throw ValidationError("--span must be 'this', 'future' or 'all'.")
+            }
+            if eventSpan == .all, occurrence != nil {
+                throw ValidationError("--occurrence cannot be combined with --span all (the whole series).")
+            }
+            if let occurrence, OccurrenceSpec(argument: occurrence) == nil {
+                throw ValidationError("--occurrence must be in YYYY-MM-DD or ISO 8601 format.")
             }
             if let alert, parseAlertDuration(alert) == nil {
                 throw ValidationError("--alert must be in format like '15m', '1h', '2d'.")
@@ -338,7 +356,7 @@ public struct CalendarCommand: AsyncParsableCommand {
         }
 
         public mutating func execute() async throws -> AgentResult {
-            let ekSpan = parseSpan(span) ?? .thisEvent
+            let eventSpan = EventSpan(argument: span) ?? .this
             let isAllDay: Bool? = allDay ? true : (noAllDay ? false : nil)
             let bridge = CalendarBridge()
             let result = try await bridge.updateEvent(
@@ -352,7 +370,8 @@ public struct CalendarCommand: AsyncParsableCommand {
                 url: url,
                 isAllDay: isAllDay,
                 alertOffset: alert.flatMap { parseAlertDuration($0) },
-                span: ekSpan
+                span: eventSpan,
+                occurrence: occurrence.flatMap { OccurrenceSpec(argument: $0) }
             )
             return AgentResult(result)
         }
@@ -366,14 +385,17 @@ public struct CalendarCommand: AsyncParsableCommand {
             abstract: "Delete a calendar event."
         )
 
-        @Argument(help: "Event ID or prefix to delete.")
+        @Argument(help: "Event ID, or a unique prefix of at least 8 characters, to delete.")
         public var id: String
 
         @Flag(name: .long, help: "Required: confirm deletion without a prompt.")
         public var force: Bool = false
 
-        @Option(name: .long, help: "Span for recurring events: 'this' or 'future' (default: this).")
+        @Option(name: .long, help: "Span for recurring events: 'this' occurrence (default), this and 'future' ones (both need --occurrence), or 'all' for the whole series.")
         public var span: String = "this"
+
+        @Option(name: .long, help: "For a recurring event: the occurrence to act on, as the occurrenceDate from `pippin calendar events` (or YYYY-MM-DD). Every occurrence shares one ID.")
+        public var occurrence: String?
 
         @OptionGroup public var output: OutputOptions
 
@@ -383,15 +405,24 @@ public struct CalendarCommand: AsyncParsableCommand {
             guard force else {
                 throw ValidationError("--force is required. This operation cannot be undone.")
             }
-            if parseSpan(span) == nil {
-                throw ValidationError("--span must be 'this' or 'future'.")
+            guard let eventSpan = EventSpan(argument: span) else {
+                throw ValidationError("--span must be 'this', 'future' or 'all'.")
+            }
+            if eventSpan == .all, occurrence != nil {
+                throw ValidationError("--occurrence cannot be combined with --span all (the whole series).")
+            }
+            if let occurrence, OccurrenceSpec(argument: occurrence) == nil {
+                throw ValidationError("--occurrence must be in YYYY-MM-DD or ISO 8601 format.")
             }
         }
 
         public mutating func execute() async throws -> AgentResult {
-            let ekSpan = parseSpan(span) ?? .thisEvent
             let bridge = CalendarBridge()
-            let result = try await bridge.deleteEvent(id: id, span: ekSpan)
+            let result = try await bridge.deleteEvent(
+                id: id,
+                span: EventSpan(argument: span) ?? .this,
+                occurrence: occurrence.flatMap { OccurrenceSpec(argument: $0) }
+            )
             return AgentResult(result)
         }
     }

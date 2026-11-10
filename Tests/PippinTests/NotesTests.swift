@@ -254,8 +254,8 @@ final class NotesTests: XCTestCase {
 
     func testBuildListScriptDoesNotFetchHTMLBody() {
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
-        XCTAssertFalse(script.contains("note.body()"), "List must not fetch the HTML body — `notes show` does")
-        XCTAssertTrue(script.contains("note.plaintext()"), "List still returns plainText")
+        XCTAssertFalse(script.contains(".body()"), "List must not fetch the HTML body; `notes show` does")
+        XCTAssertTrue(script.contains("'plaintext'"), "List still returns plainText when asked")
     }
 
     func testBuildSearchScriptDoesNotFetchHTMLBody() {
@@ -263,22 +263,21 @@ final class NotesTests: XCTestCase {
         XCTAssertFalse(script.contains("note.body()"), "Search must not fetch the HTML body — `notes show` does")
     }
 
-    func testBuildListScriptResolvesContainerOncePerNote() {
+    func testBuildListScriptReadsFoldersInBulk() {
+        // One bulk `container` column; the per-note container() read survives
+        // only inside the `_folderOfNote` fallback.
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
-        XCTAssertEqual(
-            script.components(separatedBy: "note.container()").count - 1, 1,
-            "container() must be resolved once per note, then id()/name() read off the resolved object"
-        )
+        XCTAssertTrue(script.contains("'container'"))
+        XCTAssertEqual(script.components(separatedBy: ".container()").count - 1, 1)
     }
 
     func testBuildSearchScriptReusesMatchTestReads() {
-        // The match test already read name()/plaintext(); matched notes must
-        // reuse those JS locals instead of firing two more Apple Events each.
+        // The match test reads title and plaintext from the bulk columns;
+        // matched rows reuse those values instead of asking Notes again.
         let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
-        XCTAssertTrue(script.contains("title: title,"), "Matched notes must reuse the cached title")
-        XCTAssertTrue(script.contains("plainText: plain,"), "Matched notes must reuse the cached plaintext")
-        XCTAssertEqual(script.components(separatedBy: "note.plaintext()").count - 1, 1)
-        XCTAssertEqual(script.components(separatedBy: "note.container()").count - 1, 1)
+        XCTAssertTrue(script.contains("title: row.title,"), "Matched notes must reuse the title already read")
+        XCTAssertTrue(script.contains("row.plain"), "Matched notes must reuse the plaintext already read")
+        XCTAssertEqual(script.components(separatedBy: ".plaintext()").count - 1, 1, "only the per-note fallback")
     }
 
     func testListAndSearchScriptsEmitRenamedDateKeys() {
@@ -443,6 +442,47 @@ final class NotesTests: XCTestCase {
             script.contains("Appended text"),
             "Expected script to contain body text, got: \(script)"
         )
+    }
+
+    // MARK: - Write lock (RT-30)
+
+    /// Each closure does what `notes edit --append` does: read, wait, write
+    /// back read + 1. Unserialized, concurrent runs overwrite each other.
+    func testWriteLockSerializesConcurrentReadModifyWrites() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pippin-notes-lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let lockPath = dir.appendingPathComponent("nested/notes-write.lock").path
+        nonisolated(unsafe) var body = 0
+        nonisolated(unsafe) var failures = 0
+        let writers = 5
+        DispatchQueue.concurrentPerform(iterations: writers) { _ in
+            do {
+                try NotesBridge.withWriteLock(path: lockPath) {
+                    let read = body
+                    usleep(20000)
+                    body = read + 1
+                }
+            } catch {
+                failures += 1
+            }
+        }
+        XCTAssertEqual(failures, 0)
+        XCTAssertEqual(body, writers, "every append must survive")
+    }
+
+    func testWriteLockReleasesAfterAThrowingWrite() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pippin-notes-lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let lockPath = dir.appendingPathComponent("notes-write.lock").path
+        XCTAssertThrowsError(try NotesBridge.withWriteLock(path: lockPath) { throw NotesBridgeError.timeout })
+        // A stuck lock would hang here, not fail.
+        XCTAssertEqual(try NotesBridge.withWriteLock(path: lockPath) { 7 }, 7)
+    }
+
+    func testWriteLockFailsClosedWhenTheLockFileCannotBeOpened() {
+        var ran = false
+        XCTAssertThrowsError(try NotesBridge.withWriteLock(path: "/dev/null/notes-write.lock") { ran = true })
+        XCTAssertFalse(ran, "no write without the lock")
     }
 
     func testBuildListFoldersScriptContainsFolders() {

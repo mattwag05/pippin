@@ -413,22 +413,25 @@ public struct MemosCommand: AsyncParsableCommand {
     public struct Delete: AgentCommand {
         public static let configuration = CommandConfiguration(
             commandName: "delete",
-            abstract: "Delete a voice memo (DB row + audio file)."
+            abstract: "Delete a voice memo: its audio file moves to the Trash and its DB row is removed. Quit Voice Memos first."
         )
 
-        @Argument(help: "Memo UUID or prefix to delete.")
+        @Argument(help: "Memo UUID or unambiguous prefix to delete.")
         public var id: String
 
         @Flag(name: .long, help: "Required: confirm deletion without a prompt.")
         public var force: Bool = false
+
+        @Flag(name: .long, help: "Report which recording would be deleted without changing anything (no --force needed).")
+        public var dryRun: Bool = false
 
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
         public mutating func validate() throws {
-            guard force else {
-                throw ValidationError("--force is required. This operation cannot be undone.")
+            guard force || dryRun else {
+                throw ValidationError("--force is required. The audio file moves to the Trash, but the recording's entry cannot be restored.")
             }
         }
 
@@ -444,18 +447,26 @@ public struct MemosCommand: AsyncParsableCommand {
                 fputs("Warning: '\(memo.title)' has been evicted to iCloud. Deleting the DB row only.\n", stderr)
             }
 
-            let audioPath = try VoiceMemosDB.deleteMemo(id: memo.id)
+            if dryRun {
+                return AgentResult(BridgeActionResult(
+                    success: true, action: "would_delete",
+                    details: [
+                        "id": memo.id, "title": memo.title, "audioPath": memo.filePath,
+                        "voiceMemosRunning": String(VoiceMemosDB.voiceMemosIsRunning()),
+                    ]
+                ))
+            }
+
+            let deleted = try VoiceMemosDB.deleteMemo(id: memo.id)
 
             // Clear cached transcript
             if let cache = try? TranscriptCache() {
                 try? cache.delete(memoId: memo.id)
             }
 
-            let result = BridgeActionResult(
-                success: true, action: "deleted",
-                details: ["title": memo.title, "audioPath": audioPath]
-            )
-            return AgentResult(result)
+            var details = ["id": memo.id, "title": memo.title, "audioPath": deleted.audioPath]
+            details["trashedTo"] = deleted.trashedTo
+            return AgentResult(BridgeActionResult(success: true, action: "deleted", details: details))
         }
     }
 }

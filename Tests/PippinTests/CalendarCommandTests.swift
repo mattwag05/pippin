@@ -281,7 +281,7 @@ final class CalendarCommandTests: XCTestCase {
     }
 
     func testEditSpanInvalidFails() {
-        XCTAssertThrowsError(try CalendarCommand.Edit.parse(["event-id", "--span", "all"]))
+        XCTAssertThrowsError(try CalendarCommand.Edit.parse(["event-id", "--span", "both"]))
     }
 
     // MARK: - Delete: --span flag

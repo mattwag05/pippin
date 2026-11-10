@@ -226,7 +226,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             abstract: "Edit an existing reminder."
         )
 
-        @Argument(help: "Reminder ID or prefix to edit.")
+        @Argument(help: "Reminder ID, or a unique prefix of at least 8 characters, to edit.")
         public var id: String
 
         @Option(name: .long, help: "New title.")
@@ -283,7 +283,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             abstract: "Mark a reminder as completed."
         )
 
-        @Argument(help: "Reminder ID or prefix to complete.")
+        @Argument(help: "Reminder ID, or a unique prefix of at least 8 characters, to complete.")
         public var id: String
 
         @OptionGroup public var output: OutputOptions
@@ -305,7 +305,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             abstract: "Delete a reminder."
         )
 
-        @Argument(help: "Reminder ID or prefix to delete.")
+        @Argument(help: "Reminder ID, or a unique prefix of at least 8 characters, to delete.")
         public var id: String
 
         @Flag(name: .long, help: "Required: confirm deletion without a prompt.")

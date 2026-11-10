@@ -39,8 +39,39 @@ final class RemindersTests: XCTestCase {
         XCTAssertFalse(desc.isEmpty, "errorDescription should not be empty")
     }
 
+    // MARK: - ID prefix resolution (RC-16)
+
+    func testReminderPrefixResolution() throws {
+        let a = "4F2A9C10-1111-4AAA-8AAA-000000000001"
+        let b = "4F2A9C10-2222-4BBB-8BBB-000000000002"
+        let min = IDPrefix.minimumMutatingLength
+        XCTAssertEqual(try RemindersBridge.resolveReminderId("4F2A9C10-1", among: [a, b], minimumPrefixLength: min), a)
+        XCTAssertThrowsError(try RemindersBridge.resolveReminderId("4F2A9C10", among: [a, b], minimumPrefixLength: min)) { error in
+            guard case let RemindersBridgeError.ambiguousId(_, count) = error else {
+                return XCTFail("Expected ambiguousId, got \(error)")
+            }
+            XCTAssertEqual(count, 2)
+        }
+        XCTAssertThrowsError(try RemindersBridge.resolveReminderId("DEADBEEF", among: [a], minimumPrefixLength: min)) { error in
+            guard case RemindersBridgeError.reminderNotFound = error else {
+                return XCTFail("Expected reminderNotFound, got \(error)")
+            }
+        }
+        // One reminder in the store: a one-character or empty prefix must not
+        // be enough to complete or delete it.
+        for short in ["4", ""] {
+            XCTAssertThrowsError(try RemindersBridge.resolveReminderId(short, among: [a], minimumPrefixLength: min)) { error in
+                guard case RemindersBridgeError.idPrefixTooShort = error else {
+                    return XCTFail("Expected idPrefixTooShort, got \(error)")
+                }
+                XCTAssertEqual(agentErrorCode(for: error), "invalid_id_prefix")
+            }
+        }
+        XCTAssertEqual(try RemindersBridge.resolveReminderId("4", among: [a], minimumPrefixLength: 0), a)
+    }
+
     func testAmbiguousIdDescription() {
-        let err = RemindersBridgeError.ambiguousId("ab")
+        let err = RemindersBridgeError.ambiguousId("ab", count: 2)
         let desc = err.errorDescription ?? ""
         XCTAssertTrue(desc.contains("ab"), "Expected ID in message, got: \(desc)")
         XCTAssertTrue(

@@ -46,6 +46,7 @@ final class NextStepTests: XCTestCase {
         VoiceMemosError.memoNotFound("i"), VoiceMemosError.memoEvicted("i"), VoiceMemosError.fileNotFound("p"),
         VoiceMemosError.exportFailed("e"), VoiceMemosError.ambiguousId("i", ["a", "b"]),
         VoiceMemosError.accessDenied("p"),
+        VoiceMemosError.voiceMemosRunning, VoiceMemosError.deleteFailed("d"),
         // AudioConverterError
         AudioConverterError.formatUnsupported("f"), AudioConverterError.bufferAllocationFailed,
         AudioConverterError.conversionFailed("e"),
@@ -63,14 +64,14 @@ final class NextStepTests: XCTestCase {
         ContactsBridgeError.groupNotFound("g"), ContactsBridgeError.saveFailed("e"), ContactsBridgeError.deleteFailed("e"),
         // RemindersBridgeError
         RemindersBridgeError.accessDenied, RemindersBridgeError.reminderNotFound("i"), RemindersBridgeError.listNotFound("l"),
-        RemindersBridgeError.saveFailed("e"), RemindersBridgeError.ambiguousId("i"), RemindersBridgeError.noDefaultCalendar,
+        RemindersBridgeError.saveFailed("e"), RemindersBridgeError.ambiguousId("i", count: 2), RemindersBridgeError.idPrefixTooShort("i"), RemindersBridgeError.noDefaultCalendar,
         // MailBridgeError
         MailBridgeError.scriptFailed("e"), MailBridgeError.messageNotFound("i"),
         MailBridgeError.accountNotFound("a", available: ["b"]), MailBridgeError.searchIncomplete, MailBridgeError.timeout,
         MailBridgeError.sendOutcomeUnknown, MailBridgeError.decodingFailed("e"), MailBridgeError.invalidMessageId("i"),
         MailBridgeError.invalidMailbox("m"), MailBridgeError.accessDenied,
         // NotesBridgeError
-        NotesBridgeError.scriptFailed("e"), NotesBridgeError.noteNotFound("i"), NotesBridgeError.timeout,
+        NotesBridgeError.scriptFailed("e"), NotesBridgeError.noteNotFound("i"), NotesBridgeError.noteInTrash("i"), NotesBridgeError.folderNotFound("f"), NotesBridgeError.timeout,
         NotesBridgeError.decodingFailed("e"), NotesBridgeError.accessDenied,
         // ActionExtractorError
         ActionExtractorError.malformedAIResponse("e"), ActionExtractorError.noSourcesSelected,
@@ -103,7 +104,8 @@ final class NextStepTests: XCTestCase {
         JobStoreError.statusWriteFailed("p"),
         // CalendarBridgeError
         CalendarBridgeError.accessDenied, CalendarBridgeError.eventNotFound("i"), CalendarBridgeError.calendarNotFound("c"),
-        CalendarBridgeError.saveFailed("e"), CalendarBridgeError.ambiguousId("i"), CalendarBridgeError.dateParseError("d"),
+        CalendarBridgeError.saveFailed("e"), CalendarBridgeError.ambiguousId("i", count: 2), CalendarBridgeError.idPrefixTooShort("i"),
+        CalendarBridgeError.occurrenceRequired("i"), CalendarBridgeError.occurrenceNotFound("i"), CalendarBridgeError.dateParseError("d"),
         CalendarBridgeError.aiParseError("e"),
         // MailEnvelopeIndexError
         MailEnvelopeIndexError.databaseNotFound("p"), MailEnvelopeIndexError.unsupportedVersion(1),

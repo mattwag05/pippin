@@ -52,31 +52,22 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
         XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
     }
 
-    /// Regression for pippin-4as: search must sort the materialized JS array,
-    /// not a comparator that fires Apple Events per comparison. See the
-    /// buildListScript counterpart for the full rationale.
-    func testSearchScriptSortsMaterializedArrayNotAppleEventComparator() {
+    /// Regression for pippin-4as: the sort must run on plain JS numbers, never
+    /// a comparator that fires an Apple Event per comparison.
+    func testSearchScriptSortsInMemoryNotWithAnAppleEventComparator() {
         let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
         XCTAssertFalse(script.contains("b.modificationDate() - a.modificationDate()"))
-        XCTAssertTrue(script.contains("pairs.sort(function(a, b) { return b.mod - a.mod; })"))
-        XCTAssertTrue(script.contains("var note = pairs[i].note;"))
+        XCTAssertTrue(script.contains("rows.sort(function(a, b) { return b.mod - a.mod; })"))
     }
 
-    /// Regression for pippin-mo7: the modificationDate materialization must use a
-    /// single bulk Apple Event off the collection specifier, NOT one Apple Event
-    /// per note. The per-note form spent the entire soft-timeout building `pairs`
-    /// on large vaults, so the sort loop broke with `pairs` empty and the call
-    /// returned ZERO results (unusable default `notes search`).
-    func testSearchScriptBulkFetchesModDatesNotPerNote() {
+    /// Regression for pippin-mo7: every column comes from one bulk read on the
+    /// plural specifier, never from a per-note loop. What the scripts actually
+    /// read is pinned by execution in `NotesScriptBehaviorTests`.
+    func testSearchScriptBulkFetchesColumnsNotPerNote() {
         let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
-        XCTAssertFalse(
-            script.contains("notes[j].modificationDate()"),
-            "Per-note modificationDate() in the sort loop is O(n) Apple Events — must be bulk-fetched"
-        )
-        XCTAssertTrue(
-            script.contains("_notesRef.modificationDate()"),
-            "modificationDate must be bulk-fetched off the specifier in one Apple Event"
-        )
+        XCTAssertFalse(script.contains("notes[j].modificationDate()"))
+        XCTAssertFalse(script.contains("note.name()"))
+        XCTAssertTrue(script.contains("_bulkRead(") && script.contains("'modificationDate'"))
     }
 
     // MARK: - buildListScript
@@ -102,43 +93,19 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
         XCTAssertTrue(script.contains("JSON.stringify({results: results, meta: _meta})"))
     }
 
-    /// Regression for pippin-4as: the sort must NOT call `.modificationDate()`
-    /// inside the comparator. That naive form fires an Apple Event per
-    /// comparison (O(n log n) round-trips) and can blow the ScriptRunner hard
-    /// cap on large vaults before any partial result is returned. The builder
-    /// must materialize modificationDate once per note, then sort a plain JS
-    /// array (zero Apple Events during the sort).
-    func testListScriptSortsMaterializedArrayNotAppleEventComparator() {
+    /// Regression for pippin-4as: see the search counterpart.
+    func testListScriptSortsInMemoryNotWithAnAppleEventComparator() {
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
-        XCTAssertFalse(
-            script.contains("b.modificationDate() - a.modificationDate()"),
-            "Sort comparator must not fire an Apple Event per comparison"
-        )
-        XCTAssertTrue(
-            script.contains("pairs.sort(function(a, b) { return b.mod - a.mod; })"),
-            "Sort must operate on the materialized numeric `mod` field"
-        )
-        // The results loop must reuse the cached ISO string rather than re-fetching.
-        XCTAssertTrue(script.contains("modifiedAt: pairs[i].iso"))
+        XCTAssertFalse(script.contains("b.modificationDate() - a.modificationDate()"))
+        XCTAssertTrue(script.contains("rows.sort(function(a, b) { return b.mod - a.mod; })"))
     }
 
-    /// Regression for pippin-mo7: the modificationDate materialization must use a
-    /// single bulk Apple Event off the collection specifier, NOT one Apple Event
-    /// per note. The per-note form (`notes[j].modificationDate()`) spent the
-    /// entire soft-timeout building `pairs` on large vaults, so the sort loop
-    /// broke with `pairs` empty and `notes list` returned ZERO results without
-    /// `--folder`. Narrowing with `--folder` worked only because the collection
-    /// was small enough to scan inside the cap.
-    func testListScriptBulkFetchesModDatesNotPerNote() {
+    /// Regression for pippin-mo7: see the search counterpart.
+    func testListScriptBulkFetchesColumnsNotPerNote() {
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
-        XCTAssertFalse(
-            script.contains("notes[j].modificationDate()"),
-            "Per-note modificationDate() in the sort loop is O(n) Apple Events — must be bulk-fetched"
-        )
-        XCTAssertTrue(
-            script.contains("_notesRef.modificationDate()"),
-            "modificationDate must be bulk-fetched off the specifier in one Apple Event"
-        )
+        XCTAssertFalse(script.contains("notes[j].modificationDate()"))
+        XCTAssertFalse(script.contains("note.name()"))
+        XCTAssertTrue(script.contains("_bulkRead(") && script.contains("'modificationDate'"))
     }
 
     // MARK: - buildListFoldersScript
@@ -153,10 +120,12 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
         XCTAssertTrue(script.contains("var _start = Date.now();"))
     }
 
-    func testFoldersScriptHasEarlyBreakCheck() {
+    /// The folders script has no per-folder Apple Events left to bound: it is
+    /// three bulk reads (see `NotesScriptBehaviorTests`).
+    func testFoldersScriptHasNoPerFolderLoopToBound() {
         let script = NotesBridge.buildListFoldersScript()
-        XCTAssertTrue(script.contains("Date.now() - _start > softTimeoutMs"))
-        XCTAssertTrue(script.contains("_meta.timedOut = true"))
+        XCTAssertTrue(script.contains("_folderIndex(true)"))
+        XCTAssertFalse(script.contains("f.notes().length"))
     }
 
     func testFoldersScriptWrapsResultsInResponseEnvelope() {
@@ -176,17 +145,14 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
 
     func testCountScriptUsesSingleAppleEvent() {
         let script = NotesBridge.buildCountScript(folder: nil)
-        XCTAssertTrue(
-            script.contains("app.notes().length"),
-            "Whole-vault count must call app.notes().length once."
-        )
-        XCTAssertTrue(script.contains("JSON.stringify({count: n})"))
+        XCTAssertTrue(script.contains("app.notes.length"), "Whole-vault count is one count event on the specifier.")
+        XCTAssertFalse(script.contains("app.notes().length"), "Must not materialize every note to count.")
     }
 
     func testCountScriptHonorsFolderFilter() {
         let script = NotesBridge.buildCountScript(folder: "Work")
         XCTAssertTrue(script.contains("'Work'"))
-        XCTAssertTrue(script.contains("folders[0].notes().length"))
+        XCTAssertTrue(script.contains("folders[0].notes.length"))
     }
 
     func testCountScriptEscapesFolderName() {
@@ -201,37 +167,18 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
 
     // MARK: - Pre-loop fetch+sort guard (pippin-4as)
 
-    func testSearchScriptHasPreSortBudgetCheck() {
-        // Large vaults can spend the entire soft cap before the sort; the
-        // modificationDate materialization loop must be time-checked and must
-        // precede the (now pure-JS) sort, so a slow vault self-bounds and emits
-        // timedOut=true rather than blowing the ScriptRunner hard cap.
+    func testSearchScriptBoundsItsOnlyPerNoteLoop() {
+        // The bulk reads cannot starve the budget; the per-note plaintext
+        // fallback can, so it carries the soft-cap check.
         let script = NotesBridge.buildSearchScript(query: "x", folder: nil, limit: 10)
-        let firstCheck = script.range(of: "Date.now() - _start > softTimeoutMs")
-        XCTAssertNotNil(firstCheck)
-        // The first time check must precede the materialized-array sort.
-        let sortRange = script.range(of: "pairs.sort(function(a, b) { return b.mod - a.mod; })")
-        XCTAssertNotNil(sortRange)
-        if let first = firstCheck, let sort = sortRange {
-            XCTAssertTrue(
-                first.lowerBound < sort.lowerBound,
-                "Time-checked materialization loop must appear before pairs.sort"
-            )
-        }
+        XCTAssertTrue(script.contains("Date.now() - _start > softTimeoutMs"))
+        XCTAssertTrue(script.contains("_meta.timedOut = true"))
     }
 
-    func testListScriptHasPreSortBudgetCheck() {
+    func testListScriptBoundsItsPerRowReads() {
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
-        let firstCheck = script.range(of: "Date.now() - _start > softTimeoutMs")
-        XCTAssertNotNil(firstCheck)
-        let sortRange = script.range(of: "pairs.sort(function(a, b) { return b.mod - a.mod; })")
-        XCTAssertNotNil(sortRange)
-        if let first = firstCheck, let sort = sortRange {
-            XCTAssertTrue(
-                first.lowerBound < sort.lowerBound,
-                "Time-checked materialization loop must appear before pairs.sort"
-            )
-        }
+        XCTAssertTrue(script.contains("Date.now() - _start > softTimeoutMs"))
+        XCTAssertTrue(script.contains("_meta.timedOut = true"))
     }
 
     // Soft-timeout clamp bounds are now tested in `SoftTimeoutTests`
