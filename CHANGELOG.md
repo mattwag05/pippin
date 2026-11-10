@@ -15,7 +15,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- [fix] `pippin doctor` no longer fails on a Mac where optional features are not set up. Voice Memos never used reports `skip`, and so does mlx-audio when it is not installed and `ai.transcription.provider` is unset; both keep their remediation. A Voice Memos folder that cannot be read, or a configured mlx-audio that is missing, still fails. Tests: `DoctorTests.testVoiceMemosNeverUsedIsASkipButABlockedFolderFails`, `DoctorTests.testMissingMLXAudioIsASkipUnlessTheUserConfiguredIt`.
+- [fix] `pippin doctor` no longer fails on a Mac where optional features are not set up. Voice Memos never used reports `skip`, and so does mlx-audio when it is not installed and `ai.transcription.provider` is unset, and Mail when it answers but has no account; all keep their remediation. A Voice Memos folder that cannot be read, or a configured mlx-audio that is missing, still fails. Tests: `DoctorTests.testVoiceMemosNeverUsedIsASkipButABlockedFolderFails`, `DoctorTests.testMissingMLXAudioIsASkipUnlessTheUserConfiguredIt`, `DoctorTests.testClassifyMailErrorNoAccountsIsASkip`. On the clean benchmark VM, doctor now exits 0 with no failed checks ([result](bench/competitive/results/2026-11-10-doctor/summary.md)).
+- [fix] Thirteen output schemas under `docs/schemas/v4/tools/` no longer mark as required a field inside an optional object that can be absent, such as `remediation.shell_command` in `doctor`. A live run against fixture data found the doctor case.
+
+### Added
+
+- [test] `LiveConformanceTests` runs every read tool against real app data and validates each envelope and `data` against the published schemas. It runs only inside a VM and only with `PIPPIN_LIVE_CONFORMANCE=1` ([result](bench/competitive/results/2026-11-10-doctor/summary.md)).
 
 ## [1.0.0] - 2026-11-10
 
