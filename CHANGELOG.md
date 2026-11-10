@@ -11,9 +11,24 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- [feat] MCP safety gate ([docs/safety-model.md](docs/safety-model.md)): every tool that changes something passes one chokepoint with a policy file (`~/.config/pippin/policy.json`: `allow`, `deny` or `confirm` per tool), single-use confirm tokens bound to the exact arguments, per-tool rate limits, an append-only action log and idempotency keys.
+- [feat] `pippin undo`, `pippin log` and `pippin policy show`, with the MCP tools `undo`, `action_log` and `policy_show` (79 tools, was 76). Undo covers edits, completes, moves, marks and deletes where the prior state could be captured; the log line says when it could not.
+- [feat] `dryRun` on every mutating MCP tool.
+- [feat] MCP results that carry third-party text (mail, messages, notes, event and contact fields) are marked with `content_trust` and `untrusted_fields`, and `initialize` tells the client to treat them as data.
+- [feat] `pippin mcp-server --apps calendar,reminders` exposes only the named tool groups, which cuts the tool definitions an agent carries on every turn.
+- [feat] `reminders complete --incomplete`, `notes show --html`, `mail move --locate-by-message-id` (used by undo).
+- [feat] `doctor` reports a policy file that does not parse.
 - [feat] `docs/schemas/v4/`: the envelope schema, an input schema for every MCP tool, output schemas for 69 tools and an `index.json` that maps each tool to its CLI command. The files are generated from the tool registry and a test fails when they are stale.
 - [feat] `docs/contract.md`: what counts as a breaking change, the semver guarantee and the deprecation policy.
 - [test] The MCP tool registry is locked to the CLI by test: every tool's arguments are parsed by the real commands and checked against their definitions, and every tool is shown to return one schema-valid error envelope with a nonzero exit on a bad argument.
+
+### Changed
+
+- [breaking] Over MCP, `mail_send`, `mail_reply`, `mail_forward`, `messages_send` and every `*_delete` tool first answer `confirmation_required` with a token; `confirm: true` alone no longer acts. A policy rule of `allow` restores the old behavior for a tool.
+- [breaking] Default MCP rate limits: 10 per hour per send tool, 30 per hour per delete tool.
+- [breaking] `batch` and `job_run` refuse sends, deletes and `undo` over MCP (`direct_call_required`).
+- [breaking] A mutating MCP call fails with `audit_log_unavailable` when the action log cannot be written, and with `invalid_policy` when a policy file exists but does not parse.
+- [docs] `docs/mcp-server.md` no longer says destructive actions are not exposed over MCP, or that the exit code reaches MCP clients.
 
 ### Fixed
 

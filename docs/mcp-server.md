@@ -232,7 +232,7 @@ On failure, the `pippin` child process exits with a typed code derived from the 
 | `5` | tool / bridge failure (default) | maybe | `script_failed`, `database_error` |
 | `7` | timeout / rate-limit | yes | `timed_out`, `rate_limited` |
 
-Argument validation and parse failures (a bad `--start`, a missing required flag, an unknown subcommand) map to `2` (usage) like any other bad input, with an error envelope. The MCP server passes the child's exit code through verbatim, so MCP clients see the same codes. The mapping lives in [`pippin/Formatting/PippinExitCode.swift`](../pippin/Formatting/PippinExitCode.swift).
+Argument validation and parse failures (a bad `--start`, a missing required flag, an unknown subcommand) map to `2` (usage) like any other bad input, with an error envelope. The MCP server does not forward the exit code: an MCP client sees `isError` and the same error envelope, whose `error.code` carries the class. The mapping lives in [`pippin/Formatting/PippinExitCode.swift`](../pippin/Formatting/PippinExitCode.swift).
 
 ## Wire into Claude Code
 
