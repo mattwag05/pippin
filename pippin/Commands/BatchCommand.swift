@@ -118,7 +118,10 @@ public struct BatchCommand: AgentCommand {
     static func runOne(entry: BatchEntry, pippinPath: String) -> JSONValue {
         let argv = entry.resolvedArgv
         do {
-            let result = try MCPServerRuntime.runChild(argv: argv, pippinPath: pippinPath)
+            // Under MCP there is no terminal, so a timeout can take the entry's whole group.
+            let result = try MCPServerRuntime.runChild(
+                argv: argv, pippinPath: pippinPath, ownProcessGroup: isMCPContext()
+            )
             let stdoutText = String(data: result.stdout, encoding: .utf8) ?? ""
             let trimmed = stdoutText.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty {
