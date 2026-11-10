@@ -23,26 +23,26 @@ enum NotesBridge {
     static func listNotes(folder: String? = nil, limit: Int = 50, offset: Int = 0, softTimeoutMs: Int = 22000) throws -> Outcome<[NoteInfo]> {
         let clampedLimit = max(1, min(limit, maxListLimit))
         let script = buildListScript(folder: folder, limit: clampedLimit, offset: max(0, offset), softTimeoutMs: softTimeoutMs)
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try decode(Outcome<[NoteInfo]>.self, from: json)
     }
 
     static func showNote(id: String) throws -> NoteInfo {
         let script = buildShowScript(id: id)
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try decode(NoteInfo.self, from: json)
     }
 
     static func searchNotes(query: String, folder: String? = nil, limit: Int = 50, softTimeoutMs: Int = 22000) throws -> Outcome<[NoteInfo]> {
         let clampedLimit = max(1, min(limit, 500))
         let script = buildSearchScript(query: query, folder: folder, limit: clampedLimit, softTimeoutMs: softTimeoutMs)
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try decode(Outcome<[NoteInfo]>.self, from: json)
     }
 
     static func listFolders(softTimeoutMs: Int = 22000) throws -> Outcome<[NoteFolder]> {
         let script = buildListFoldersScript(softTimeoutMs: softTimeoutMs)
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try decode(Outcome<[NoteFolder]>.self, from: json)
     }
 
@@ -53,7 +53,7 @@ enum NotesBridge {
     /// is a single Apple Event — typically <500ms.
     static func countNotes(folder: String? = nil) throws -> Int {
         let script = buildCountScript(folder: folder)
-        let json = try runScript(script, timeoutSeconds: 10)
+        let json = try runScript(script, timeoutSeconds: 10, idempotent: true)
         return try decode(NoteCount.self, from: json).count
     }
 
@@ -436,17 +436,19 @@ enum NotesBridge {
 
     // MARK: - Process Runner
 
-    private static func runScript(_ script: String, timeoutSeconds: Int = 35) throws -> String {
+    private static func runScript(_ script: String, timeoutSeconds: Int = 35, idempotent: Bool = false) throws -> String {
         do {
             return try ScriptRunner.run(
                 script,
                 timeoutSeconds: timeoutSeconds,
                 appName: "Notes",
+                idempotent: idempotent,
                 automationBundleID: "com.apple.Notes"
             )
         } catch ScriptRunnerError.automationDenied {
             throw NotesBridgeError.accessDenied
         } catch ScriptRunnerError.timeout {
+            guard idempotent else { throw ScriptRunnerError.outcomeUnknown(app: "Notes") }
             throw NotesBridgeError.timeout
         } catch let ScriptRunnerError.nonZeroExit(msg) {
             throw mapScriptFailure(msg)

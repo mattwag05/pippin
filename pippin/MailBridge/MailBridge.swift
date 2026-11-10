@@ -89,7 +89,7 @@ enum MailBridge {
     /// One JXA round-trip for the account name→UUID map. Only called by
     /// `MailAccountsCache.ensure` on a cache miss — accounts change rarely.
     static func fetchAccountRecords() throws -> [MailAccountRecord] {
-        let json = try runScript(buildAccountsScript(), timeoutSeconds: mcpHardTimeout(30))
+        let json = try runScript(buildAccountsScript(), timeoutSeconds: mcpHardTimeout(30), idempotent: true)
         return try decode([AccountScriptRow].self, from: json).compactMap { row in
             guard let id = row.id, !id.isEmpty else { return nil }
             return MailAccountRecord(name: row.name, email: row.email, uuid: id)
@@ -171,7 +171,7 @@ enum MailBridge {
         \(jsMailReadyPoll(maxAttempts: 20))
         JSON.stringify({ready: true});
         """
-        _ = try runScript(script, timeoutSeconds: mcpHardTimeout(55))
+        _ = try runScript(script, timeoutSeconds: mcpHardTimeout(55), idempotent: true)
     }
 
     static func listMessages(
@@ -236,7 +236,7 @@ enum MailBridge {
         let timeout = listScanTimeout(
             crossAccount: crossAccount, fetchesBodies: (preview ?? 0) > 0, softTimeoutMs: softTimeoutMs
         )
-        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout), idempotent: true)
         let wrapper = try decode(ListResponse.self, from: json)
         return ListOutcome(
             messages: attachCachedAnomalies(wrapper.results),
@@ -369,7 +369,7 @@ enum MailBridge {
         // JSON.stringify enough headroom before the ScriptRunner cap fires.
         let baseTimeout = crossAccount ? 75 : 30
         let timeout = (preview ?? 0) > 0 ? baseTimeout + 40 : baseTimeout
-        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout), idempotent: true)
         let wrapper = try decode(ActivityResponse.self, from: json)
         return ActivityOutcome(
             messages: attachCachedAnomalies(wrapper.results),
@@ -439,7 +439,7 @@ enum MailBridge {
         // mcpHardTimeout so the bridge self-reaps before the 60s runChild cap.
         let baseTimeout = crossAccount ? 50 : 30
         let timeout = searchBody ? baseTimeout + 45 : baseTimeout + 15
-        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout))
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(timeout), idempotent: true)
         let wrapper = try decode(SearchResponse.self, from: json)
         if verbose {
             let stderr = FileHandle.standardError
@@ -478,7 +478,7 @@ enum MailBridge {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         let script = buildMarkScript(account: account, mailbox: mailboxName, messageId: msgId, read: read, dryRun: dryRun)
         // Write operation: use 20s timeout to accommodate cold Mail launch + IMAP round-trip
-        let json = try runScript(script, timeoutSeconds: 20)
+        let json = try runScript(script, timeoutSeconds: 20, idempotent: true)
         return try decode(BridgeActionResult.self, from: json)
     }
 
@@ -527,7 +527,7 @@ enum MailBridge {
         let script = buildSaveAttachmentsScript(account: account, mailbox: mailboxName, messageId: msgId, saveDir: saveDir)
         // Gmail label fallback scans every mailbox for the id + IMAP body download for
         // attachment enumeration; 30s was insufficient on large accounts.
-        let json = try runScript(script, timeoutSeconds: 90)
+        let json = try runScript(script, timeoutSeconds: 90, idempotent: saveDir == nil)
         return try decode([Attachment].self, from: json)
     }
 
@@ -590,7 +590,7 @@ enum MailBridge {
 
     static func listAccounts() throws -> [MailAccount] {
         let script = buildAccountsScript()
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try decode([MailAccount].self, from: json)
     }
 
@@ -613,7 +613,7 @@ enum MailBridge {
             }
         }
         let script = buildMailboxesScript(account: account)
-        let json = try runScript(script)
+        let json = try runScript(script, idempotent: true)
         return try MailboxesOutcome(
             mailboxes: decode([Mailbox].self, from: json),
             fastPathNote: fastPathNote
@@ -654,7 +654,7 @@ enum MailBridge {
         let script = buildReadScript(account: account, mailbox: mailboxName, messageId: msgId)
         // Large messages with attachments trigger a full IMAP body download via msg.content();
         // 10s default times out on multi-hundred-KB messages. 45s matches send/move timeouts.
-        let json = try runScript(script, timeoutSeconds: 45)
+        let json = try runScript(script, timeoutSeconds: 45, idempotent: true)
         let message = try decode(MailMessage.self, from: json)
         cache?.put(message)
         return message.withDetectedHeaderAnomalies(extra: baselineWarnings(for: message))
@@ -713,7 +713,7 @@ enum MailBridge {
         // source() can force a full RFC822 download incl. attachments — same
         // cost class as saveAttachments (90s there); readMessage usually ran
         // first so the body is already local.
-        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(90))
+        let json = try runScript(script, timeoutSeconds: mcpHardTimeout(90), idempotent: true)
         struct SourceRow: Decodable { let source: String? }
         return try decode(SourceRow.self, from: json).source
     }
@@ -842,7 +842,7 @@ enum MailBridge {
         let script = buildBatchBodiesScript(compoundIds: ids, softTimeoutMs: softTimeoutMs)
         let json = try runScript(script, timeoutSeconds: mcpHardTimeout(listScanTimeout(
             crossAccount: crossAccount, fetchesBodies: true, softTimeoutMs: softTimeoutMs
-        )))
+        )), idempotent: true)
         let wrapper = try decode(ScanResponse.self, from: json)
         return (messages: wrapper.results, timedOut: wrapper.meta.timedOut)
     }

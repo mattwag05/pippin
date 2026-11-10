@@ -3,7 +3,12 @@ import Foundation
 /// Errors emitted by `ScriptRunner.run`. Bridges translate these to their own
 /// typed errors (NotesBridgeError, MailBridgeError, etc.) for user-facing messages.
 public enum ScriptRunnerError: Error, Sendable {
-    case timeout
+    case timeout // killed by our own timer, and only that
+    /// A script that is not safe to run twice hit the timer, so the change may
+    /// or may not have been applied. Bridges throw this in place of `.timeout`
+    /// for their non-idempotent scripts.
+    case outcomeUnknown(app: String)
+    case crashed(signal: Int32) // osascript died on a signal we did not send
     case nonZeroExit(String) // raw stderr when osascript exits non-zero
     case stderrOnSuccess(String) // filtered stderr lines emitted even when exit=0 (e.g. TCC denial)
     case launchFailed(String) // process.run() threw before osascript started
@@ -14,6 +19,8 @@ extension ScriptRunnerError: RemediableError {
     public var agentCode: String {
         switch self {
         case .timeout: return "timeout"
+        case .outcomeUnknown: return "outcome_unknown"
+        case .crashed: return "script_crashed"
         case .nonZeroExit: return "non_zero_exit"
         case .stderrOnSuccess: return "stderr_on_success"
         case .launchFailed: return "launch_failed"
@@ -24,9 +31,28 @@ extension ScriptRunnerError: RemediableError {
     public var nextStep: NextStep {
         switch self {
         case .timeout: return .retry(after: 5)
-        case .nonZeroExit, .stderrOnSuccess, .launchFailed: return .call(tool: "doctor", argv: ["doctor"])
+        case let .outcomeUnknown(app):
+            // Not retryable: look at the current state first.
+            let group = app.lowercased()
+            return .call(tool: "\(group)_list", argv: [group, "list"])
+        case .crashed, .nonZeroExit, .stderrOnSuccess, .launchFailed:
+            return .call(tool: "doctor", argv: ["doctor"])
         case .automationDenied:
             return .human("Run `pippin permissions` in a terminal and approve Automation control of the target app.")
+        }
+    }
+}
+
+extension ScriptRunnerError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .timeout: return "The automation script timed out."
+        case let .outcomeUnknown(app):
+            return "The \(app) change timed out and may or may not have been applied. Check the current state before repeating it."
+        case let .crashed(signal): return "osascript crashed with signal \(signal)."
+        case let .nonZeroExit(msg), let .stderrOnSuccess(msg): return "Automation script failed: \(msg.prefix(200))"
+        case let .launchFailed(msg): return "osascript launch failed: \(msg)"
+        case let .automationDenied(bundleID): return "Automation is not authorized for \(bundleID)."
         }
     }
 }
@@ -61,9 +87,12 @@ public enum ScriptRunner {
         Thread.sleep(forTimeInterval: 0.5)
     }
 
-    /// Run a JXA script via `osascript -l JavaScript`. If the run times out and
-    /// `appName` is non-nil, the launcher is invoked (typically `open -gja`) and
-    /// the script is retried exactly once. Any further timeout is fatal.
+    /// Run a JXA script via `osascript -l JavaScript`. The script runs once
+    /// unless the caller passes `idempotent: true` (a read, or a write that is
+    /// safe to repeat): then a timeout with a non-nil `appName` invokes the
+    /// launcher (typically `open -gja`) and re-runs the script exactly once.
+    /// A caller whose script is not idempotent must report its `.timeout` as
+    /// `.outcomeUnknown`, never as retryable.
     ///
     /// When `automationBundleID` is non-nil, an `AEDeterminePermissionToAutomateTarget`
     /// pre-check runs first: if Automation is denied (or undetermined and we can't
@@ -75,6 +104,7 @@ public enum ScriptRunner {
         _ script: String,
         timeoutSeconds: Int,
         appName: String? = nil,
+        idempotent: Bool = false,
         automationBundleID: String? = nil,
         launcher: AppLauncher = defaultAppLauncher,
         automationCheck: AutomationCheck = AutomationPermission.liveCheck
@@ -86,7 +116,7 @@ public enum ScriptRunner {
         do {
             return try runOsascript(script: script, timeoutSeconds: timeoutSeconds)
         } catch ScriptRunnerError.timeout {
-            guard let appName else { throw ScriptRunnerError.timeout }
+            guard idempotent, let appName else { throw ScriptRunnerError.timeout }
             launcher(appName)
             return try runOsascript(script: script, timeoutSeconds: timeoutSeconds)
         }
@@ -126,8 +156,10 @@ public enum ScriptRunner {
             group.leave()
         }
 
+        let killedByTimer = ConcurrentSlot<Bool>()
         let timeoutItem = DispatchWorkItem {
             guard process.isRunning else { return }
+            killedByTimer.set(true)
             process.terminate() // SIGTERM — give osascript 2 seconds to clean up
             DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(2)) {
                 if process.isRunning { kill(process.processIdentifier, SIGKILL) }
@@ -139,8 +171,11 @@ public enum ScriptRunner {
         timeoutItem.cancel()
         group.wait()
 
+        // Only our own timer's kill is a timeout. Any other signal death is a
+        // crash, which must not read as retryable.
         if process.terminationReason == .uncaughtSignal {
-            throw ScriptRunnerError.timeout
+            if killedByTimer.get() == true { throw ScriptRunnerError.timeout }
+            throw ScriptRunnerError.crashed(signal: process.terminationStatus)
         }
 
         let stdoutStr = (String(data: stdoutData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

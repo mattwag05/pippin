@@ -161,12 +161,12 @@ extension MailBridge {
 
     static func liveMetaFacts(_ compoundIds: [String]) throws -> [String: MailLiveFacts] {
         guard !compoundIds.isEmpty else { return [:] }
-        let json = try runScript(buildMetaFactsScript(compoundIds), timeoutSeconds: mcpHardTimeout(30))
+        let json = try runScript(buildMetaFactsScript(compoundIds), timeoutSeconds: mcpHardTimeout(30), idempotent: true)
         return try decode([String: MailLiveFacts].self, from: json)
     }
 
     private static func liveMailboxRows(_ key: MailboxKey) throws -> [MailMetaRow] {
-        let json = try runScript(buildMetaFillScript(key), timeoutSeconds: mcpHardTimeout(45))
+        let json = try runScript(buildMetaFillScript(key), timeoutSeconds: mcpHardTimeout(45), idempotent: true)
         return try decode([MailMetaRow].self, from: json)
     }
 
@@ -178,7 +178,7 @@ extension MailBridge {
         return MailMetaReader(
             store: store,
             volatile: { keys in
-                let json = try runScript(buildMetaVolatileScript(keys), timeoutSeconds: mcpHardTimeout(45))
+                let json = try runScript(buildMetaVolatileScript(keys), timeoutSeconds: mcpHardTimeout(45), idempotent: true)
                 return try decode([MailLiveMailbox].self, from: json)
             },
             refresh: { try liveMailboxRows($0) },
@@ -253,7 +253,7 @@ extension MailBridge {
 
         let targets = try decode(
             [MailboxKey.Decoded].self,
-            from: runScript(buildMetaTargetsScript(account: account), timeoutSeconds: 60)
+            from: runScript(buildMetaTargetsScript(account: account), timeoutSeconds: 60, idempotent: true)
         ).map(\.key)
         let finished = try Set(store.scans().filter { $0.complete && Date().timeIntervalSince($0.updatedAt) < maxAge }.map(\.key))
 

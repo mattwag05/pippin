@@ -40,7 +40,7 @@ final class ScriptRunnerTests: XCTestCase {
         }
 
         XCTAssertThrowsError(
-            try ScriptRunner.run(script, timeoutSeconds: 2, appName: "TestApp", launcher: launcher)
+            try ScriptRunner.run(script, timeoutSeconds: 2, appName: "TestApp", idempotent: true, launcher: launcher)
         ) { err in
             guard case ScriptRunnerError.timeout = err else {
                 XCTFail("Expected .timeout after retry, got \(err)")
@@ -49,6 +49,55 @@ final class ScriptRunnerTests: XCTestCase {
         }
 
         XCTAssertEqual(launchCalls, ["TestApp"], "Launcher should be called exactly once for the retry")
+    }
+
+    // MARK: - Writes run once (pippin-z84j)
+
+    /// JXA that appends one line to `path` and then outlives any short timeout.
+    private func appendThenHang(_ path: String) -> String {
+        """
+        var app = Application.currentApplication(); app.includeStandardAdditions = true;
+        app.doShellScript("echo run >> '\(path)'"); delay(10); 'never'
+        """
+    }
+
+    func testTimeoutDoesNotRerunScriptUnlessIdempotent() throws {
+        let path = NSTemporaryDirectory() + "pippin-runs-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        nonisolated(unsafe) var launchCalls = 0
+        XCTAssertThrowsError(
+            try ScriptRunner.run(appendThenHang(path), timeoutSeconds: 3, appName: "TestApp", launcher: { _ in launchCalls += 1 })
+        ) { err in
+            guard case ScriptRunnerError.timeout = err else { return XCTFail("Expected .timeout, got \(err)") }
+        }
+        let runs = try String(contentsOfFile: path, encoding: .utf8).split(separator: "\n").count
+        XCTAssertEqual(runs, 1, "a script that is not marked idempotent must run exactly once")
+        XCTAssertEqual(launchCalls, 0)
+    }
+
+    func testSignalDeathNotFromOurTimerIsACrashAndIsNotRetried() {
+        let script = """
+        ObjC.import('Foundation');
+        var app = Application.currentApplication(); app.includeStandardAdditions = true;
+        app.doShellScript('kill -KILL ' + $.NSProcessInfo.processInfo.processIdentifier); delay(10); 'never'
+        """
+        nonisolated(unsafe) var launchCalls = 0
+        XCTAssertThrowsError(
+            try ScriptRunner.run(script, timeoutSeconds: 30, appName: "TestApp", idempotent: true, launcher: { _ in launchCalls += 1 })
+        ) { err in
+            guard case let ScriptRunnerError.crashed(signal) = err else { return XCTFail("Expected .crashed, got \(err)") }
+            XCTAssertEqual(signal, SIGKILL)
+        }
+        XCTAssertEqual(launchCalls, 0, "a crash must not trigger the relaunch")
+    }
+
+    func testOutcomeUnknownIsNotRetryableAndPointsAtAStateCheck() {
+        let error = AgentError.from(ScriptRunnerError.outcomeUnknown(app: "Notes")).error
+        XCTAssertEqual(error.code, "outcome_unknown")
+        XCTAssertFalse(error.nextStep.retryable)
+        XCTAssertEqual(error.nextStep.nextCall?.tool, "notes_list")
+        XCTAssertEqual(AgentError.from(ScriptRunnerError.crashed(signal: 11)).error.code, "script_crashed")
+        XCTAssertFalse(AgentError.from(ScriptRunnerError.crashed(signal: 11)).error.nextStep.retryable)
     }
 
     // MARK: - Success on first try skips launcher
