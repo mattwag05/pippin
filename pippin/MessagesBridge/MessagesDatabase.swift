@@ -87,6 +87,36 @@ public final class MessagesDatabase: Sendable {
         "COALESCE(\(alias).associated_message_type, 0) NOT BETWEEN 2000 AND 3999"
     }
 
+    /// SQL predicate for a row a reader can see as a message, for the given
+    /// message alias. List, search, show and `unread_count` all use it, so the
+    /// count can only include messages the thread returns (pippin-lzuv). chat.db
+    /// keeps `is_read = 0` forever on rows that are not messages: group renames
+    /// and membership changes (`item_type != 0`), system rows, unsent messages
+    /// and empty rows. `columns` is the `message` table's column set; a
+    /// predicate is dropped when an older macOS lacks its column.
+    static func displayable(_ alias: String, columns: Set<String>) -> String {
+        var parts = [excludeTapbacks(alias)]
+        for column in ["item_type", "is_system_message", "date_retracted"] where columns.contains(column) {
+            parts.append("COALESCE(\(alias).\(column), 0) = 0")
+        }
+        // Has something to show: text, a rich body, or an attachment.
+        parts.append("""
+        ((\(alias).text IS NOT NULL AND \(alias).text != '') OR \(alias).attributedBody IS NOT NULL \
+        OR EXISTS (SELECT 1 FROM message_attachment_join maj_\(alias) WHERE maj_\(alias).message_id = \(alias).ROWID))
+        """)
+        return parts.joined(separator: " AND ")
+    }
+
+    /// The one definition of an unread message: inbound, unread, displayable.
+    static func unreadInbound(_ alias: String, columns: Set<String>) -> String {
+        "\(alias).is_from_me = 0 AND \(alias).is_read = 0 AND \(displayable(alias, columns: columns))"
+    }
+
+    /// Lowercased column names of `message` (PRAGMA table_info, cached by GRDB).
+    private static func messageColumns(_ db: Database) throws -> Set<String> {
+        try Set(db.columns(in: "message").map { $0.name.lowercased() })
+    }
+
     /// Whether the exclude list hides a chat. An entry matches the chat's guid,
     /// or names its `chat_identifier` bare or behind any `service;-;` prefix:
     /// every form `showConversation` resolves, so no spelling of an excluded
@@ -171,7 +201,8 @@ public final class MessagesDatabase: Sendable {
         let cutoffNs = since.map(Self.appleNanos(from:))
         return try readWrapping { db in
             let excludedRowIds = try Self.excludedChatRowIds(db: db, excluded: excluded)
-            // Resolve each chat's last non-tapback message ROWID once, then JOIN
+            let columns = try Self.messageColumns(db)
+            // Resolve each chat's last displayable message ROWID once, then JOIN
             // it for date + both preview columns (pippin-77t). Previously two
             // separate correlated subqueries re-seeked that same row to pull
             // `text` and `attributedBody` independently; the single seek + PK
@@ -192,14 +223,12 @@ public final class MessagesDatabase: Sendable {
                 (SELECT COUNT(*) FROM message m3
                  JOIN chat_message_join cmj3 ON cmj3.message_id = m3.ROWID
                  WHERE cmj3.chat_id = c.ROWID
-                   AND m3.is_from_me = 0
-                   AND m3.is_read = 0
-                   AND \(Self.excludeTapbacks("m3"))) AS unread_count
+                   AND \(Self.unreadInbound("m3", columns: columns))) AS unread_count
             FROM chat c
             JOIN message lm ON lm.ROWID = (
                 SELECT m2.ROWID FROM message m2
                 JOIN chat_message_join cmj2 ON cmj2.message_id = m2.ROWID
-                WHERE cmj2.chat_id = c.ROWID AND \(Self.excludeTapbacks("m2"))
+                WHERE cmj2.chat_id = c.ROWID AND \(Self.displayable("m2", columns: columns))
                 ORDER BY m2.date DESC LIMIT 1)
             WHERE c.is_archived = 0
             """
@@ -284,7 +313,7 @@ public final class MessagesDatabase: Sendable {
             LEFT JOIN handle h ON h.ROWID = m.handle_id
             """
             let sinceClause = cutoffNs != nil ? " AND m.date >= ?" : ""
-            let notTapback: String = Self.excludeTapbacks("m")
+            let displayable: String = try Self.displayable("m", columns: Self.messageColumns(db))
 
             // Q1 — text-column matches across all history (SQLite LIKE; preserves
             // the prior behavior for messages that still populate `m.text`).
@@ -293,7 +322,7 @@ public final class MessagesDatabase: Sendable {
             q1args.append(limit + excluded.count)
             let q1 = try Row.fetchAll(db, sql: """
             SELECT \(base)
-            WHERE m.text LIKE ? ESCAPE '\\' AND c.is_archived = 0 AND \(notTapback)\(sinceClause)
+            WHERE m.text LIKE ? ESCAPE '\\' AND c.is_archived = 0 AND \(displayable)\(sinceClause)
             ORDER BY m.date DESC LIMIT ?
             """, arguments: StatementArguments(q1args))
 
@@ -306,7 +335,7 @@ public final class MessagesDatabase: Sendable {
             let q2 = try Row.fetchAll(db, sql: """
             SELECT \(base)
             WHERE m.attributedBody IS NOT NULL AND (m.text IS NULL OR m.text = '')
-              AND c.is_archived = 0 AND \(notTapback)\(sinceClause)
+              AND c.is_archived = 0 AND \(displayable)\(sinceClause)
             ORDER BY m.date DESC LIMIT ?
             """, arguments: StatementArguments(q2args))
 
@@ -415,6 +444,7 @@ public final class MessagesDatabase: Sendable {
                 db: db, chatRowIds: [chatRowId], contactIndex: contactIndex
             )[chatRowId] ?? []
 
+            let columns = try Self.messageColumns(db)
             // Fetch limit + 1 rows so we know whether older messages exist
             // without a separate COUNT(*) round-trip.
             let rows = try Row.fetchAll(
@@ -425,7 +455,7 @@ public final class MessagesDatabase: Sendable {
                 FROM message m
                 JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
                 LEFT JOIN handle h ON h.ROWID = m.handle_id
-                WHERE cmj.chat_id = ? AND \(Self.excludeTapbacks("m"))
+                WHERE cmj.chat_id = ? AND \(Self.displayable("m", columns: columns))
                 ORDER BY m.date DESC LIMIT ?
                 """,
                 arguments: [chatRowId, limit + 1]
@@ -447,13 +477,13 @@ public final class MessagesDatabase: Sendable {
                 )
             }
 
-            // Same unread definition as listConversations' subquery: inbound,
-            // unread, non-tapback.
+            // Whole-thread count with the same predicate as the rows above, so
+            // with a limit that covers the thread it equals the returned
+            // messages that are inbound and unread.
             let unreadSQL = """
             SELECT COUNT(*) FROM message m
             JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
-            WHERE cmj.chat_id = ? AND m.is_from_me = 0 AND m.is_read = 0
-              AND \(Self.excludeTapbacks("m"))
+            WHERE cmj.chat_id = ? AND \(Self.unreadInbound("m", columns: columns))
             """
             let unreadCount = try Int.fetchOne(db, sql: unreadSQL, arguments: [chatRowId]) ?? 0
 

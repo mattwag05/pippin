@@ -5,8 +5,16 @@ import XCTest
 
 /// Shared chat.db stand-in for the Messages tests. Never the live database.
 enum MessagesFixture {
-    /// An empty chat.db schema, in memory or at `path`.
-    static func emptySchema(path: String? = nil) throws -> DatabaseQueue {
+    /// An empty chat.db schema, in memory or at `path`. `legacy` leaves out the
+    /// `message` columns older macOS versions lack (`item_type`,
+    /// `is_system_message`, `date_retracted`).
+    static func emptySchema(path: String? = nil, legacy: Bool = false) throws -> DatabaseQueue {
+        let modernColumns = legacy ? "" : """
+        ,
+                        item_type INTEGER DEFAULT 0,
+                        is_system_message INTEGER DEFAULT 0,
+                        date_retracted INTEGER DEFAULT 0
+        """
         let db = try path.map { try DatabaseQueue(path: $0) } ?? DatabaseQueue()
         try db.write { db in
             try db.execute(sql: """
@@ -35,7 +43,7 @@ enum MessagesFixture {
                 is_from_me INTEGER DEFAULT 0,
                 is_read INTEGER DEFAULT 0,
                 service TEXT,
-                associated_message_type INTEGER DEFAULT 0
+                associated_message_type INTEGER DEFAULT 0\(modernColumns)
             );
             CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER);
             CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER);
