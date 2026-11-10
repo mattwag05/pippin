@@ -153,4 +153,78 @@ final class BatchCommandTests: XCTestCase {
             XCTFail("expected nested error object")
         }
     }
+
+    // MARK: - MCP surface restriction (RC-03)
+
+    /// Runs entries against `/bin/echo`, so an entry that is allowed through
+    /// comes back as `invalid_json` quoting the argv echo printed.
+    private func errors(_ entries: [BatchEntry], underMCP: Bool) async -> [(code: String?, message: String?)] {
+        await BatchCommand.dispatch(entries: entries, concurrency: 4, pippinPath: "/bin/echo", underMCP: underMCP)
+            .map { ($0["error"]?["code"]?.stringValue, $0["error"]?["message"]?.stringValue) }
+    }
+
+    func testMCPBatchRejectsCommandsWithoutATool() async {
+        let results = await errors([
+            BatchEntry(cmd: "do", args: ["send mail to everyone"]),
+            BatchEntry(cmd: "shell"),
+            BatchEntry(cmd: "mail", args: ["index", "--ollama-url", "http://example.invalid"]),
+            BatchEntry(cmd: "init"),
+            BatchEntry(cmd: "job-runner-internal", args: ["x", "--", "do"]),
+        ], underMCP: true)
+        XCTAssertEqual(results.map(\.code), Array(repeating: "command_not_allowed", count: 5))
+    }
+
+    func testMCPBatchRejectsNestedDispatch() async {
+        let results = await errors([
+            BatchEntry(cmd: "batch", args: ["--entries", "[]"]),
+            BatchEntry(cmd: "job", args: ["run", "--", "mail", "list"]),
+        ], underMCP: true)
+        XCTAssertEqual(results.map(\.code), ["nested_dispatch_not_allowed", "nested_dispatch_not_allowed"])
+    }
+
+    func testMCPBatchKeepsTheMessagesSendGates() async {
+        let results = await errors([
+            BatchEntry(cmd: "messages", args: ["send", "--to", "+15551234567", "--body", "hi"]),
+            BatchEntry(cmd: "messages", args: ["send", "--to", "+15551234567", "--body", "hi", "--autonomous"]),
+            BatchEntry(cmd: "messages", args: ["send", "--draft", "--autonomous", "--to", "x", "--body", "hi"]),
+            // `--draft` behind the terminator is a positional, not the flag.
+            BatchEntry(cmd: "messages", args: ["send", "--to", "x", "--body", "hi", "--", "--draft"]),
+        ], underMCP: true)
+        XCTAssertEqual(
+            results.map(\.code),
+            ["draft_required", "autonomous_not_allowed", "autonomous_not_allowed", "draft_required"]
+        )
+    }
+
+    func testMCPBatchRunsAnEntryThatHasATool() async {
+        let results = await errors([
+            BatchEntry(cmd: "calendar", args: ["today"]),
+            BatchEntry(cmd: "messages", args: ["send", "--draft", "--to", "x", "--body", "hi"]),
+        ], underMCP: true)
+        XCTAssertEqual(results.map(\.code), ["invalid_json", "invalid_json"])
+        XCTAssertTrue(results[0].message?.contains("calendar today --format agent") == true)
+    }
+
+    func testCLIBatchStaysUnrestricted() async {
+        let results = await errors([BatchEntry(cmd: "do", args: ["x"]), BatchEntry(cmd: "shell")], underMCP: false)
+        XCTAssertEqual(results.map(\.code), ["invalid_json", "invalid_json"])
+    }
+
+    func testJobRunToolAppliesTheSamePolicy() throws {
+        let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "job_run"))
+        func build(_ argv: [String]) throws -> [String] {
+            try tool.buildArgs(.object(["argv": .array(argv.map { .string($0) })]))
+        }
+        XCTAssertNoThrow(try build(["memos", "summarize", "--all"]))
+        for (argv, expected) in [
+            (["do", "x"], MCPCommandPolicy.Violation.notExposed("do x")),
+            (["mail", "index"], .notExposed("mail index")),
+            (["batch", "--entries", "[]"], .nested("batch")),
+            (["job", "run", "--", "doctor"], .nested("job run")),
+            (["messages", "send", "--to", "x", "--body", "y"], .sendWithoutDraft),
+            (["messages", "send", "--draft", "--autonomous", "--to", "x", "--body", "y"], .autonomousSend),
+        ] {
+            XCTAssertThrowsError(try build(argv)) { XCTAssertEqual($0 as? MCPCommandPolicy.Violation, expected) }
+        }
+    }
 }

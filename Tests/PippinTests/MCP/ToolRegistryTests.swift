@@ -271,6 +271,16 @@ final class ToolRegistryTests: XCTestCase {
         }
     }
 
+    /// `batch` and `job_run` resolve raw argv to a tool by this path (RC-03), so
+    /// it has to be what the tool really runs.
+    func testCommandPathIsThePrefixOfEveryToolsArgv() throws {
+        for tool in MCPToolRegistry.tools {
+            let argv = try tool.buildArgs(sampleArgs(for: tool.name))
+            let path = MCPCommandPolicy.commandPath(for: tool.name)
+            XCTAssertTrue(argv.starts(with: path), "\(tool.name): \(path) is not a prefix of \(argv)")
+        }
+    }
+
     /// One permissive superset of every required field any tool declares. `buildArgs`
     /// only reads the keys it cares about, so a single object satisfies the whole
     /// registry — no per-tool case to forget when a tool is added. Only genuinely
@@ -443,13 +453,13 @@ final class ToolRegistryTests: XCTestCase {
     func testJobRunBuildsArgvWithTerminator() throws {
         let tool = try XCTUnwrap(MCPToolRegistry.tool(named: "job_run"))
         let argv = try tool.buildArgs(.object(["argv": .array([
-            .string("mail"), .string("index"),
+            .string("mail"), .string("list"),
         ])]))
         XCTAssertEqual(argv[0], "job")
         XCTAssertEqual(argv[1], "run")
         XCTAssertTrue(argv.contains("--"))
         XCTAssertTrue(argv.contains("mail"))
-        XCTAssertTrue(argv.contains("index"))
+        XCTAssertTrue(argv.contains("list"))
         XCTAssertTrue(argv.contains("--format"))
         XCTAssertTrue(argv.contains("agent"))
     }

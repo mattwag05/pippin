@@ -1826,12 +1826,12 @@ enum MCPToolRegistry {
         MCPTool(
             name: "job_run",
             effect: .mutating(verifyWith: "job_list"),
-            description: "Fork a detached pippin sub-command as a background job. Returns {job_id, pid, status: \"running\"} immediately — poll via job_show or block via job_wait. Use this for slow work (mail index, memos summarize, actions extract) so the caller isn't blocked.",
+            description: "Fork a detached pippin sub-command as a background job. Returns {job_id, pid, status: \"running\"} immediately — poll via job_show or block via job_wait. Use this for slow work (memos summarize, actions extract) so the caller isn't blocked. The argv must be a command that has an MCP tool of its own; batch and job run cannot be nested.",
             inputSchema: Schema.object(
                 properties: [
                     "argv": .object([
                         "type": .string("array"),
-                        "description": .string("Argv for the pippin child process (e.g. [\"mail\", \"index\"])."),
+                        "description": .string("Argv for the pippin child process (e.g. [\"memos\", \"summarize\", \"--all\"])."),
                         "items": .object(["type": .string("string")]),
                     ]),
                 ],
@@ -1847,6 +1847,7 @@ enum MCPToolRegistry {
                     }
                     return s
                 }
+                try MCPCommandPolicy.check(argv)
                 var out = pippinArgv("job", "run")
                 out.append("--")
                 out.append(contentsOf: argv)
@@ -1911,7 +1912,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "batch",
             effect: .mutating(verifyWith: nil),
-            description: "Run multiple pippin commands concurrently in one call. Use this to fan out (e.g. fetch mail + calendar + reminders simultaneously) instead of sequential tool calls. Each entry's response is its own envelope.",
+            description: "Run multiple pippin commands concurrently in one call. Use this to fan out (e.g. fetch mail + calendar + reminders simultaneously) instead of sequential tool calls. Each entry's response is its own envelope. An entry must be a command that has an MCP tool of its own (same flags as the CLI); batch and job run cannot be nested, and anything else returns a per-entry error.",
             inputSchema: Schema.object(
                 properties: [
                     "entries": .object([

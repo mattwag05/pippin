@@ -15,6 +15,9 @@ public struct BatchCommand: AgentCommand {
         runs each as a child `pippin` process with `--format agent`, and returns an array
         of per-item envelopes inside one outer envelope.
 
+        When an MCP client calls it (the `batch` tool), an entry may only run a command
+        that has an MCP tool of its own; anything else gets a per-entry error.
+
         Example (stdin):
           echo '[{"cmd":"calendar","args":["today"]},
                  {"cmd":"reminders","args":["lists"]}]' | pippin batch --format agent
@@ -78,7 +81,8 @@ public struct BatchCommand: AgentCommand {
     static func dispatch(
         entries: [BatchEntry],
         concurrency: Int,
-        pippinPath: String
+        pippinPath: String,
+        underMCP: Bool = isMCPContext()
     ) async -> [JSONValue] {
         guard !entries.isEmpty else { return [] }
         let lane = max(1, min(concurrency, entries.count))
@@ -90,7 +94,7 @@ public struct BatchCommand: AgentCommand {
                 group.addTask {
                     // runChild blocks on process.waitUntilExit(); hop off the
                     // cooperative pool so N lanes don't park N cooperative threads.
-                    let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath) }
+                    let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath, underMCP: underMCP) }
                     return (index, result)
                 }
             }
@@ -103,7 +107,7 @@ public struct BatchCommand: AgentCommand {
                     let index = nextIndex
                     let entry = entries[index]
                     group.addTask {
-                        let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath) }
+                        let result = await detachBlocking { runOne(entry: entry, pippinPath: pippinPath, underMCP: underMCP) }
                         return (index, result)
                     }
                     nextIndex += 1
@@ -115,12 +119,15 @@ public struct BatchCommand: AgentCommand {
         }
     }
 
-    static func runOne(entry: BatchEntry, pippinPath: String) -> JSONValue {
+    static func runOne(entry: BatchEntry, pippinPath: String, underMCP: Bool = isMCPContext()) -> JSONValue {
         let argv = entry.resolvedArgv
+        var tool: MCPTool?
         do {
+            // An MCP client gets the curated tool surface here too, not all of pippin.
+            if underMCP { tool = try MCPCommandPolicy.check(argv) }
             // Under MCP there is no terminal, so a timeout can take the entry's whole group.
             let result = try MCPServerRuntime.runChild(
-                argv: argv, pippinPath: pippinPath, ownProcessGroup: isMCPContext()
+                argv: argv, pippinPath: pippinPath, ownProcessGroup: underMCP
             )
             let stdoutText = String(data: result.stdout, encoding: .utf8) ?? ""
             let trimmed = stdoutText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -138,10 +145,12 @@ public struct BatchCommand: AgentCommand {
                 message: "Child stdout was not valid JSON: \(String(trimmed.prefix(200)))"
             )
         } catch {
-            // Encodes the real cause: a timeout must not read as a launch failure.
+            // Encodes the real cause: a timeout must not read as a launch failure,
+            // and a timed-out write must not read as retryable.
+            let cause = tool.map { MCPServerRuntime.outcomeUnknownIfMutating(error, tool: $0, tools: MCPToolRegistry.tools) }
             return (try? JSONDecoder().decode(
                 JSONValue.self,
-                from: Data(MCPInProcessTools.errorEnvelope(error, startedAt: Date()).utf8)
+                from: Data(MCPInProcessTools.errorEnvelope(cause ?? error, startedAt: Date()).utf8)
             )) ?? .object(["status": .string("error")])
         }
     }
