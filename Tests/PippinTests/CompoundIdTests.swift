@@ -42,6 +42,17 @@ final class CompoundIdTests: XCTestCase {
         }
     }
 
+    func testNonASCIIDigitsThrow() {
+        // `Character.isNumber` accepts all of these (SEC-13).
+        for id in ["١٢٣", "４２", "½", "4²"] {
+            XCTAssertThrowsError(try MailBridge.parseCompoundId("Account||INBOX||\(id)"), id) { error in
+                guard case MailBridgeError.invalidMessageId = error else {
+                    XCTFail("Expected invalidMessageId, got \(error)"); return
+                }
+            }
+        }
+    }
+
     func testEmptyMessageIdThrows() {
         XCTAssertThrowsError(try MailBridge.parseCompoundId("Account||INBOX||")) { error in
             guard case MailBridgeError.invalidMessageId = error else {

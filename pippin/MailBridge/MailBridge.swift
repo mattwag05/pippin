@@ -958,7 +958,9 @@ enum MailBridge {
             throw MailBridgeError.invalidMessageId(id)
         }
         let msgId = parts[2]
-        guard !msgId.isEmpty, msgId.allSatisfy({ $0.isNumber }) else {
+        // ASCII digits only: `isNumber` also accepts other scripts' digits and
+        // characters like "½", and this value is written into the script unquoted.
+        guard !msgId.isEmpty, msgId.utf8.allSatisfy({ $0 >= 0x30 && $0 <= 0x39 }) else {
             throw MailBridgeError.invalidMessageId(id)
         }
         return (parts[0], parts[1], msgId)
