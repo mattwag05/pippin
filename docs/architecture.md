@@ -122,9 +122,9 @@ Rules the argv builders follow, each enforced by a test:
 
 ### In-process tools
 
-[InProcessTools.swift](../pippin/MCP/InProcessTools.swift) runs some tools without a child: the EventKit reads (Calendar and Reminders), the Contacts reads and the Messages reads. These are the tools whose registry entry sets `inProcess: MCPInProcessTools.execute`. The handler parses the same argv a child would receive against a small root command (`InProcessRoot`) and calls the same `AgentCommand.execute()`.
+[InProcessTools.swift](../pippin/MCP/InProcessTools.swift) runs some tools without a child: the EventKit reads (Calendar and Reminders), the Contacts reads, the Messages reads and the Notes reads. These are the tools whose registry entry sets `inProcess: MCPInProcessTools.execute`. The handler parses the same argv a child would receive against a small root command (`InProcessRoot`) and calls the same `AgentCommand.execute()`.
 
-A blocking framework call can be abandoned but not killed. So each in-process call has a 25 second deadline (`deadlineSeconds`, `withDeadline`). If it expires, the call returns `in_process_timed_out`, and `demote` moves that tool to the child path for the rest of the session. JXA, AI, browser, audio and every write stay in children, where a hard kill exists.
+A blocking framework call can be abandoned but not killed. So each in-process call has a 25 second deadline (`deadlineSeconds`, `withDeadline`). If it expires, the call returns `in_process_timed_out`, and `demote` moves that tool to the child path for the rest of the session. Mail JXA, AI, browser, audio and every write stay in children, where a hard kill exists. Notes reads are JXA too, but their script already runs in an `osascript` child with its own kill, and the Automation pre-check cannot prompt in the server (stdin is not a TTY), so nothing in the server process waits on Notes; skipping the `pippin` child is what closed the warm Notes gap (pippin-ai5s).
 
 ### Command policy for `batch` and `job_run`
 

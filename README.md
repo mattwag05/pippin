@@ -40,7 +40,7 @@ A head-to-head against the most-used open-source Apple automation tools and MCP 
 
 - **Coverage:** 5 apps scored (Reminders, Calendar, Contacts, Notes, Messages), every probed operation answered. The next widest tool covers 3.
 - **Correctness and reliability:** 45 of 45 correctness checks and 50 of 50 reliability checks passed.
-- **Speed:** fastest on 12 of 15 read operations warm, tied on a 13th, and fastest on all 15 cold. It loses to sweetrb/apple-notes-mcp on Notes list and search when warm (232 ms and 250 ms against 150 ms and 183 ms).
+- **Speed:** fastest on 12 of 15 read operations warm, tied on a 13th, and fastest on all 15 cold. In that run it lost to sweetrb/apple-notes-mcp on Notes list and search when warm (232 ms and 250 ms against 150 ms and 183 ms); a Notes-only re-run after the fix measured 167 ms and 183 ms, ties under the benchmark's rule ([result](bench/competitive/results/2026-11-10-notes/summary.md)).
 - **Agent tasks:** with `--apps`, the fewest model tokens on all three tasks (11k to 21k). With all tools exposed it is the most expensive (84k to 88k).
 - **Safety:** the only measured tool with confirm tokens, rate limits, an action log, undo and untrusted-content marking together ([guardrail matrix](docs/competitive/results.md#safety-and-guardrails)).
 
@@ -425,7 +425,7 @@ pippin mcp-server                    # JSON-RPC over stdin and stdout
 pippin mcp-server --list-tools       # print the registered tools as JSON
 ```
 
-The 79 tools cover mail, calendar, reminders, contacts, notes, voice memos, Messages, `actions_extract`, `status`, `doctor`, `digest`, `batch` for parallel calls, `job_*` for background work, and the safety tools `policy_show`, `action_log` and `undo`. `--apps calendar,reminders` lists only the groups you name. Sends and deletes return a preview and a confirm token on the first call ([safety model](docs/safety-model.md)). `messages_send` can only draft. Calendar, Reminders, Contacts and Messages reads run inside the server, and everything else runs in a child process. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring and the full tool list, and [`docs/agent-integration.md`](docs/agent-integration.md) for how an agent should read the results.
+The 79 tools cover mail, calendar, reminders, contacts, notes, voice memos, Messages, `actions_extract`, `status`, `doctor`, `digest`, `batch` for parallel calls, `job_*` for background work, and the safety tools `policy_show`, `action_log` and `undo`. `--apps calendar,reminders` lists only the groups you name. Sends and deletes return a preview and a confirm token on the first call ([safety model](docs/safety-model.md)). `messages_send` can only draft. Calendar, Reminders, Contacts, Messages and Notes reads run inside the server, and everything else runs in a child process. See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring and the full tool list, and [`docs/agent-integration.md`](docs/agent-integration.md) for how an agent should read the results.
 
 ## Architecture
 

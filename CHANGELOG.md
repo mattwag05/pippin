@@ -13,6 +13,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - [refactor] The MCP tool registry is generated from the CLI: each tool is a short spec naming the CLI arguments it exposes, and its input schema (type, `enum`, required-ness, description, numeric default) and argv come from the ArgumentParser definitions. A handful of gates and special bindings keep a small closure. Internal only: `tools/list` output and every tool's argv are unchanged. Refs pippin-kkik.
 
+### Performance
+
+- [perf] Notes reads over MCP (`notes_list`, `notes_search`, `notes_show`, `notes_folders`) run inside the server, and the list and search scripts make 7 Apple Events instead of 11. In the benchmark VM, warm list went from 232 ms to 167 ms and search from 250 ms to 183 ms, which ties sweetrb/apple-notes-mcp under the tie rule ([result](bench/competitive/results/2026-11-10-notes/summary.md)). Test: `NotesScriptBehaviorTests.testTheDefaultListMakesSevenAppleEvents`. Closes pippin-ai5s.
+
 ### Fixed
 
 - [fix] `pippin doctor` no longer fails on a Mac where optional features are not set up. Voice Memos never used reports `skip`, and so does mlx-audio when it is not installed and `ai.transcription.provider` is unset, and Mail when it answers but has no account; all keep their remediation. A Voice Memos folder that cannot be read, or a configured mlx-audio that is missing, still fails. Tests: `DoctorTests.testVoiceMemosNeverUsedIsASkipButABlockedFolderFails`, `DoctorTests.testMissingMLXAudioIsASkipUnlessTheUserConfiguredIt`, `DoctorTests.testClassifyMailErrorNoAccountsIsASkip`. On the clean benchmark VM, doctor now exits 0 with no failed checks ([result](bench/competitive/results/2026-11-10-doctor/summary.md)).

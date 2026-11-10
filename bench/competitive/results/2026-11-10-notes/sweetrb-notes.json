@@ -1,0 +1,104 @@
+{
+  "tool": "sweetrb-notes",
+  "version": "2.16.1",
+  "kind": "mcp",
+  "apps": [
+    "notes"
+  ],
+  "manifest": {
+    "kind": "mcp",
+    "outcome": "ok",
+    "spawn_to_tools_ms": 95.19,
+    "tool_count": 89,
+    "manifest_chars": 174555,
+    "manifest_tokens": 56023,
+    "tools_with_description": 89,
+    "tools_with_annotations": 46
+  },
+  "speed": {
+    "notes.folders": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 463.3,
+        "p50_ms": 464.99,
+        "p95_ms": 470.07,
+        "max_ms": 470.07
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 350.58,
+        "p50_ms": 367.09,
+        "p95_ms": 375.61,
+        "max_ms": 382.69
+      }
+    },
+    "notes.list": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 249.8,
+        "p50_ms": 254.03,
+        "p95_ms": 259.26,
+        "max_ms": 259.26
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 135.86,
+        "p50_ms": 149.78,
+        "p95_ms": 152.86,
+        "max_ms": 153.16
+      }
+    },
+    "notes.search": {
+      "cold": {
+        "runs": 5,
+        "outcomes": {
+          "ok": 5,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 5,
+        "min_ms": 312.41,
+        "p50_ms": 322.92,
+        "p95_ms": 332.85,
+        "max_ms": 332.85
+      },
+      "warm": {
+        "runs": 30,
+        "outcomes": {
+          "ok": 30,
+          "error": 0,
+          "hang": 0
+        },
+        "n": 30,
+        "min_ms": 180.71,
+        "p50_ms": 182.91,
+        "p95_ms": 186.7,
+        "max_ms": 187.04
+      }
+    }
+  }
+}
