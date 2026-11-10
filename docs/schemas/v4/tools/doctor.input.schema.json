@@ -1,0 +1,10 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Check pippin's system requirements and permissions.",
+  "properties" : {
+
+  },
+  "title" : "doctor: arguments",
+  "type" : "object"
+}

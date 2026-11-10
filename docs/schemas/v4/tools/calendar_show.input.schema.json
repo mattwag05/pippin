@@ -1,0 +1,20 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Show full details for a single event by ID (from calendar_events / calendar_search).",
+  "properties" : {
+    "id" : {
+      "description" : "Event ID.",
+      "type" : "string"
+    },
+    "occurrence" : {
+      "description" : "For a recurring event: which occurrence to show, as the occurrenceDate from calendar_events.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id"
+  ],
+  "title" : "calendar_show: arguments",
+  "type" : "object"
+}

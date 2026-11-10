@@ -1,0 +1,27 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "account" : {
+        "type" : "string"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "name" : {
+        "type" : "string"
+      },
+      "noteCount" : {
+        "type" : "integer"
+      }
+    },
+    "required" : [
+      "id",
+      "name",
+      "noteCount"
+    ],
+    "type" : "object"
+  },
+  "title" : "notes_folders: data",
+  "type" : "array"
+}

@@ -1,0 +1,29 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Search notes by title or body content.",
+  "properties" : {
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "folder" : {
+      "description" : "Filter by folder name.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Max results (default: 50).",
+      "type" : "integer"
+    },
+    "query" : {
+      "description" : "Search query.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "query"
+  ],
+  "title" : "notes_search: arguments",
+  "type" : "object"
+}

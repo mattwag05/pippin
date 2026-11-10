@@ -1,0 +1,24 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "contactCount" : {
+        "type" : "integer"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "name" : {
+        "type" : "string"
+      }
+    },
+    "required" : [
+      "contactCount",
+      "id",
+      "name"
+    ],
+    "type" : "object"
+  },
+  "title" : "contacts_groups: data",
+  "type" : "array"
+}

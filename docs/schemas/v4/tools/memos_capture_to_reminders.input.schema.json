@@ -1,0 +1,30 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Transcribe a Voice Memos recording, extract action items via the configured LLM, and create Reminders. Commits by default in agent mode; pass dryRun=true to preview.",
+  "properties" : {
+    "dryRun" : {
+      "default" : false,
+      "description" : "Preview items without creating reminders.",
+      "type" : "boolean"
+    },
+    "list" : {
+      "description" : "Reminder list name (default: Inbox).",
+      "type" : "string"
+    },
+    "memo" : {
+      "description" : "Memo UUID or prefix (default: most recent recording).",
+      "type" : "string"
+    },
+    "model" : {
+      "description" : "Model name (provider-specific default).",
+      "type" : "string"
+    },
+    "provider" : {
+      "description" : "AI provider: ollama, claude, or openai (default: ai.provider, else ollama).",
+      "type" : "string"
+    }
+  },
+  "title" : "memos_capture_to_reminders: arguments",
+  "type" : "object"
+}

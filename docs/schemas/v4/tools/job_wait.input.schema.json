@@ -1,0 +1,21 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Block until a job reaches a terminal state. Prefer this over polling when you know the job is quick. Returns AgentError.wait_timed_out if deadline hits.",
+  "properties" : {
+    "id" : {
+      "description" : "Job id or unambiguous prefix.",
+      "type" : "string"
+    },
+    "timeout" : {
+      "default" : 50,
+      "description" : "Maximum seconds to wait (default and maximum: 50, under the tool-call cap).",
+      "type" : "integer"
+    }
+  },
+  "required" : [
+    "id"
+  ],
+  "title" : "job_wait: arguments",
+  "type" : "object"
+}

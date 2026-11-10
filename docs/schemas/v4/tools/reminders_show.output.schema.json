@@ -1,0 +1,51 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "completionDate" : {
+      "type" : "string"
+    },
+    "creationDate" : {
+      "type" : "string"
+    },
+    "dueDate" : {
+      "type" : "string"
+    },
+    "id" : {
+      "type" : "string"
+    },
+    "isCompleted" : {
+      "type" : "boolean"
+    },
+    "lastModifiedDate" : {
+      "type" : "string"
+    },
+    "listId" : {
+      "type" : "string"
+    },
+    "listTitle" : {
+      "type" : "string"
+    },
+    "notes" : {
+      "type" : "string"
+    },
+    "priority" : {
+      "type" : "integer"
+    },
+    "title" : {
+      "type" : "string"
+    },
+    "url" : {
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id",
+    "isCompleted",
+    "listId",
+    "listTitle",
+    "priority",
+    "title"
+  ],
+  "title" : "reminders_show: data",
+  "type" : "object"
+}

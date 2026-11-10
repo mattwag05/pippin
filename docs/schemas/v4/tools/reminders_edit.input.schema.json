@@ -1,0 +1,40 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Edit an existing reminder. Only the fields you pass are changed.",
+  "properties" : {
+    "due" : {
+      "description" : "New due date/time.",
+      "type" : "string"
+    },
+    "id" : {
+      "description" : "Reminder ID from reminders_list / reminders_search.",
+      "type" : "string"
+    },
+    "list" : {
+      "description" : "Move to this list (EventKit ID from reminders_lists, not a name).",
+      "type" : "string"
+    },
+    "notes" : {
+      "description" : "New notes.",
+      "type" : "string"
+    },
+    "priority" : {
+      "description" : "New priority: high, medium, low, or none.",
+      "type" : "string"
+    },
+    "title" : {
+      "description" : "New title.",
+      "type" : "string"
+    },
+    "url" : {
+      "description" : "New URL.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id"
+  ],
+  "title" : "reminders_edit: arguments",
+  "type" : "object"
+}

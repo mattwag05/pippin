@@ -1,0 +1,10 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List contact groups. Read-only.",
+  "properties" : {
+
+  },
+  "title" : "contacts_groups: arguments",
+  "type" : "object"
+}

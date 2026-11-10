@@ -1,0 +1,39 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Edit an existing note's title or body. body REPLACES the whole note body unless append=true; pass dryRun=true first to see the current and resulting body length without writing.",
+  "properties" : {
+    "append" : {
+      "default" : false,
+      "description" : "Append body instead of replacing.",
+      "type" : "boolean"
+    },
+    "body" : {
+      "description" : "New body. Plain text; newlines become formatted HTML unless html=true.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Report title, previousBodyLength and newBodyLength without writing.",
+      "type" : "boolean"
+    },
+    "html" : {
+      "default" : false,
+      "description" : "Treat body as raw HTML (skip plain-text-to-HTML conversion).",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Note ID from notes_list.",
+      "type" : "string"
+    },
+    "title" : {
+      "description" : "New title.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id"
+  ],
+  "title" : "notes_edit: arguments",
+  "type" : "object"
+}

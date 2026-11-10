@@ -1,0 +1,24 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Aggregated daily digest: unread mail, today's calendar events, due and overdue reminders, and recently modified notes.",
+  "properties" : {
+    "calendarDays" : {
+      "default" : 7,
+      "description" : "Days of upcoming events beyond today (default: 7).",
+      "type" : "integer"
+    },
+    "mailLimit" : {
+      "default" : 5,
+      "description" : "Max unread messages per mail account (default: 5).",
+      "type" : "integer"
+    },
+    "notesLimit" : {
+      "default" : 5,
+      "description" : "Max recent notes (default: 5).",
+      "type" : "integer"
+    }
+  },
+  "title" : "digest: arguments",
+  "type" : "object"
+}

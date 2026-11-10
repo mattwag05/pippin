@@ -1,0 +1,29 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "folder" : {
+      "type" : "string"
+    },
+    "id" : {
+      "type" : "string"
+    },
+    "modifiedAt" : {
+      "type" : "string"
+    },
+    "plainText" : {
+      "type" : "string"
+    },
+    "title" : {
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "folder",
+    "id",
+    "modifiedAt",
+    "plainText",
+    "title"
+  ],
+  "title" : "notes_show: data",
+  "type" : "object"
+}

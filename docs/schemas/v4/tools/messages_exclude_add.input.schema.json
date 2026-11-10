@@ -1,0 +1,16 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Hide a conversation from every messages_* read by adding its thread GUID to the exclude list.",
+  "properties" : {
+    "thread" : {
+      "description" : "Thread GUID from messages_list / messages_show.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "thread"
+  ],
+  "title" : "messages_exclude_add: arguments",
+  "type" : "object"
+}

@@ -1,0 +1,30 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "mimeType" : {
+        "type" : "string"
+      },
+      "name" : {
+        "type" : "string"
+      },
+      "saveError" : {
+        "type" : "string"
+      },
+      "savedPath" : {
+        "type" : "string"
+      },
+      "size" : {
+        "type" : "integer"
+      }
+    },
+    "required" : [
+      "mimeType",
+      "name",
+      "size"
+    ],
+    "type" : "object"
+  },
+  "title" : "mail_attachments: data",
+  "type" : "array"
+}

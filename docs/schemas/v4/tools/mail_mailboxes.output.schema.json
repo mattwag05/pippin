@@ -1,0 +1,28 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "account" : {
+        "type" : "string"
+      },
+      "messageCount" : {
+        "type" : "integer"
+      },
+      "name" : {
+        "type" : "string"
+      },
+      "unreadCount" : {
+        "type" : "integer"
+      }
+    },
+    "required" : [
+      "account",
+      "messageCount",
+      "name",
+      "unreadCount"
+    ],
+    "type" : "object"
+  },
+  "title" : "mail_mailboxes: data",
+  "type" : "array"
+}

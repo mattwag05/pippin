@@ -1,0 +1,27 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Delete a voice memo: its audio file moves to the Trash and its database row is removed. Fails unless confirm=true, and refuses while the Voice Memos app is running. Pass dryRun=true (with confirm=false) to see which recording an id names without changing anything.",
+  "properties" : {
+    "confirm" : {
+      "default" : false,
+      "description" : "Must be true to delete. The audio is recoverable from the Trash; the recording's entry is not.",
+      "type" : "boolean"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Report the recording that would be deleted and change nothing.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Memo ID from memos_list, or an unambiguous prefix of it.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id",
+    "confirm"
+  ],
+  "title" : "memos_delete: arguments",
+  "type" : "object"
+}

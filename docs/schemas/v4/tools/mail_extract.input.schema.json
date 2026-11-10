@@ -1,0 +1,24 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Extract structured data (dates, amounts, contacts, action items) from one message using AI. Read-only.",
+  "properties" : {
+    "messageId" : {
+      "description" : "Compound message ID from mail_list output.",
+      "type" : "string"
+    },
+    "model" : {
+      "description" : "Model name.",
+      "type" : "string"
+    },
+    "provider" : {
+      "description" : "AI provider: ollama, claude, or openai.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "messageId"
+  ],
+  "title" : "mail_extract: arguments",
+  "type" : "object"
+}

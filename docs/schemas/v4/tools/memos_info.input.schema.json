@@ -1,0 +1,16 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Show full metadata for a single Voice Memos recording by ID.",
+  "properties" : {
+    "id" : {
+      "description" : "Memo UUID from memos_list output.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id"
+  ],
+  "title" : "memos_info: arguments",
+  "type" : "object"
+}

@@ -1,0 +1,43 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "detail" : {
+        "type" : "string"
+      },
+      "name" : {
+        "type" : "string"
+      },
+      "remediation" : {
+        "properties" : {
+          "doctor_check" : {
+            "type" : "string"
+          },
+          "human_hint" : {
+            "type" : "string"
+          },
+          "shell_command" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "doctor_check",
+          "human_hint",
+          "shell_command"
+        ],
+        "type" : "object"
+      },
+      "status" : {
+        "type" : "string"
+      }
+    },
+    "required" : [
+      "detail",
+      "name",
+      "status"
+    ],
+    "type" : "object"
+  },
+  "title" : "doctor: data",
+  "type" : "array"
+}

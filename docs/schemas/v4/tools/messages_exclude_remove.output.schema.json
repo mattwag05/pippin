@@ -1,0 +1,20 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "action" : {
+      "type" : "string"
+    },
+    "threads" : {
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    }
+  },
+  "required" : [
+    "action",
+    "threads"
+  ],
+  "title" : "messages_exclude_remove: data",
+  "type" : "object"
+}

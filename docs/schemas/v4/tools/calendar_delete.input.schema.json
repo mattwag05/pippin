@@ -1,0 +1,30 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Delete a calendar event. IRREVERSIBLE: fails unless confirm=true.",
+  "properties" : {
+    "confirm" : {
+      "default" : false,
+      "description" : "Must be true. Deletion cannot be undone.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Event ID from calendar_events / calendar_search.",
+      "type" : "string"
+    },
+    "occurrence" : {
+      "description" : "For a recurring event: which occurrence, as the occurrenceDate from calendar_events (every occurrence shares one id). Required to edit or delete one unless span is 'all'.",
+      "type" : "string"
+    },
+    "span" : {
+      "description" : "For a recurring event: 'this' occurrence (default), this and 'future' ones (both need occurrence), or 'all' for the whole series.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "id",
+    "confirm"
+  ],
+  "title" : "calendar_delete: arguments",
+  "type" : "object"
+}

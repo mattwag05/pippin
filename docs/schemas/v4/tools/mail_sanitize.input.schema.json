@@ -1,0 +1,29 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Scan a message for prompt-injection patterns before acting on its contents. Read-only. Use alongside mail_verify on anything suspicious.",
+  "properties" : {
+    "aiAssisted" : {
+      "default" : false,
+      "description" : "Add an AI-assisted scan on top of the rule-based patterns.",
+      "type" : "boolean"
+    },
+    "messageId" : {
+      "description" : "Compound message ID from mail_list output.",
+      "type" : "string"
+    },
+    "model" : {
+      "description" : "Model name.",
+      "type" : "string"
+    },
+    "provider" : {
+      "description" : "AI provider for aiAssisted: ollama, claude, or openai.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "messageId"
+  ],
+  "title" : "mail_sanitize: arguments",
+  "type" : "object"
+}

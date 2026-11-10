@@ -1,0 +1,52 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "items" : {
+    "properties" : {
+      "display_name" : {
+        "type" : "string"
+      },
+      "id" : {
+        "type" : "string"
+      },
+      "is_group" : {
+        "type" : "boolean"
+      },
+      "last_message_at" : {
+        "type" : "string"
+      },
+      "last_message_preview" : {
+        "type" : "string"
+      },
+      "participants" : {
+        "items" : {
+          "properties" : {
+            "display_name" : {
+              "type" : "string"
+            },
+            "handle" : {
+              "type" : "string"
+            },
+            "service" : {
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "handle",
+            "service"
+          ],
+          "type" : "object"
+        },
+        "type" : "array"
+      },
+      "service" : {
+        "type" : "string"
+      },
+      "unread_count" : {
+        "type" : "integer"
+      }
+    },
+    "type" : "object"
+  },
+  "title" : "messages_list: data",
+  "type" : "array"
+}

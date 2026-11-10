@@ -1,0 +1,16 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Show full contact details by identifier.",
+  "properties" : {
+    "identifier" : {
+      "description" : "Contact identifier.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "identifier"
+  ],
+  "title" : "contacts_show: arguments",
+  "type" : "object"
+}

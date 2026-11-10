@@ -1,0 +1,22 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Delete a contact. IRREVERSIBLE: fails unless confirm=true.",
+  "properties" : {
+    "confirm" : {
+      "default" : false,
+      "description" : "Must be true. Deletion cannot be undone.",
+      "type" : "boolean"
+    },
+    "identifier" : {
+      "description" : "Contact identifier from contacts_search / contacts_show.",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "identifier",
+    "confirm"
+  ],
+  "title" : "contacts_delete: arguments",
+  "type" : "object"
+}

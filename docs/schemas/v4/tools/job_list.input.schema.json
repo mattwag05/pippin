@@ -1,0 +1,24 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List recent background jobs. Filter by status to find only running/failed jobs.",
+  "properties" : {
+    "limit" : {
+      "default" : 20,
+      "description" : "Maximum jobs to return (default: 20).",
+      "type" : "integer"
+    },
+    "status" : {
+      "description" : "Filter: running, done, error, killed.",
+      "enum" : [
+        "running",
+        "done",
+        "error",
+        "killed"
+      ],
+      "type" : "string"
+    }
+  },
+  "title" : "job_list: arguments",
+  "type" : "object"
+}

@@ -1,0 +1,95 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "properties" : {
+    "actionItems" : {
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "amounts" : {
+      "items" : {
+        "properties" : {
+          "context" : {
+            "type" : "string"
+          },
+          "currency" : {
+            "type" : "string"
+          },
+          "text" : {
+            "type" : "string"
+          },
+          "value" : {
+            "type" : "number"
+          }
+        },
+        "required" : [
+          "context",
+          "text"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    },
+    "contacts" : {
+      "items" : {
+        "properties" : {
+          "email" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "phone" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "type" : "array"
+    },
+    "dates" : {
+      "items" : {
+        "properties" : {
+          "context" : {
+            "type" : "string"
+          },
+          "isoDate" : {
+            "type" : "string"
+          },
+          "text" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "context",
+          "text"
+        ],
+        "type" : "object"
+      },
+      "type" : "array"
+    },
+    "trackingNumbers" : {
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    },
+    "urls" : {
+      "items" : {
+        "type" : "string"
+      },
+      "type" : "array"
+    }
+  },
+  "required" : [
+    "actionItems",
+    "amounts",
+    "contacts",
+    "dates",
+    "trackingNumbers",
+    "urls"
+  ],
+  "title" : "mail_extract: data",
+  "type" : "object"
+}

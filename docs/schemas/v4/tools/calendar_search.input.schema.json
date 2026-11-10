@@ -1,0 +1,37 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Search calendar events by text across a date range.",
+  "properties" : {
+    "calendarName" : {
+      "description" : "Filter by calendar name.",
+      "type" : "string"
+    },
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "from" : {
+      "description" : "Start date (default: 6 months ago).",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Max results (default: 50).",
+      "type" : "integer"
+    },
+    "query" : {
+      "description" : "Search query (matches title, notes, location).",
+      "type" : "string"
+    },
+    "to" : {
+      "description" : "End date (default: 6 months from now).",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "query"
+  ],
+  "title" : "calendar_search: arguments",
+  "type" : "object"
+}

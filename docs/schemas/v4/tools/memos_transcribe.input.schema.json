@@ -1,0 +1,32 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "Transcribe Voice Memos audio to text. Requires mlx-audio (see `pippin doctor`).",
+  "properties" : {
+    "all" : {
+      "default" : false,
+      "description" : "Transcribe every recording.",
+      "type" : "boolean"
+    },
+    "force" : {
+      "default" : false,
+      "description" : "Bypass transcript cache.",
+      "type" : "boolean"
+    },
+    "id" : {
+      "description" : "Memo UUID (omit with all=true).",
+      "type" : "string"
+    },
+    "jobs" : {
+      "default" : 2,
+      "description" : "Parallel transcription jobs (default: 2).",
+      "type" : "integer"
+    },
+    "output" : {
+      "description" : "Directory to write .txt files (default: inline in JSON).",
+      "type" : "string"
+    }
+  },
+  "title" : "memos_transcribe: arguments",
+  "type" : "object"
+}

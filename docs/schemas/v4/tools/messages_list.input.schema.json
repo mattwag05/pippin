@@ -1,0 +1,23 @@
+{
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties" : false,
+  "description" : "List recent Apple Messages conversations (most recent first). Read-only.",
+  "properties" : {
+    "fields" : {
+      "description" : "Comma-separated row keys, or `all`. Default: essential fields.",
+      "type" : "string"
+    },
+    "limit" : {
+      "default" : 50,
+      "description" : "Maximum conversations to return (default: 50).",
+      "type" : "integer"
+    },
+    "sinceHours" : {
+      "default" : 48,
+      "description" : "Only conversations with a message in the last N hours (default: 48).",
+      "type" : "integer"
+    }
+  },
+  "title" : "messages_list: arguments",
+  "type" : "object"
+}
