@@ -12,6 +12,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - [bug] MCP tool calls now reject unknown or wrongly typed arguments (`unexpected_argument`, `wrong_type`) before anything runs. A misspelled `dry_run`, or `dryRun` passed as a string, used to be dropped and the real write ran.
+- [bug] `messages show` now honors the exclude list: an excluded thread is refused with `conversation_excluded` whether it is named by guid, bare handle or masked id. Closes pippin-2cdf.
+- [bug] Exclude-list entries written as a bare handle, or with a different service prefix than the thread's current guid, now hide the thread in `messages list`, `search` and `show`.
+- [bug] `messages show` with a masked id or bare handle that matches more than one thread now fails with `ambiguous_conversation` instead of opening an arbitrary one. `%` and `_` in an id are matched literally.
+- [bug] A config.json that exists but does not parse now stops Messages reads, the exclude commands and AI provider setup with `invalid_config` naming the file, instead of running with an empty exclude list. Closes pippin-uy77.
+- [bug] `messages exclude add/remove` no longer overwrite a config file they could not parse, and config saves are a single rename that leaves the file mode 0600.
+- [bug] The Messages audit log now records every send attempt before it is made and its outcome after (`success`, `failed`, `outcome_unknown`, `refused`, `draft`). A send is refused with `audit_log_unavailable` when the attempt cannot be logged. The log is created mode 0600. Closes pippin-7k69.
+- [bug] Messages `unread_count` no longer counts group renames, system rows, unsent or empty rows, and `messages show` no longer returns them as blank messages. Refs pippin-lzuv.
 
 ---
 
