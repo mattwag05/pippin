@@ -9,6 +9,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] `docs/schemas/v4/`: the envelope schema, an input schema for every MCP tool, output schemas for 69 tools and an `index.json` that maps each tool to its CLI command. The files are generated from the tool registry and a test fails when they are stale.
+- [feat] `docs/contract.md`: what counts as a breaking change, the semver guarantee and the deprecation policy.
+- [test] The MCP tool registry is locked to the CLI by test: every tool's arguments are parsed by the real commands and checked against their definitions, and every tool is shown to return one schema-valid error envelope with a nonzero exit on a bad argument.
+
 ### Fixed
 
 - [bug] MCP tool calls now reject unknown or wrongly typed arguments (`unexpected_argument`, `wrong_type`) before anything runs. A misspelled `dry_run`, or `dryRun` passed as a string, used to be dropped and the real write ran.
@@ -52,6 +58,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] Script string escaping now works per Unicode scalar: a quote, backslash, backtick or line break directly before a combining mark was passed into Notes, Mail and Messages scripts unescaped, and a NUL before a digit changed the text. Found by the new fuzz tests.
 - [bug] `--page` and `job gc --older-than` reject values that overflow instead of crashing the process.
 - [test] Seeded fuzz tests (SchemaValidator, every tool's argument builder, the MCP request path, ids, cursors, date and duration parsers, the typedstream decoder, script escaping; replay with `PIPPIN_FUZZ_SEED`) and chaos tests (killed, stalled and half-written children; deleted, truncated, garbage and locked stores). CI runs both as named steps, and `scripts/sbom.sh` emits a CycloneDX SBOM.
+- [bug] The `job_list` `status` schema lists its allowed values, and the `job_run` description names the `id` field it returns.
 
 ### Performance
 
