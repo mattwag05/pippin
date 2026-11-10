@@ -77,21 +77,31 @@ MCPInProcessTools.execute            MCPServerRuntime.runChild
 
 ### The registry
 
-[ToolRegistry.swift](../pippin/MCP/ToolRegistry.swift) holds `MCPToolRegistry.tools`, one `MCPTool` per tool (79 at the time of writing; `InProcessToolsTests.testRegistryToolCount` pins the number). An `MCPTool` has:
+[ToolRegistry.swift](../pippin/MCP/ToolRegistry.swift) holds `MCPToolRegistry.tools`, one `MCPTool` per tool (79 at the time of writing; `InProcessToolsTests.testRegistryToolCount` pins the number). Each tool is generated from an `MCPToolSpec` and the ArgumentParser definition of the command it runs ([ToolSpec.swift](../pippin/MCP/ToolSpec.swift)). The CLI is the single source; the spec says only what the CLI cannot:
+
+- The tool `name` (the command path follows from it, see `MCPCommandPolicy.commandPath`), the `effect` and the tool `description`.
+- For each MCP property, the CLI argument it binds to: `"--flag"`, `.positional` (an id, passed in place) or `.trailing` (free text, passed last after `--`). A numeric option also names its JSON type (`as: .integer` or `as: .number`), because ArgumentParser's help dump carries no Swift types.
+- Overrides, only where the MCP wire text differs from the CLI: a description, a `required: true` the CLI leaves optional, or a schema `default`.
+
+At registry build time `CLIArgument.arguments(of:)` reads each command's help dump (`_dumpHelp()`, rooted at `MCPCommandRoot`) and derives the rest: a flag is a boolean (default `false`, or `true` for a `--x/--no-x` flag that defaults on), a repeating option an array of strings, anything else a string; the `enum` from the argument's allowed values; required-ness from the argument's optionality; the description from the help text; an integer or number default from the CLI default. String defaults stay in the help text. The argv for a regular property is derived the same way: `flagIfTrue` for a flag, one `--flag=value` per element for a repeating option, `--flag=value` for an option, an id positional refused when it starts with `-`, and free text after `--` at the end.
+
+A few properties keep a small closure (`emit: .custom`) or a written-out schema (`.special`), because no single CLI argument describes them: the send and delete `confirm` gates, `mail_show`'s `messageId`/`messageIds`/`subject` alternatives, `mail_mark.read` (`--read` or `--unread`), `contacts_search.phone` (moves the query to the value of `--phone`), the memos id-or-`all`, `mail_activity.preview` and `job_wait.timeout` (always passed, with MCP's own default), `mail_attachments.saveDir` (`--save-to-cache` when absent), `job_run.argv` (checked by `MCPCommandPolicy`) and `batch.entries` (one JSON string).
+
+An `MCPTool` has:
 
 - `name`, `description` and `inputSchema` (JSON Schema built with the `Schema` helpers).
 - `effect`: `.readOnly` or `.mutating(verifyWith:)`. A tool with no effect is treated as mutating. `ToolEffectTests` fails on an unclassified tool. The effect also feeds the `readOnlyHint` and `destructiveHint` annotations in `tools/list` (`MCPTool.descriptor`).
-- `buildArgs`: a closure from the MCP arguments to the argv for the CLI command. The `ArgHelpers` enum has the shared pieces.
+- `buildArgs`: a closure from the MCP arguments to the argv for the CLI command.
 - `inProcess`: an optional handler, set only for in-process tools.
 
 Rules the argv builders follow, each enforced by a test:
 
-- The argv always ends with `--format agent` (`testAllArgvEndWithFormatAgent`).
-- Option values are bound as `--flag=value` (`ArgHelpers.option`). Free-form positionals go last, after a `--` separator (`ArgHelpers.appendPositionalLast`). An id that starts with `-` is refused (`ArgHelpers.positional`), because ids sit before the options where `--` cannot go.
-- A schema `default:` is advisory. It never reaches argv. When the MCP default must differ from the CLI default, `buildArgs` injects the flag.
+- The argv always includes `--format agent`, before any trailing `-- <text>` (`testAllArgvEndWithFormatAgent`).
+- Option values are bound as `--flag=value` (`ArgHelpers.option`). Free-form positionals go last, after a `--` separator. An id that starts with `-` is refused (`ArgHelpers.notFlagLike`), because ids sit before the options where `--` cannot go.
+- A schema `default:` is advisory. It never reaches argv. When the MCP default must differ from the CLI default, the property's closure passes the flag.
 - Write-safety gates that need no child live in `buildArgs`, so they run before anything is spawned.
 
-`addingListOptions` adds `fields`, and for some tools `cursor`, `pageSize` and `page`, to the list and search tools after the base definitions.
+`addingListOptions` adds `fields`, and for some tools `cursor`, `pageSize` and `page`, to the list and search tools.
 
 ### Validation before dispatch
 
@@ -352,9 +362,7 @@ The suite is XCTest, more than 2,600 tests (`make test` prints the count). Tests
 
 **Schema golden tests.** [SchemaGoldenTests](../Tests/PippinTests/Contract/SchemaGoldenTests.swift) regenerate `docs/schemas/v4/` from the registry and the payload models and fail when the checked-in files differ.
 
-**CLI and MCP drift tests.** [CLIMCPDriftTests](../Tests/PippinTests/Contract/CLIMCPDriftTests.swift) check the hand-written registry against the ArgumentParser command definitions. `ToolRegistryTests` parses every tool's argv with its real command group.
-
-This is a known exception to the mission's "CLI and MCP generated from the same definitions" goal (pippin-kkik). The CLI flags come from ArgumentParser and the MCP schemas from the hand-written registry; the two are held together by these tests, not generated from one source. The JSON schemas are generated (above), so clients see one published contract. ArgumentParser exposes its command metadata only through the experimental `--experimental-dump-help` output, and the registry carries things the CLI does not (effects, verify tools, in-process handlers, untrusted-field lists), so generating it is on the roadmap rather than done.
+**CLI and MCP drift tests.** [CLIMCPDriftTests](../Tests/PippinTests/Contract/CLIMCPDriftTests.swift) check the generated registry against the ArgumentParser command definitions, reading the help dump independently of the generator: every property must set a real CLI argument of a matching kind, `enum` and required-ness, and every CLI argument must be reachable or listed in `cliOnly` with a reason. They are what keeps the hand-given parts honest: a wrong `as: .integer` fails the parser probe, and a binding to a missing argument fails here (and stops the registry from building). `ToolRegistryTests` parses every tool's argv with its real command group.
 
 **Conformance tests.** [ConformanceTests](../Tests/PippinTests/Contract/ConformanceTests.swift) run the built binary and check that every tool answers a bad argument with one schema-valid error envelope.
 

@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- [refactor] The MCP tool registry is generated from the CLI: each tool is a short spec naming the CLI arguments it exposes, and its input schema (type, `enum`, required-ness, description, numeric default) and argv come from the ArgumentParser definitions. A handful of gates and special bindings keep a small closure. Internal only: `tools/list` output and every tool's argv are unchanged. Refs pippin-kkik.
+
 ## [1.0.0] - 2026-11-10
 
 ### Added

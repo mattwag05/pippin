@@ -91,21 +91,21 @@ Prose in the CHANGELOG, in docs and in comments uses plain sentences. Do not use
 
 ## Adding a command and its MCP tool
 
-The ArgumentParser command is the source. The MCP tool is a hand-written entry that must agree with it. Tests lock the two together.
+The ArgumentParser command is the single source. The MCP tool is a short spec that names the CLI arguments it exposes; its JSON Schema and argv are generated from the command's definition.
 
-1. **Write the command** under `pippin/Commands/` (or a new bridge folder if it needs one). Conform to `AgentCommand`: an `@OptionGroup var output: OutputOptions` and `mutating func execute() async throws -> AgentResult`. Return the result; never print. Register the command in its parent group. A new top-level group also goes in the `subcommands` list in `pippin-entry/Pippin.swift`.
+1. **Write the command** under `pippin/Commands/` (or a new bridge folder if it needs one). Conform to `AgentCommand`: an `@OptionGroup var output: OutputOptions` and `mutating func execute() async throws -> AgentResult`. Return the result; never print. Register the command in its parent group. A new top-level group also goes in the `subcommands` list in `pippin-entry/Pippin.swift` and in `MCPCommandRoot` in `pippin/MCP/ToolSpec.swift`. Give every option and flag an `abstract` help string: it becomes the MCP description unless the spec overrides it.
 2. **Give each error an authored code and `next_step`.** Make the error type conform to `RemediableError` and set `agentCode` and `nextStep`. A paginated list returns its result with `AgentResult.page` or `emitPage`. See [docs/gotchas/swift.md](docs/gotchas/swift.md).
-3. **Add the tool** to `baseTools` in `pippin/MCP/ToolRegistry.swift`:
-   - `name`, usually `<group>_<verb>`. The tool name must map to the command path (`mail_apply_rules` is `mail apply-rules`). If it does not, add a `pathOverrides` entry in `MCPCommandPolicy`.
-   - `effect: .readOnly` or `.mutating(verifyWith: "<read tool>")`. The verify tool must be read-only and need no required arguments. A tool with no effect fails `ToolEffectTests`.
-   - An `inputSchema` built with `Schema.object(...)` and the other `Schema` helpers.
-   - A `buildArgs` closure that returns the argv and ends with `--format agent`. Use the `ArgHelpers` functions: they bind values as `--flag=value`, put free-form positionals last after `--`, and refuse ids that start with `-`.
+3. **Add the tool** to `specs` in `pippin/MCP/ToolRegistry.swift`:
+   - `MCPToolSpec("<group>_<verb>", effect, "description", properties: [...])`. The tool name must map to the command path (`mail_apply_rules` is `mail apply-rules`). If it does not, add a `pathOverrides` entry in `MCPCommandPolicy`.
+   - The effect is `.readOnly` or `.mutating(verifyWith: "<read tool>")`. The verify tool must be read-only and need no required arguments. A tool with no effect fails `ToolEffectTests`.
+   - One `.arg("name", "--flag")` per property. Use `.positional` for an id and `.trailing` for free text (passed last after `--`). Add `as: .integer` or `as: .number` for a numeric option. Type, `enum`, required-ness, description and numeric default come from the CLI; pass a description, `required:` or `default:` only where the MCP contract differs.
+   - Logic that is not one argument (a gate, alternatives, a value moved to another flag) is an `emit: .custom` closure or a `.special` property with its schema written out. Keep it small and add the property to `CLIMCPDriftTests.specialBindings` when it sets no CLI argument of its own type.
    - For a list or search tool, add its name to `projectableTools` (gives it `fields`) and, if it pages, to `pagedTools`.
 4. **Run the drift tests and fix what they report.** `CLIMCPDriftTests` parses your argv with the real command and compares the tool's schema with the command's definition:
-   - Every tool argument must set a CLI argument that exists, with a matching type, `enum` and required-ness.
+   - Every tool argument must set a CLI argument that exists, with a matching type, `enum` and required-ness. A wrong or missing `as: .integer` fails here.
    - Every CLI argument must be reachable from the tool, or be listed in `CLIMCPDriftTests.cliOnly` with a reason. An allowlist entry that is no longer needed also fails.
    - A tool argument that does not map to one option of the same JSON type goes in `CLIMCPDriftTests.specialBindings` with a reason.
-   - A new top-level group must be added to `ContractRoot` in `Tests/PippinTests/Contract/ContractSupport.swift` and to the `groups` map in `ToolRegistryTests.testAllArgvParseAsRealCLICommands`.
+   - A new top-level group must also be added to the `groups` map in `ToolRegistryTests.testAllArgvParseAsRealCLICommands`.
 5. **Register the other expectations the tests pin:**
    - A mutating tool goes in the pinned set in `Tests/PippinTests/MCP/ToolEffectTests.swift`.
    - `InProcessToolsTests.testRegistryToolCount` holds the tool count as a literal. Update it.
