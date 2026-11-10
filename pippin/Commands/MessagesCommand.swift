@@ -200,67 +200,111 @@ public struct MessagesCommand: AsyncParsableCommand {
         }
 
         public mutating func execute() async throws -> AgentResult {
-            let mode: SendMode = autonomous ? .autonomous : .draft
-            let bodyHash = MessagesAuditLog.hash(body: body)
-
-            if mode == .autonomous {
-                try gateAutonomous(recipient: to)
-            }
-
-            let phi = PHIFilter.scan(body)
-            if !phi.isClean {
-                MessagesAuditLog.record(
-                    operation: "send",
-                    params: ["mode": mode.rawValue],
-                    recipient: to,
-                    bodyHash: bodyHash,
-                    sent: false,
-                    overrides: phi.flagged
-                )
-                throw MessagesSendError.phiFiltered(phi.flagged)
-            }
-
-            let payload: MessagesSendResult = try {
-                switch mode {
-                case .autonomous:
-                    let result = try MessagesSender.send(to: to, body: body)
-                    return MessagesSendResult(
-                        recipient: to,
-                        delivered: result.delivered,
-                        mode: mode.rawValue,
-                        detail: result.detail,
-                        bodyHash: bodyHash
-                    )
-                case .draft:
-                    return MessagesSendResult(
-                        recipient: to,
-                        delivered: false,
-                        mode: mode.rawValue,
-                        detail: "draft — no delivery attempted",
-                        bodyHash: bodyHash
-                    )
-                }
-            }()
-
-            MessagesAuditLog.record(
-                operation: "send",
-                params: ["mode": mode.rawValue],
-                recipient: to,
-                bodyHash: bodyHash,
-                sent: payload.delivered
+            let (payload, warnings) = try MessagesCommand.performSend(
+                to: to, body: body, mode: autonomous ? .autonomous : .draft,
+                sender: { try MessagesSender.send(to: $0, body: $1) }
             )
+            return .emit(payload, timedOutHint: "", extraWarnings: warnings)
+        }
+    }
 
-            return .emit(payload, timedOutHint: "")
+    /// Triple gate for a real send: the flag (the caller's `mode`), the
+    /// environment variable and the allowlist.
+    static func gateAutonomous(recipient: String) throws {
+        let envOK = ProcessInfo.processInfo.environment["PIPPIN_AUTONOMOUS_MESSAGES"] == "1"
+        guard envOK else { throw MessagesSendError.autonomousNotAuthorized }
+        let allow = try AIProviderFactory.loadConfigOrThrow()?.messages?.autonomousAllowlist ?? []
+        guard allow.contains(recipient) else {
+            throw MessagesSendError.recipientNotAllowed(recipient)
+        }
+    }
+
+    /// One send with its audit trail. Every path writes a line: `refused` (gate
+    /// or guardrail), `draft`, or `attempt` followed by `success`, `failed` or
+    /// `outcome_unknown`. The attempt line is written first and must succeed, so
+    /// a message can never go out with no record of it.
+    ///
+    /// `sender` has no default: a test cannot reach Messages by leaving it out.
+    static func performSend(
+        to: String,
+        body: String,
+        mode: SendMode,
+        gate: (String) throws -> Void = MessagesCommand.gateAutonomous,
+        sender: (_ to: String, _ body: String) throws -> MessagesSender.SendResult
+    ) throws -> (payload: MessagesSendResult, warnings: [String]) {
+        let bodyHash = MessagesAuditLog.hash(body: body)
+
+        func entry(_ outcome: String, sent: Bool?, error: Error? = nil, overrides: [String]? = nil) throws {
+            var params = ["mode": mode.rawValue]
+            if let error { params["error"] = agentErrorCode(for: error) }
+            try MessagesAuditLog.recordOrThrow(
+                operation: "send", params: params, recipient: to, bodyHash: bodyHash,
+                sent: sent, outcome: outcome, overrides: overrides
+            )
         }
 
-        private func gateAutonomous(recipient: String) throws {
-            let envOK = ProcessInfo.processInfo.environment["PIPPIN_AUTONOMOUS_MESSAGES"] == "1"
-            guard envOK else { throw MessagesSendError.autonomousNotAuthorized }
-            let allow = try AIProviderFactory.loadConfigOrThrow()?.messages?.autonomousAllowlist ?? []
-            guard allow.contains(recipient) else {
-                throw MessagesSendError.recipientNotAllowed(recipient)
+        if mode == .autonomous {
+            do {
+                try gate(to)
+            } catch {
+                try? entry("refused", sent: false, error: error)
+                throw error
             }
         }
+
+        let phi = PHIFilter.scan(body)
+        if !phi.isClean {
+            let error = MessagesSendError.phiFiltered(phi.flagged)
+            try? entry("refused", sent: false, error: error, overrides: phi.flagged)
+            throw error
+        }
+
+        guard mode == .autonomous else {
+            try? entry("draft", sent: false)
+            return (MessagesSendResult(
+                recipient: to,
+                delivered: false,
+                mode: mode.rawValue,
+                detail: "draft — no delivery attempted",
+                bodyHash: bodyHash
+            ), [])
+        }
+
+        do {
+            try entry("attempt", sent: nil)
+        } catch {
+            throw MessagesSendError.auditLogUnavailable(
+                path: MessagesAuditLog.defaultPath(), detail: error.localizedDescription
+            )
+        }
+        let result: MessagesSender.SendResult
+        do {
+            result = try sender(to, body)
+        } catch {
+            if case MessagesSendError.timeout = error {
+                // May have been delivered: `sent` is left out, not false.
+                try? entry("outcome_unknown", sent: nil, error: error)
+            } else {
+                try? entry("failed", sent: false, error: error)
+            }
+            throw error
+        }
+        // The message is out; a failed outcome line cannot undo that, so say so.
+        var warnings: [String] = []
+        do {
+            try entry("success", sent: result.delivered)
+        } catch {
+            warnings.append(
+                "The message was sent, but its outcome could not be written to the audit log at \(MessagesAuditLog.defaultPath()). The log shows only the attempt."
+            )
+        }
+        return (MessagesSendResult(
+            recipient: to,
+            delivered: result.delivered,
+            mode: mode.rawValue,
+            detail: result.detail,
+            bodyHash: bodyHash
+        ), warnings)
     }
 
     // MARK: - Exclude

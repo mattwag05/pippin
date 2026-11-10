@@ -24,7 +24,7 @@ final class NextStepTests: XCTestCase {
         // MessagesSendError
         MessagesSendError.timeout, MessagesSendError.scriptFailed("e"), MessagesSendError.phiFiltered(["ssn"]),
         MessagesSendError.recipientNotAllowed("r"), MessagesSendError.autonomousNotAuthorized,
-        MessagesSendError.accessDenied,
+        MessagesSendError.accessDenied, MessagesSendError.auditLogUnavailable(path: "p", detail: "e"),
         // ScriptRunnerError
         ScriptRunnerError.timeout, ScriptRunnerError.nonZeroExit("e"), ScriptRunnerError.stderrOnSuccess("e"),
         ScriptRunnerError.launchFailed("e"), ScriptRunnerError.automationDenied("com.apple.mail"),
