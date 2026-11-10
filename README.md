@@ -41,7 +41,7 @@ A head-to-head against the most-used open-source Apple automation tools and MCP 
 - **Coverage:** 7 apps scored (Reminders, Calendar, Contacts, Notes, Messages, Mail, Voice Memos), every probed operation answered. The next widest tool covers 4.
 - **Correctness and reliability:** 54 of 54 correctness checks and 65 of 65 reliability checks passed.
 - **Speed:** with Mail and Voice Memos measured, fastest on 15 of 19 read operations warm and tied on the other 4, and fastest or tied on all 19 cold. Mail list and search take 2.5 and 1.7 ms against 10.0 and 9.1 ms for apple-pim ([Mail re-run](bench/competitive/results/2026-11-10-mail/summary.md), [results](docs/competitive/results.md#speed)).
-- **Agent tasks:** with `--apps`, the fewest model tokens on all three tasks (11k to 21k). With all tools exposed it is the most expensive (84k to 88k).
+- **Agent tasks:** with `--apps`, the fewest model tokens on all three tasks (11k to 21k). With all tools exposed it is the most expensive (84k to 88k) ([agent tasks](docs/competitive/results.md#agent-tasks), [run](bench/competitive/results/2026-11-10-tasks)).
 - **Safety:** the only measured tool with confirm tokens, rate limits, an action log, undo and untrusted-content marking together ([guardrail matrix](docs/competitive/results.md#safety-and-guardrails)).
 
 Where pippin trails is listed first on the [results page](docs/competitive/results.md#where-pippin-trails). Mail and Voice Memos writes, and iMCP, were not run.
