@@ -1,0 +1,9 @@
+{
+  "tool": "imcp",
+  "version": "1.8.3",
+  "correctness": {},
+  "safety": {
+    "not_run": "no search operation to carry a hostile query"
+  },
+  "writes": {}
+}

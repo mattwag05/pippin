@@ -43,7 +43,7 @@ def rubric(failed: int, total: int):
 
 
 def ran(tool: dict) -> bool:
-    return bool(tool.get("speed")) and "not_run" not in tool
+    return bool(tool.get("speed")) and "not_run" not in tool and bool(scored_apps(tool))
 
 
 def scored_apps(tool: dict) -> list:
@@ -76,6 +76,9 @@ def correctness(tool: dict) -> tuple:
                     if chat["reported_unread"] != chat["expected_unread"]:
                         failed += 1
                         notes.append("%s unread %s, expected %s" % (key, chat["reported_unread"], chat["expected_unread"]))
+            continue
+        if result.get("outcome") == "not_machine_readable":
+            notes.append("%s: reply is prose, not checked" % op)
             continue
         if result.get("outcome") != "ok":
             total, failed = total + 1, failed + 1
@@ -157,7 +160,7 @@ def speed_table(tools: dict) -> tuple:
     table, scores = {}, {name: [] for name in tools}
     ops = sorted({op for t in tools.values() for op in (t.get("speed") or {}) if op.split(".")[0] not in NOT_RUN_APPS})
     for op in ops:
-        row = {name: t["speed"][op]["warm"]["p50"] for name, t in tools.items() if (t.get("speed") or {}).get(op, {}).get("warm") and t["speed"][op]["warm"].get("p50") is not None}
+        row = {name: t["speed"][op]["warm"]["p50_ms"] for name, t in tools.items() if (t.get("speed") or {}).get(op, {}).get("warm") and t["speed"][op]["warm"].get("p50_ms") is not None}
         if not row:
             continue
         table[op] = row
@@ -203,7 +206,7 @@ def main():
             name, tool.get("version", ""), len(cov), show("coverage", s["coverage_cells"]), show("correctness", s["correctness_checks"]),
             show("reliability", s["reliability_checks"]), "n/r" if speed is None else speed, show("safety_input", s["safety_checks"]), "yes" if executed else "none observed"))
     for name in skipped:
-        reason = tools[name].get("not_run") or (tools[name].get("manifest") or {}).get("detail") or "no operation could be driven"
+        reason = tools[name].get("not_run") or ("Mail only, and the VM has no mail account" if tools[name].get("apps") and not scored_apps(tools[name]) else None) or (tools[name].get("manifest") or {}).get("detail") or "no operation could be driven"
         out.append("| %s | %s | n/r | n/r | n/r | n/r | n/r | n/r | not run: %s |" % (name, tools[name].get("version", ""), reason))
 
     out.append("\n## Coverage by app (yes / probed cells)\n")
@@ -225,7 +228,7 @@ def main():
     out.append("| Operation | " + " | ".join(names) + " |")
     out.append("| --- |" + " --- |" * len(names))
     for op in table:
-        out.append("| %s | %s |" % (op, " | ".join("%.1f" % tools[n]["speed"][op]["cold"]["p50"] if op in tools[n]["speed"] and tools[n]["speed"][op]["cold"].get("p50") is not None else "" for n in names)))
+        out.append("| %s | %s |" % (op, " | ".join("%.1f" % tools[n]["speed"][op]["cold"]["p50_ms"] if op in tools[n]["speed"] and tools[n]["speed"][op]["cold"].get("p50_ms") is not None else "" for n in names)))
 
     out.append("\n## Agent ergonomics (raw)\n")
     out.append("| Tool | Kind | Tools | Manifest tokens | Tools with behavior annotations | Structured errors on bad input |")

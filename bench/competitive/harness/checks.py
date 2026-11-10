@@ -74,7 +74,7 @@ def call(driver: Driver, op: str, args: dict):
 def compare(records: list, must: list, allowed: list, key: str = "title") -> dict:
     got = collections.Counter(norm(r.get(key)) for r in records)
     need = collections.Counter(norm(t) for t in must)
-    ok = set(need) | {norm(t) for t in allowed}
+    ok = set(got) if allowed is None else set(need) | {norm(t) for t in allowed}
     return {
         "expected": sum(need.values()),
         "returned": sum(got.values()),
@@ -98,7 +98,7 @@ def expectations(manifest: dict, read_args: dict) -> dict:
     out = {
         "reminders.list": ([r["title"] for r in reminders if not r["completed"]], [r["title"] for r in reminders], "title"),
         "calendar.events": (occurrences, [], "title"),
-        "contacts.list": (people, [], "title"),
+        "contacts.list": (people, None, "title"),  # unscoped: the machine may hold other contacts
         "contacts.search": (people, [], "title"),
         "notes.list": ([n["title"] for n in notes], [], "title"),
     }
@@ -109,8 +109,9 @@ def expectations(manifest: dict, read_args: dict) -> dict:
     q = read_args.get("notes.search", {}).get("query", "")
     out["notes.search"] = ([n["title"] for n in notes if has(q, n["title"])], [n["title"] for n in notes if has(q, n["title"], n["body"])], "title")
     limit = read_args.get("messages.history", {}).get("limit", 50)
-    chat_a = [m for m in manifest["messages"]["messages"] if m["chat"] == "chat-a" and m["displayable"] and m.get("text")]
-    out["messages.history"] = ([m["text"] for m in chat_a[-limit:]], [m["text"] for m in chat_a], "text")
+    chat_a = [m for m in manifest["messages"]["messages"] if m["chat"] == "chat-a" and m["displayable"]]
+    # a displayable message can be attachment-only, so empty text is allowed and takes a slot in the window
+    out["messages.history"] = ([m["text"] for m in chat_a[-limit:] if m.get("text")], [m.get("text") or "" for m in chat_a], "text")
     return out
 
 
@@ -149,7 +150,8 @@ def stage_correctness(driver: Driver, read_args: dict, manifest: dict) -> dict:
             continue
         outcome, records, raw = call(driver, op, read_args[op])
         if records is None:
-            out[op] = {"outcome": outcome, "detail": raw[:200]}
+            # plain-text replies have no parser: recorded, and not scored either way
+            out[op] = {"outcome": "not_machine_readable" if outcome == "ok" else outcome, "detail": raw[:200]}
             continue
         out[op] = {"outcome": "ok", **compare(records, must, allowed, key)}
         dates = date_checks(op, records, manifest)
@@ -177,7 +179,10 @@ def stage_safety(driver: Driver, read_args: dict, manifest: dict) -> dict:
     canary = os.path.join(tempfile.mkdtemp(prefix="pb-canary-"), "canary")
     out = {"ops": ops, "items": {}, "canary_created": []}
     for item in manifest["hostile_inputs"]["items"]:
-        value = item["value"].replace(manifest["hostile_inputs"]["canary_placeholder"], canary)
+        raw = item["value"]
+        if isinstance(raw, dict):  # {"repeat": "A", "times": 10000}
+            raw = raw["repeat"] * raw["times"]
+        value = raw.replace(manifest["hostile_inputs"]["canary_placeholder"], canary)
         outcomes = {}
         for op in ops:
             outcomes[op] = call(driver, op, {**read_args[op], "query": value})[0]
@@ -192,7 +197,7 @@ def stage_safety(driver: Driver, read_args: dict, manifest: dict) -> dict:
 
 
 def stage_writes(driver: Driver, read_args: dict, state: dict) -> dict:
-    canary = os.path.join(tempfile.mkdtemp(prefix="pb-canary-"), "canary")
+    canary = "/tmp/pbc%d" % os.getpid()  # short: Notes truncates long titles, which would hide a faithful round trip
     titles = {
         "plain": "PBW plain probe",
         "quoting": "PBW it's \"quoted\" \\ backé \U0001f9ea",
@@ -213,7 +218,10 @@ def stage_writes(driver: Driver, read_args: dict, state: dict) -> dict:
         list_args = {"query": "PBW"} if domain == "contacts" else read_args.get(list_op)
         out[domain] = {}
         for label, title in titles.items():
-            step = {"create": call(driver, create_op, create_args(title))[0]}
+            created = call(driver, create_op, create_args(title))
+            step = {"create": created[0]}
+            if created[0] != "ok":
+                step["create_detail"] = created[2][:200]
             _, records, _ = call(driver, list_op, list_args) if list_args is not None and list_op in driver.adapter.OPS else (None, None, None)
             mine = [r for r in records or [] if "PBW" in norm(r.get("title"))]
             step["read_back"] = bool(mine)
@@ -267,8 +275,8 @@ def main():
                 record["safety"] = stage_safety(driver, read_args, manifest)
             if "writes" in stages:
                 record["writes"] = stage_writes(driver, read_args, state)
-        except OSError as error:
-            record["not_run"] = str(error)[:300]
+        except Exception as error:  # one tool's failure must not stop the others
+            record["checks_failed"] = repr(error)[:300]
         finally:
             driver.close()
         with open(os.path.join(options.out, adapter.NAME + ".checks.json"), "w") as handle:

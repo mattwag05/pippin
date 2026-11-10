@@ -94,7 +94,7 @@ def _notes(text: str) -> list:
 
 
 def _chats(text: str) -> list:
-    return [rec(id=r.get("id"), title=r.get("display_name"), participants=[p.get("handle") for p in r.get("participants", [])], date=r.get("last_message_at")) for r in _data(text)]
+    return [rec(id=r.get("id"), title=r.get("display_name"), participants=[p.get("handle") for p in r.get("participants", [])], date=r.get("last_message_at"), unread=r.get("unread_count")) for r in _data(text)]
 
 
 def _messages(text: str) -> list:

@@ -89,7 +89,7 @@ def resolve(driver: Driver, ops: dict, state: dict) -> dict:
     }
     uses_chat = any("{chat}" in map(str, args.values()) for args in ops.values())
     if uses_chat and "messages.chats" in driver.adapter.OPS and "messages.chats" in getattr(driver.adapter, "PARSE", {}):
-        _, outcome, text = timed(lambda: driver.call("messages.chats", {"limit": 20}))
+        _, outcome, text = timed(lambda: driver.call("messages.chats", ops.get("messages.chats", {})))
         if outcome == "ok":
             chats = driver.adapter.PARSE["messages.chats"](text)
             match = [c for c in chats if FIXTURE_CHAT in json.dumps(c)] or chats
@@ -97,9 +97,13 @@ def resolve(driver: Driver, ops: dict, state: dict) -> dict:
                 known["{chat}"] = match[0].get("id")
     out = {}
     for op, args in ops.items():
-        filled = {k: known.get(v, v) if isinstance(v, str) and v.startswith("{") else v for k, v in args.items()}
-        if any(v is None for v in filled.values()):
-            continue
+        filled = {k: known.get(v) if isinstance(v, str) and v.startswith("{") else v for k, v in args.items()}
+        filled = {k: v for k, v in filled.items() if v is not None}
+        if op in driver.adapter.OPS:
+            try:
+                driver.adapter.OPS[op](filled)
+            except KeyError:
+                continue  # the tool needs an id the fixture state could not supply
         out[op] = filled
     return out
 

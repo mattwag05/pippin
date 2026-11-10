@@ -18,19 +18,31 @@ def _call(tool: str, action: str, mapping: dict, **fixed):
     return lambda a: (tool, dict(named(a, mapping), action=action, **fixed))
 
 
+def _local(value: str) -> str:
+    """Writes take local wall-clock time as yyyy-MM-dd HH:mm:ss (the tool rejects ISO 8601 with an offset)."""
+    from datetime import datetime
+
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M:%S") if "T" in value else value
+
+
+def _write(tool: str, action: str, mapping: dict, **fixed):
+    inner = _call(tool, action, mapping, **fixed)
+    return lambda a: inner({k: _local(v) if k in ("start", "end", "due") and isinstance(v, str) else v for k, v in a.items()})
+
+
 OPS = {
     "reminders.lists": _call("reminders_lists", "read", {}),
     "reminders.list": _call("reminders_tasks", "read", {"filterList": "list", "showCompleted": "include_completed"}),
     "reminders.search": _call("reminders_tasks", "read", {"search": "query", "filterList": "list"}),
-    "reminders.create": _call("reminders_tasks", "create", {"title": "title", "targetList": "list", "dueDate": "due", "note": "notes"}),
-    "reminders.edit": _call("reminders_tasks", "update", {"id": "id", "title": "title", "dueDate": "due", "note": "notes"}),
-    "reminders.complete": _call("reminders_tasks", "update", {"id": "id"}, completed=True),
+    "reminders.create": _write("reminders_tasks", "create", {"title": "title", "targetList": "list", "dueDate": "due", "note": "notes"}),
+    "reminders.edit": _write("reminders_tasks", "update", {"id": "id", "title": "title", "dueDate": "due", "note": "notes"}),
+    "reminders.complete": _write("reminders_tasks", "update", {"id": "id"}, completed=True),
     "reminders.delete": _call("reminders_tasks", "delete", {"id": "id"}),
     "calendar.calendars": _call("calendar_calendars", "read", {}),
     "calendar.events": _call("calendar_events", "read", {"startDate": "start", "endDate": "end", "filterCalendar": "calendar"}),
     "calendar.search": _call("calendar_events", "read", {"search": "query", "startDate": "start", "endDate": "end"}),
-    "calendar.create": _call("calendar_events", "create", {"title": "title", "startDate": "start", "endDate": "end", "targetCalendar": "calendar", "location": "location", "note": "notes"}),
-    "calendar.edit": _call("calendar_events", "update", {"id": "id", "title": "title", "startDate": "start", "endDate": "end", "location": "location", "note": "notes"}),
+    "calendar.create": _write("calendar_events", "create", {"title": "title", "startDate": "start", "endDate": "end", "targetCalendar": "calendar", "location": "location", "note": "notes"}),
+    "calendar.edit": _write("calendar_events", "update", {"id": "id", "title": "title", "startDate": "start", "endDate": "end", "location": "location", "note": "notes"}),
     "calendar.delete": _call("calendar_events", "delete", {"id": "id"}),
 }
 

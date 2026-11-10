@@ -1,0 +1,31 @@
+{
+  "tool": "memo",
+  "version": "0.6.2",
+  "correctness": {
+    "reminders.list": {
+      "outcome": "ok",
+      "expected": 24,
+      "returned": 24,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": [],
+      "dates": {
+        "checked": 21,
+        "wrong": [],
+        "unparsed": 0
+      }
+    },
+    "notes.list": {
+      "outcome": "ok",
+      "expected": 27,
+      "returned": 27,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": []
+    }
+  },
+  "safety": {
+    "not_run": "no search operation to carry a hostile query"
+  },
+  "writes": {}
+}

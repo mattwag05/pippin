@@ -1,0 +1,47 @@
+{
+  "tool": "reminders-cli",
+  "version": "2.5.1",
+  "correctness": {
+    "reminders.list": {
+      "outcome": "ok",
+      "expected": 24,
+      "returned": 24,
+      "missing": [],
+      "unexpected": [],
+      "duplicated": [],
+      "dates": {
+        "checked": 21,
+        "wrong": [],
+        "unparsed": 0
+      }
+    }
+  },
+  "safety": {
+    "not_run": "no search operation to carry a hostile query"
+  },
+  "writes": {
+    "reminders": {
+      "plain": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      },
+      "quoting": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      },
+      "injection": {
+        "create": "ok",
+        "read_back": true,
+        "title_exact": true,
+        "delete": "ok",
+        "gone": true
+      }
+    }
+  }
+}

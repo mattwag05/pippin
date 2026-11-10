@@ -643,7 +643,9 @@ public final class MessagesDatabase: Sendable {
         contactIndex: ContactIndex = ContactIndex(),
         attachments: [MessageAttachment]? = nil
     ) -> MessageItem {
-        let handle: String? = row["handle_id"]
+        let isFromMe = (row["is_from_me"] ?? 0) == 1
+        // chat.db stores the recipient's handle on an outgoing row; it is not the sender.
+        let handle: String? = isFromMe ? nil : row["handle_id"]
         return MessageItem(
             id: row["msg_guid"] ?? "",
             conversationId: conversationId,
@@ -651,7 +653,7 @@ public final class MessagesDatabase: Sendable {
             text: body,
             fromHandle: handle,
             fromDisplayName: handle.flatMap { contactIndex.displayName(for: $0) },
-            isFromMe: (row["is_from_me"] ?? 0) == 1,
+            isFromMe: isFromMe,
             isRead: (row["is_read"] ?? 0) == 1,
             service: row["service"] ?? "",
             attachments: attachments

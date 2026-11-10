@@ -48,6 +48,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [bug] `job` commands emit `started_at` / `ended_at` (and `job gc` `cutoff`, `memos summarize` `createdAt`) as ISO 8601 strings instead of seconds since 2001. Closes pippin-l4i8.
 - [bug] A NUL character in an MCP argument or a `batch` entry returns `invalid_argument` instead of aborting the server. Closes pippin-l8d1.
 - [bug] An MCP id that starts with `-` (such as `--version`) is refused instead of being parsed as a flag, and a fractional number for an integer MCP argument (`limit: 2.5`) is rejected instead of being truncated. Refs pippin-o190.
+- [bug] `messages show` and `messages search` no longer report the recipient's handle as `from_handle` on messages you sent; it is omitted for outgoing messages. Closes pippin-py28.
 
 ### Performance
 
