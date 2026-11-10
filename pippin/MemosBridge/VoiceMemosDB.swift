@@ -159,9 +159,11 @@ public final class VoiceMemosDB: Sendable {
     // MARK: - Schema validation
 
     private func validateSchema() throws {
-        let version = try dbQueue.read { db -> Int in
+        // A file with no Z_METADATA (zero-byte, or some other SQLite database) is
+        // an unsupported schema, not a raw SQLite error.
+        let version = (try? dbQueue.read { db -> Int in
             try Int.fetchOne(db, sql: "SELECT Z_VERSION FROM Z_METADATA") ?? 0
-        }
+        }) ?? 0
         guard VoiceMemosDB.knownSchemaVersions.contains(version) else {
             throw VoiceMemosError.unsupportedSchemaVersion(version)
         }

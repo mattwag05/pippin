@@ -177,10 +177,6 @@ final class ChaosTests: XCTestCase {
         let script = "\(Self.jxaPrelude) \(Self.jxaWritePartial) $.kill($.getpid(), 9); 'never'"
         XCTAssertThrowsError(try ScriptRunner.run(script, timeoutSeconds: 10)) { error in
             XCTAssertTrue(error is ScriptRunnerError, "expected a ScriptRunnerError, got \(error)")
-            XCTExpectFailure(
-                "ScriptRunner reports every signal death as .timeout (retryable, and with an appName it relaunches the app and reruns the script), so a crashed osascript is indistinguishable from a slow one. MCPServerRuntime already separates childCrashed from childTimedOut.",
-                options: Self.nonStrict
-            )
             if case ScriptRunnerError.timeout = error {
                 XCTFail("a script killed by an outside SIGKILL was reported as a timeout")
             }
@@ -344,10 +340,6 @@ final class ChaosTests: XCTestCase {
         }
         try Data().write(to: URL(fileURLWithPath: path))
         XCTAssertThrowsError(try VoiceMemosDB(dbPath: path)) { error in
-            XCTExpectFailure(
-                "VoiceMemosDB.init lets the raw GRDB error out of validateSchema when the file opens but has no Z_METADATA table (a zero-byte or foreign SQLite file), so the agent sees an uncoded SQLite error.",
-                options: Self.nonStrict
-            )
             XCTAssertTrue(error is VoiceMemosError, "zero-byte file: untyped error \(error)")
         }
     }
@@ -365,10 +357,6 @@ final class ChaosTests: XCTestCase {
         }
         try Data().write(to: URL(fileURLWithPath: path))
         XCTAssertThrowsError(try MailEnvelopeIndex(dbPath: path, accounts: [])) { error in
-            XCTExpectFailure(
-                "MailEnvelopeIndex.init lets the raw GRDB error out of validateSchema when the file opens but has no properties table (a zero-byte or foreign SQLite file).",
-                options: Self.nonStrict
-            )
             XCTAssertTrue(error is MailEnvelopeIndexError, "zero-byte file: untyped error \(error)")
         }
     }

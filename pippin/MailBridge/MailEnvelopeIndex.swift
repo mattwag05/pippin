@@ -356,12 +356,14 @@ final class MailEnvelopeIndex: Sendable {
     // MARK: Schema guard
 
     private func validateSchema() throws {
-        let version = try dbQueue.read { db -> Int in
+        // No `properties` table (zero-byte or foreign file) reads as version 0,
+        // which is refused below with a typed error.
+        let version = (try? dbQueue.read { db -> Int in
             let raw = try String.fetchOne(
                 db, sql: "SELECT value FROM properties WHERE key = 'version'"
             )
             return raw.flatMap(Int.init) ?? 0
-        }
+        }) ?? 0
         guard Self.knownVersions.contains(version) else {
             throw MailEnvelopeIndexError.unsupportedVersion(version)
         }
