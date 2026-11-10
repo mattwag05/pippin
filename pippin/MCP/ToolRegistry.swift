@@ -1857,7 +1857,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "job_show",
             effect: .readOnly,
-            description: "Show a job's status + stdout/stderr tails. Use prefix match (e.g. first 6 chars) to save tokens.",
+            description: "Show a job's status + stdout/stderr tails. Use prefix match (e.g. first 6 chars) to save tokens. status error with error_code runner_lost means the job's process died without recording a result.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Job id or unambiguous prefix."),

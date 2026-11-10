@@ -165,7 +165,10 @@ public struct JobCommand: AsyncParsableCommand {
         public init() {}
 
         public mutating func execute() async throws -> AgentResult {
-            let store = JobStore()
+            try await AgentResult(Self.wait(store: JobStore(), id: id, timeout: timeout, pollMs: pollMs))
+        }
+
+        static func wait(store: JobStore, id: String, timeout: Int, pollMs: Int) async throws -> Job {
             // Resolve prefix once; subsequent reads use the canonical id
             // so we don't re-scan the job dir on every 200ms tick.
             let canonicalId = try store.resolve(id)
@@ -175,7 +178,7 @@ public struct JobCommand: AsyncParsableCommand {
             while true {
                 let job = try store.readCanonical(canonicalId)
                 if job.status.isTerminal {
-                    return AgentResult(job)
+                    return job
                 }
                 if let deadline, Date() >= deadline {
                     throw JobCommandError.waitTimedOut(job.id, timeoutSeconds: timeout)
@@ -308,7 +311,7 @@ public struct JobRunnerInternalCommand: AsyncParsableCommand {
         _ = setsid()
         if argv.first == "--" { argv.removeFirst() }
         let store = JobStore()
-        var job = try store.readCanonical(id)
+        var job = try store.readCanonical(id, reconcile: false)
 
         // Runner is the sole author of pid + terminal state in status.json
         // — see the note in JobCommand.Run.run for the race this avoids.
@@ -455,6 +458,7 @@ public struct JobView: Encodable, Sendable {
     enum CodingKeys: String, CodingKey {
         case v, id, argv, pid, status
         case exitCode = "exit_code"
+        case errorCode = "error_code"
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case durationMs = "duration_ms"
@@ -470,6 +474,7 @@ public struct JobView: Encodable, Sendable {
         try container.encodeIfPresent(job.pid, forKey: .pid)
         try container.encode(job.status, forKey: .status)
         try container.encodeIfPresent(job.exitCode, forKey: .exitCode)
+        try container.encodeIfPresent(job.errorCode, forKey: .errorCode)
         try container.encode(job.startedAt, forKey: .startedAt)
         try container.encodeIfPresent(job.endedAt, forKey: .endedAt)
         try container.encodeIfPresent(job.durationMs, forKey: .durationMs)

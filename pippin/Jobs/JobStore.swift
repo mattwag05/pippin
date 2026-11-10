@@ -130,7 +130,42 @@ public final class JobStore: @unchecked Sendable {
     /// Read by full canonical id, skipping prefix resolution. Callers that
     /// poll (`job wait`, `job logs --stream`) should resolve once up front
     /// and then use this to avoid re-scanning the job dir every tick.
-    public func readCanonical(_ id: String) throws -> Job {
+    ///
+    /// Only the runner writes a terminal state, so a runner that died (kill,
+    /// crash, reboot) would leave its job `running` forever and `job wait`
+    /// polling until its timeout. With `reconcile`, such a job is rewritten as
+    /// `error` / `runner_lost`. The runner itself reads with `reconcile: false`.
+    public func readCanonical(_ id: String, reconcile: Bool = true) throws -> Job {
+        let job = try decodeStatus(id)
+        guard reconcile, job.status == .running, Self.runnerLost(job) else { return job }
+        // The runner may have finished between our read and the liveness check.
+        var latest = try decodeStatus(id)
+        guard latest.status == .running else { return latest }
+        latest.status = .error
+        latest.errorCode = "runner_lost"
+        latest.endedAt = Date()
+        try? write(latest)
+        return latest
+    }
+
+    /// Whether the process that should finish `job` is gone. A live pid counts
+    /// only if it started when the job did: otherwise the pid was reused.
+    static func runnerLost(
+        _ job: Job,
+        now: Date = Date(),
+        startTime: (Int32) -> Date? = ProcessTable.startTime(of:)
+    ) -> Bool {
+        let launchGrace: TimeInterval = 60
+        guard let pid = job.pid else {
+            // The runner records its pid first thing; a fresh job may not have one yet.
+            return now.timeIntervalSince(job.startedAt) > launchGrace
+        }
+        guard let started = startTime(pid) else { return true }
+        let offset = started.timeIntervalSince(job.startedAt)
+        return offset < -5 || offset > launchGrace
+    }
+
+    private func decodeStatus(_ id: String) throws -> Job {
         let path = statusPath(id)
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
             throw JobStoreError.statusReadFailed("no status.json at \(path)")
