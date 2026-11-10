@@ -232,10 +232,25 @@ final class BatchCommandTests: XCTestCase {
     func testMCPBatchRunsAnEntryThatHasATool() async {
         let results = await errors([
             BatchEntry(cmd: "calendar", args: ["today"]),
-            BatchEntry(cmd: "messages", args: ["send", "--draft", "--to", "x", "--body", "hi"]),
+            BatchEntry(cmd: "reminders", args: ["complete", "ABCDEFGH"]),
         ], underMCP: true)
         XCTAssertEqual(results.map(\.code), ["invalid_json", "invalid_json"])
         XCTAssertTrue(results[0].message?.contains("calendar today --format agent") == true)
+    }
+
+    /// A command the policy confirms or rate limits would skip the token, the
+    /// count and the action log inside a batch, so it is refused there.
+    func testMCPBatchRefusesACommandThePolicyGates() async {
+        let results = await errors([
+            BatchEntry(cmd: "messages", args: ["send", "--draft", "--to", "x", "--body", "hi"]),
+            BatchEntry(cmd: "mail", args: ["send", "--to", "a@example.com", "--subject", "s", "--body", "b", "--confirm"]),
+            BatchEntry(cmd: "notes", args: ["delete", "x", "--force"]),
+            BatchEntry(cmd: "undo", args: ["abc"]),
+        ], underMCP: true)
+        XCTAssertEqual(
+            results.map(\.code),
+            ["direct_call_required", "direct_call_required", "direct_call_required", "nested_dispatch_not_allowed"]
+        )
     }
 
     func testCLIBatchStaysUnrestricted() async {

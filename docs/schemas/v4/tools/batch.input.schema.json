@@ -8,6 +8,15 @@
       "description" : "Maximum concurrent sub-commands (default: 4).",
       "type" : "integer"
     },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
     "entries" : {
       "description" : "Array of {cmd, args} entries: each runs as `pippin <cmd> [args...] --format agent`.",
       "items" : {
@@ -31,6 +40,10 @@
         "type" : "object"
       },
       "type" : "array"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
     }
   },
   "required" : [

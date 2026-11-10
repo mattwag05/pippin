@@ -285,7 +285,7 @@ pippin mcp-server                             # run the server (stdin/stdout JSO
 pippin mcp-server --list-tools                # dump the registered tools as JSON
 ```
 
-Ships with 76 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch`, and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
+Ships with 79 tools covering mail, calendar, reminders, contacts, notes, voice memos, Messages (read + gated send), status, doctor, `digest`, `batch`, and `job_*` (background work with poll-or-wait). See [`docs/mcp-server.md`](docs/mcp-server.md) for wiring instructions.
 
 ## Agent Integration
 

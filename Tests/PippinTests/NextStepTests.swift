@@ -114,6 +114,18 @@ final class NextStepTests: XCTestCase {
         // AudioBridgeError
         AudioBridgeError.notAvailable, AudioBridgeError.processFailed("e"), AudioBridgeError.timeout,
         AudioBridgeError.decodingFailed("e"), AudioBridgeError.versionMismatch(installed: "1", pinned: "2"),
+        // SafetyError
+        SafetyError.invalidPolicy(path: "p", detail: "e"), SafetyError.policyDenied(tool: "mail_send", source: "*"),
+        SafetyError.confirmationRequired(tool: "mail_send", token: "t", summary: "s", expiresAt: "e", preview: nil),
+        SafetyError.confirmTokenInvalid, SafetyError.confirmTokenReused, SafetyError.confirmTokenExpired,
+        SafetyError.confirmTokenMismatch,
+        SafetyError.rateLimited(tool: "mail_send", limit: .init(max: 1, perSeconds: 60), retryAfter: 9),
+        SafetyError.auditLogUnavailable(path: "p", detail: "e"), SafetyError.idempotencyKeyConflict("k"),
+        SafetyError.priorOutcomeUnknown(tool: "mail_send", key: "k"), SafetyError.invalidReservedArgument("confirmToken"),
+        SafetyError.actionNotFound("i"), SafetyError.undoNotSupported(id: "i", reason: "r"), SafetyError.alreadyUndone("i"),
+        SafetyError.undoTargetChanged("i"), SafetyError.undoFailed(id: "i", code: "c", message: "m"),
+        // MCPCommandPolicy.Violation
+        MCPCommandPolicy.Violation.directCallRequired(command: "mail send", tool: "mail_send"),
     ]
 
     /// Retrying a send that may have gone out could deliver it twice.

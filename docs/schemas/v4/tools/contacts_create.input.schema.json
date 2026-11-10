@@ -3,12 +3,25 @@
   "additionalProperties" : false,
   "description" : "Create a new contact. Every field is optional, but supply at least a name or an email so the card is identifiable.",
   "properties" : {
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
     "email" : {
       "description" : "Email address.",
       "type" : "string"
     },
     "first" : {
       "description" : "First name.",
+      "type" : "string"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
       "type" : "string"
     },
     "jobTitle" : {

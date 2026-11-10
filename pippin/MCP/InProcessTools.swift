@@ -91,6 +91,15 @@ enum MCPInProcessTools {
             // A fixed struct of strings and ints; keep the result non-empty if encoding ever fails.
             return #"{"v":\#(AGENT_SCHEMA_VERSION),"status":"error","duration_ms":0,"error":{"code":"unknown_error","message":"failed to encode error envelope","next_step":{"retryable":false}}}"#
         }
+        // A safety refusal carries structured fields (the confirm token and
+        // preview) beside its message.
+        if let details = (error as? SafetyError)?.details,
+           case var .object(root)? = try? JSONDecoder().decode(JSONValue.self, from: bytes),
+           case var .object(payload)? = root["error"] {
+            payload["details"] = .object(details)
+            root["error"] = .object(payload)
+            return ArgRedactor.canonicalJSON(.object(root))
+        }
         return String(decoding: bytes, as: UTF8.self)
     }
 }

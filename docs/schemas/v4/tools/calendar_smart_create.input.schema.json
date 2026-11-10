@@ -12,6 +12,10 @@
       "description" : "Target calendar name (resolved for you).",
       "type" : "string"
     },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
     "description" : {
       "description" : "Natural-language event description, e.g. 'lunch with Sam next Tuesday at noon'.",
       "type" : "string"
@@ -20,6 +24,10 @@
       "default" : false,
       "description" : "Show the parsed event without creating it.",
       "type" : "boolean"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
     },
     "model" : {
       "description" : "Model name.",

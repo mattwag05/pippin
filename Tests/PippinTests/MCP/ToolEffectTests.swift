@@ -12,7 +12,7 @@ final class ToolEffectTests: XCTestCase {
         "notes_create", "notes_edit", "notes_delete",
         "messages_send", "messages_exclude_add", "messages_exclude_remove",
         "memos_export", "memos_transcribe", "memos_summarize", "memos_capture_to_reminders", "memos_delete",
-        "actions_extract", "job_run", "batch",
+        "actions_extract", "job_run", "batch", "undo",
     ]
 
     func testEveryRegisteredToolIsClassified() {

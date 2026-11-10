@@ -644,12 +644,17 @@ extension MailBridge {
         messageId: String,
         toMailbox: String,
         dryRun: Bool,
-        expectMessageId: String? = nil
+        expectMessageId: String? = nil,
+        locateByMessageId: Bool = false
     ) -> String {
         let safeAccount = jsEscape(account)
         let safeMailbox = jsEscape(mailbox)
         let safeTarget = jsEscape(toMailbox)
         let safeMsgId = jsEscape(messageId)
+        // Undo of a move: Mail gave the message a new row id in the mailbox it
+        // went to, so it is found there by its Message-ID instead.
+        let sourceQuery = locateByMessageId
+            ? "{messageId: \(jsEscapeOptional(expectMessageId))}" : "{id: \(safeMsgId)}"
 
         return """
         var mail = Application('Mail');
@@ -661,6 +666,7 @@ extension MailBridge {
         var sourceMsg = null;
         var targetMb = null;
         var fromName = '\(safeMailbox)';
+        var rfcMessageId = '';
 
         var accounts = mail.accounts();
         for (var a = 0; a < accounts.length; a++) {
@@ -673,10 +679,11 @@ extension MailBridge {
             for (var m = 0; m < mailboxes.length; m++) {
                 var mb = mailboxes[m];
                 if (mb.name() === '\(safeMailbox)') {
-                    var msgs = mb.messages.whose({id: \(safeMsgId)})();
+                    var msgs = mb.messages.whose(\(sourceQuery))();
                     if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
                     sourceMsg = msgs[0];
                     requireIdentity(sourceMsg);
+                    try { rfcMessageId = String(sourceMsg.messageId() || ''); } catch(e) {}
                     break;
                 }
             }
@@ -700,6 +707,8 @@ extension MailBridge {
                 messageId: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
                 from: fromName,
                 to: '\(safeTarget)',
+                toResolved: String(targetMb.name()),
+                rfcMessageId: rfcMessageId,
                 dryRun: String(isDryRun)
             }
         });
@@ -942,6 +951,8 @@ extension MailBridge {
         var targetRead = \(read ? "true" : "false");
         var isDryRun = \(dryRun ? "true" : "false");
         var found = false;
+        var previousRead = '';
+        var rfcMessageId = '';
 
         var accounts = mail.accounts();
         for (var a = 0; a < accounts.length; a++) {
@@ -956,6 +967,9 @@ extension MailBridge {
                 var msgs = mb.messages.whose({id: \(safeMsgId)})();
                 if (msgs.length === 0) throw new Error('MAILBRIDGE_ERR_MSG_NOT_FOUND');
                 requireIdentity(msgs[0]);
+                // What `pippin undo` needs: the state before, and the identity to check later.
+                previousRead = String(msgs[0].readStatus());
+                try { rfcMessageId = String(msgs[0].messageId() || ''); } catch(e) {}
 
                 if (!isDryRun) {
                     msgs[0].readStatus = targetRead;
@@ -978,6 +992,8 @@ extension MailBridge {
             details: {
                 messageId: '\(safeAccount)||\(safeMailbox)||\(safeMsgId)',
                 readStatus: String(targetRead),
+                previousReadStatus: previousRead,
+                rfcMessageId: rfcMessageId,
                 dryRun: String(isDryRun)
             }
         });

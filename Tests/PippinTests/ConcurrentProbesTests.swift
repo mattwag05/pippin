@@ -64,7 +64,7 @@ final class DoctorConcurrencyTests: XCTestCase {
     func testTheRealCheckListKeepsItsDocumentedOrder() {
         let names = runAllChecks(config: nil).map(\.name)
         XCTAssertEqual(names.first, "macOS version")
-        XCTAssertEqual(names.last, "pippin version")
+        XCTAssertEqual(names.last, "Policy file")
         XCTAssertLessThan(
             try XCTUnwrap(names.firstIndex(of: "Mail automation")),
             try XCTUnwrap(names.firstIndex(of: "Notes automation"))

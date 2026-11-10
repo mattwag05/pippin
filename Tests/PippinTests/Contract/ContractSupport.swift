@@ -13,7 +13,7 @@ struct ContractRoot: ParsableCommand {
             MailCommand.self, MemosCommand.self, CalendarCommand.self, ContactsCommand.self,
             RemindersCommand.self, NotesCommand.self, MessagesCommand.self, ActionsCommand.self,
             DigestCommand.self, DoctorCommand.self, StatusCommand.self, BatchCommand.self,
-            JobCommand.self,
+            JobCommand.self, PolicyCommand.self, LogCommand.self, UndoCommand.self,
         ]
     )
 }

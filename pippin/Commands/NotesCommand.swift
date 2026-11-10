@@ -99,14 +99,17 @@ public struct NotesCommand: ParsableCommand {
         @Argument(help: "Note ID (from `pippin notes list`).")
         public var id: String
 
+        @Flag(name: .long, help: "Also return the note's HTML body, the form `notes edit --html` writes back.")
+        public var html: Bool = false
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
 
         public mutating func execute() async throws -> AgentResult {
             let note = try await detachBlocking { [id] in try NotesBridge.showNote(id: id) }
-            // Exclude the large HTML body, include plainText instead.
-            return AgentResult(NoteAgentView(note: note))
+            // Exclude the large HTML body unless asked, include plainText instead.
+            return AgentResult(NoteAgentView(note: note, includeHTML: html))
         }
     }
 
@@ -281,13 +284,16 @@ struct NoteAgentView: Encodable {
     let id: String
     let title: String
     let plainText: String
+    /// HTML body; only with `--html`.
+    let body: String?
     let folder: String
     let modifiedAt: String
 
-    init(note: NoteInfo) {
+    init(note: NoteInfo, includeHTML: Bool = false) {
         id = note.id
         title = note.title
         plainText = note.plainText
+        body = includeHTML ? note.body : nil
         folder = note.folder
         modifiedAt = note.modificationDate
     }

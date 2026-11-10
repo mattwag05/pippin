@@ -11,6 +11,10 @@
       "description" : "API key for the Claude provider.",
       "type" : "string"
     },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
     "create" : {
       "default" : false,
       "description" : "Create reminders from the extracted actions (side-effecting).",
@@ -20,6 +24,15 @@
       "default" : 7,
       "description" : "Days back to scan (1-90, default 7).",
       "type" : "integer"
+    },
+    "dryRun" : {
+      "default" : false,
+      "description" : "Check the call and report what it would do, without doing it.",
+      "type" : "boolean"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "type" : "string"
     },
     "limit" : {
       "default" : 50,

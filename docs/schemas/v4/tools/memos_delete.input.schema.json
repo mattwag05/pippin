@@ -8,6 +8,10 @@
       "description" : "Must be true to delete. The audio is recoverable from the Trash; the recording's entry is not.",
       "type" : "boolean"
     },
+    "confirmToken" : {
+      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "type" : "string"
+    },
     "dryRun" : {
       "default" : false,
       "description" : "Report the recording that would be deleted and change nothing.",
@@ -15,6 +19,10 @@
     },
     "id" : {
       "description" : "Memo ID from memos_list, or an unambiguous prefix of it.",
+      "type" : "string"
+    },
+    "idempotencyKey" : {
+      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
       "type" : "string"
     }
   },

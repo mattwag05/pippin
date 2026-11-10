@@ -23,7 +23,7 @@ final class InProcessToolsTests: XCTestCase {
 
     func testRegistryToolCount() {
         XCTAssertEqual(
-            MCPToolRegistry.tools.count, 76,
+            MCPToolRegistry.tools.count, 79,
             "update this count when adding/removing MCP tools (and docs/mcp-server.md)"
         )
     }
@@ -59,6 +59,7 @@ final class InProcessToolsTests: XCTestCase {
         let canned = #"{"v":1,"status":"ok","duration_ms":3,"data":[]}"#
         let fake = MCPTool(
             name: "fake_tool",
+            effect: .readOnly,
             description: "test double",
             inputSchema: Schema.empty,
             buildArgs: { _ in ["fake", "--format", "agent"] },
@@ -75,6 +76,7 @@ final class InProcessToolsTests: XCTestCase {
         }
         let fake = MCPTool(
             name: "fake_tool",
+            effect: .readOnly,
             description: "test double",
             inputSchema: Schema.empty,
             buildArgs: { _ in ["fake", "--format", "agent"] },
@@ -175,6 +177,7 @@ final class InProcessToolsTests: XCTestCase {
         let name = "deadline_tool_\(UUID().uuidString)"
         let slow = MCPTool(
             name: name,
+            effect: .readOnly,
             description: "test double",
             inputSchema: Schema.empty,
             buildArgs: { _ in [] },

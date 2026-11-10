@@ -574,7 +574,8 @@ enum MailBridge {
         compoundId: String,
         toMailbox: String,
         dryRun: Bool = false,
-        expectMessageId: String? = nil
+        expectMessageId: String? = nil,
+        locateByMessageId: Bool = false
     ) throws -> BridgeActionResult {
         let (account, mailboxName, msgId) = try parseCompoundId(compoundId)
         guard toMailbox.count <= 256, toMailbox.unicodeScalars.allSatisfy({ $0.value >= 0x20 }) else {
@@ -582,7 +583,7 @@ enum MailBridge {
         }
         let script = buildMoveScript(
             account: account, mailbox: mailboxName, messageId: msgId, toMailbox: toMailbox, dryRun: dryRun,
-            expectMessageId: expectMessageId
+            expectMessageId: expectMessageId, locateByMessageId: locateByMessageId
         )
         // Move triggers IMAP MOVE server-side — use 45s timeout for slow servers
         let json = try runScript(script, timeoutSeconds: 45)

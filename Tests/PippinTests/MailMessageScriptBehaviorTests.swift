@@ -50,7 +50,9 @@ final class MailMessageScriptBehaviorTests: XCTestCase {
             name: function() { return name; },
             mailboxes: function() { return []; },
             messages: {whose: function(q) { return function() {
-                return __rows.filter(function(r) { return r.id == q.id; }).map(fakeMessage);
+                return __rows.filter(function(r) {
+                    return q.id !== undefined ? r.id == q.id : r.messageId === q.messageId;
+                }).map(fakeMessage);
             }; }}
         };
     }
@@ -123,6 +125,46 @@ final class MailMessageScriptBehaviorTests: XCTestCase {
                     return XCTFail("\(name): expected message_identity_mismatch, got \(String(describing: failed?.message))")
                 }
             }
+        }
+    }
+
+    // MARK: - What undo needs from mark and move
+
+    func testMarkReportsThePreviousReadStateAndTheMessageID() throws {
+        let script = MailBridge.buildMarkScript(account: "A", mailbox: "INBOX", messageId: "7", read: true, dryRun: false)
+        let details = try XCTUnwrap((run(script, rows: rows).output as? [String: Any])?["details"] as? [String: String])
+        XCTAssertEqual(details["previousReadStatus"], "false")
+        XCTAssertEqual(details["readStatus"], "true")
+        XCTAssertEqual(details["rfcMessageId"], "m7@example.com")
+
+        let already = "[{id: 7, messageId: 'm7@example.com', read: true}]"
+        let again = try XCTUnwrap((run(script, rows: already).output as? [String: Any])?["details"] as? [String: String])
+        XCTAssertEqual(again["previousReadStatus"], "true")
+    }
+
+    func testMoveReportsTheResolvedDestinationAndTheMessageID() throws {
+        let script = MailBridge.buildMoveScript(account: "A", mailbox: "INBOX", messageId: "7", toMailbox: "Archive", dryRun: false)
+        let details = try XCTUnwrap((run(script, rows: rows).output as? [String: Any])?["details"] as? [String: String])
+        XCTAssertEqual(details["from"], "INBOX")
+        XCTAssertEqual(details["toResolved"], "Archive")
+        XCTAssertEqual(details["rfcMessageId"], "m7@example.com")
+    }
+
+    /// The inverse of a move: the row id is unknown, so the message is found by Message-ID.
+    func testMoveCanLocateTheMessageByMessageID() throws {
+        let script = MailBridge.buildMoveScript(
+            account: "A", mailbox: "INBOX", messageId: "0", toMailbox: "Archive", dryRun: false,
+            expectMessageId: "m7@example.com", locateByMessageId: true
+        )
+        XCTAssertEqual(try run(script, rows: rows).log, ["move:7:Archive"])
+
+        let other = MailBridge.buildMoveScript(
+            account: "A", mailbox: "INBOX", messageId: "0", toMailbox: "Archive", dryRun: false,
+            expectMessageId: "gone@example.com", locateByMessageId: true
+        )
+        XCTAssertThrowsError(try run(other, rows: rows)) { error in
+            XCTAssertEqual((error as? FailedRun)?.log, [])
+            XCTAssertTrue((error as? FailedRun)?.message.contains("MAILBRIDGE_ERR_MSG_NOT_FOUND") == true)
         }
     }
 

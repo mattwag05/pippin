@@ -119,26 +119,11 @@ public enum MessagesAuditLog {
 
     public static func append(_ entry: MessagesAuditEntry, path: String? = nil) throws {
         let target = path ?? defaultPath()
-        let dir = (target as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(
-            atPath: dir,
-            withIntermediateDirectories: true
-        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let data = try encoder.encode(entry) + Data("\n".utf8)
-        // O_APPEND guarantees each write atomically seeks to end, preventing
-        // line interleaving when multiple `pippin messages` processes run
-        // concurrently (e.g. under MCP).
-        // 0600: the log names every recipient and search query.
-        let fd = open(target, O_WRONLY | O_CREAT | O_APPEND, 0o600)
-        guard fd >= 0 else {
-            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: nil)
-        }
-        fchmod(fd, 0o600) // tighten a log created 0644 by an earlier version
-        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        defer { try? handle.close() }
-        try handle.write(contentsOf: data)
+        // Same writer as the action log: O_APPEND and 0600 (the log names
+        // every recipient and search query).
+        try AppendOnlyFile.append(encoder.encode(entry) + Data("\n".utf8), to: target)
     }
 
     public static func now() -> String {

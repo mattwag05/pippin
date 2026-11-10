@@ -141,6 +141,7 @@ struct MCPInitializeResult: Encodable {
     let protocolVersion: String
     let capabilities: Capabilities
     let serverInfo: ServerInfo
+    let instructions: String
 }
 
 /// `tools/list` response payload.
