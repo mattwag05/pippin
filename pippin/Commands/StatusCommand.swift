@@ -118,53 +118,91 @@ public struct StatusCommand: AgentCommand {
 
 // MARK: - Report Building
 
+/// Everything `status` reads from outside the process, as replaceable probes.
+/// The Mail account list and the Notes folder list each feed a section AND the
+/// permissions table, so each is asked for once and shared.
+struct StatusProbes: Sendable {
+    var mailAccounts: @Sendable () -> [MailAccount]? = { try? MailBridge.listAccounts() }
+    var mailboxCounts: @Sendable ([MailAccount]) -> [String: Int] = { MailBridge.mailboxCounts(for: $0) }
+    var notesFolders: @Sendable () -> BridgeOutcome<[NoteFolder]>? = { try? NotesBridge.listFolders() }
+    /// One Apple Event (`app.notes().length`): listing notes to count them
+    /// hit the script cap on large vaults and dragged status to ~84s.
+    var notesCount: @Sendable () -> Int? = { try? NotesBridge.countNotes() }
+    var calendar: @Sendable () -> StatusReport.CalendarStatus? = gatherCalendarStatus
+    var reminders: @Sendable () -> StatusReport.RemindersStatus? = gatherRemindersStatus
+    var memos: @Sendable () -> StatusReport.MemosStatus? = gatherMemosStatus
+    var contacts: @Sendable () -> StatusReport.ContactsStatus? = gatherContactsStatus
+    var memosReadable: @Sendable () -> Bool = {
+        (try? VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())) != nil
+    }
+
+    static let live = StatusProbes()
+}
+
 /// Gathers every section concurrently and bounds the total wait by `budgetMs`.
 /// The sections are independent subsystems, so running them in parallel turns
 /// the old sequential sum (which blew past the MCP runChild cap on multi-account
 /// setups) into the cost of the single slowest section. A section that misses
 /// the budget is left `nil` and `timedOut` is set. See pippin-0nk.
-private func buildStatusReport(budgetMs: Int) -> StatusReport {
+func buildStatusReport(budgetMs: Int, probes: StatusProbes = .live) -> StatusReport {
+    // Outer optional: `nil` = the probe missed the budget. Inner: `nil` = it
+    // ran but there is no access.
+    let accounts = ConcurrentSlot<[MailAccount]?>()
     let mail = ConcurrentSlot<StatusReport.MailStatus?>()
     let calendar = ConcurrentSlot<StatusReport.CalendarStatus?>()
     let reminders = ConcurrentSlot<StatusReport.RemindersStatus?>()
     let memos = ConcurrentSlot<StatusReport.MemosStatus?>()
-    let notes = ConcurrentSlot<StatusReport.NotesStatus?>()
+    let folders = ConcurrentSlot<BridgeOutcome<[NoteFolder]>?>()
+    let noteCount = ConcurrentSlot<Int?>()
     let contacts = ConcurrentSlot<StatusReport.ContactsStatus?>()
-    let permissions = ConcurrentSlot<[StatusReport.PermissionEntry]>()
+    let memosReadable = ConcurrentSlot<Bool>()
 
     let completed = runConcurrentlyWithBudget(budgetMs: budgetMs, [
-        { mail.set(gatherMailStatus()) },
-        { calendar.set(gatherCalendarStatus()) },
-        { reminders.set(gatherRemindersStatus()) },
-        { memos.set(gatherMemosStatus()) },
-        { notes.set(gatherNotesStatus()) },
-        { contacts.set(gatherContactsStatus()) },
-        { permissions.set(gatherPermissions()) },
+        {
+            let found = probes.mailAccounts()
+            accounts.set(found)
+            mail.set(found.map { mailStatus(accounts: $0, counts: probes.mailboxCounts($0)) })
+        },
+        { calendar.set(probes.calendar()) },
+        { reminders.set(probes.reminders()) },
+        {
+            // One after the other: two connections opening the live Voice
+            // Memos database at the same moment can fail one of them.
+            memos.set(probes.memos())
+            memosReadable.set(probes.memosReadable())
+        },
+        { folders.set(probes.notesFolders()) },
+        { noteCount.set(probes.notesCount()) },
+        { contacts.set(probes.contacts()) },
     ])
+
+    // The table needs both shared probes and the memos probe; if any missed
+    // the budget it is left empty, as it was when it ran as one task.
+    var permissions: [StatusReport.PermissionEntry] = []
+    if let accounts = accounts.get(), let folders = folders.get(), let memosOK = memosReadable.get() {
+        permissions = permissionEntries(mailOK: accounts != nil, memosOK: memosOK, notesOK: folders != nil)
+    }
 
     return StatusReport(
         version: PippinVersion.version,
-        // Outer optional: `nil` = section missed the budget. Inner: `nil` = ran
-        // but no access. Both render as a `nil` section; only the former trips
-        // `timedOut` (via `completed`).
+        // A section is `nil` when it missed the budget or has no access; only
+        // the former trips `timedOut` (via `completed`).
         mail: mail.get() ?? nil,
         calendar: calendar.get() ?? nil,
         reminders: reminders.get() ?? nil,
         memos: memos.get() ?? nil,
-        notes: notes.get() ?? nil,
+        notes: (folders.get() ?? nil).map { notesStatus(folders: $0, count: noteCount.get() ?? nil) },
         contacts: contacts.get() ?? nil,
-        permissions: permissions.get() ?? [],
+        permissions: permissions,
         timedOut: !completed
     )
 }
 
 // MARK: - Mail
 
-private func gatherMailStatus() -> StatusReport.MailStatus? {
-    guard let accounts = try? MailBridge.listAccounts() else { return nil }
-    // One Envelope Index scan for all mailbox counts (fast path), falling back
-    // to per-account JXA — avoids N serial Apple Events that dominated status.
-    let counts = MailBridge.mailboxCounts(for: accounts)
+/// `counts` comes from one Envelope Index scan for all accounts (fast path),
+/// falling back to per-account JXA: N serial Apple Events dominated status.
+private func mailStatus(accounts: [MailAccount], counts: [String: Int]) -> StatusReport.MailStatus {
     let summaries = accounts.map { account in
         StatusReport.MailAccountSummary(
             name: account.name,
@@ -254,16 +292,13 @@ private func gatherMemosStatus() -> StatusReport.MemosStatus? {
 
 // MARK: - Notes
 
-private func gatherNotesStatus() -> StatusReport.NotesStatus? {
-    guard let foldersOutcome = try? NotesBridge.listFolders() else { return nil }
-    // Count via app.notes().length (single Apple Event) instead of iterating
-    // every note's body — listNotes(limit: 500) hits the 35s ScriptRunner cap
-    // on vaults of a few hundred notes and dragged status to ~84s.
-    let countResult = try? NotesBridge.countNotes()
-    return StatusReport.NotesStatus(
-        noteCount: countResult ?? 0,
-        folderCount: foldersOutcome.results.count,
-        timedOut: foldersOutcome.timedOut || countResult == nil
+/// A count that failed or did not finish reads as 0 and marks the section
+/// partial, the same as a folder enumeration that hit the soft cap.
+private func notesStatus(folders: BridgeOutcome<[NoteFolder]>, count: Int?) -> StatusReport.NotesStatus {
+    StatusReport.NotesStatus(
+        noteCount: count ?? 0,
+        folderCount: folders.results.count,
+        timedOut: folders.timedOut || count == nil
     )
 }
 
@@ -281,38 +316,19 @@ private func gatherContactsStatus() -> StatusReport.ContactsStatus? {
 
 // MARK: - Permissions
 
-private func gatherPermissions() -> [StatusReport.PermissionEntry] {
-    var entries: [StatusReport.PermissionEntry] = []
-
-    // Mail — try listing accounts
-    let mailOK = (try? MailBridge.listAccounts()) != nil
-    entries.append(StatusReport.PermissionEntry(name: "Mail", granted: mailOK))
-
-    // Calendar
-    let calStatus = EKEventStore.authorizationStatus(for: .event)
-    entries.append(StatusReport.PermissionEntry(
-        name: "Calendar",
-        granted: calStatus == .fullAccess
-    ))
-
-    // Reminders
-    let remStatus = EKEventStore.authorizationStatus(for: .reminder)
-    entries.append(StatusReport.PermissionEntry(
-        name: "Reminders",
-        granted: remStatus == .fullAccess
-    ))
-
-    // Contacts
-    let cntStatus = CNContactStore.authorizationStatus(for: .contacts)
-    entries.append(StatusReport.PermissionEntry(name: "Contacts", granted: cntStatus == .authorized))
-
-    // Voice Memos
-    let memosOK = (try? VoiceMemosDB(dbPath: VoiceMemosDB.defaultDBPath())) != nil
-    entries.append(StatusReport.PermissionEntry(name: "Voice Memos", granted: memosOK))
-
-    // Notes
-    let notesOK = (try? NotesBridge.listFolders()) != nil
-    entries.append(StatusReport.PermissionEntry(name: "Notes", granted: notesOK))
-
-    return entries
+private func permissionEntries(mailOK: Bool, memosOK: Bool, notesOK: Bool) -> [StatusReport.PermissionEntry] {
+    [
+        StatusReport.PermissionEntry(name: "Mail", granted: mailOK),
+        StatusReport.PermissionEntry(
+            name: "Calendar", granted: EKEventStore.authorizationStatus(for: .event) == .fullAccess
+        ),
+        StatusReport.PermissionEntry(
+            name: "Reminders", granted: EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
+        ),
+        StatusReport.PermissionEntry(
+            name: "Contacts", granted: CNContactStore.authorizationStatus(for: .contacts) == .authorized
+        ),
+        StatusReport.PermissionEntry(name: "Voice Memos", granted: memosOK),
+        StatusReport.PermissionEntry(name: "Notes", granted: notesOK),
+    ]
 }

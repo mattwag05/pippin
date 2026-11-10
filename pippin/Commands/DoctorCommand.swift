@@ -163,25 +163,32 @@ func classifyPython3Output(exitCode: Int32, output: String) -> DiagnosticCheck {
 
 /// Run all diagnostic checks and return results.
 public func runAllChecks(config: PippinConfig? = AIProviderFactory.loadConfig()) -> [DiagnosticCheck] {
-    var checks: [DiagnosticCheck] = []
+    runChecksConcurrently([
+        { [checkMacOSVersion()] },
+        { [checkMailAutomation()] },
+        { [checkMailEnvelopeIndex()] },
+        { [checkVoiceMemosDB()] },
+        { [checkMessagesAccess()] },
+        { [checkCalendarAccess()] },
+        { [checkRemindersAccess()] },
+        { [checkContactsAccess()] },
+        { [checkNotesAccess()] },
+        { [checkCodeSigning()] },
+        { [checkPython3()] },
+        { backendChecks(config: config) },
+        { [checkNodeJS()] },
+        { [checkPlaywright()] },
+        { [checkPippinVersion()] },
+    ])
+}
 
-    checks.append(checkMacOSVersion())
-    checks.append(checkMailAutomation())
-    checks.append(checkMailEnvelopeIndex())
-    checks.append(checkVoiceMemosDB())
-    checks.append(checkMessagesAccess())
-    checks.append(checkCalendarAccess())
-    checks.append(checkRemindersAccess())
-    checks.append(checkContactsAccess())
-    checks.append(checkNotesAccess())
-    checks.append(checkCodeSigning())
-    checks.append(checkPython3())
-    checks.append(contentsOf: backendChecks(config: config))
-    checks.append(checkNodeJS())
-    checks.append(checkPlaywright())
-    checks.append(checkPippinVersion())
-
-    return checks
+/// Run every probe at once and return the checks in the order listed. Each
+/// probe asks a different subsystem (an app, a database, a helper binary) and
+/// shares no state with the others, so the report costs the slowest probe
+/// instead of the sum.
+func runChecksConcurrently(_ probes: [@Sendable () -> [DiagnosticCheck]]) -> [DiagnosticCheck] {
+    let groups = (try? runConcurrently(probes) { $0() }) ?? probes.map { $0() }
+    return groups.flatMap(\.self)
 }
 
 private func checkMacOSVersion() -> DiagnosticCheck {
