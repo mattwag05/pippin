@@ -128,6 +128,20 @@ A tool gets a dealbreaker flag, shown in the ranked table, for any of these when
 
 `bench/competitive/run.sh` runs every stage and writes `bench/competitive/results/<date>/` with raw JSON and CSV plus the environment record. Competitor checkouts are pinned by commit in `bench/competitive/tools.lock.json` and installed outside the repository. Stages that need macOS privacy permissions state which permission and which binary, and skip with "not run" if it is missing.
 
+## Amendment 1 (2026-11-09, before any result was produced)
+
+No head-to-head result existed when this amendment was committed. It records where the harness as built differs from the text above, and why.
+
+- Everything runs in a disposable macOS virtual machine (Tart, macOS 26.6.2), not on a personal machine. Reason: competitor code is untrusted, and the benchmark must not be able to touch real mail, messages or privacy settings. Privacy permissions for each tool are granted inside the VM only.
+- Messages uses a synthetic `chat.db` built by `bench/competitive/fixtures/make_chatdb.py` (4 chats, 300 messages) instead of host data. This replaces "read-only host stores" for Messages and makes Messages correctness reproducible in data. Message sending is never exercised.
+- Mail is "not run" for every tool: the VM has no mail account and one cannot be added without real credentials. Voice Memos is "not run" for every tool: the VM has no recordings store. Coverage cells for those apps stay "claimed" or "no", never "yes", for all tools including Pippin.
+- A tool that needs an interactive approval window to serve each client (iMCP) is "not run", with that reason.
+- Reliability sandbox writes use N = 3 distinct titles per app (plain, quoting, shell injection) instead of N = 10. Reason: every write is also a correctness and injection probe, and is read back and deleted.
+- Scaling runs are not part of the first published result. Speed is reported at fixture scale (about 25 records per app, 300 messages), and that scale is stated beside every number.
+- Task success uses 3 trials instead of 5 and only the tasks the VM can host: task 2 (schedule around conflicts), task 4 (find and summarize a thread, on the synthetic Messages store) and task 5 (injection trial). Tasks 1 and 3 need Mail and Voice Memos and are "not run". Reason: agent runs are paid for by a personal account with a usage ceiling.
+- The token counter is the harness's own fixed tokenizer (words and single punctuation marks, `token_count` in `harness/run.py`). It is the same for every tool. It is not a model tokenizer, so only ratios between tools are meaningful.
+- Tool-description grading by two model graders is replaced by counted facts: tools with a description, tools with behavior annotations, manifest size. Reason: a programmatic count is reproducible and a model grade is not.
+
 ## Known limits of this method
 
 - Mail and Messages cannot be seeded without sending, so their correctness checks rely on snapshot ground truth and host data, which makes them reproducible in procedure but not in data.
