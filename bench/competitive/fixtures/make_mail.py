@@ -62,6 +62,28 @@ def sync(expected):
     return False
 
 
+REBUILD = """
+tell application "Mail"
+  activate
+  set selected mailboxes of message viewer 1 to {mailbox "INBOX" of account "PippinBench"}
+end tell
+delay 2
+tell application "System Events" to tell process "Mail" to click menu item "Rebuild" of menu "Mailbox" of menu bar 1
+"""
+
+
+def received_matches(manifest):
+    """Mail's received date for the newest message equals its Date header (Mail caches received dates)."""
+    newest = max(manifest["messages"], key=lambda m: m["date_epoch"])
+    script = ('tell application "Mail" to return (date received of (first message of mailbox "INBOX" of account "PippinBench"'
+              ' whose subject is "%s")) as «class isot» as string' % newest["subject"])
+    want = datetime.fromtimestamp(newest["date_epoch"]).strftime("%Y-%m-%dT%H:%M:%S")  # local time, as Mail reports it
+    try:
+        return osascript(script) == want
+    except subprocess.TimeoutExpired:
+        return False
+
+
 def install(manifest_path):
     manifest = json.load(open(manifest_path, encoding="utf-8"))["mail"]
     server_up()
@@ -84,6 +106,14 @@ def install(manifest_path):
         # header gives one order whether a tool sorts by date sent or date received.
         os.utime(path, (m["date_epoch"], m["date_epoch"]))
     synced = sync(len(manifest["messages"]))
+    if synced and not received_matches(manifest):
+        # Mail keeps received dates it cached on an earlier seed; Mailbox > Rebuild re-reads them from the server.
+        subprocess.run(["osascript", "-e", REBUILD], capture_output=True, timeout=60)
+        for _ in range(30):
+            time.sleep(2)
+            if mail_count() == len(manifest["messages"]) and received_matches(manifest):
+                break
+        synced = received_matches(manifest)
     json.dump({"mail": {"account": manifest["account"], "count": len(manifest["messages"]), "synced": synced}}, sys.stdout)
     return 0 if synced else 1
 
