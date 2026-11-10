@@ -17,6 +17,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- [fix] `pippin job run --help` prints help instead of starting a job whose argv is `--help`.
 - [bug] MCP tool calls now reject unknown or wrongly typed arguments (`unexpected_argument`, `wrong_type`) before anything runs. A misspelled `dry_run`, or `dryRun` passed as a string, used to be dropped and the real write ran.
 - [bug] `messages show` now honors the exclude list: an excluded thread is refused with `conversation_excluded` whether it is named by guid, bare handle or masked id. Closes pippin-2cdf.
 - [bug] Exclude-list entries written as a bare handle, or with a different service prefix than the thread's current guid, now hide the thread in `messages list`, `search` and `show`.
@@ -63,6 +64,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Performance
 
 - [perf] `notes list`, `notes search` and `notes folders` read Notes in bulk: on one 50-note vault a default list went from about 12.8 s to 0.3 s, a no-match search from 22 s (partial) to 0.3 s (complete), and folders from 1.6 s to 0.2 s. Closes pippin-f8p6.
+- [perf] `mail list`, `mail search` and `mail activity` read the Envelope Index snapshot ahead: a list went from 220 ms to 65 ms (median of 5 cold runs, [docs/performance.md](docs/performance.md)).
+- [perf] `mail accounts` reads all accounts in 4 Apple Events instead of 3 per account: 344 ms to 200 ms.
+- [perf] `doctor` runs its probes concurrently (797 ms to 260 ms), `digest` gathers its sections concurrently (883 ms to 419 ms), and `status` asks Mail and Notes once each (603 ms to 351 ms).
+- [docs] `docs/performance.md`: latency baseline, targets and the script that reproduces them (`scripts/bench-latency.py`).
 
 ---
 

@@ -24,6 +24,12 @@ final class JobCommandTests: XCTestCase {
         XCTAssertThrowsError(try JobCommand.Run.parse([]))
     }
 
+    func testRunHelpDoesNotBecomeAJob() {
+        XCTAssertThrowsError(try JobCommand.Run.parse(["--help"])) { error in
+            XCTAssertEqual(JobCommand.Run.exitCode(for: error), .success)
+        }
+    }
+
     func testRunCapturesArgvAfterTerminator() throws {
         let cmd = try JobCommand.Run.parse(["--", "mail", "index"])
         XCTAssertEqual(cmd.argv, ["mail", "index"])

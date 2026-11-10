@@ -46,6 +46,9 @@ public struct JobCommand: AsyncParsableCommand {
         public mutating func validate() throws {
             // `captureForPassthrough` preserves the `--` terminator in the
             // captured array; strip it so the child sees clean argv.
+            // A bare `job run --help` asks for this command's help; passthrough
+            // capture would otherwise start a real job with argv ["--help"].
+            if argv == ["--help"] || argv == ["-h"] { throw CleanExit.helpRequest(self) }
             if argv.first == "--" { argv.removeFirst() }
             guard !argv.isEmpty else {
                 throw ValidationError("pippin job run requires an argv — e.g. `pippin job run -- mail index`.")
