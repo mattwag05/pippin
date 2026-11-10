@@ -112,6 +112,15 @@ def expectations(manifest: dict, read_args: dict) -> dict:
     chat_a = [m for m in manifest["messages"]["messages"] if m["chat"] == "chat-a" and m["displayable"]]
     # a displayable message can be attachment-only, so empty text is allowed and takes a slot in the window
     out["messages.history"] = ([m["text"] for m in chat_a[-limit:] if m.get("text")], [m.get("text") or "" for m in chat_a], "text")
+    # Amendment 4: mail and voice memos, from the manifest's seeded mailbox and store.
+    if "mail" in manifest:
+        mails = sorted(manifest["mail"]["messages"], key=lambda m: -m["date_epoch"])
+        limit = read_args.get("mail.list", {}).get("limit", 20)
+        out["mail.list"] = ([m["subject"] for m in mails[:limit]], [m["subject"] for m in mails], "title")
+        q = read_args.get("mail.search", {}).get("query", "")
+        out["mail.search"] = ([m["subject"] for m in mails if has(q, m["subject"])], [m["subject"] for m in mails if has(q, m["subject"], m["body"], m["from"], m["from_name"])], "title")
+    if "memos" in manifest:
+        out["memos.list"] = ([r["title"] for r in manifest["memos"]["recordings"]], [], "title")
     return out
 
 

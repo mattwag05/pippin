@@ -239,6 +239,32 @@ def check_messages(manifest, state, pb_seed):
     con.close()
 
 
+def check_mail_memos(manifest, state):
+    """Mail over IMAP straight from the local server, memos straight from the store; no tool under test."""
+    if state.get("mail"):
+        import imaplib
+        imap = imaplib.IMAP4("127.0.0.1", 1143)
+        imap.login("bench", "local-fixture")  # pragma: allowlist secret (fixture; any password works)
+        imap.select("INBOX", readonly=True)
+        _, data = imap.search(None, "ALL")
+        ids = data[0].split()
+        subjects = []
+        for i in ids:
+            _, part = imap.fetch(i, "(BODY.PEEK[HEADER.FIELDS (SUBJECT)])")
+            subjects.append(part[0][1].decode().split(":", 1)[1].strip())
+        imap.logout()
+        eq("mail: subjects on the server", sorted(m["subject"] for m in manifest["mail"]["messages"]), sorted(subjects))
+        eq("mail: Mail.app synced the mailbox", True, state["mail"].get("synced"))
+    if state.get("memos"):
+        db = os.path.expanduser(manifest["memos"]["store"])
+        con = sqlite3.connect("file:%s?mode=ro" % db, uri=True)
+        rows = con.execute("SELECT ZCUSTOMLABEL, ZPATH FROM ZCLOUDRECORDING WHERE ZCUSTOMLABEL LIKE 'PB Memo %'").fetchall()
+        con.close()
+        eq("memos: titles in the store", sorted(r["title"] for r in manifest["memos"]["recordings"]), sorted(r[0] for r in rows))
+        folder = os.path.dirname(db)
+        eq("memos: audio files present", len(rows), sum(1 for r in rows if os.path.exists(os.path.join(folder, r[1]))))
+
+
 def check_manifest_shape(manifest):
     corpus = manifest["injection_corpus"]
     eq("manifest: injection corpus size", 12, len(corpus))
@@ -270,6 +296,7 @@ def main():
     check_eventkit(manifest, state, run_json([args.pb_seed, "dump"]))
     check_notes(manifest, state, run_json(["osascript", "-l", "JavaScript", os.path.join(HERE, "notes.js"), "dump"]))
     check_messages(manifest, state, args.pb_seed)
+    check_mail_memos(manifest, state)
 
     if errors:
         print("verify: FAILED, %d mismatches" % len(errors))
@@ -277,11 +304,12 @@ def main():
             print("- " + e)
         sys.exit(1)
     m = manifest
-    print("verify: OK  events=%d (occurrences=%d) reminders=%d contacts=%d notes=%d chats=%d messages=%d injections=%d x3" % (
+    print("verify: OK  events=%d (occurrences=%d) reminders=%d contacts=%d notes=%d chats=%d messages=%d injections=%d x3 mail=%s memos=%s" % (
         len(m["calendar"]["events"]),
         sum(len(e.get("occurrences", [0])) for e in m["calendar"]["events"]),
         len(m["reminders"]["items"]), len(m["contacts"]["people"]), len(m["notes"]["notes"]),
-        len(m["messages"]["chats"]), len(m["messages"]["messages"]), len(m["injection_corpus"])))
+        len(m["messages"]["chats"]), len(m["messages"]["messages"]), len(m["injection_corpus"]),
+        len(m["mail"]["messages"]) if state.get("mail") else "not seeded", len(m["memos"]["recordings"]) if state.get("memos") else "not seeded"))
 
 
 if __name__ == "__main__":

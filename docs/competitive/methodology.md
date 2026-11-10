@@ -170,6 +170,16 @@ Each tool is checked against these 13 pass or fail items, from its repository at
 
 Score, from the scoring rubric: 4 when all 13 pass, 3 when 1 fails, 2 when 2 to 5 fail, 1 when 6 or more fail. A check that cannot be determined counts as failed and is listed. The facts for each tool, each with its source, are committed beside the scores.
 
+## Amendment 4 (2026-11-10, before any Mail or Voice Memos result was produced)
+
+Amendment 1 left Mail and Voice Memos "not run" because the VM had no mail account and no recordings store. This amendment adds both, committed before any of their results were produced.
+
+- Mail: a local IMAP server (Dovecot 2.4.5) inside the VM on 127.0.0.1:1143, with no TLS and any password accepted, holds one mailbox. A Mail account `PippinBench` points at it. `vm/mail-setup.sh` sets this up once; `fixtures/make_mail.py` writes 24 synthetic messages from `manifest.json` (senders at `example.invalid`) straight into the server's Maildir and waits for Mail to sync. No real account, credential or outside server is involved, and nothing is sent.
+- Voice Memos: the VM is booted with a display once so Voice Memos can create its own `CloudRecordings.db` on this macOS. `fixtures/make_memos.py` adds 12 recordings (silent AAC files) to that store's own table, and restores the original store afterwards.
+- Operations: the read operations the harness already defines (`mail.accounts`, `mail.mailboxes`, `mail.list`, `mail.search`, `memos.list`, `memos.show`) are measured on every axis that already covers reads: coverage, correctness, reliability and speed. `mail.search` uses the word `Quarterly` (6 subjects contain it, 3 more bodies do) in place of `the`, so the expected set is defined. Mail and Voice Memos writes (send, move, mark, transcribe, delete) and their hostile-input checks stay "not run".
+- Correctness: `mail.list` (limit 20) must return the 20 newest subjects and may return any seeded subject; `mail.search` must return the 6 subject matches and may return the 3 body matches; `memos.list` must return all 12 titles. The same rule applies to every tool, read through each adapter's existing parser.
+- Tools: Pippin, sweetrb/apple-mail-mcp and patrickfreyer/apple-mail-mcp for Mail; Pippin for Voice Memos (iMCP, the other tool that claims it, still needs an approval window and stays not run). Adapter parsers for the two Mail competitors were written without data; a parser fault found on this data is fixed in the adapter, recorded in its notes, and committed before the scored run.
+
 ## Known limits of this method
 
 - Mail and Messages cannot be seeded without sending, so their correctness checks rely on snapshot ground truth and host data, which makes them reproducible in procedure but not in data.

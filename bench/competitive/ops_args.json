@@ -19,7 +19,7 @@
     "mail.accounts": {},
     "mail.mailboxes": {},
     "mail.list": {"limit": 20},
-    "mail.search": {"query": "the", "limit": 20},
+    "mail.search": {"query": "Quarterly", "limit": 20},
     "memos.list": {"limit": 20}
   },
   "bad": {

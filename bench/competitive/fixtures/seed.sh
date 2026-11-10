@@ -54,14 +54,26 @@ if [ ! -f "$CHATDB" ] && [ ! -f "$CHATDB.orig" ]; then
 fi
 limit 120 python3 "$HERE/make_chatdb.py" install "$MANIFEST" --pb-seed "$BIN" > "$PARTS/messages.json"
 
+echo "seed: mail (local IMAP server) and voice memos, when vm/mail-setup.sh has run"
+if limit 30 osascript -e 'tell application "Mail" to name of every account' 2>/dev/null | grep -q PippinBench; then
+  limit 240 python3 "$HERE/make_mail.py" install "$MANIFEST" > "$PARTS/mail.json"
+else
+  echo '{"mail": null}' > "$PARTS/mail.json"; echo "seed: no PippinBench Mail account; mail not seeded (run vm/mail-setup.sh)" >&2
+fi
+if [ -f "$HOME/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/CloudRecordings.db" ]; then
+  limit 120 python3 "$HERE/make_memos.py" install "$MANIFEST" > "$PARTS/memos.json"
+else
+  echo '{"memos": null}' > "$PARTS/memos.json"; echo "seed: no Voice Memos store; memos not seeded (run vm/mail-setup.sh)" >&2
+fi
+
 python3 - "$PARTS" "$MANIFEST" "$BENCH/state.json" <<'PY'
 import hashlib, json, sys
 parts, manifest, out = sys.argv[1:4]
 state = {"manifest_sha256": hashlib.sha256(open(manifest, "rb").read()).hexdigest()}
-for name in ("eventkit", "notes", "messages"):
+for name in ("eventkit", "notes", "messages", "mail", "memos"):
     state.update(json.load(open("%s/%s.json" % (parts, name), encoding="utf-8")))
 json.dump(state, open(out, "w", encoding="utf-8"), indent=1, sort_keys=True)
-print("seed: wrote %s (%d events, %d reminders, %d contacts, %d notes, %d messages)" % (
+print("seed: wrote %s (%d events, %d reminders, %d contacts, %d notes, %d messages, %s mail, %s memos)" % (
     out, len(state["events"]), len(state["reminders"]), len(state["contacts"]), len(state["notes"]),
-    state["messages"]["message_count"]))
+    state["messages"]["message_count"], (state["mail"] or {}).get("count", "no"), (state["memos"] or {}).get("count", "no")))
 PY
