@@ -604,7 +604,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_send",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Send an email. Returns a preview and sends NOTHING unless confirm=true: review the preview, then call again with confirm=true to deliver.",
+            description: "Send an email. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
             inputSchema: Schema.object(
                 properties: [
                     "to": Schema.stringArray("Recipient email addresses."),
@@ -637,7 +637,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_reply",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Reply to a message. Returns a preview and sends NOTHING unless confirm=true: review the preview, then call again with confirm=true to deliver.",
+            description: "Reply to a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
@@ -669,7 +669,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_forward",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Forward a message. Returns a preview and sends NOTHING unless confirm=true: review the preview, then call again with confirm=true to deliver.",
+            description: "Forward a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
             inputSchema: Schema.object(
                 properties: [
                     "messageId": Schema.string("Compound message ID from mail_list output."),
@@ -732,7 +732,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "mail_apply_rules",
             effect: .mutating(verifyWith: "mail_list"),
-            description: "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true: review the plan first. Messages newer than minAgeDays are never touched.",
+            description: "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true (or, where the policy sets this tool to confirm, the confirmToken a first call returns): review the plan first. Messages newer than minAgeDays are never touched.",
             inputSchema: Schema.object(
                 properties: [
                     "account": Schema.string("Filter by account name."),
@@ -986,7 +986,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "calendar_delete",
             effect: .mutating(verifyWith: "calendar_upcoming"),
-            description: "Delete a calendar event. IRREVERSIBLE: fails unless confirm=true.",
+            description: "Delete a calendar event. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Event ID from calendar_events / calendar_search."),
@@ -1222,7 +1222,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "reminders_delete",
             effect: .mutating(verifyWith: "reminders_list"),
-            description: "Delete a reminder. IRREVERSIBLE: fails unless confirm=true. To just tick one off, use reminders_complete instead.",
+            description: "Delete a reminder. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. To just tick one off, use reminders_complete instead.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Reminder ID from reminders_list / reminders_search."),
@@ -1382,7 +1382,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "contacts_delete",
             effect: .mutating(verifyWith: "contacts_list"),
-            description: "Delete a contact. IRREVERSIBLE: fails unless confirm=true.",
+            description: "Delete a contact. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.",
             inputSchema: Schema.object(
                 properties: [
                     "identifier": Schema.string("Contact identifier from contacts_search / contacts_show."),
@@ -1510,7 +1510,7 @@ enum MCPToolRegistry {
         MCPTool(
             name: "notes_delete",
             effect: .mutating(verifyWith: "notes_list"),
-            description: "Move a note to Recently Deleted. Fails unless confirm=true. Recoverable from Recently Deleted for 30 days.",
+            description: "Move a note to Recently Deleted. The first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. Recoverable from Recently Deleted for 30 days.",
             inputSchema: Schema.object(
                 properties: [
                     "id": Schema.string("Note ID from notes_list / notes_search."),

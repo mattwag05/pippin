@@ -1,7 +1,7 @@
 {
   "$schema" : "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties" : false,
-  "description" : "Delete a reminder. IRREVERSIBLE: fails unless confirm=true. To just tick one off, use reminders_complete instead.",
+  "description" : "Delete a reminder. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. To just tick one off, use reminders_complete instead.",
   "properties" : {
     "confirm" : {
       "default" : false,

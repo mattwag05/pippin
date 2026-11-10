@@ -1,7 +1,7 @@
 {
   "$schema" : "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties" : false,
-  "description" : "Delete a contact. IRREVERSIBLE: fails unless confirm=true.",
+  "description" : "Delete a contact. IRREVERSIBLE: the first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete.",
   "properties" : {
     "confirm" : {
       "default" : false,

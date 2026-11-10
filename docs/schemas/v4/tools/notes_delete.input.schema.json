@@ -1,7 +1,7 @@
 {
   "$schema" : "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties" : false,
-  "description" : "Move a note to Recently Deleted. Fails unless confirm=true. Recoverable from Recently Deleted for 30 days.",
+  "description" : "Move a note to Recently Deleted. The first call returns a confirmToken; call again with it (or confirm=true where the policy allows the tool) to delete. Recoverable from Recently Deleted for 30 days.",
   "properties" : {
     "confirm" : {
       "default" : false,

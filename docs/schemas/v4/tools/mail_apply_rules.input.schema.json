@@ -1,7 +1,7 @@
 {
   "$schema" : "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties" : false,
-  "description" : "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true: review the plan first. Messages newer than minAgeDays are never touched.",
+  "description" : "Execute the move/mark actions in the triage rules file against a mailbox. Returns a plan grouped by sender and changes NOTHING unless confirm=true (or, where the policy sets this tool to confirm, the confirmToken a first call returns): review the plan first. Messages newer than minAgeDays are never touched.",
   "properties" : {
     "account" : {
       "description" : "Filter by account name.",

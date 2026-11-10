@@ -1,7 +1,7 @@
 {
   "$schema" : "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties" : false,
-  "description" : "Forward a message. Returns a preview and sends NOTHING unless confirm=true: review the preview, then call again with confirm=true to deliver.",
+  "description" : "Forward a message. Returns a preview and sends NOTHING on the first call: review the preview, then call again with the same arguments plus the confirmToken it returned (or confirm=true where the policy allows the tool) to deliver.",
   "properties" : {
     "attach" : {
       "description" : "Absolute paths of files to attach.",

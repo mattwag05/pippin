@@ -32,6 +32,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- [fix] MCP tool descriptions for sends, deletes and `mail_apply_rules` describe the confirm-token flow instead of telling agents to pass `confirm=true`.
 - [fix] A zero-byte or foreign SQLite file in place of the Voice Memos database or the Mail Envelope Index is refused with a typed unsupported-schema error instead of a raw SQLite message.
 - [fix] `pippin job run --help` prints help instead of starting a job whose argv is `--help`.
 - [bug] MCP tool calls now reject unknown or wrongly typed arguments (`unexpected_argument`, `wrong_type`) before anything runs. A misspelled `dry_run`, or `dryRun` passed as a string, used to be dropped and the real write ran.
