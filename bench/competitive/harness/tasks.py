@@ -66,6 +66,8 @@ def main():
     parser.add_argument("--trials", type=int, default=3)
     parser.add_argument("--model", default="haiku")
     parser.add_argument("--tasks", default=",".join(TASKS))
+    parser.add_argument("--env", default="", help="extra VAR=value pairs for the tool process in the VM, space separated (for example PIPPIN_BIN=... PIPPIN_APPS=...)")
+    parser.add_argument("--scope-apps", action="store_true", help="set PIPPIN_APPS to the task's app, so Pippin exposes one tool group per task")
     options = parser.parse_args()
     os.makedirs(options.out, exist_ok=True)
     work = tempfile.mkdtemp(prefix="pb-agent-")  # empty cwd: no project instructions reach the agent
@@ -85,7 +87,7 @@ def main():
                 title = "PB Task %s %d" % (name, trial)
                 log = "bench-results/tasks/%s-%s-%d.jsonl" % (name, task, trial)
                 vm(options.ssh_config, "mkdir -p ~/bench-results/tasks && rm -f ~/" + log)
-                config = {"mcpServers": {"bench": {"command": "ssh", "args": ["-F", options.ssh_config, "bench", "export PATH=/opt/homebrew/bin:$PATH; cd ~/bench/repo && PIPPIN_BIN=${PIPPIN_BIN:-$HOME/bin/pippin-0.41.1} python3 harness/proxy.py --tool %s --log ~/%s" % (name, log)]}}}
+                config = {"mcpServers": {"bench": {"command": "ssh", "args": ["-F", options.ssh_config, "bench", "export PATH=/opt/homebrew/bin:$PATH; cd ~/bench/repo && PIPPIN_BIN=$HOME/bin/pippin-0.41.1 %s python3 harness/proxy.py --tool %s --log ~/%s" % (options.env + (" PIPPIN_APPS=" + TASKS[task]["app"] if options.scope_apps else ""), name, log)]}}}
                 config_path = os.path.join(work, "mcp.json")
                 with open(config_path, "w") as handle:
                     json.dump(config, handle)

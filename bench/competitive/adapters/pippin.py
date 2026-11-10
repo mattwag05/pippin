@@ -26,7 +26,9 @@ APPS = ["reminders", "calendar", "contacts", "notes", "messages", "mail", "memos
 
 
 def launch(tools_dir: str) -> list[str]:
-    return [os.environ.get("PIPPIN_BIN", "pippin"), "mcp-server"]
+    # PIPPIN_APPS (for example "calendar") is passed to `mcp-server --apps`, a documented user option
+    apps = os.environ.get("PIPPIN_APPS")
+    return [os.environ.get("PIPPIN_BIN", "pippin"), "mcp-server"] + (["--apps", apps] if apps else [])
 
 
 def _confirmed(a: dict, mapping: dict) -> dict:

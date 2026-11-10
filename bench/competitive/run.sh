@@ -49,7 +49,9 @@ echo "== speed, reliability, coverage"
 rm -rf "$OUT"
 python3 "$HERE/harness/run.py" --out "$OUT"
 echo "== correctness, safety, write probes"
-python3 "$HERE/harness/checks.py" --out "$OUT"
+# Pippin's default policy asks for a confirm token before a delete. The write probes are
+# single calls, so this stage runs with a policy file that allows the four fixture deletes.
+PIPPIN_POLICY="$HERE/vm/policy-harness.json" python3 "$HERE/harness/checks.py" --out "$OUT"
 
 echo "== restore and verify the fixture"
 bash "$HERE/fixtures/teardown.sh" >/dev/null 2>&1 || true
