@@ -33,7 +33,18 @@ def server_up():
         time.sleep(5)
 
 
+def server_down():
+    subprocess.run(["sudo", "-n", DOVECOT, "-c", CONF, "stop"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(20):
+        if subprocess.run(["pgrep", "-f", "[s]bin/dovecot -c"], capture_output=True).returncode != 0:
+            return
+        time.sleep(0.5)
+
+
 def clear():
+    # An IMAP session left open across the index delete keeps serving the old index, and Mail
+    # then never sees the new messages (2026-11-10); restarting the server ends every session.
+    server_down()
     for sub in ("cur", "new", "tmp"):
         path = os.path.join(MAILDIR, sub)
         os.makedirs(path, exist_ok=True)
@@ -54,8 +65,11 @@ def mail_count():
 
 
 def sync(expected):
-    for _ in range(60):
-        osascript('tell application "Mail" to check for new mail for account "PippinBench"')
+    for attempt in range(60):
+        # A session left open across clear() can hold Dovecot's old index (2026-11-10); every
+        # other round asks without naming the account, which reconnected it where the named check did not.
+        target = "" if attempt % 2 else ' for account "PippinBench"'
+        osascript('tell application "Mail" to check for new mail' + target)
         if mail_count() == expected:
             return True
         time.sleep(2)
@@ -86,8 +100,8 @@ def received_matches(manifest):
 
 def install(manifest_path):
     manifest = json.load(open(manifest_path, encoding="utf-8"))["mail"]
-    server_up()
     clear()
+    server_up()
     for i, m in enumerate(manifest["messages"]):
         msg = EmailMessage()
         msg["Subject"] = m["subject"]
@@ -120,6 +134,7 @@ def install(manifest_path):
 
 def restore():
     clear()
+    server_up()
     sync(0)
     return 0
 
