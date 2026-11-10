@@ -23,7 +23,29 @@ enum MailBridge {
         /// instead of milliseconds. `nil` when the fast path succeeded or was
         /// intentionally skipped (disabled, `--body`, preview fetch).
         var fastPathNote: String? = nil
+        /// Non-nil when the answer may be missing rows for a reason other than
+        /// a timeout (the index candidate cap). Callers surface it as a warning
+        /// and mark the envelope partial.
+        var truncationNote: String? = nil
     }
+
+    /// Most rows one list, search or activity call returns. A paginated caller
+    /// passes `pageSentinel: true` to fetch one row more, which only tells it
+    /// whether another page exists.
+    static let rowCap = 500
+
+    static func clampScanLimit(_ limit: Int, pageSentinel: Bool) -> Int {
+        max(1, min(limit, rowCap + (pageSentinel ? 1 : 0)))
+    }
+
+    /// Advisory for a caller that asked for more than `rowCap` rows and got
+    /// exactly the cap back: more may exist.
+    static func rowCapNote(requested: Int, returned: Int) -> String? {
+        guard requested > rowCap, returned == rowCap else { return nil }
+        return "--limit \(requested) is above the \(rowCap)-row cap, so only \(rowCap) rows were returned and more may exist; page through them with --page-size \(rowCap) and --cursor"
+    }
+
+    static let candidateCapNote = "the index scan stopped at \(MailEnvelopeIndex.candidateCap) candidate rows before filling this request, so older matches may be missing; narrow with --after, --before, --since, --account or --mailbox"
 
     /// Single-line advisory for `ScanOutcome.fastPathNote`.
     static func fastPathFallbackNote(_ error: Error) -> String {
@@ -184,11 +206,12 @@ enum MailBridge {
         after: String? = nil,
         before: String? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
-        fastPath: Bool = true
+        fastPath: Bool = true,
+        pageSentinel: Bool = false
     ) throws -> ListOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil)
-        let clampedLimit = max(1, min(limit, 500))
+        let clampedLimit = clampScanLimit(limit, pageSentinel: pageSentinel)
         let clampedOffset = max(0, offset)
         // Envelope Index fast path (pippin-60x): metadata-only scans answer from
         // Mail's on-disk SQLite in ~ms instead of a 10–100s JXA enumeration.
@@ -333,12 +356,15 @@ enum MailBridge {
         // index failure.
         var fastPathNote: String?
         var indexed: (index: MailEnvelopeIndex, metadata: [MailMessage])?
+        var truncationNote: String?
         if fastPath, fastPathEnabled() {
             do {
                 let index = try makeFastPathIndex(accountName: account)
-                indexed = try (index, index.listActivity(
+                let scan = try index.activityScan(
                     account: account, mailboxes: mailboxes, since: since, limit: limit
-                ))
+                )
+                indexed = (index, scan.messages)
+                truncationNote = scan.hitCandidateCap ? candidateCapNote : nil
             } catch {
                 fastPathNote = fastPathFallbackNote(error)
             }
@@ -346,7 +372,9 @@ enum MailBridge {
         if let (index, metadata) = indexed {
             let previewChars = (preview ?? 0) > 0 ? max(1, min(preview ?? 0, 4000)) : 0
             guard previewChars > 0 else {
-                return ActivityOutcome(messages: attachCachedAnomalies(metadata), timedOut: false)
+                return ActivityOutcome(
+                    messages: attachCachedAnomalies(metadata), timedOut: false, truncationNote: truncationNote
+                )
             }
             let assembled = try assemblePreviews(
                 metadata: metadata,
@@ -357,7 +385,10 @@ enum MailBridge {
                     try batchFetchBodies(ids: ids, crossAccount: crossAccount, softTimeoutMs: softTimeoutMs)
                 }
             )
-            return ActivityOutcome(messages: attachCachedAnomalies(assembled.messages), timedOut: assembled.fetchTimedOut)
+            return ActivityOutcome(
+                messages: attachCachedAnomalies(assembled.messages), timedOut: assembled.fetchTimedOut,
+                truncationNote: truncationNote
+            )
         }
         let script = buildActivityScript(
             account: account, mailboxes: mailboxes, since: since,
@@ -392,7 +423,8 @@ enum MailBridge {
         verbose: Bool = false,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         fastPath: Bool = true,
-        preview: Int? = nil
+        preview: Int? = nil,
+        pageSentinel: Bool = false
     ) throws -> SearchOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil) && (mailbox == nil)
@@ -404,7 +436,7 @@ enum MailBridge {
         var fastPathNote: String?
         if fastPath, !searchBody, fastPathEnabled() {
             do {
-                let messages = try makeFastPathIndex(accountName: account).searchMessages(
+                let scan = try makeFastPathIndex(accountName: account).searchScan(
                     query: query, account: account, mailbox: mailbox,
                     limit: limit, offset: clampedOffset, after: after, before: before,
                     to: to, from: from
@@ -413,7 +445,10 @@ enum MailBridge {
                     let line = "[search] fast path: envelope index (full-index scan, JXA bypassed)\n"
                     FileHandle.standardError.write(Data(line.utf8))
                 }
-                return SearchOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
+                return SearchOutcome(
+                    messages: attachCachedAnomalies(scan.messages), timedOut: false,
+                    truncationNote: scan.hitCandidateCap ? candidateCapNote : nil
+                )
             } catch {
                 fastPathNote = fastPathFallbackNote(error)
             }
@@ -428,7 +463,7 @@ enum MailBridge {
         let script = buildSearchScript(
             query: query, account: account, mailbox: mailbox, searchBody: searchBody,
             limit: limit, offset: clampedOffset, after: after, before: before, to: to,
-            from: from, softTimeoutMs: softTimeoutMs, preview: preview
+            from: from, softTimeoutMs: softTimeoutMs, preview: preview, pageSentinel: pageSentinel
         )
         // Cross-account (no --account, no --mailbox) iterates 5 accounts ×
         // ~21 mailboxes = 100+ mailbox scans.  When --body is on, each match
@@ -877,7 +912,8 @@ enum MailBridge {
         after: String? = nil,
         before: String? = nil,
         cache: MailBodyCache? = MailBodyCache.shared,
-        softTimeoutMs: Int = SoftTimeout.defaultMs
+        softTimeoutMs: Int = SoftTimeout.defaultMs,
+        pageSentinel: Bool = false
     ) throws -> ListOutcome {
         // Match buildListScript's previewChars clamp ([1, 4000]).
         let previewChars = max(1, min(preview, 4000))
@@ -885,7 +921,7 @@ enum MailBridge {
         let pass1 = try listMessages(
             account: account, mailbox: mailbox, unread: unread,
             limit: limit, offset: offset, preview: nil,
-            after: after, before: before, softTimeoutMs: softTimeoutMs
+            after: after, before: before, softTimeoutMs: softTimeoutMs, pageSentinel: pageSentinel
         )
         // pippin-521: opt-in summary previews. Config-gated BEFORE the index
         // build — the snapshot copy isn't free, so the default-off path never

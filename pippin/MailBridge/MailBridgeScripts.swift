@@ -285,7 +285,8 @@ extension MailBridge {
         to: String? = nil,
         from: String? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
-        preview: Int? = nil
+        preview: Int? = nil,
+        pageSentinel: Bool = false
     ) -> String {
         let safeQuery = jsEscape(query)
         let acctFilter = jsEscapeOptional(account)
@@ -295,7 +296,7 @@ extension MailBridge {
         let toFilter = jsEscapeOptional(to)
         let fromFilter = jsEscapeOptional(from)
         // Clamp limit to prevent runaway scans; the per-mailbox cap bounds body fetches
-        let safeLimitVal = max(1, min(limit, 500))
+        let safeLimitVal = clampScanLimit(limit, pageSentinel: pageSentinel)
         let perMailboxLimit = 500
         let safeSoftTimeoutMs = SoftTimeout.clamp(softTimeoutMs)
         // Snippet length for body-matched hits (the body is already fetched for

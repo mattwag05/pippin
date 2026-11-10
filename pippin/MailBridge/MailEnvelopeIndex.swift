@@ -703,7 +703,14 @@ final class MailEnvelopeIndex: Sendable {
     /// Safety cap on pre-dedup candidate rows for search/activity. Far above
     /// any real limit (CLI clamps limit to 500); keeps a pathological LIKE
     /// from materializing the whole 28k-row table.
-    private static let candidateCap = 5000
+    static let candidateCap = 5000
+
+    /// Rows plus whether the answer ran off the end of a candidate set that was
+    /// cut at `candidateCap`: older matches may then exist that were never seen.
+    struct Scan {
+        let messages: [MailMessage]
+        let hitCandidateCap: Bool
+    }
 
     func searchMessages(
         query: String,
@@ -716,6 +723,24 @@ final class MailEnvelopeIndex: Sendable {
         to: String?,
         from: String?
     ) throws -> [MailMessage] {
+        try searchScan(
+            query: query, account: account, mailbox: mailbox, limit: limit, offset: offset,
+            after: after, before: before, to: to, from: from
+        ).messages
+    }
+
+    func searchScan(
+        query: String,
+        account: String?,
+        mailbox: String?,
+        limit: Int,
+        offset: Int,
+        after: String?,
+        before: String?,
+        to: String?,
+        from: String?,
+        candidateCap: Int = MailEnvelopeIndex.candidateCap
+    ) throws -> Scan {
         let targets = try MailboxTargets(resolveMailboxes(accountFilter: account, mailboxName: mailbox))
         // JXA parity: case-insensitive substring over subject OR the composed
         // sender string ("Name <addr>"). LIKE ... COLLATE NOCASE is ASCII-only
@@ -744,14 +769,17 @@ final class MailEnvelopeIndex: Sendable {
             arguments["to"] = to
         }
         sql += Self.dateFilterSQL(after: after, before: before)
-        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(Self.candidateCap)"
+        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(candidateCap)"
         let fetched = try dbQueue.read { db in
             try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
         }.map(Self.rawRow)
         // JXA applies offset AFTER dedup.
         let deduped = Self.dedup(fetched)
         let window = Array(deduped.dropFirst(max(0, offset)).prefix(max(1, limit)))
-        return try buildMessages(window, targets: targets, populateTo: true)
+        return try Scan(
+            messages: buildMessages(window, targets: targets, populateTo: true),
+            hitCandidateCap: fetched.count >= candidateCap && window.count < max(1, limit)
+        )
     }
 
     /// Mail's own snippet text (`messages.summary` → `summaries.summary`) for
@@ -823,6 +851,16 @@ final class MailEnvelopeIndex: Sendable {
         since: Date?,
         limit: Int
     ) throws -> [MailMessage] {
+        try activityScan(account: account, mailboxes: mailboxes, since: since, limit: limit).messages
+    }
+
+    func activityScan(
+        account: String?,
+        mailboxes: [String],
+        since: Date?,
+        limit: Int,
+        candidateCap: Int = MailEnvelopeIndex.candidateCap
+    ) throws -> Scan {
         var refs: [MailboxRef] = []
         for name in mailboxes {
             refs += try resolveMailboxes(accountFilter: account, mailboxName: name)
@@ -832,9 +870,12 @@ final class MailEnvelopeIndex: Sendable {
         if let since {
             sql += " AND COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) >= \(Int64(since.timeIntervalSince1970))"
         }
-        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(Self.candidateCap)"
+        sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(candidateCap)"
         let fetched = try dbQueue.read { db in try Row.fetchAll(db, sql: sql) }.map(Self.rawRow)
         let window = Array(Self.dedup(fetched).prefix(max(1, limit)))
-        return try buildMessages(window, targets: targets, populateTo: true)
+        return try Scan(
+            messages: buildMessages(window, targets: targets, populateTo: true),
+            hitCandidateCap: fetched.count >= candidateCap && window.count < max(1, limit)
+        )
     }
 }

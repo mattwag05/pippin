@@ -440,6 +440,41 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertEqual(byAddr.map(\.id), ["Work||Inbox||201"])
     }
 
+    // MARK: - Candidate cap is reported, not silent (RC-20, DAT-14)
+
+    private func scan(_ idx: MailEnvelopeIndex, limit: Int, offset: Int = 0, cap: Int) throws -> MailEnvelopeIndex.Scan {
+        try idx.searchScan(
+            query: "e", account: nil, mailbox: nil, limit: limit, offset: offset,
+            after: nil, before: nil, to: nil, from: nil, candidateCap: cap
+        )
+    }
+
+    func testSearchReportsWhenTheCandidateCapCutTheAnswerShort() throws {
+        let idx = try makeIndex()
+        let everything = try scan(idx, limit: 50, cap: MailEnvelopeIndex.candidateCap)
+        XCTAssertGreaterThan(everything.messages.count, 2, "fixture must hold more matches than the test cap")
+        XCTAssertFalse(everything.hitCandidateCap, "an uncapped scan is complete")
+
+        let capped = try scan(idx, limit: 50, cap: 2)
+        XCTAssertLessThan(capped.messages.count, everything.messages.count)
+        XCTAssertTrue(capped.hitCandidateCap, "rows were dropped, so the caller must be told")
+
+        XCTAssertFalse(try scan(idx, limit: 1, cap: 2).hitCandidateCap, "a filled request lost nothing")
+        XCTAssertTrue(try scan(idx, limit: 2, offset: 1, cap: 2).hitCandidateCap, "a later page that runs off the cap")
+    }
+
+    func testActivityReportsWhenTheCandidateCapCutTheAnswerShort() throws {
+        let idx = try makeIndex()
+        let capped = try idx.activityScan(
+            account: "Personal", mailboxes: ["INBOX"], since: nil, limit: 50, candidateCap: 2
+        )
+        XCTAssertEqual(capped.messages.count, 2)
+        XCTAssertTrue(capped.hitCandidateCap)
+        let whole = try idx.activityScan(account: "Personal", mailboxes: ["INBOX"], since: nil, limit: 50)
+        XCTAssertEqual(whole.messages.count, 3)
+        XCTAssertFalse(whole.hitCandidateCap)
+    }
+
     func testSearchDedupsAcrossMailboxesByHeader() throws {
         let idx = try makeIndex()
         // "Build succeeded" exists in Personal INBOX (101) and All Mail (103)

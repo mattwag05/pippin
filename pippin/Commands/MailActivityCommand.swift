@@ -67,10 +67,12 @@ public extension MailCommand {
                 )
             }
             let messages = await MailCommand.enrichContacts(outcome.messages, options: contactResolution)
-            return .emit(
-                messages, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint,
-                extraWarnings: [outcome.fastPathNote].compactMap { $0 }
+            let state = MailCommand.incomplete(
+                timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint,
+                notes: [outcome.truncationNote, MailBridge.rowCapNote(requested: limit, returned: messages.count)],
+                advisories: [outcome.fastPathNote]
             )
+            return AgentResult(messages, warnings: state.warnings, partial: state.partial)
         }
 
         static var timedOutHint: String {

@@ -35,6 +35,26 @@ public struct MailCommand: AsyncParsableCommand {
         }
     }
 
+    /// A scan answer with every reason it may be incomplete. `notes` are
+    /// truncation advisories: each becomes a warning and marks the envelope
+    /// partial, so a clamped request never reads as "no more rows".
+    static func incomplete(
+        timedOut: Bool, timedOutHint: String, notes: [String?], advisories: [String?] = []
+    ) -> (warnings: [String]?, partial: Bool) {
+        let truncation = notes.compactMap { $0 }
+        let warnings = (timedOut ? [timedOutHint] : []) + truncation + advisories.compactMap { $0 }
+        return (warnings.isEmpty ? nil : warnings, timedOut || !truncation.isEmpty)
+    }
+
+    /// A paginated request's page size, held to the row cap, with the advisory to show when it was reduced.
+    static func cappedPageSize(_ requested: Int) -> (size: Int, note: String?) {
+        guard requested > MailBridge.rowCap else { return (requested, nil) }
+        return (
+            MailBridge.rowCap,
+            "--page-size \(requested) is above the \(MailBridge.rowCap)-row cap; this page holds at most \(MailBridge.rowCap) rows, continue with next_cursor"
+        )
+    }
+
     static let expectMessageIdHelp: ArgumentHelp =
         "Act only if the id still names the message with this RFC Message-ID (a row's messageIdHeader); otherwise fail with message_identity_mismatch. Mail can reassign ids."
 
@@ -235,28 +255,39 @@ public struct MailCommand: AsyncParsableCommand {
                 timedOut = timedOut || attached.timedOut
             }
             try MailBridge.requireCompleteSearch(resultCount: messages.count, timedOut: timedOut)
-            return try await emitMessages(messages, timedOut: timedOut, fastPathNote: outcome.fastPathNote)
+            return try await emitMessages(
+                messages, timedOut: timedOut, fastPathNote: outcome.fastPathNote,
+                notes: [outcome.truncationNote, MailBridge.rowCapNote(requested: limit, returned: messages.count)]
+            )
         }
 
         static var timedOutHint: String {
             "search exceeded soft timeout, returning partial results — narrow with --account, --mailbox, --after, or --before for complete results" + MailCommand.accountNamesSuffix()
         }
 
-        private func emitMessages(_ messages: [MailMessage], timedOut: Bool, fastPathNote: String? = nil) async throws -> AgentResult {
+        private func emitMessages(
+            _ messages: [MailMessage], timedOut: Bool, fastPathNote: String? = nil, notes: [String?] = []
+        ) async throws -> AgentResult {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
-            return .emit(
-                messages, timedOut: timedOut, timedOutHint: Self.timedOutHint,
-                fields: FieldProjection.parse(output.fields),
-                extraWarnings: [fastPathNote].compactMap { $0 }
+            let state = MailCommand.incomplete(
+                timedOut: timedOut, timedOutHint: Self.timedOutHint, notes: notes, advisories: [fastPathNote]
+            )
+            return AgentResult(
+                messages, warnings: state.warnings, fields: FieldProjection.parse(output.fields), partial: state.partial
             )
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws -> AgentResult {
+        private func emitPage(
+            _ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil,
+            notes: [String?] = [], advisories: [String?] = []
+        ) async throws -> AgentResult {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
-            return .emitPage(
-                page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
-                fields: FieldProjection.parse(output.fields),
-                extraWarnings: [fastPathNote].compactMap { $0 }
+            let state = MailCommand.incomplete(
+                timedOut: timedOut, timedOutHint: Self.timedOutHint, notes: notes,
+                advisories: advisories + [fastPathNote]
+            )
+            return .page(
+                page, warnings: state.warnings, fields: FieldProjection.parse(output.fields), partial: state.partial
             )
         }
 
@@ -272,12 +303,18 @@ public struct MailCommand: AsyncParsableCommand {
                 "from": from,
                 "semantic": semantic ? "1" : "0",
             ])
-            let (offset, pageSize) = try Pagination.resolve(
+            let (offset, requestedPageSize) = try Pagination.resolve(
                 pagination, defaultPageSize: limit, filterHash: hash
             )
+            // Semantic search ranks in memory and has no row cap.
+            let capped = semantic
+                ? (size: requestedPageSize, note: nil) : MailCommand.cappedPageSize(requestedPageSize)
+            let pageSize = capped.size
+            let pageSizeNote = capped.note
             let page: Page<MailMessage>
             var paginatedTimedOut = false
             var paginatedFastPathNote: String?
+            var truncationNote: String?
             if semantic {
                 let embedProvider = try AIProviderFactory.makeEmbeddingProvider(
                     providerFlag: provider, modelFlag: embeddingModel, urlFlag: ollamaUrl
@@ -321,11 +358,13 @@ public struct MailCommand: AsyncParsableCommand {
                         to: to,
                         from: from,
                         verbose: verbose,
-                        preview: preview
+                        preview: preview,
+                        pageSentinel: true
                     )
                 }
                 paginatedTimedOut = outcome.timedOut
                 paginatedFastPathNote = outcome.fastPathNote
+                truncationNote = outcome.truncationNote
                 var fetched = outcome.messages
                 if let preview {
                     let attached = try await detachBlocking { [fetched] in
@@ -339,7 +378,10 @@ public struct MailCommand: AsyncParsableCommand {
                 )
             }
             try MailBridge.requireCompleteSearch(resultCount: page.items.count, timedOut: paginatedTimedOut)
-            return try await emitPage(page, timedOut: paginatedTimedOut, fastPathNote: paginatedFastPathNote)
+            return try await emitPage(
+                page, timedOut: paginatedTimedOut, fastPathNote: paginatedFastPathNote,
+                notes: [truncationNote], advisories: [pageSizeNote]
+            )
         }
     }
 
@@ -454,7 +496,8 @@ public struct MailCommand: AsyncParsableCommand {
             } else {
                 return try await emitMessages(
                     messages, timedOut: outcome.timedOut, windowHint: outcome.windowHint,
-                    fastPathNote: outcome.fastPathNote
+                    fastPathNote: outcome.fastPathNote,
+                    capNote: MailBridge.rowCapNote(requested: limit, returned: messages.count)
                 )
             }
         }
@@ -472,23 +515,27 @@ public struct MailCommand: AsyncParsableCommand {
         }
 
         private func emitMessages(
-            _ messages: [MailMessage], timedOut: Bool, windowHint: String? = nil, fastPathNote: String? = nil
+            _ messages: [MailMessage], timedOut: Bool, windowHint: String? = nil, fastPathNote: String? = nil,
+            capNote: String? = nil
         ) async throws -> AgentResult {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
             let (warn, hint) = warning(timedOut: timedOut, windowHint: windowHint)
-            return .emit(
-                messages, timedOut: warn, timedOutHint: hint,
-                fields: FieldProjection.parse(output.fields),
-                extraWarnings: [fastPathNote].compactMap { $0 }
+            let state = MailCommand.incomplete(
+                timedOut: warn, timedOutHint: hint, notes: [capNote], advisories: [fastPathNote]
+            )
+            return AgentResult(
+                messages, warnings: state.warnings, fields: FieldProjection.parse(output.fields), partial: state.partial
             )
         }
 
-        private func emitPage(_ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil) async throws -> AgentResult {
+        private func emitPage(
+            _ page: Page<MailMessage>, timedOut: Bool, fastPathNote: String? = nil, pageSizeNote: String? = nil
+        ) async throws -> AgentResult {
             let page = Page(items: await MailCommand.enrichContacts(page.items, options: contactResolution), nextCursor: page.nextCursor)
             return .emitPage(
                 page, timedOut: timedOut, timedOutHint: Self.timedOutHint,
                 fields: FieldProjection.parse(output.fields),
-                extraWarnings: [fastPathNote].compactMap { $0 }
+                extraWarnings: [pageSizeNote, fastPathNote].compactMap { $0 }
             )
         }
 
@@ -501,14 +548,19 @@ public struct MailCommand: AsyncParsableCommand {
                 "after": after,
                 "before": before,
             ])
-            let (offset, pageSize) = try Pagination.resolve(
+            let (offset, requestedPageSize) = try Pagination.resolve(
                 pagination, defaultPageSize: limit, filterHash: hash
             )
-            let outcome = try await fetchList(limit: pageSize + 1, offset: offset)
+            // The bridge returns at most rowCap rows plus the has-more sentinel,
+            // so a larger page would silently lose its next_cursor.
+            let (pageSize, pageSizeNote) = MailCommand.cappedPageSize(requestedPageSize)
+            let outcome = try await fetchList(limit: pageSize + 1, offset: offset, pageSentinel: true)
             let page = try Pagination.pageFromPushdown(
                 fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
             )
-            return try await emitPage(page, timedOut: outcome.timedOut, fastPathNote: outcome.fastPathNote)
+            return try await emitPage(
+                page, timedOut: outcome.timedOut, fastPathNote: outcome.fastPathNote, pageSizeNote: pageSizeNote
+            )
         }
 
         /// Fetch a list page, routing `--preview N` through the body cache
@@ -516,7 +568,7 @@ public struct MailCommand: AsyncParsableCommand {
         /// no-preview case through the untouched single-pass `listMessages`.
         /// Both spawn blocking osascript subprocesses (up to 60s cross-account),
         /// so hop off the cooperative pool.
-        private func fetchList(limit: Int, offset: Int) async throws -> MailBridge.ListOutcome {
+        private func fetchList(limit: Int, offset: Int, pageSentinel: Bool = false) async throws -> MailBridge.ListOutcome {
             let account = self.account
             let mailbox = self.mailbox
             let unread = self.unread
@@ -530,13 +582,14 @@ public struct MailCommand: AsyncParsableCommand {
                         account: account, mailbox: mailbox, unread: unread,
                         limit: limit, offset: offset, preview: preview,
                         after: after, before: before,
-                        cache: noCache ? nil : MailBodyCache.shared
+                        cache: noCache ? nil : MailBodyCache.shared,
+                        pageSentinel: pageSentinel
                     )
                 }
                 return try MailBridge.listMessages(
                     account: account, mailbox: mailbox, unread: unread,
                     limit: limit, offset: offset, preview: preview,
-                    after: after, before: before
+                    after: after, before: before, pageSentinel: pageSentinel
                 )
             }
         }
