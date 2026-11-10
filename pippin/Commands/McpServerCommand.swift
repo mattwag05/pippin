@@ -6,7 +6,7 @@ import Foundation
 /// Reads newline-delimited JSON-RPC 2.0 messages from stdin and writes responses to stdout.
 /// Safe read-only tools (EventKit/Contacts — see `MCPInProcessTools`) run in-process;
 /// every other `tools/call` spawns `pippin <subcommand> --format agent` as a child process.
-/// Both paths return the same envelope-v1 JSON to the client.
+/// Both paths return the same agent envelope (see `AGENT_SCHEMA_VERSION`) to the client.
 public struct McpServerCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "mcp-server",

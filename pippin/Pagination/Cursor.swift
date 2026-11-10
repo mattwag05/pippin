@@ -100,7 +100,8 @@ public struct PaginationOptions: ParsableArguments {
 
     public init() {}
 
-    /// True if any pagination flag was passed — switch the response shape to {items, next_cursor}.
+    /// True if any pagination flag was passed. `data` stays the item array either way;
+    /// the cursor for the next page goes in the envelope's top-level `next_cursor`.
     public var isActive: Bool {
         cursor != nil || pageSize != nil || page != nil
     }
