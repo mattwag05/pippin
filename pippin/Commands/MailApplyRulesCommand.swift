@@ -111,7 +111,7 @@ public struct MailApplyRules: AgentCommand {
 
         var warnings: [String] = []
         if scanOutcome.timedOut {
-            warnings.append("mailbox scan timed out — some matching messages were not seen this run")
+            warnings.append("mailbox scan timed out: some matching messages were not seen this run")
         }
         if notAttempted > 0 {
             warnings.append(
@@ -169,7 +169,7 @@ public struct MailApplyRules: AgentCommand {
                 } catch {
                     // One unreachable message must not abandon the rest of
                     // the run. Say so when the mark landed and only the move
-                    // failed — the message is half-actuated, and a rerun
+                    // failed: the message is half-actuated, and a rerun
                     // will re-mark an already-marked message.
                     failure = marked
                         ? "marked, but the move failed: \(error.localizedDescription)"
