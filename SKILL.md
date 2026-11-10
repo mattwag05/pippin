@@ -1,7 +1,7 @@
 ---
 name: pippin
 description: macOS CLI toolkit for Apple app automation: Mail, Calendar, Reminders, Notes, Contacts, Messages, Voice Memos, plus daily digest, action extraction, background jobs, plan-and-execute, and an MCP server.
-version: 0.41.1
+version: 1.0.0
 platform: macOS 15+
 runtime: native (Swift)
 install: brew install mattwag05/tap/pippin

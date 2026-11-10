@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-10
+
 ### Added
 
 - [feat] MCP safety gate ([docs/safety-model.md](docs/safety-model.md)): every tool that changes something passes one chokepoint with a policy file (`~/.config/pippin/policy.json`: `allow`, `deny` or `confirm` per tool), single-use confirm tokens bound to the exact arguments, per-tool rate limits, an append-only action log and idempotency keys.
@@ -1077,7 +1079,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
      so this is a stable end state, not a backlog item. Don't "fix" it by
      inventing links: check `git tag -l` for both endpoints first. -->
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v0.41.1...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/mattwag05/pippin/compare/v0.41.1...v1.0.0
 [0.41.1]: https://github.com/mattwag05/pippin/compare/v0.41.0...v0.41.1
 [0.41.0]: https://github.com/mattwag05/pippin/compare/v0.40.0...v0.41.0
 [0.40.0]: https://github.com/mattwag05/pippin/compare/v0.39.0...v0.40.0
