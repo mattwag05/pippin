@@ -80,7 +80,9 @@ final class MailScanBaselineTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let stored = try msgidRows()
         XCTAssertEqual(stored.count, 2)
-        for m in rows { XCTAssertEqual(stored[m.id], "a.example") }
+        for m in rows {
+            XCTAssertEqual(stored[m.id], "a.example")
+        }
     }
 
     func testSecondScanWritesNothingNew() throws {
@@ -89,7 +91,7 @@ final class MailScanBaselineTests: XCTestCase {
         let q = try DatabaseQueue(path: storePath)
         try q.write { try $0.execute(sql: "UPDATE fingerprints SET value = 'sentinel'") }
         _ = try scan(idx)
-        XCTAssertEqual(Set(try msgidRows().values), ["sentinel"], "repeat scan must not rewrite rows")
+        XCTAssertEqual(try Set(msgidRows().values), ["sentinel"], "repeat scan must not rewrite rows")
         XCTAssertEqual(try msgidRows().count, 2)
     }
 

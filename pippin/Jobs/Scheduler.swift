@@ -148,8 +148,13 @@ public struct ScheduleStore {
         self.uid = uid
     }
 
-    static func label(_ id: String) -> String { labelPrefix + id }
-    func plistPath(_ id: String) -> String { "\(directory)/\(Self.label(id)).plist" }
+    static func label(_ id: String) -> String {
+        labelPrefix + id
+    }
+
+    func plistPath(_ id: String) -> String {
+        "\(directory)/\(Self.label(id)).plist"
+    }
 
     static func plist(id: String, trigger: ScheduleTrigger, argv: [String], pippinPath: String, logPath: String) -> [String: Any] {
         var plist: [String: Any] = [
