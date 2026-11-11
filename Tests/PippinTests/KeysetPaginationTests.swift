@@ -116,6 +116,31 @@ final class KeysetPaginationTests: XCTestCase {
         XCTAssertEqual(page2.items.map(\.id), ["3", "4"], "offset paging would repeat bob")
     }
 
+    // MARK: semantic mail search
+
+    private func message(_ id: String) -> MailMessage {
+        MailMessage(id: id, account: "A", mailbox: "INBOX", subject: id, from: "x", to: [], date: "2026-01-01T00:00:00Z", read: true)
+    }
+
+    func testSemanticPageResumesAfterTheAnchorWhenARowRanksAheadBetweenPages() throws {
+        var ranked = ["a", "b", "c", "d"].map(message)
+        let page1 = try MailCommand.Search.semanticPage(ranked, pagination: options(nil), offset: 0, pageSize: 2, filterHash: "h")
+        XCTAssertEqual(page1.items.map(\.id), ["a", "b"])
+        let cursor = try token(page1)
+
+        ranked.insert(message("n"), at: 0) // a newly indexed message outranks everything
+        let page2 = try MailCommand.Search.semanticPage(ranked, pagination: options(cursor), offset: 2, pageSize: 2, filterHash: "h")
+        XCTAssertEqual(page2.items.map(\.id), ["c", "d"], "offset paging would repeat b")
+    }
+
+    func testSemanticPageFallsBackToTheOffsetWhenTheAnchorLeftTheWindow() throws {
+        var ranked = ["a", "b", "c", "d"].map(message)
+        let cursor = try token(MailCommand.Search.semanticPage(ranked, pagination: options(nil), offset: 0, pageSize: 2, filterHash: "h"))
+        ranked.removeAll { $0.id == "b" }
+        let page2 = try MailCommand.Search.semanticPage(ranked, pagination: options(cursor), offset: 2, pageSize: 2, filterHash: "h")
+        XCTAssertEqual(page2.items.map(\.id), ["d"])
+    }
+
     // MARK: cursor compatibility
 
     func testStringAnchorRoundTripsAndLegacyCursorDecodesWithoutIt() throws {

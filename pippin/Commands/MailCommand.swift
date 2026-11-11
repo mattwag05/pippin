@@ -291,6 +291,18 @@ public struct MailCommand: AsyncParsableCommand {
             )
         }
 
+        /// A ranked list has no sort key, so the anchor is just the last id served: resume after
+        /// it, or at `offset` when that message is no longer in the ranked window.
+        static func semanticPage(
+            _ all: [MailMessage], pagination: PaginationOptions, offset: Int, pageSize: Int, filterHash: String
+        ) throws -> Page<MailMessage> {
+            let resumed = Pagination.anchor(of: pagination)?.id.flatMap { id in all.firstIndex { $0.id == id } }
+            return try Pagination.paginate(
+                all: all, offset: resumed.map { $0 + 1 } ?? offset, pageSize: pageSize, filterHash: filterHash,
+                anchor: { Cursor.Anchor(epoch: 0, id: $0.id) }
+            )
+        }
+
         private func runPaginated() async throws -> AgentResult {
             let hash = Pagination.filterHash([
                 "query": query,
@@ -329,8 +341,8 @@ public struct MailCommand: AsyncParsableCommand {
                         limit: searchLimit
                     )
                 }
-                page = try Pagination.paginate(
-                    all: all, offset: offset, pageSize: pageSize, filterHash: hash
+                page = try Self.semanticPage(
+                    all, pagination: pagination, offset: offset, pageSize: pageSize, filterHash: hash
                 )
             } else {
                 let query = self.query
