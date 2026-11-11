@@ -210,7 +210,7 @@ final class MailEnvelopeIndexMemo: @unchecked Sendable {
     func index(
         dbPath: String,
         accounts: [MailAccountRecord],
-        open: Opener = { try MailEnvelopeIndex(dbPath: $0, accounts: $1) }
+        open: Opener = { try MailEnvelopeIndex(dbPath: $0, accounts: $1, baselineStore: SenderBaselineStore.shared) }
     ) throws -> MailEnvelopeIndex {
         lock.lock()
         defer { lock.unlock() }
@@ -257,6 +257,7 @@ final class MailEnvelopeIndex: Sendable {
 
     private let dbQueue: DatabaseQueue
     private let accounts: [MailAccountRecord]
+    private let baselineStore: SenderBaselineStore?
     private let snapshotDir: String?
 
     // MARK: Paths
@@ -282,7 +283,8 @@ final class MailEnvelopeIndex: Sendable {
     /// temp dir, open the copy, and validate the schema version. The copy is
     /// what makes reads safe (no lock contention with Mail) and fresh (WAL
     /// included). FDA denial surfaces as a copy failure → `.accessDenied`.
-    init(dbPath: String, accounts: [MailAccountRecord]) throws {
+    init(dbPath: String, accounts: [MailAccountRecord], baselineStore: SenderBaselineStore? = nil) throws {
+        self.baselineStore = baselineStore
         let fm = FileManager.default
         guard fm.fileExists(atPath: dbPath) else {
             throw MailEnvelopeIndexError.databaseNotFound(dbPath)
@@ -336,7 +338,8 @@ final class MailEnvelopeIndex: Sendable {
     }
 
     /// Test seam: pre-built (in-memory) queue, no snapshot.
-    init(dbQueue: DatabaseQueue, accounts: [MailAccountRecord]) throws {
+    init(dbQueue: DatabaseQueue, accounts: [MailAccountRecord], baselineStore: SenderBaselineStore? = nil) throws {
+        self.baselineStore = baselineStore
         self.dbQueue = dbQueue
         self.accounts = accounts
         snapshotDir = nil
@@ -724,7 +727,7 @@ final class MailEnvelopeIndex: Sendable {
                 toByMessage[msg, default: []].append(addr)
             }
         }
-        return raws.compactMap { raw in
+        let messages = raws.compactMap { raw -> MailMessage? in
             guard let ref = refsByRowid[raw.mailboxRowid] else { return nil }
             return MailMessage(
                 id: "\(ref.accountName)||\(ref.leaf)||\(raw.rowid)",
@@ -742,6 +745,22 @@ final class MailEnvelopeIndex: Sendable {
                 messageIdHeader: raw.header.map(MailBridge.normalizeMessageId).flatMap { $0.isEmpty ? nil : $0 }
             )
         }
+        harvestMessageIdDomains(messages)
+        return messages
+    }
+
+    /// pippin-09ky: feed each scanned row's Message-ID domain to the sender
+    /// baseline (msgid_domain only, insert-or-ignore, one transaction). Runs
+    /// after the rows are built; a store failure never touches the result.
+    private func harvestMessageIdDomains(_ messages: [MailMessage]) {
+        guard let baselineStore else { return }
+        let entries = messages.compactMap { m -> (compoundId: String, sender: String, msgidDomain: String)? in
+            guard let header = m.messageIdHeader,
+                  let domain = HeaderAnomalies.emailDomain(in: header),
+                  let sender = HeaderAnomalies.emailAddress(in: m.from) else { return nil }
+            return (m.id, sender, domain)
+        }
+        baselineStore.recordScanFingerprints(entries)
     }
 
     /// Dedup mirroring the JXA scripts: Gmail lists the same message in both
