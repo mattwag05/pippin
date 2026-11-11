@@ -18,10 +18,13 @@ public struct Cursor: Codable, Equatable, Sendable {
     public struct Anchor: Codable, Equatable, Sendable {
         public let epoch: Int64
         public let rowid: Int64
+        /// Tiebreak for sources whose ids are strings (rowid is 0 then).
+        public let id: String?
 
-        public init(epoch: Int64, rowid: Int64) {
+        public init(epoch: Int64, rowid: Int64 = 0, id: String? = nil) {
             self.epoch = epoch
             self.rowid = rowid
+            self.id = id
         }
     }
 
@@ -209,7 +212,8 @@ public enum Pagination {
         all: [T],
         offset: Int,
         pageSize: Int,
-        filterHash: String
+        filterHash: String,
+        anchor: (T) -> Cursor.Anchor? = { _ in nil }
     ) throws -> Page<T> {
         let safeOffset = max(0, offset)
         guard safeOffset < all.count else {
@@ -223,9 +227,39 @@ public enum Pagination {
         let end = safeOffset + take
         let items = Array(all[safeOffset ..< end])
         let nextCursor: String? = end < all.count
-            ? try encode(Cursor(offset: end, filterHash: filterHash))
+            ? try encode(Cursor(offset: end, filterHash: filterHash, anchor: items.last.flatMap(anchor)))
             : nil
         return Page(items: items, nextCursor: nextCursor)
+    }
+
+    /// In-memory keyset page over a list ordered by `key` (ascending, or
+    /// descending when `descending`), ties by `id` ascending. Resumes after the
+    /// anchor row; when that row is gone, at the first row sorting after the
+    /// anchor, so rows added or removed between calls cannot repeat or skip one.
+    /// Without an id anchor (first page, legacy cursor) `offset` applies.
+    public static func paginateKeyset<T: Encodable & Sendable>(
+        all: [T],
+        offset: Int,
+        pageSize: Int,
+        filterHash: String,
+        anchor: Cursor.Anchor?,
+        key: (T) -> Int64,
+        id: (T) -> String,
+        descending: Bool = false
+    ) throws -> Page<T> {
+        var start = offset
+        if let anchor, let anchorId = anchor.id {
+            start = all.firstIndex { id($0) == anchorId }.map { $0 + 1 }
+                ?? all.firstIndex { row in
+                    let k = key(row)
+                    return (descending ? k < anchor.epoch : k > anchor.epoch)
+                        || (k == anchor.epoch && id(row) > anchorId)
+                } ?? all.count
+        }
+        return try paginate(
+            all: all, offset: start, pageSize: pageSize, filterHash: filterHash,
+            anchor: { Cursor.Anchor(epoch: key($0), id: id($0)) }
+        )
     }
 
     /// Build a Page<T> when the bridge already pushed offset/limit down.

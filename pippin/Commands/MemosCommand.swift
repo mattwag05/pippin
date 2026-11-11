@@ -50,9 +50,12 @@ public struct MemosCommand: AsyncParsableCommand {
                 let (offset, pageSize) = try Pagination.resolve(
                     pagination, defaultPageSize: limit, filterHash: hash
                 )
-                let fetched = try markCachedTranscripts(db.listMemos(since: sinceDate, limit: offset + pageSize + 1))
-                let page = try Pagination.paginate(
-                    all: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+                let fetched = try markCachedTranscripts(db.listMemos(
+                    since: sinceDate, limit: pageSize + 1, offset: offset, seekingAfter: Pagination.anchor(of: pagination)
+                ))
+                let page = try Pagination.pageFromPushdown(
+                    fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash,
+                    anchor: VoiceMemosDB.pageAnchor
                 )
                 return .page(page)
             }

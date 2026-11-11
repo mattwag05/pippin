@@ -177,7 +177,9 @@ public final class VoiceMemosDB: Sendable {
     /// - Parameters:
     ///   - since: If provided, only return memos created on or after this date.
     ///   - limit: Maximum number of results (default 20).
-    public func listMemos(since: Date? = nil, limit: Int = 20) throws -> [VoiceMemo] {
+    public func listMemos(
+        since: Date? = nil, limit: Int = 20, offset: Int = 0, seekingAfter anchor: Cursor.Anchor? = nil
+    ) throws -> [VoiceMemo] {
         try dbQueue.read { db in
             var sql = """
             SELECT ZUNIQUEID, ZCUSTOMLABELFORSORTING, ZDURATION, ZDATE, ZPATH, ZEVICTIONDATE
@@ -185,18 +187,34 @@ public final class VoiceMemosDB: Sendable {
             """
             var arguments: StatementArguments = []
 
+            var clauses: [String] = []
             if let since {
                 // Convert Date to Core Data epoch
-                let coreDataTimestamp = since.timeIntervalSinceReferenceDate
-                sql += " WHERE ZDATE >= ?"
-                arguments = [coreDataTimestamp]
+                clauses.append("ZDATE >= ?")
+                arguments += [since.timeIntervalSinceReferenceDate]
             }
+            var offset = offset
+            if let anchor, let id = anchor.id {
+                // Seek past the last row served; memos recorded since cannot shift the page.
+                clauses.append("(\(Self.dateKeySQL) < ? OR (\(Self.dateKeySQL) = ? AND ZUNIQUEID > ?))")
+                arguments += [anchor.epoch, anchor.epoch, id]
+                offset = 0
+            }
+            if !clauses.isEmpty { sql += " WHERE " + clauses.joined(separator: " AND ") }
 
-            sql += " ORDER BY ZDATE DESC LIMIT ?"
-            arguments += [limit]
+            sql += " ORDER BY \(Self.dateKeySQL) DESC, ZUNIQUEID ASC LIMIT ? OFFSET ?"
+            arguments += [limit, max(0, offset)]
 
             return try VoiceMemo.fetchAll(db, sql: sql, arguments: arguments)
         }.map(withAbsolutePath)
+    }
+
+    /// Millisecond sort key of `ZDATE`, the integer a keyset cursor can hold exactly.
+    private static let dateKeySQL = "CAST(ROUND(ZDATE * 1000) AS INTEGER)"
+
+    /// Keyset position of a listed memo (newest first, then id ascending).
+    public static func pageAnchor(_ memo: VoiceMemo) -> Cursor.Anchor {
+        Cursor.Anchor(epoch: Int64((memo.createdAt.timeIntervalSinceReferenceDate * 1000).rounded()), id: memo.id)
     }
 
     /// Get a single memo by its UUID.
