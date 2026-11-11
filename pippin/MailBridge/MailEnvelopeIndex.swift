@@ -777,12 +777,23 @@ final class MailEnvelopeIndex: Sendable {
         limit: Int,
         offset: Int,
         after: String?,
-        before: String?
+        before: String?,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> [MailMessage] {
         let targets = try MailboxTargets(resolveMailboxes(accountFilter: account, mailboxName: mailbox))
         var sql = Self.baseSelect(targets) + " WHERE m.deleted = 0 AND \(targets.membershipSQL)"
         if unread { sql += " AND m.read = 0" }
         sql += Self.dateFilterSQL(after: after, before: before)
+        var offset = offset
+        if let anchor {
+            // Seek past the last row served; rows that arrived since cannot shift the page.
+            sql += """
+             AND (COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) < \(anchor.epoch)
+                  OR (COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) = \(anchor.epoch)
+                      AND m.ROWID > \(anchor.rowid)))
+            """
+            offset = 0
+        }
         sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(max(1, limit)) OFFSET \(max(0, offset))"
         let raws = try dbQueue.read { db in try Row.fetchAll(db, sql: sql) }.map(Self.rawRow)
         return try buildMessages(

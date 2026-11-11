@@ -217,7 +217,8 @@ enum MailBridge {
         before: String? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         fastPath: Bool = true,
-        pageSentinel: Bool = false
+        pageSentinel: Bool = false,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> ListOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil)
@@ -238,7 +239,8 @@ enum MailBridge {
             do {
                 let messages = try makeFastPathIndex(accountName: account).listMessages(
                     account: account, mailbox: mailbox, unread: unread,
-                    limit: clampedLimit, offset: clampedOffset, after: after, before: before
+                    limit: clampedLimit, offset: clampedOffset, after: after, before: before,
+                    seekingAfter: anchor
                 )
                 return ListOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
             } catch {
@@ -276,6 +278,18 @@ enum MailBridge {
             timedOut: wrapper.meta.timedOut,
             fastPathNote: fastPathNote
         )
+    }
+
+    /// Keyset position of a listed row, so the next page can seek past it rather
+    /// than skip a count of rows that new mail may have shifted. Mirrors the
+    /// Envelope Index order (received date, else sent date; then ROWID).
+    static func pageAnchor(_ message: MailMessage) -> Cursor.Anchor? {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let rowid = message.id.components(separatedBy: "||").last.flatMap({ Int64($0) }),
+              let date = iso.date(from: message.receivedAt ?? message.date)
+        else { return nil }
+        return Cursor.Anchor(epoch: Int64(date.timeIntervalSince1970), rowid: rowid)
     }
 
     /// `--after` and `--before` each name a whole calendar day in the user's
@@ -940,7 +954,8 @@ enum MailBridge {
         before: String? = nil,
         cache: MailBodyCache? = MailBodyCache.shared,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
-        pageSentinel: Bool = false
+        pageSentinel: Bool = false,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> ListOutcome {
         // Match buildListScript's previewChars clamp ([1, 4000]).
         let previewChars = max(1, min(preview, 4000))
@@ -948,7 +963,8 @@ enum MailBridge {
         let pass1 = try listMessages(
             account: account, mailbox: mailbox, unread: unread,
             limit: limit, offset: offset, preview: nil,
-            after: after, before: before, softTimeoutMs: softTimeoutMs, pageSentinel: pageSentinel
+            after: after, before: before, softTimeoutMs: softTimeoutMs, pageSentinel: pageSentinel,
+            seekingAfter: anchor
         )
         // pippin-521: opt-in summary previews. Config-gated BEFORE the index
         // build — the snapshot copy isn't free, so the default-off path never

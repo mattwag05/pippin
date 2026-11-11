@@ -545,9 +545,12 @@ public struct MailCommand: AsyncParsableCommand {
             // The bridge returns at most rowCap rows plus the has-more sentinel,
             // so a larger page would silently lose its next_cursor.
             let (pageSize, pageSizeNote) = MailCommand.cappedPageSize(requestedPageSize)
-            let outcome = try await fetchList(limit: pageSize + 1, offset: offset, pageSentinel: true)
+            let outcome = try await fetchList(
+                limit: pageSize + 1, offset: offset, pageSentinel: true, anchor: Pagination.anchor(of: pagination)
+            )
             let page = try Pagination.pageFromPushdown(
-                fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
+                fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash,
+                anchor: MailBridge.pageAnchor
             )
             return try await emitPage(
                 page, timedOut: outcome.timedOut, fastPathNote: outcome.fastPathNote, pageSizeNote: pageSizeNote
@@ -559,7 +562,9 @@ public struct MailCommand: AsyncParsableCommand {
         /// no-preview case through the untouched single-pass `listMessages`.
         /// Both spawn blocking osascript subprocesses (up to 60s cross-account),
         /// so hop off the cooperative pool.
-        private func fetchList(limit: Int, offset: Int, pageSentinel: Bool = false) async throws -> MailBridge.ListOutcome {
+        private func fetchList(
+            limit: Int, offset: Int, pageSentinel: Bool = false, anchor: Cursor.Anchor? = nil
+        ) async throws -> MailBridge.ListOutcome {
             let account = self.account
             let mailbox = self.mailbox
             let unread = self.unread
@@ -574,13 +579,13 @@ public struct MailCommand: AsyncParsableCommand {
                         limit: limit, offset: offset, preview: preview,
                         after: after, before: before,
                         cache: noCache ? nil : MailBodyCache.shared,
-                        pageSentinel: pageSentinel
+                        pageSentinel: pageSentinel, seekingAfter: anchor
                     )
                 }
                 return try MailBridge.listMessages(
                     account: account, mailbox: mailbox, unread: unread,
                     limit: limit, offset: offset, preview: preview,
-                    after: after, before: before, pageSentinel: pageSentinel
+                    after: after, before: before, pageSentinel: pageSentinel, seekingAfter: anchor
                 )
             }
         }

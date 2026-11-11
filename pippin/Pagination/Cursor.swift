@@ -8,15 +8,33 @@ import Foundation
 public struct Cursor: Codable, Equatable, Sendable {
     public let offset: Int
     public let filterHash: String
+    /// Position of the last row served, for sources that can seek by sort key.
+    /// An offset into a newest-first list repeats or skips rows once new rows
+    /// arrive between calls; the anchor does not. Absent on cursors issued
+    /// before this field existed, which keep their offset meaning.
+    public let anchor: Anchor?
+
+    /// Sort key and tiebreak id of a row in an `ORDER BY key DESC, id ASC` list.
+    public struct Anchor: Codable, Equatable, Sendable {
+        public let epoch: Int64
+        public let rowid: Int64
+
+        public init(epoch: Int64, rowid: Int64) {
+            self.epoch = epoch
+            self.rowid = rowid
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case offset
         case filterHash = "filter_hash"
+        case anchor
     }
 
-    public init(offset: Int, filterHash: String) {
+    public init(offset: Int, filterHash: String, anchor: Anchor? = nil) {
         self.offset = offset
         self.filterHash = filterHash
+        self.anchor = anchor
     }
 }
 
@@ -176,6 +194,12 @@ public enum Pagination {
         return (offset, pageSize)
     }
 
+    /// The keyset anchor carried by `--cursor`, if any. Call after `resolve`,
+    /// which has already validated the token and its filter hash.
+    public static func anchor(of opts: PaginationOptions) -> Cursor.Anchor? {
+        opts.cursor.flatMap { try? decode($0) }?.anchor
+    }
+
     /// Upper bound for a single page (see `resolve`). Generous — real pages are
     /// tens to low-hundreds of items; this only fences off pathological input.
     static let maxPageSize = 100_000
@@ -211,7 +235,8 @@ public enum Pagination {
         fetched: [T],
         offset: Int,
         pageSize: Int,
-        filterHash: String
+        filterHash: String,
+        anchor: (T) -> Cursor.Anchor? = { _ in nil }
     ) throws -> Page<T> {
         let take = max(0, pageSize)
         let hasMore = fetched.count > take
@@ -221,7 +246,9 @@ public enum Pagination {
         var nextCursor: String?
         if hasMore {
             let (nextOffset, overflowed) = offset.addingReportingOverflow(take)
-            nextCursor = overflowed ? nil : try encode(Cursor(offset: nextOffset, filterHash: filterHash))
+            nextCursor = overflowed ? nil : try encode(
+                Cursor(offset: nextOffset, filterHash: filterHash, anchor: items.last.flatMap(anchor))
+            )
         }
         return Page(items: items, nextCursor: nextCursor)
     }
