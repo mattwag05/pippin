@@ -15,6 +15,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- [fix] `calendar edit` and `calendar delete` on a recurring event without `--occurrence` now exit 2 (usage error) instead of 5. The `occurrence_required` error code is unchanged; only scripts that branch on exit 5 for it are affected. Closes pippin-4zv1.
 - [fix] Running bare `pippin` starts the interactive shell again. It crashed with exit 1 and no output. Closes pippin-o190.
 - [fix] A command run through the MCP server returns once its child exits, even when a grandchild still holds the output pipe open. It used to wait for the grandchild. Closes pippin-oqq9.
 - [fix] JXA script bodies, which can contain mail and note text, go to `osascript` on stdin instead of argv, so they no longer show in process listings. pippin-xr89.
