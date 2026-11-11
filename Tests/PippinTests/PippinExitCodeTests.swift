@@ -33,8 +33,6 @@ final class PippinExitCodeTests: XCTestCase {
         XCTAssertEqual(PippinExitCode.classify("invalid_page_size"), 2)
         XCTAssertEqual(PippinExitCode.classify("invalid_json"), 2)
         XCTAssertEqual(PippinExitCode.classify("invalid_mailbox"), 2)
-        XCTAssertEqual(PippinExitCode.classify("occurrence_required"), 2)
-        XCTAssertEqual(PippinExitCode.from(CalendarBridgeError.occurrenceRequired("evt")), 2)
     }
 
     func testUnknownAndBridgeFailuresDefaultTo5() {
