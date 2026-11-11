@@ -317,13 +317,24 @@ PIPPIN_EXPERIMENTAL=1 pippin browser fetch "https://example.com"
 ```bash
 pippin job run -- mail index                     # returns the job id and pid
 pippin job show <id>                             # status and the end of each log
-pippin job list                                  # recent jobs (--status running|done|error|killed)
+pippin job list                                  # recent jobs (--status running|done|error|killed|skipped)
 pippin job wait <id> --timeout 600               # wait until it finishes
 pippin job logs <id> --stream                    # follow stdout (or --stderr)
 pippin job gc --older-than 7d                    # delete finished jobs
 ```
 
-Terminal statuses: `done` (exit 0), `error` (non-zero exit), `killed` (signal).
+Terminal statuses: `done` (exit 0), `error` (non-zero exit), `killed` (signal), `skipped` (a scheduled fire that found the previous one still running).
+
+Recurring jobs are one LaunchAgent each (`~/Library/LaunchAgents/com.mattwag05.pippin.schedule.<id>.plist`), so launchd does the timing and pippin keeps no daemon:
+
+```bash
+pippin job schedule --every 6h -- mail index              # 15m, 6h, 1d (minimum 1m)
+pippin job schedule --cron "30 7 * * 1,2,3,4,5" -- digest # minute hour day-of-month month day-of-week
+pippin job schedules                                      # id, argv, trigger, last run
+pippin job unschedule <id>
+```
+
+`--cron` fields are a number, `*` or a comma list; ranges and steps are refused. Each fire is a normal job tagged with its schedule id. A schedule never overlaps itself, and the fire is recorded as `skipped` with `error_code: overlap`. The agent runs the binary path that was current at `schedule` time, so re-create schedules after moving the binary. Scheduling is CLI-only; MCP has no tool for it.
 
 MCP exposes the same commands as `job_run`, `job_show`, `job_list` and `job_wait`, so an agent can start a slow index build and check on it later.
 

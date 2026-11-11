@@ -208,6 +208,18 @@ public final class JobStore: @unchecked Sendable {
         listIds().compactMap { try? read($0) }
     }
 
+    /// A schedule never overlaps itself. If a job of `scheduleId` is still
+    /// running (reconciled, so a dead runner does not count), record `id` as a
+    /// `skipped` / `overlap` job and return it; otherwise return nil.
+    public func skipIfOverlapping(scheduleId: String, id: String, argv: [String]) throws -> Job? {
+        guard all().contains(where: { $0.scheduleId == scheduleId && $0.status == .running }) else { return nil }
+        let now = Date()
+        var skipped = Job(id: id, argv: argv, status: .skipped, startedAt: now, endedAt: now, scheduleId: scheduleId)
+        skipped.errorCode = "overlap"
+        try write(skipped)
+        return skipped
+    }
+
     // MARK: Log tails
 
     public func tailStdout(_ id: String, maxBytes: Int = 4096) -> String {

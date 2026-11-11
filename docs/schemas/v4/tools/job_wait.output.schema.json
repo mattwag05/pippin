@@ -25,6 +25,9 @@
     "pid" : {
       "type" : "integer"
     },
+    "schedule_id" : {
+      "type" : "string"
+    },
     "started_at" : {
       "type" : "string"
     },

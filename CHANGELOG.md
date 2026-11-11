@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] `pippin job schedule --every <dur>|--cron "<m h dom mon dow>" -- <argv>`, `job schedules` and `job unschedule <id>` run a pippin command on a recurring schedule through one LaunchAgent per schedule. A fire that finds the previous one still running is recorded as a `skipped` job. `job run` gained `--wait` and `--schedule-id`. Closes pippin-jz1y.
+
 ### Fixed
 
 - [fix] Running bare `pippin` starts the interactive shell again. It crashed with exit 1 and no output. Closes pippin-o190.

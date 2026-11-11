@@ -344,10 +344,20 @@ The SQLite caches open through `openCacheQueue` ([CacheDB.swift](../pippin/Cache
 
 - State lives in `~/.cache/pippin/jobs/<id>/`: `status.json`, `stdout.log`, `stderr.log` ([JobStore](../pippin/Jobs/JobStore.swift)). Status writes are atomic renames. The directory is mode 0700 and the files 0600, since the logs can hold mail and note text.
 - The runner is the hidden `JobRunnerInternalCommand`. It calls `setsid()`, runs the command, and is the only writer of a terminal state ([JobCommand.swift](../pippin/Commands/JobCommand.swift)).
-- States are `running`, `done`, `error`, `killed`. A terminal state is never overwritten except by `gc`.
+- States are `running`, `done`, `error`, `killed`, `skipped`. `Job.finish` maps the child's exit: status 0 is `done`, another exit is `error`, death by signal is `killed`. A terminal state is never overwritten except by `gc`.
 - If the runner dies, the job would stay `running` forever. `JobStore.readCanonical` checks the runner process and rewrites such a job as `error` with `error_code: "runner_lost"`.
 - `job_wait` polls until the job ends or its timeout (default 300 seconds) passes. Under MCP, `job_wait` runs in a child like any other tool, so the 60 second cap applies to it too.
 - Under MCP, the job's argv goes through `MCPCommandPolicy`.
+
+### Recurring jobs
+
+`job schedule`, `job schedules` and `job unschedule` ([Scheduler.swift](../pippin/Jobs/Scheduler.swift)) keep no state of their own. A schedule is one LaunchAgent plist, `com.mattwag05.pippin.schedule.<id>.plist`, in `~/Library/LaunchAgents` (`PIPPIN_LAUNCHAGENTS_DIR` overrides it), written 0600 and loaded with `launchctl bootstrap gui/<uid>`. `unschedule` runs `launchctl bootout` and deletes the file. `ScheduleStore` takes a `Launchctl` runner so tests never reach launchd.
+
+- `--every` becomes `StartInterval`. `--cron` becomes `StartCalendarInterval`; a comma list expands to one dictionary per combination. Ranges and steps are refused instead of translated.
+- The plist runs `<pippin> job run --wait --schedule-id <id> -- <argv>`. `--wait` keeps the process in the foreground until the job ends, so launchd sees the run. Each fire is a normal job record with `schedule_id`, so `schedules` reads the last run from the job store.
+- Overlap policy is skip: `JobStore.skipIfOverlapping` records `skipped` with `error_code: overlap` when a job of the same schedule is still `running` (a dead runner does not count).
+- Output of the launch itself goes to `~/.cache/pippin/schedule-<id>.log`.
+- There is no MCP tool: a schedule is persistent system configuration. Under MCP, `schedule` applies `MCPCommandPolicy` to its argv like `job_run`.
 
 ## Test strategy
 
