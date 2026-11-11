@@ -172,9 +172,14 @@ public enum ScriptRunner {
             throw ScriptRunnerError.nonZeroExit(rawStderr)
         }
 
-        // osascript can exit 0 and still write errors to stderr (e.g. TCC denial).
+        // Exit status decides success; stderr on a zero exit is noise (JXA
+        // `console.log` writes there) and must not fail a script that ran, least
+        // of all a send that may then be repeated. The one exception is a zero
+        // exit with no output at all and real errors on stderr (e.g. TCC denial),
+        // where the stderr text is the only explanation of the empty result.
         // Benign framework log lines (timestamp-prefixed CoreData noise) are
         // filtered first.
+        guard stdoutStr.isEmpty else { return stdoutStr }
         let errorLines = rawStderr
             .components(separatedBy: .newlines)
             .filter { line in

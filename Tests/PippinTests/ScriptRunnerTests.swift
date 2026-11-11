@@ -233,4 +233,12 @@ final class ScriptRunnerTests: XCTestCase {
         let out = try ScriptRunner.run("var p = '\(padding)'; p.length", timeoutSeconds: 20)
         XCTAssertEqual(out, "300000")
     }
+
+    // MARK: - Exit status decides success (REL-6)
+
+    func testStderrNoiseOnZeroExitIsNotAFailure() throws {
+        // console.log writes to stderr; the script itself succeeded.
+        let out = try ScriptRunner.run("console.log('noise'); 'ok'", timeoutSeconds: 10)
+        XCTAssertEqual(out, "ok")
+    }
 }
