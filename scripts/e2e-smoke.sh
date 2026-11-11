@@ -94,11 +94,11 @@ run "mail accounts"    "isinstance(d['data'], list) and len(d['data']) > 0" -- m
 run "mail activity newest-first by receipt time (#24)" "
 (lambda rows: len(rows) < 2 or all((rows[i].get('receivedAt') or rows[i]['date']) >= (rows[i+1].get('receivedAt') or rows[i+1]['date']) for i in range(len(rows)-1)))(
   d['data'] if isinstance(d['data'], list) else d['data'].get('messages', []))" \
-  -- mail activity --limit 10
+  -- mail activity --limit 10 --fields all
 run "mail list --after honors receipt-time cutoff (#25)" "
 (lambda rows: all((m.get('receivedAt') or m['date']) >= '2026-01-01' for m in rows))(
   d['data'] if isinstance(d['data'], list) else d['data'].get('messages', []))" \
-  -- mail list --after 2026-01-01 --limit 5
+  -- mail list --after 2026-01-01 --limit 5 --fields all
 run "mail metadata keeps sent time and optional receipt time" "
 all(isinstance(m.get('date'), str) and (m.get('receivedAt') is None or isinstance(m.get('receivedAt'), str)) for m in d['data'])" \
   -- mail list --limit 5
@@ -142,14 +142,14 @@ len(d['data']) == 0 or any(isinstance(m.get('bodyPreview'), str) and m['bodyPrev
 
 # pippin-1son: batch mail show — 2+ ids → one batched fetch, array output;
 # single id keeps the original single-object shape.
-IDS=($("$BIN" mail list --limit 2 --no-contacts --format agent 2>/dev/null | python3 -c "
+IDS=("${(@f)$("$BIN" mail list --limit 2 --no-contacts --format agent 2>/dev/null | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)
     rows = d['data'] if isinstance(d['data'], list) else d['data'].get('messages', [])
     print('\n'.join(r['id'] for r in rows[:2]))
 except Exception:
-    pass"))
+    pass")}")
 if [[ ${#IDS[@]} -eq 2 ]]; then
   run "mail show 2 ids returns array (pippin-1son)" "
 isinstance(d['data'], list) and len(d['data']) == 2 and all(isinstance(m.get('body'), str) for m in d['data'])" \
