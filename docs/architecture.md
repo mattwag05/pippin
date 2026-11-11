@@ -112,7 +112,7 @@ Rules the argv builders follow, each enforced by a test:
 `MCPServerRuntime.runChild` starts `pippin <argv>` with `posix_spawn`. It uses `posix_spawn` instead of `Foundation.Process` because only `posix_spawn` can put the child in its own process group. Details:
 
 - The binary is the running one: `resolvePippinPath` resolves `argv[0]` with `realpath`, not whatever `pippin` is on `PATH`.
-- The child's stdin is `/dev/null`. Its stdout and stderr are drained on two background threads, so a large answer cannot fill a pipe and block.
+- The child's stdin is `/dev/null`. Its stdout and stderr are drained on two background threads, so a large answer cannot fill a pipe and block. After the child exits the drain gets two more seconds, then `runChild` returns what arrived: a grandchild that inherited the pipes cannot hold the call open.
 - The child gets `PIPPIN_MCP=1`. `isMCPContext()` in [AIProvider.swift](../pippin/AIProvider/AIProvider.swift) reads it, and budgets shrink when it is set.
 - The dispatcher passes `ownProcessGroup: true`. The timeout then signals the whole group, so an `osascript` that a bridge started dies with its parent. CLI callers (`pippin do`, `batch` outside MCP) keep the child in the foreground group so Ctrl-C reaches it.
 - On a timeout the runner sends SIGTERM, then SIGKILL two seconds later, then SIGKILL to the group. A signal death counts as a timeout only if the runner's own timer sent the signal. Any other signal is `child_crashed`.
@@ -194,7 +194,7 @@ A timeout on a call that can change data is `outcome_unknown`, not a retryable t
 
 Paginated commands use `PaginationOptions` (`--cursor`, `--page-size`, `--page`) and the helpers in [Cursor.swift](../pippin/Pagination/Cursor.swift).
 
-- A cursor is base64url JSON of `{offset, filter_hash}`. The hash covers the normalized filter arguments, so a cursor reused with different filters fails as `cursor_mismatch`. A malformed one is `invalid_cursor`.
+- A cursor is base64url JSON of `{offset, filter_hash}`, plus an optional `anchor` (the sort key and id of the last row served). With an anchor the next page resumes after that row, so rows added or removed between calls cannot repeat or skip one. `mail list` (Envelope Index and metadata store paths), `memos list`, `reminders list`, `calendar events`, `calendar upcoming` and the action log write anchors. `notes list`, `contacts search`, `mail search` and `mail list` on the JXA fallback still page by offset. A cursor without an anchor keeps its offset meaning. The hash covers the normalized filter arguments, so a cursor reused with different filters fails as `cursor_mismatch`. A malformed one is `invalid_cursor`.
 - `--page N` is sugar for an offset of `(N-1) * pageSize`. A cursor wins over `--page`. Page size is capped at 100,000.
 - `data` stays the item array. The cursor goes in the envelope's `next_cursor`. Commands must return pages with `AgentResult.page` or `emitPage`. Handing a `Page` to the plain initializer would nest `{items, next_cursor}` inside `data`. `scripts/lint-paginated-emit.py` rejects that.
 - `pageFromPushdown` is for bridges that fetched `pageSize + 1` rows at the offset. The extra row says whether another page exists.
@@ -262,7 +262,8 @@ Limits:
 
 - It drains both pipes on background threads, then waits.
 - It sends SIGTERM at the deadline, then SIGKILL two seconds later. A signal death is a timeout only if the runner's timer sent the signal; otherwise it is `script_crashed`.
-- A script that exits 0 but writes to stderr is `stderr_on_success`, after benign log lines are filtered.
+- Exit status decides success. A script that exits 0 with output succeeds whatever it wrote to stderr. Only a script that exits 0 with no output and real stderr text is `stderr_on_success` (a permission denial looks like that), after benign log lines are filtered.
+- The script text goes to `osascript` on stdin, not `-e`, so it never appears in a process listing.
 - For an idempotent script on an app that is not running, it launches the app first, inside the same deadline. It does not run the script a second time.
 - A pre-check, `AutomationPermission` ([AutomationPermission.swift](../pippin/Scripting/AutomationPermission.swift)), asks macOS whether Automation is allowed for the target. A denial fails fast as `automation_denied`, instead of waiting for `osascript` to block.
 - Strings put into scripts are escaped by [JSEscape.swift](../pippin/Scripting/JSEscape.swift).
@@ -341,7 +342,7 @@ The SQLite caches open through `openCacheQueue` ([CacheDB.swift](../pippin/Cache
 
 `job_run` (CLI `pippin job run -- <argv>`) starts a detached pippin process and returns a job id at once. It exists for work longer than the MCP cap.
 
-- State lives in `~/.cache/pippin/jobs/<id>/`: `status.json`, `stdout.log`, `stderr.log` ([JobStore](../pippin/Jobs/JobStore.swift)). Status writes are atomic renames.
+- State lives in `~/.cache/pippin/jobs/<id>/`: `status.json`, `stdout.log`, `stderr.log` ([JobStore](../pippin/Jobs/JobStore.swift)). Status writes are atomic renames. The directory is mode 0700 and the files 0600, since the logs can hold mail and note text.
 - The runner is the hidden `JobRunnerInternalCommand`. It calls `setsid()`, runs the command, and is the only writer of a terminal state ([JobCommand.swift](../pippin/Commands/JobCommand.swift)).
 - States are `running`, `done`, `error`, `killed`. A terminal state is never overwritten except by `gc`.
 - If the runner dies, the job would stay `running` forever. `JobStore.readCanonical` checks the runner process and rewrites such a job as `error` with `error_code: "runner_lost"`.

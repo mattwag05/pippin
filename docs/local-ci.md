@@ -10,7 +10,7 @@ runs locally on Apple Silicon instead. Two tiers:
 | `make ci-vm` | isolated ephemeral macOS VM (Tart) | minutes (cold) | full parity with the old `ci.yml` |
 
 Both run the same gates: `swift build -c release`, `swift test`, `swiftformat
---lint`, and the detach-blocking lint (`scripts/lint-detach-blocking.py`).
+--lint`, the detach-blocking lint (`scripts/lint-detach-blocking.py`) and the paginated-emit lint (`scripts/lint-paginated-emit.py`). Both lints fail when they scan no files.
 
 ## Why a VM (not a self-hosted runner)
 

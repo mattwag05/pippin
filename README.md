@@ -135,7 +135,7 @@ Run `pippin permissions` or `pippin init` from a terminal so each macOS prompt g
 | Automation > Notes | Notes | `pippin permissions` |
 | Full Disk Access | Voice Memos, Messages, and Mail's fast path (optional) | System Settings, by hand. macOS has no prompt for it |
 
-Grants survive rebuilds and upgrades only if the binary has a stable signature. `make install` and the Homebrew formula use a **Developer ID Application** certificate when one is available, which keeps grants even through certificate renewal. An **Apple Development** certificate also works, but grants reset when it renews, about once a year. An ad-hoc build asks again after every build. The **Code signing** row in `pippin doctor` tells you which one you have. If the signing identity changes, run `pippin permissions` once more.
+Grants survive rebuilds and upgrades only if the binary has a stable signature. `make install` and the Homebrew formula use a **Developer ID Application** certificate when one is available, which keeps grants even through certificate renewal. An **Apple Development** certificate also works, but grants reset when it renews, about once a year. An ad-hoc build asks again after every build. Signed builds use the hardened runtime. The **Code signing** row in `pippin doctor` tells you which one you have. If the signing identity changes, run `pippin permissions` once more.
 
 ## Try it
 
@@ -416,7 +416,7 @@ pippin mail list --account icloud --cursor <token>
 pippin mail list --account icloud --page 2 --page-size 20
 ```
 
-A token is tied to its query, so changing a filter between calls returns `cursor_mismatch` instead of mixing pages. If you pass both `--cursor` and `--page`, the cursor wins. `next_cursor` is omitted on the last page.
+A token is tied to its query, so changing a filter between calls returns `cursor_mismatch` instead of mixing pages. If you pass both `--cursor` and `--page`, the cursor wins. `next_cursor` is omitted on the last page. For `mail list`, `memos list`, `reminders list`, `calendar events` and `calendar upcoming` the token remembers the last row served, so new or deleted rows between calls do not repeat or skip one. `mail search`, `notes list` and `contacts search` page by position.
 
 ### MCP Server Mode
 
