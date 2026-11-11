@@ -69,7 +69,9 @@ final class VoiceMemosDBTests: XCTestCase {
 
     func testListKeysetBreaksDateTiesById() throws {
         let dbQueue = try makeTestDB()
-        for id in ["z", "m", "a"] { try insertMemo(db: dbQueue, id: id, coreDataDate: 500) }
+        for id in ["z", "m", "a"] {
+            try insertMemo(db: dbQueue, id: id, coreDataDate: 500)
+        }
         let db = try VoiceMemosDB(dbQueue: dbQueue)
         let page1 = try db.listMemos(limit: 1)
         XCTAssertEqual(page1.map(\.id), ["a"])

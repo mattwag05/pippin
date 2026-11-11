@@ -885,8 +885,12 @@ extension CalendarCommand {
     static func keysetPage(
         _ events: [CalendarEvent], pagination: PaginationOptions, offset: Int, pageSize: Int, filterHash: String
     ) throws -> Page<CalendarEvent> {
-        func key(_ e: CalendarEvent) -> Int64 { Int64((parseCalendarDate(e.startDate) ?? .distantPast).timeIntervalSince1970) }
-        func rowId(_ e: CalendarEvent) -> String { "\(e.id)|\(e.startDate)" }
+        func key(_ e: CalendarEvent) -> Int64 {
+            Int64((parseCalendarDate(e.startDate) ?? .distantPast).timeIntervalSince1970)
+        }
+        func rowId(_ e: CalendarEvent) -> String {
+            "\(e.id)|\(e.startDate)"
+        }
         let sorted = events.map { (key($0), $0) }.sorted { ($0.0, rowId($0.1)) < ($1.0, rowId($1.1)) }.map(\.1)
         return try Pagination.paginateKeyset(
             all: sorted, offset: offset, pageSize: pageSize, filterHash: filterHash,
