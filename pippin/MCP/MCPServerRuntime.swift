@@ -114,19 +114,18 @@ enum MCPServerRuntime {
         }
 
         // Drain pipes concurrently so a large stdout doesn't deadlock on a full buffer.
-        nonisolated(unsafe) var outBytes = Data()
-        nonisolated(unsafe) var errBytes = Data()
+        // Reads accumulate under a lock so what arrived survives a bounded wait.
+        let outBuffer = LockedData()
+        let errBuffer = LockedData()
         let drainGroup = DispatchGroup()
-
-        drainGroup.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
-            outBytes = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            drainGroup.leave()
-        }
-        drainGroup.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
-            errBytes = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            drainGroup.leave()
+        for (pipe, buffer) in [(stdoutPipe, outBuffer), (stderrPipe, errBuffer)] {
+            drainGroup.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                while case let chunk = pipe.fileHandleForReading.availableData, !chunk.isEmpty {
+                    buffer.append(chunk)
+                }
+                drainGroup.leave()
+            }
         }
 
         // Hard timeout: SIGTERM, then SIGKILL after a 2s grace. Without this
@@ -151,7 +150,12 @@ enum MCPServerRuntime {
         // The leader is gone; anything it left in the group still holds our
         // pipes and may still be doing the work we just reported as timed out.
         if ownProcessGroup, killedByTimeout.get() == true { killpg(pid, SIGKILL) }
-        drainGroup.wait()
+        // A grandchild that inherited our pipes can hold them open long after
+        // the child exited (pippin-oqq9). The child's own output is already
+        // buffered by now, so give EOF a short grace and return what arrived.
+        _ = drainGroup.wait(timeout: .now() + 2)
+        let outBytes = outBuffer.snapshot()
+        let errBytes = errBuffer.snapshot()
 
         // A signal death is a timeout only if our own timer sent it. Anything
         // else is a crash, which must not read as a retryable timeout.
@@ -182,6 +186,18 @@ enum MCPServerRuntime {
             verify = .call(tool: name, argv: Array(argv.dropLast(2))) // minus `--format agent`
         }
         return MCPServerRuntimeError.outcomeUnknown(tool: tool.name, seconds: seconds, verify: verify)
+    }
+}
+
+private final class LockedData: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    func append(_ chunk: Data) {
+        lock.lock(); data.append(chunk); lock.unlock()
+    }
+
+    func snapshot() -> Data {
+        lock.lock(); defer { lock.unlock() }; return data
     }
 }
 

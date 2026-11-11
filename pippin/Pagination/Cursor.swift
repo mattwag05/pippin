@@ -8,15 +8,36 @@ import Foundation
 public struct Cursor: Codable, Equatable, Sendable {
     public let offset: Int
     public let filterHash: String
+    /// Position of the last row served, for sources that can seek by sort key.
+    /// An offset into a newest-first list repeats or skips rows once new rows
+    /// arrive between calls; the anchor does not. Absent on cursors issued
+    /// before this field existed, which keep their offset meaning.
+    public let anchor: Anchor?
+
+    /// Sort key and tiebreak id of a row in an `ORDER BY key DESC, id ASC` list.
+    public struct Anchor: Codable, Equatable, Sendable {
+        public let epoch: Int64
+        public let rowid: Int64
+        /// Tiebreak for sources whose ids are strings (rowid is 0 then).
+        public let id: String?
+
+        public init(epoch: Int64, rowid: Int64 = 0, id: String? = nil) {
+            self.epoch = epoch
+            self.rowid = rowid
+            self.id = id
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case offset
         case filterHash = "filter_hash"
+        case anchor
     }
 
-    public init(offset: Int, filterHash: String) {
+    public init(offset: Int, filterHash: String, anchor: Anchor? = nil) {
         self.offset = offset
         self.filterHash = filterHash
+        self.anchor = anchor
     }
 }
 
@@ -176,6 +197,12 @@ public enum Pagination {
         return (offset, pageSize)
     }
 
+    /// The keyset anchor carried by `--cursor`, if any. Call after `resolve`,
+    /// which has already validated the token and its filter hash.
+    public static func anchor(of opts: PaginationOptions) -> Cursor.Anchor? {
+        opts.cursor.flatMap { try? decode($0) }?.anchor
+    }
+
     /// Upper bound for a single page (see `resolve`). Generous — real pages are
     /// tens to low-hundreds of items; this only fences off pathological input.
     static let maxPageSize = 100_000
@@ -185,7 +212,8 @@ public enum Pagination {
         all: [T],
         offset: Int,
         pageSize: Int,
-        filterHash: String
+        filterHash: String,
+        anchor: (T) -> Cursor.Anchor? = { _ in nil }
     ) throws -> Page<T> {
         let safeOffset = max(0, offset)
         guard safeOffset < all.count else {
@@ -199,9 +227,45 @@ public enum Pagination {
         let end = safeOffset + take
         let items = Array(all[safeOffset ..< end])
         let nextCursor: String? = end < all.count
-            ? try encode(Cursor(offset: end, filterHash: filterHash))
+            ? try encode(Cursor(offset: end, filterHash: filterHash, anchor: items.last.flatMap(anchor)))
             : nil
         return Page(items: items, nextCursor: nextCursor)
+    }
+
+    /// Index of the first row after `anchor` in a (key, id)-ordered list; `offset`
+    /// when the anchor carries no id. See `paginateKeyset`.
+    public static func keysetStart<T>(
+        in all: [T], offset: Int, anchor: Cursor.Anchor?,
+        key: (T) -> Int64, id: (T) -> String, descending: Bool = false
+    ) -> Int {
+        guard let anchor, let anchorId = anchor.id else { return offset }
+        return all.firstIndex { id($0) == anchorId }.map { $0 + 1 }
+            ?? all.firstIndex { row in
+                let k = key(row)
+                return (descending ? k < anchor.epoch : k > anchor.epoch) || (k == anchor.epoch && id(row) > anchorId)
+            } ?? all.count
+    }
+
+    /// In-memory keyset page over a list ordered by `key` (ascending, or
+    /// descending when `descending`), ties by `id` ascending. Resumes after the
+    /// anchor row; when that row is gone, at the first row sorting after the
+    /// anchor, so rows added or removed between calls cannot repeat or skip one.
+    /// Without an id anchor (first page, legacy cursor) `offset` applies.
+    public static func paginateKeyset<T: Encodable & Sendable>(
+        all: [T],
+        offset: Int,
+        pageSize: Int,
+        filterHash: String,
+        anchor: Cursor.Anchor?,
+        key: (T) -> Int64,
+        id: (T) -> String,
+        descending: Bool = false
+    ) throws -> Page<T> {
+        let start = keysetStart(in: all, offset: offset, anchor: anchor, key: key, id: id, descending: descending)
+        return try paginate(
+            all: all, offset: start, pageSize: pageSize, filterHash: filterHash,
+            anchor: { Cursor.Anchor(epoch: key($0), id: id($0)) }
+        )
     }
 
     /// Build a Page<T> when the bridge already pushed offset/limit down.
@@ -211,7 +275,8 @@ public enum Pagination {
         fetched: [T],
         offset: Int,
         pageSize: Int,
-        filterHash: String
+        filterHash: String,
+        anchor: (T) -> Cursor.Anchor? = { _ in nil }
     ) throws -> Page<T> {
         let take = max(0, pageSize)
         let hasMore = fetched.count > take
@@ -221,7 +286,9 @@ public enum Pagination {
         var nextCursor: String?
         if hasMore {
             let (nextOffset, overflowed) = offset.addingReportingOverflow(take)
-            nextCursor = overflowed ? nil : try encode(Cursor(offset: nextOffset, filterHash: filterHash))
+            nextCursor = overflowed ? nil : try encode(
+                Cursor(offset: nextOffset, filterHash: filterHash, anchor: items.last.flatMap(anchor))
+            )
         }
         return Page(items: items, nextCursor: nextCursor)
     }

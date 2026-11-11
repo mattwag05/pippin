@@ -94,6 +94,7 @@ ssh_vm 'set -euo pipefail; export PATH="/opt/homebrew/bin:$PATH"; cd ~/pippin
     echo "== build (release) =="; xcrun --sdk macosx swift build -c release
     echo "== test =="; xcrun --sdk macosx swift test
     echo "== lint (swiftformat) =="; swiftformat --lint pippin/ pippin-entry/ Tests/
-    echo "== lint (detach-blocking) =="; python3 scripts/lint-detach-blocking.py --self-test && python3 scripts/lint-detach-blocking.py'
+    echo "== lint (detach-blocking) =="; python3 scripts/lint-detach-blocking.py --self-test && python3 scripts/lint-detach-blocking.py
+    echo "== lint (paginated-emit) =="; python3 scripts/lint-paginated-emit.py --self-test && python3 scripts/lint-paginated-emit.py'
 
 log "CI passed in isolated VM ✅"

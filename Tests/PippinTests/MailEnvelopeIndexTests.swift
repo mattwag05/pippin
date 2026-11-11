@@ -233,6 +233,51 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertEqual(page2.map(\.id), ["Personal||INBOX||102"])
     }
 
+    /// New mail arriving between two page fetches must not make page 2 repeat
+    /// a row (pippin-xr89 DAT-04). An offset cursor does; the keyset anchor does not.
+    func testListKeysetPageSurvivesNewMailArrivingBetweenPages() throws {
+        let q = try makeFixtureDB()
+        let idx = try makeIndex(q)
+        let page1 = try idx.listMessages(
+            account: "Personal", mailbox: "INBOX", unread: false,
+            limit: 1, offset: 0, after: nil, before: nil
+        )
+        XCTAssertEqual(page1.map(\.id), ["Personal||INBOX||101"])
+        let anchor = try XCTUnwrap(MailBridge.pageAnchor(page1[0]))
+        XCTAssertEqual(anchor, Cursor.Anchor(epoch: Int64(Self.jul10 + 3 * Self.hour + 10), rowid: 101, id: "Personal||INBOX||101"))
+
+        try q.write { db in // a newer message lands in the same mailbox
+            try db.execute(sql: """
+            INSERT INTO messages (ROWID, global_message_id, sender, subject, date_sent, date_received, mailbox, read, deleted, size)
+            VALUES (107, 0, 2, 2, \(Self.jul10 + 9 * Self.hour), \(Self.jul10 + 9 * Self.hour), 1, 0, 0, 100)
+            """)
+        }
+        let offsetPage2 = try idx.listMessages(
+            account: "Personal", mailbox: "INBOX", unread: false,
+            limit: 1, offset: 1, after: nil, before: nil
+        )
+        XCTAssertEqual(offsetPage2.map(\.id), ["Personal||INBOX||101"], "offset cursors repeat the last row")
+
+        let keysetPage2 = try idx.listMessages(
+            account: "Personal", mailbox: "INBOX", unread: false,
+            limit: 2, offset: 1, after: nil, before: nil, seekingAfter: anchor
+        )
+        XCTAssertEqual(keysetPage2.map(\.id), ["Personal||INBOX||102", "Personal||INBOX||105"])
+    }
+
+    func testCursorAnchorRoundTripsAndLegacyCursorsStillDecode() throws {
+        let anchor = Cursor.Anchor(epoch: 1_700_000_000, rowid: 7)
+        let token = try Pagination.encode(Cursor(offset: 3, filterHash: "h", anchor: anchor))
+        XCTAssertEqual(try Pagination.decode(token).anchor, anchor)
+        let legacy = Data(#"{"offset":5,"filter_hash":"h"}"#.utf8)
+        let legacyToken = legacy.base64EncodedString()
+            .replacingOccurrences(of: "=", with: "")
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+        let decoded = try Pagination.decode(legacyToken)
+        XCTAssertEqual(decoded.offset, 5)
+        XCTAssertNil(decoded.anchor)
+    }
+
     func testListUnreadOnly() throws {
         let idx = try makeIndex()
         let msgs = try idx.listMessages(
@@ -474,6 +519,34 @@ final class MailEnvelopeIndexTests: XCTestCase {
 
         XCTAssertFalse(try scan(idx, limit: 1, cap: 2).hitCandidateCap, "a filled request lost nothing")
         XCTAssertTrue(try scan(idx, limit: 2, offset: 1, cap: 2).hitCandidateCap, "a later page that runs off the cap")
+    }
+
+    /// New mail matching the query arriving between two pages must not make page 2 repeat a row
+    /// (pippin-hzuw). The offset is applied after dedup, so the anchor is too.
+    func testSearchKeysetPageSurvivesNewMatchArrivingBetweenPages() throws {
+        let q = try makeFixtureDB()
+        let idx = try makeIndex(q)
+        func search(limit: Int, offset: Int, after anchor: PippinLib.Cursor.Anchor? = nil) throws -> [MailMessage] {
+            try idx.searchScan(
+                query: "e", account: nil, mailbox: nil, limit: limit, offset: offset,
+                after: nil, before: nil, to: nil, from: nil, seekingAfter: anchor
+            ).messages
+        }
+        let whole = try search(limit: 50, offset: 0).map(\.id)
+        XCTAssertGreaterThan(whole.count, 3, "fixture must hold several matches")
+        let page1 = try search(limit: 2, offset: 0)
+        XCTAssertEqual(page1.map(\.id), Array(whole.prefix(2)))
+        let anchor = try XCTUnwrap(MailBridge.pageAnchor(XCTUnwrap(page1.last)))
+
+        try q.write { db in // a newer match lands in the same mailbox
+            try db.execute(sql: """
+            INSERT INTO messages (ROWID, global_message_id, sender, subject, date_sent, date_received, mailbox, read, deleted, size)
+            VALUES (107, 0, 2, 2, \(Self.jul10 + 9 * Self.hour), \(Self.jul10 + 9 * Self.hour), 1, 0, 0, 100)
+            """)
+        }
+        XCTAssertEqual(try search(limit: 2, offset: 2).map(\.id).first, whole[1], "offset paging repeats the last row")
+        let page2 = try search(limit: 2, offset: 2, after: anchor).map(\.id)
+        XCTAssertEqual(page2, Array(whole.dropFirst(2).prefix(2)))
     }
 
     func testActivityReportsWhenTheCandidateCapCutTheAnswerShort() throws {

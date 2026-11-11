@@ -25,9 +25,9 @@
 #                         for notarized distribution; Apple Development pins to
 #                         the leaf cert, so grants persist only until that cert
 #                         is renewed/expires (~1yr) — fine for a local dev loop.
-#   PIPPIN_SIGN_HARDENED  Set to 1 to add `--options runtime --timestamp`
-#                         (needed only when the binary will be notarized for
-#                         distribution to other Macs; not needed for local TCC).
+#   PIPPIN_SIGN_HARDENED  Set to 1 to add `--timestamp` (needed only when the
+#                         binary will be notarized for distribution to other
+#                         Macs). The hardened runtime itself is always on.
 #
 # Fallback behavior: if no suitable identity is found, this prints a warning and
 # exits 0, leaving the ad-hoc signature in place — so building on a machine
@@ -64,10 +64,13 @@ if [[ -z "$identity" ]]; then
 	exit 0
 fi
 
-args=(--force --sign "$identity" --identifier "$IDENTIFIER")
+# Hardened runtime always (blocks code injection and debugger attach), with the
+# entitlements that keep Apple Events, EventKit and Contacts reachable under it.
+args=(--force --sign "$identity" --identifier "$IDENTIFIER" --options runtime
+	--entitlements "$(dirname "$0")/pippin.entitlements")
 if [[ "${PIPPIN_SIGN_HARDENED:-0}" == "1" ]]; then
-	# Hardened runtime + secure timestamp — required for notarization only.
-	args+=(--options runtime --timestamp)
+	# Secure timestamp: needs Apple's timestamp server, so only for notarization.
+	args+=(--timestamp)
 fi
 
 echo "sign.sh: signing $BIN"

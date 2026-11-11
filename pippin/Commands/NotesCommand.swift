@@ -78,11 +78,15 @@ public struct NotesCommand: ParsableCommand {
             // and the all-notes sort enumeration is bounded by the soft cap
             // (surfaced as timedOut), not by a fixed offset ceiling.
             let fields = NotesCommand.emittedFields(output)
+            let anchor = Pagination.anchor(of: pagination)
             let outcome = try await detachBlocking { [folder] in
-                try NotesBridge.listNotes(folder: folder, limit: pageSize + 1, offset: offset, fields: fields)
+                try NotesBridge.listNotes(
+                    folder: folder, limit: pageSize + 1, offset: offset, seekingAfter: anchor, fields: fields
+                )
             }
             let page = try Pagination.pageFromPushdown(
-                fetched: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash
+                fetched: outcome.results, offset: offset, pageSize: pageSize, filterHash: hash,
+                anchor: NotesBridge.pageAnchor
             )
             return .emitPage(page, timedOut: outcome.timedOut, timedOutHint: NotesCommand.timedOutHint)
         }

@@ -18,6 +18,20 @@ final class MCPServerRuntimeTimeoutTests: XCTestCase {
         XCTAssertTrue(stdout.contains("hello"), "expected 'hello' in stdout, got: \(stdout)")
     }
 
+    /// pippin-oqq9: a grandchild that inherits stdout and outlives the child held
+    /// the pipe open, so `runChild` waited for EOF until the grandchild exited.
+    func testRunChildReturnsWhenAGrandchildHoldsStdoutOpen() throws {
+        let started = Date()
+        let result = try MCPServerRuntime.runChild(
+            argv: ["-c", "sleep 25 & echo hi"],
+            pippinPath: "/bin/sh",
+            timeoutSeconds: 5
+        )
+        XCTAssertEqual(String(data: result.stdout, encoding: .utf8), "hi\n")
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10, "runChild waited for the grandchild")
+    }
+
     func testRunChildKillsWedgedChildPastTimeout() throws {
         // /bin/sleep 10 with a 1s timeout must terminate within the 2s SIGTERM
         // grace + a small fudge, throwing .childTimedOut.

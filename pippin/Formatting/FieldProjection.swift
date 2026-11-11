@@ -32,9 +32,9 @@ public enum FieldProjection {
             return array.map { projectElement($0, fields: fields) }
         }
         if let dict = json as? [String: Any] {
-            if let items = dict["items"] as? [Any] {
+            if let key = rowsKey(in: dict), let rows = dict[key] as? [Any] {
                 var out = dict
-                out["items"] = items.map { projectElement($0, fields: fields) }
+                out[key] = rows.map { projectElement($0, fields: fields) }
                 return out
             }
             return projectElement(dict, fields: fields)
@@ -58,13 +58,19 @@ public enum FieldProjection {
         let json = try JSONSerialization.jsonObject(with: agentPayloadEncoder().encode(value))
         let rows: [[String: Any]]
         if let dict = json as? [String: Any] {
-            rows = (dict["items"] as? [[String: Any]]) ?? [dict]
+            rows = rowsKey(in: dict).flatMap { dict[$0] as? [[String: Any]] } ?? [dict]
         } else {
             rows = (json as? [[String: Any]]) ?? []
         }
         guard !rows.isEmpty else { return [] }
         let present = Set(rows.flatMap(\.keys))
         return fields.filter { !present.contains($0) }
+    }
+
+    /// The key holding the rows when a payload wraps them next to metadata
+    /// (`items` for pages, `matches` for `messages search`).
+    private static func rowsKey(in dict: [String: Any]) -> String? {
+        ["items", "matches"].first { dict[$0] is [Any] }
     }
 
     private static func projectElement(_ element: Any, fields: [String]) -> Any {

@@ -104,12 +104,12 @@ final class SafetyGate: @unchecked Sendable {
     /// here so no tool has to declare them.
     static func withReservedArguments(_ schema: JSONValue) -> JSONValue {
         guard case var .object(root) = schema, case var .object(properties)? = root["properties"] else { return schema }
-        properties["confirmToken"] = Schema.string("Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.")
+        properties["confirmToken"] = Schema.string("The confirmToken from a confirmation_required error, sent with the same arguments.")
         // A tool with no dry run of its own still gets one, answered by the gate.
         if properties["dryRun"] == nil {
-            properties["dryRun"] = Schema.boolean("Check the call and report what it would do, without doing it.", default: false)
+            properties["dryRun"] = Schema.boolean("Report what the call would do without doing it.", default: false)
         }
-        properties["idempotencyKey"] = Schema.string("Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.")
+        properties["idempotencyKey"] = Schema.string("A repeat of this key and arguments within 24 hours replays the first result.")
         root["properties"] = .object(properties)
         return .object(root)
     }

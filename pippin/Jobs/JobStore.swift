@@ -89,23 +89,21 @@ public final class JobStore: @unchecked Sendable {
     public func createDir(_ id: String) throws -> String {
         let dir = jobDir(id)
         do {
-            try FileManager.default.createDirectory(
-                atPath: dir, withIntermediateDirectories: true
-            )
+            try PrivateFile.ensureDirectory(root)
+            try PrivateFile.ensureDirectory(dir)
         } catch {
             throw JobStoreError.rootCreationFailed(dir)
         }
-        FileManager.default.createFile(atPath: stdoutPath(id), contents: nil)
-        FileManager.default.createFile(atPath: stderrPath(id), contents: nil)
+        // The logs tail mail and note text: owner-only.
+        for path in [stdoutPath(id), stderrPath(id)] {
+            FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
+            PrivateFile.restrict(path)
+        }
         return dir
     }
 
     public func write(_ job: Job) throws {
         let path = statusPath(job.id)
-        let dir = (path as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(
-            atPath: dir, withIntermediateDirectories: true
-        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -116,7 +114,7 @@ public final class JobStore: @unchecked Sendable {
             throw JobStoreError.statusWriteFailed(error.localizedDescription)
         }
         do {
-            try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            try PrivateFile.writeAtomically(data, to: path)
         } catch {
             throw JobStoreError.statusWriteFailed(error.localizedDescription)
         }
@@ -208,6 +206,18 @@ public final class JobStore: @unchecked Sendable {
     /// the next invocation).
     public func all() -> [Job] {
         listIds().compactMap { try? read($0) }
+    }
+
+    /// A schedule never overlaps itself. If a job of `scheduleId` is still
+    /// running (reconciled, so a dead runner does not count), record `id` as a
+    /// `skipped` / `overlap` job and return it; otherwise return nil.
+    public func skipIfOverlapping(scheduleId: String, id: String, argv: [String]) throws -> Job? {
+        guard all().contains(where: { $0.scheduleId == scheduleId && $0.status == .running }) else { return nil }
+        let now = Date()
+        var skipped = Job(id: id, argv: argv, status: .skipped, startedAt: now, endedAt: now, scheduleId: scheduleId)
+        skipped.errorCode = "overlap"
+        try write(skipped)
+        return skipped
     }
 
     // MARK: Log tails

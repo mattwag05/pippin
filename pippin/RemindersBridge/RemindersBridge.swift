@@ -352,17 +352,27 @@ public final class RemindersBridge: @unchecked Sendable {
     /// stderr directly, so MCP/agent clients get a structured warning and don't
     /// see duplicate noise (matches the `ContactsBridge.Outcome` contract).
     private func fetchRemindersSync(predicate: NSPredicate) -> (reminders: [EKReminder], timedOut: Bool) {
+        nonisolated(unsafe) let pred = predicate
+        return Self.awaitCallback(timeoutSeconds: 15, empty: []) { done in
+            self.store.fetchReminders(matching: pred) { done($0 ?? []) }
+        }
+    }
+
+    /// Wait for a completion-handler API with a wall-clock cap. After a timeout
+    /// the abandoned callback may still write `result` from another thread, so a
+    /// timed-out call returns `empty` and never reads it (same rule as
+    /// `CalendarBridge.fetchEventsSync`).
+    static func awaitCallback<T>(
+        timeoutSeconds: Int, empty: T, start: (@escaping (T) -> Void) -> Void
+    ) -> (T, timedOut: Bool) {
         let semaphore = DispatchSemaphore(value: 0)
-        nonisolated(unsafe) var result: [EKReminder] = []
-        store.fetchReminders(matching: predicate) { fetched in
-            result = fetched ?? []
+        nonisolated(unsafe) var result = empty
+        start { value in
+            result = value
             semaphore.signal()
         }
-        // Bound the wait: if EventKit's callback never fires (store hang /
-        // permission edge), return partial results instead of hanging forever.
-        // Matches the 15s ceiling used elsewhere; a healthy fetch is near-instant.
-        let timedOut = semaphore.wait(timeout: .now() + .seconds(15)) == .timedOut
-        return (result, timedOut)
+        let timedOut = semaphore.wait(timeout: .now() + .seconds(timeoutSeconds)) == .timedOut
+        return (timedOut ? empty : result, timedOut)
     }
 
     /// The reminder an id or id prefix names. Mutating callers pass a minimum

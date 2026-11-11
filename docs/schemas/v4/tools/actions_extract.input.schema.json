@@ -12,7 +12,7 @@
       "type" : "string"
     },
     "confirmToken" : {
-      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "description" : "The confirmToken from a confirmation_required error, sent with the same arguments.",
       "type" : "string"
     },
     "create" : {
@@ -27,11 +27,11 @@
     },
     "dryRun" : {
       "default" : false,
-      "description" : "Check the call and report what it would do, without doing it.",
+      "description" : "Report what the call would do without doing it.",
       "type" : "boolean"
     },
     "idempotencyKey" : {
-      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "description" : "A repeat of this key and arguments within 24 hours replays the first result.",
       "type" : "string"
     },
     "limit" : {
@@ -63,7 +63,7 @@
       "type" : "boolean"
     },
     "provider" : {
-      "description" : "AI provider: ollama, claude, or openai (default: ollama).",
+      "description" : "AI provider: ollama, claude, openai, or apple (default: ollama).",
       "type" : "string"
     }
   },

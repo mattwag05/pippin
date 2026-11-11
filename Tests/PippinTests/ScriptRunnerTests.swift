@@ -214,4 +214,31 @@ final class ScriptRunnerTests: XCTestCase {
             XCTAssertTrue(msg.contains("boom"), "stderr should include 'boom', got: \(msg)")
         }
     }
+
+    // MARK: - Script body stays out of argv (SEC-11)
+
+    func testScriptBodyIsNotOnTheChildArgv() throws {
+        let marker = "SECRET-MARKER-\(UUID().uuidString)"
+        let script = """
+        ObjC.import('Foundation');
+        var marker = '\(marker)';
+        ObjC.deepUnwrap($.NSProcessInfo.processInfo.arguments).join('|');
+        """
+        let out = try ScriptRunner.run(script, timeoutSeconds: 10)
+        XCTAssertFalse(out.contains(marker), "script body leaked into osascript argv: \(out.prefix(200))")
+    }
+
+    func testLargeScriptBodyRunsViaStdin() throws {
+        let padding = String(repeating: "x", count: 300_000)
+        let out = try ScriptRunner.run("var p = '\(padding)'; p.length", timeoutSeconds: 20)
+        XCTAssertEqual(out, "300000")
+    }
+
+    // MARK: - Exit status decides success (REL-6)
+
+    func testStderrNoiseOnZeroExitIsNotAFailure() throws {
+        // console.log writes to stderr; the script itself succeeded.
+        let out = try ScriptRunner.run("console.log('noise'); 'ok'", timeoutSeconds: 10)
+        XCTAssertEqual(out, "ok")
+    }
 }

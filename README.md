@@ -135,7 +135,7 @@ Run `pippin permissions` or `pippin init` from a terminal so each macOS prompt g
 | Automation > Notes | Notes | `pippin permissions` |
 | Full Disk Access | Voice Memos, Messages, and Mail's fast path (optional) | System Settings, by hand. macOS has no prompt for it |
 
-Grants survive rebuilds and upgrades only if the binary has a stable signature. `make install` and the Homebrew formula use a **Developer ID Application** certificate when one is available, which keeps grants even through certificate renewal. An **Apple Development** certificate also works, but grants reset when it renews, about once a year. An ad-hoc build asks again after every build. The **Code signing** row in `pippin doctor` tells you which one you have. If the signing identity changes, run `pippin permissions` once more.
+Grants survive rebuilds and upgrades only if the binary has a stable signature. `make install` and the Homebrew formula use a **Developer ID Application** certificate when one is available, which keeps grants even through certificate renewal. An **Apple Development** certificate also works, but grants reset when it renews, about once a year. An ad-hoc build asks again after every build. Signed builds use the hardened runtime. The **Code signing** row in `pippin doctor` tells you which one you have. If the signing identity changes, run `pippin permissions` once more.
 
 ## Try it
 
@@ -317,13 +317,24 @@ PIPPIN_EXPERIMENTAL=1 pippin browser fetch "https://example.com"
 ```bash
 pippin job run -- mail index                     # returns the job id and pid
 pippin job show <id>                             # status and the end of each log
-pippin job list                                  # recent jobs (--status running|done|error|killed)
+pippin job list                                  # recent jobs (--status running|done|error|killed|skipped)
 pippin job wait <id> --timeout 600               # wait until it finishes
 pippin job logs <id> --stream                    # follow stdout (or --stderr)
 pippin job gc --older-than 7d                    # delete finished jobs
 ```
 
-Terminal statuses: `done` (exit 0), `error` (non-zero exit), `killed` (signal).
+Terminal statuses: `done` (exit 0), `error` (non-zero exit), `killed` (signal), `skipped` (a scheduled fire that found the previous one still running).
+
+Recurring jobs are one LaunchAgent each (`~/Library/LaunchAgents/com.mattwag05.pippin.schedule.<id>.plist`), so launchd does the timing and pippin keeps no daemon:
+
+```bash
+pippin job schedule --every 6h -- mail index              # 15m, 6h, 1d (minimum 1m)
+pippin job schedule --cron "30 7 * * 1,2,3,4,5" -- digest # minute hour day-of-month month day-of-week
+pippin job schedules                                      # id, argv, trigger, last run
+pippin job unschedule <id>
+```
+
+`--cron` fields are a number, `*` or a comma list; ranges and steps are refused. Each fire is a normal job tagged with its schedule id. A schedule never overlaps itself, and the fire is recorded as `skipped` with `error_code: overlap`. The agent runs the binary path that was current at `schedule` time, so re-create schedules after moving the binary. Scheduling is CLI-only; MCP has no tool for it.
 
 MCP exposes the same commands as `job_run`, `job_show`, `job_list` and `job_wait`, so an agent can start a slow index build and check on it later.
 
@@ -416,7 +427,7 @@ pippin mail list --account icloud --cursor <token>
 pippin mail list --account icloud --page 2 --page-size 20
 ```
 
-A token is tied to its query, so changing a filter between calls returns `cursor_mismatch` instead of mixing pages. If you pass both `--cursor` and `--page`, the cursor wins. `next_cursor` is omitted on the last page.
+A token is tied to its query, so changing a filter between calls returns `cursor_mismatch` instead of mixing pages. If you pass both `--cursor` and `--page`, the cursor wins. `next_cursor` is omitted on the last page. For `mail list`, `memos list`, `reminders list`, `calendar events`, `calendar upcoming`, `contacts search`, `notes list` and `mail search` (Envelope Index and metadata store paths) the token remembers the last row served, so new or deleted rows between calls do not repeat or skip one. `mail search` on the JXA path pages by position. `mail search --semantic` resumes after the last message served while it is still among the top results, and by position otherwise.
 
 ### MCP Server Mode
 
@@ -440,7 +451,7 @@ The 79 tools cover mail, calendar, reminders, contacts, notes, voice memos, Mess
 | `pippin/NotesBridge/` | JXA subprocess bridge for Notes.app |
 | `pippin/ContactsBridge/` | CNContactStore wrapper (read + write) |
 | `pippin/MessagesBridge/` | GRDB SQLite access to Apple Messages (read + gated send) |
-| `pippin/AIProvider/` | Ollama, Claude, and OpenAI-compatible backends; per-feature embedding and transcription factories |
+| `pippin/AIProvider/` | Ollama, Claude, OpenAI-compatible and Apple on-device (experimental) backends; per-feature embedding and transcription factories |
 | `pippin/Jobs/` | Filesystem-backed registry for detached `pippin job` subprocesses |
 | `pippin/Planner/` | LLM-driven plan-and-execute over the MCP tool registry (`pippin do`) |
 | `pippin/Pagination/` | Opaque-cursor tokens + filter-hash guards for list commands |
@@ -457,7 +468,10 @@ The whole codebase builds under Swift 6 strict concurrency. JXA bridges run `osa
 - **macOS 15 (Sequoia) or later**, on arm64 for pre-built binaries
 - **Swift 6.0 or later** for source builds
 - **mlx-audio** for the default memo transcription backend. You don't need it when `ai.transcription.provider` is `apple` or `openai`. The experimental `audio` command also uses it
-- **Ollama** for the default AI and embeddings backend. Claude and OpenAI-compatible endpoints work without it
+- **Ollama** for the default AI and embeddings backend. Claude, OpenAI-compatible endpoints and the on-device `apple` provider work without it
+- **Apple Intelligence** (macOS 26 or later, turned on, model downloaded) only for `ai.provider: apple` / `--provider apple`. That provider is **experimental**: its structured output is always valid JSON covering every message, but on real mail its `mail triage` categories agreed with the configured OpenAI-compatible backend on only 5 of 12 messages, and its 8,192-token context is too small for `pippin do`. `pippin doctor` reports whether it can run
+
+Verified OpenAI-compatible local backends: oMLX 0.7.2 serving `Qwen3-Embedding-0.6B-4bit-DWQ` for `ai.embeddings` and `parakeet-tdt-0.6b-v3` for `ai.transcription` (live check, 2026-11-10: semantic search ranked the expected messages in the top five of 80, and a 338-second memo transcribed fully).
 
 `audio` (speech through mlx-audio) and `browser` (Playwright WebKit) are hidden unless you set `PIPPIN_EXPERIMENTAL=1`. They'll be removed in the next major release unless someone files an issue asking to keep them. See `CHANGELOG.md`.
 

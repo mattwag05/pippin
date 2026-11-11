@@ -189,6 +189,30 @@ final class MailMetaStoreTests: XCTestCase {
         XCTAssertEqual(result.map(\.id), ["A||INBOX||2"])
     }
 
+    /// New mail arriving between two page fetches must not make page 2 repeat a row (pippin-hzuw).
+    func testKeysetPageSurvivesNewMailBetweenPages() throws {
+        var ids = ["1", "2", "3"]
+        var dates = distinctDated(ids)
+        try store.replaceMailbox(inbox, rows: zip(ids, dates).map { row($0, date: $1) })
+        let page1 = try XCTUnwrap(reader(live: [live(ids, dates: dates)]).answer(scope: [inbox], limit: 2, offset: 0) { _, _ in true })
+        XCTAssertEqual(page1.count, 2)
+        let last = try XCTUnwrap(page1.last)
+        let anchor = try XCTUnwrap(MailBridge.pageAnchor(last))
+
+        let newDate = "2026-12-31T00:00:00.000Z" // newer than every stored row
+        ids.append("9")
+        dates.append(newDate)
+        let fresh = zip(ids, dates).map { row($0, date: $1) }
+        let live = live(ids, dates: dates)
+        let offsetPage2 = try XCTUnwrap(reader(live: [live], fresh: fresh, facts: factsFor(ids))
+            .answer(scope: [inbox], limit: 5, offset: 2) { _, _ in true })
+        XCTAssertEqual(offsetPage2.first?.id, last.id, "offset paging repeats the last row")
+        let keysetPage2 = try XCTUnwrap(reader(live: [live], fresh: fresh, facts: factsFor(ids))
+            .answer(scope: [inbox], limit: 5, offset: 2, seekingAfter: anchor) { _, _ in true })
+        XCTAssertFalse(keysetPage2.isEmpty)
+        XCTAssertFalse(keysetPage2.contains { $0.id == last.id || page1.map(\.id).contains($0.id) })
+    }
+
     func testDuplicateAcrossMailboxesIsDeduped() throws {
         let allMail = MailboxKey(account: "A", mailbox: "All Mail")
         try store.replaceMailbox(inbox, rows: [row("1", rfc: "same")])

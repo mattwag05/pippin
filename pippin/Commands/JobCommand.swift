@@ -13,6 +13,9 @@ public struct JobCommand: AsyncParsableCommand {
         abstract: "Manage background pippin jobs.",
         subcommands: [
             Run.self,
+            Schedule.self,
+            Schedules.self,
+            Unschedule.self,
             Show.self,
             List.self,
             Wait.self,
@@ -39,6 +42,12 @@ public struct JobCommand: AsyncParsableCommand {
         @Argument(parsing: .captureForPassthrough, help: "pippin argv to run (pass after `--`).")
         public var argv: [String] = []
 
+        @Flag(name: .long, help: "Stay in the foreground until the job ends, then print its final record.")
+        public var wait: Bool = false
+
+        @Option(name: .customLong("schedule-id"), help: "Tag the job with a schedule id and skip it if that schedule's previous job is still running.")
+        public var scheduleId: String?
+
         @OptionGroup public var output: OutputOptions
 
         public init() {}
@@ -61,12 +70,16 @@ public struct JobCommand: AsyncParsableCommand {
             let id = JobId.generate()
             try store.createDir(id)
 
+            if let scheduleId, let skipped = try store.skipIfOverlapping(scheduleId: scheduleId, id: id, argv: argv) {
+                return AgentResult(skipped)
+            }
+
             // The parent writes status.json exactly once; the runner owns
             // all subsequent writes (pid, terminal state). Avoids a race
             // where a fast-exiting inner command terminates before the
             // parent's second write lands, which would otherwise clobber
             // the runner's terminal write with `status:"running"`.
-            let seed = Job(id: id, argv: argv, status: .running, startedAt: Date())
+            let seed = Job(id: id, argv: argv, status: .running, startedAt: Date(), scheduleId: scheduleId)
             try store.write(seed)
 
             let pippinPath = MCPServerRuntime.resolvePippinPath()
@@ -78,10 +91,106 @@ public struct JobCommand: AsyncParsableCommand {
                 stderrPath: store.stderrPath(id)
             )
 
+            if wait {
+                return try await AgentResult(Wait.wait(store: store, id: id, timeout: 0, pollMs: 200))
+            }
             var display = seed
             display.pid = pid
 
             return AgentResult(display)
+        }
+    }
+
+    // MARK: Schedule
+
+    public struct Schedule: AgentCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "schedule",
+            abstract: "Run a pippin command on a recurring schedule (a LaunchAgent that starts `job run`).",
+            discussion: """
+            Exactly one of --every or --cron, then `--` and the pippin argv:
+                pippin job schedule --every 6h -- mail index
+                pippin job schedule --cron "30 7 * * 1,2,3,4,5" -- digest
+            --cron takes minute hour day-of-month month day-of-week; each field is
+            a number, `*` or a comma list. Ranges and steps are refused.
+            A fire is skipped (job status `skipped`, error_code `overlap`) while the
+            previous one is still running. Remove it with `pippin job unschedule <id>`.
+            """
+        )
+
+        @Option(name: .long, help: "Interval such as 15m, 6h or 1d (minimum 1m).")
+        public var every: String?
+
+        @Option(name: .long, help: "Five-field cron time: \"minute hour day-of-month month day-of-week\".")
+        public var cron: String?
+
+        @Argument(parsing: .captureForPassthrough, help: "pippin argv to run (pass after `--`).")
+        public var argv: [String] = []
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func validate() throws {
+            if argv == ["--help"] || argv == ["-h"] { throw CleanExit.helpRequest(self) }
+            if argv.first == "--" { argv.removeFirst() }
+            guard (every == nil) != (cron == nil) else {
+                throw ValidationError("Give exactly one of --every or --cron.")
+            }
+            guard let first = argv.first, !first.hasPrefix("-"), !first.contains("/") else {
+                throw ValidationError("pippin job schedule needs a pippin command after `--`, e.g. `-- mail index`.")
+            }
+            if isMCPContext() { try MCPCommandPolicy.check(argv) }
+            _ = try trigger()
+        }
+
+        func trigger() throws -> ScheduleTrigger {
+            if let every { return try ScheduleTrigger.parseEvery(every) }
+            return try ScheduleTrigger.parseCron(cron ?? "")
+        }
+
+        public mutating func execute() async throws -> AgentResult {
+            let trigger = try trigger()
+            let id = try ScheduleStore().add(trigger: trigger, argv: argv, pippinPath: MCPServerRuntime.resolvePippinPath())
+            return AgentResult(ScheduleInfo(id: id, argv: argv, trigger: trigger.description, lastRun: nil, lastStatus: nil))
+        }
+    }
+
+    // MARK: Schedules
+
+    public struct Schedules: AgentCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "schedules",
+            abstract: "List recurring schedules with the status of their last run."
+        )
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func execute() async throws -> AgentResult {
+            AgentResult(ScheduleStore().list(jobs: JobStore().all()))
+        }
+    }
+
+    // MARK: Unschedule
+
+    public struct Unschedule: AgentCommand {
+        public static let configuration = CommandConfiguration(
+            commandName: "unschedule",
+            abstract: "Remove a recurring schedule (unloads and deletes its LaunchAgent)."
+        )
+
+        @Argument(help: "Schedule id from `pippin job schedules`.")
+        public var id: String
+
+        @OptionGroup public var output: OutputOptions
+
+        public init() {}
+
+        public mutating func execute() async throws -> AgentResult {
+            try ScheduleStore().remove(id)
+            return AgentResult(["removed": id])
         }
     }
 
@@ -124,7 +233,7 @@ public struct JobCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Maximum jobs to return (default: 20).")
         public var limit: Int = 20
 
-        @Option(name: .long, help: "Filter by status: running, done, error, killed.")
+        @Option(name: .long, help: "Filter by status: running, done, error, killed, skipped.")
         public var status: JobStatus?
 
         @OptionGroup public var output: OutputOptions
@@ -342,16 +451,7 @@ public struct JobRunnerInternalCommand: AsyncParsableCommand {
 
         process.waitUntilExit()
 
-        job.endedAt = Date()
-        job.exitCode = process.terminationStatus
-        switch process.terminationReason {
-        case .exit:
-            job.status = process.terminationStatus == 0 ? .done : .error
-        case .uncaughtSignal:
-            job.status = .killed
-        @unknown default:
-            job.status = .error
-        }
+        job.finish(exitStatus: process.terminationStatus, reason: process.terminationReason)
         try? store.write(job)
         Darwin.exit(process.terminationStatus)
     }
@@ -402,8 +502,9 @@ enum JobLauncher {
 
     private static func openAppend(_ path: String) throws -> FileHandle {
         if !FileManager.default.fileExists(atPath: path) {
-            FileManager.default.createFile(atPath: path, contents: nil)
+            FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
         }
+        PrivateFile.restrict(path)
         do {
             let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
             try handle.seekToEnd()
@@ -462,6 +563,7 @@ public struct JobView: Encodable, Sendable {
         case v, id, argv, pid, status
         case exitCode = "exit_code"
         case errorCode = "error_code"
+        case scheduleId = "schedule_id"
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case durationMs = "duration_ms"
@@ -478,6 +580,7 @@ public struct JobView: Encodable, Sendable {
         try container.encode(job.status, forKey: .status)
         try container.encodeIfPresent(job.exitCode, forKey: .exitCode)
         try container.encodeIfPresent(job.errorCode, forKey: .errorCode)
+        try container.encodeIfPresent(job.scheduleId, forKey: .scheduleId)
         try container.encode(job.startedAt, forKey: .startedAt)
         try container.encodeIfPresent(job.endedAt, forKey: .endedAt)
         try container.encodeIfPresent(job.durationMs, forKey: .durationMs)
@@ -498,9 +601,7 @@ public struct GcResult: Encodable, Sendable {
 // MARK: - Helpers
 
 private func ensureRoot(_ store: JobStore) throws {
-    try? FileManager.default.createDirectory(
-        atPath: store.root, withIntermediateDirectories: true
-    )
+    try? PrivateFile.ensureDirectory(store.root)
 }
 
 /// Parse "7d" / "12h" / "30m" / "2w" into seconds. Used by `job gc

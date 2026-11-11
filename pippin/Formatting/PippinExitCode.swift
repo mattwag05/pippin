@@ -49,7 +49,7 @@ public enum PippinExitCode {
         if code == "not_found" || code.hasSuffix("_not_found") {
             return 3
         }
-        if code == "missing_required" || code.hasPrefix("invalid_") {
+        if code == "missing_required" || code == "occurrence_required" || code.hasPrefix("invalid_") {
             return 2
         }
         return toolFailure

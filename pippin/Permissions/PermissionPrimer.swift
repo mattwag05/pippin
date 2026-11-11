@@ -190,9 +190,11 @@ public enum PermissionPrimer {
         let remediation: Remediation? = {
             if state == .granted || state == .unavailable { return nil }
             if let r = check.remediation { return r }
-            return mechanism == .fullDiskAccess
-                ? .fullDiskAccess(integration: integration, listCommand: listCommand)
-                : .privacyAccess(permission: integration, listCommand: listCommand, doctorCheck: "\(integration) access")
+            switch mechanism {
+            case .fullDiskAccess: return .fullDiskAccess(integration: integration, listCommand: listCommand)
+            case .automation: return .automationAccess(app: integration, trigger: listCommand)
+            default: return .privacyAccess(permission: integration, listCommand: listCommand, doctorCheck: "\(integration) access")
+            }
         }()
         return PermissionReport(
             integration: integration,

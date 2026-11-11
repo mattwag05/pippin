@@ -74,7 +74,7 @@ struct Pippin: AsyncParsableCommand {
 
             // If no subcommand was given, default to the REPL shell
             if command is Pippin {
-                var shell = ShellCommand()
+                var shell = try ShellCommand.parse([]) // parsed, so its @Option defaults are readable
                 try await shell.run()
                 return
             }

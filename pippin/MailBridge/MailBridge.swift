@@ -12,11 +12,6 @@ enum MailBridge {
     struct ScanOutcome {
         let messages: [MailMessage]
         let timedOut: Bool
-        /// Non-nil only for `listMessages` with a `--before` cutoff that the
-        /// newest-N scan window never reached (empty result, mailbox not fully
-        /// scanned) — a ready-to-surface advisory distinguishing "no matches"
-        /// from "window too shallow". `nil` everywhere else.
-        var windowHint: String? = nil
         /// Non-nil when the Envelope Index fast path threw and the call fell
         /// back to the slow JXA scan — the single-line reason, ready to
         /// surface as a warning so callers can see *why* they paid seconds
@@ -222,11 +217,11 @@ enum MailBridge {
         before: String? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         fastPath: Bool = true,
-        pageSentinel: Bool = false
+        pageSentinel: Bool = false,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> ListOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil)
-        let requestedBefore = before
         let (after, before) = dayFilterInstants(after: after, before: before)
         let clampedLimit = clampScanLimit(limit, pageSentinel: pageSentinel)
         let clampedOffset = max(0, offset)
@@ -237,15 +232,15 @@ enum MailBridge {
         // `mail list --preview` still gets a fast metadata pass). Any failure
         // falls back to JXA silently: no FDA, unknown schema, unresolvable
         // account/mailbox — the fast path is an accelerator, never a gate.
-        // A full-index scan can't under-reach a `--before` cutoff, so no
-        // windowHint. `doctor --latency` passes `fastPath: false` to measure
+        // `doctor --latency` passes `fastPath: false` to measure
         // the real JXA/Mail.app path.
         var fastPathNote: String?
         if fastPath, (preview ?? 0) == 0, fastPathEnabled() {
             do {
                 let messages = try makeFastPathIndex(accountName: account).listMessages(
                     account: account, mailbox: mailbox, unread: unread,
-                    limit: clampedLimit, offset: clampedOffset, after: after, before: before
+                    limit: clampedLimit, offset: clampedOffset, after: after, before: before,
+                    seekingAfter: anchor
                 )
                 return ListOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
             } catch {
@@ -255,14 +250,14 @@ enum MailBridge {
         // Pippin's own index: no Full Disk Access, verified by a live read.
         if fastPath, (preview ?? 0) == 0, let messages = listFromStore(
             account: account, mailbox: mailbox, unread: unread,
-            limit: clampedLimit, offset: clampedOffset, after: after, before: before
+            limit: clampedLimit, offset: clampedOffset, after: after, before: before, seekingAfter: anchor
         ) {
             return ListOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
         }
         let script = buildListScript(
             account: account, mailbox: mailbox, unread: unread,
             limit: clampedLimit, offset: clampedOffset, preview: preview,
-            after: after, before: before,
+            after: after, before: before, seekingAfter: anchor,
             softTimeoutMs: softTimeoutMs
         )
         // The JXA loop self-bounds via softTimeoutMs (default 22s) when preview
@@ -281,41 +276,20 @@ enum MailBridge {
         return ListOutcome(
             messages: attachCachedAnomalies(wrapper.results),
             timedOut: wrapper.meta.timedOut,
-            windowHint: beforeShortfallHint(
-                resultsEmpty: wrapper.results.isEmpty,
-                timedOut: wrapper.meta.timedOut,
-                before: requestedBefore,
-                reachedMailboxEnd: wrapper.meta.reachedMailboxEnd,
-                oldestExaminedMs: wrapper.meta.oldestExaminedMs
-            ),
             fastPathNote: fastPathNote
         )
     }
 
-    /// Advisory when `mail list --before` returns empty because the newest-N
-    /// scan window never reached the cutoff (not because nothing matched).
-    /// Pure/static so it's unit-testable without Mail.app. Fires only when the
-    /// scan was truncated *and* the oldest message actually examined is still
-    /// newer than `--before` — i.e. deeper scanning could surface matches.
-    /// `--after` is exempt: newest-first scanning hits recent mail first, so an
-    /// empty `--after` result is a true "nothing that recent," not a shortfall.
-    static func beforeShortfallHint(
-        resultsEmpty: Bool,
-        timedOut: Bool,
-        before: String?,
-        reachedMailboxEnd: Bool,
-        oldestExaminedMs: Double?
-    ) -> String? {
-        guard resultsEmpty, !timedOut, !reachedMailboxEnd,
-              let before, let oldestMs = oldestExaminedMs,
-              let beforeDate = parseFilterDate(before)
+    /// Keyset position of a listed row, so the next page can seek past it rather
+    /// than skip a count of rows that new mail may have shifted. Mirrors the
+    /// Envelope Index order (received date, else sent date; then ROWID).
+    static func pageAnchor(_ message: MailMessage) -> Cursor.Anchor? {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let rowid = message.id.components(separatedBy: "||").last.flatMap({ Int64($0) }),
+              let date = iso.date(from: message.receivedAt ?? message.date)
         else { return nil }
-        let oldest = Date(timeIntervalSince1970: oldestMs / 1000)
-        guard oldest > beforeDate else { return nil }
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone.current
-        return "scan window did not reach \(before): scanned the newest messages back to \(f.string(from: oldest)) but not as far as \(before) — increase --limit, or use `mail search --before` (which binary-searches the window) for older mail"
+        return Cursor.Anchor(epoch: Int64(date.timeIntervalSince1970), rowid: rowid, id: message.id)
     }
 
     /// `--after` and `--before` each name a whole calendar day in the user's
@@ -472,7 +446,8 @@ enum MailBridge {
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         fastPath: Bool = true,
         preview: Int? = nil,
-        pageSentinel: Bool = false
+        pageSentinel: Bool = false,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> SearchOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil) && (mailbox == nil)
@@ -488,7 +463,7 @@ enum MailBridge {
                 let scan = try makeFastPathIndex(accountName: account).searchScan(
                     query: query, account: account, mailbox: mailbox,
                     limit: limit, offset: clampedOffset, after: after, before: before,
-                    to: to, from: from
+                    to: to, from: from, seekingAfter: anchor
                 )
                 if verbose {
                     let line = "[search] fast path: envelope index (full-index scan, JXA bypassed)\n"
@@ -505,7 +480,7 @@ enum MailBridge {
         // Recipients and bodies are not in the store, so those searches read Mail.
         if fastPath, !searchBody, to == nil, let messages = searchFromStore(
             query: query, account: account, mailbox: mailbox,
-            limit: limit, offset: clampedOffset, after: after, before: before, from: from
+            limit: limit, offset: clampedOffset, after: after, before: before, from: from, seekingAfter: anchor
         ) {
             return SearchOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
         }
@@ -980,7 +955,8 @@ enum MailBridge {
         before: String? = nil,
         cache: MailBodyCache? = MailBodyCache.shared,
         softTimeoutMs: Int = SoftTimeout.defaultMs,
-        pageSentinel: Bool = false
+        pageSentinel: Bool = false,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> ListOutcome {
         // Match buildListScript's previewChars clamp ([1, 4000]).
         let previewChars = max(1, min(preview, 4000))
@@ -988,7 +964,8 @@ enum MailBridge {
         let pass1 = try listMessages(
             account: account, mailbox: mailbox, unread: unread,
             limit: limit, offset: offset, preview: nil,
-            after: after, before: before, softTimeoutMs: softTimeoutMs, pageSentinel: pageSentinel
+            after: after, before: before, softTimeoutMs: softTimeoutMs, pageSentinel: pageSentinel,
+            seekingAfter: anchor
         )
         // pippin-521: opt-in summary previews. Config-gated BEFORE the index
         // build — the snapshot copy isn't free, so the default-off path never
@@ -1159,12 +1136,6 @@ enum MailBridge {
         let mailboxesScanned: Int
         let messagesExamined: Int
         let timedOut: Bool
-        /// `false` when any scanned mailbox's newest-N window stopped short of its
-        /// oldest message (list script only). Feeds the `--before` shortfall hint.
-        let reachedMailboxEnd: Bool
-        /// Oldest `dateSent` (epoch ms) examined across the scan, or `nil` if none
-        /// (list script only). Names the floor the window actually reached.
-        let oldestExaminedMs: Double?
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -1173,13 +1144,10 @@ enum MailBridge {
             messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
             // Backward-compatible: scripts that don't emit timedOut default to false.
             timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
-            reachedMailboxEnd = try container.decodeIfPresent(Bool.self, forKey: .reachedMailboxEnd) ?? true
-            oldestExaminedMs = try container.decodeIfPresent(Double.self, forKey: .oldestExaminedMs)
         }
 
         private enum CodingKeys: String, CodingKey {
             case accountsScanned, mailboxesScanned, messagesExamined, timedOut
-            case reachedMailboxEnd, oldestExaminedMs
         }
     }
 

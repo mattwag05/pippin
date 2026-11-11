@@ -130,12 +130,31 @@ final class SenderBaselineStore: Sendable {
     }
 
     /// Compare-only variant (pippin-fwa): list/search/activity anomaly
-    /// surfacing must never mutate the baseline store — only `mail show`/
-    /// `verify` reads (full headers) record fingerprints.
+    /// surfacing never mutates the baseline store. The one narrow exception is
+    /// `recordScanFingerprints` (pippin-09ky), which the Envelope Index scan
+    /// path calls to add `msgid_domain` rows and nothing else.
     func check(compoundId: String, sender: String, fingerprint: [String: String]) -> [String] {
         (try? dbQueue.read { db in
             try Self.deviationWarnings(db: db, compoundId: compoundId, sender: sender, fingerprint: fingerprint)
         }) ?? []
+    }
+
+    /// Scan-path harvest (pippin-09ky): record only the `msgid_domain`
+    /// dimension for messages seen in an Envelope Index scan, one transaction,
+    /// INSERT OR IGNORE so it never overwrites a full-read row and a repeat
+    /// scan writes nothing. Returns false on any store error; callers ignore it.
+    @discardableResult
+    func recordScanFingerprints(_ entries: [(compoundId: String, sender: String, msgidDomain: String)]) -> Bool {
+        guard !entries.isEmpty else { return true }
+        return (try? dbQueue.write { db in
+            for e in entries {
+                try db.execute(
+                    sql: "INSERT OR IGNORE INTO fingerprints (compound_id, sender, dimension, value) VALUES (?, ?, 'msgid_domain', ?)",
+                    arguments: [e.compoundId, e.sender, e.msgidDomain]
+                )
+            }
+            return true
+        }) ?? false
     }
 
     private static func deviationWarnings(

@@ -47,6 +47,38 @@ final class VoiceMemosDBTests: XCTestCase {
         }
     }
 
+    // MARK: - Keyset paging (pippin-hzuw)
+
+    /// A memo recorded between two page fetches must not make page 2 repeat a row.
+    func testListKeysetPageSurvivesNewMemoBetweenPages() throws {
+        let dbQueue = try makeTestDB()
+        for (id, date) in [("a", 300.0), ("b", 200.0), ("c", 100.0)] {
+            try insertMemo(db: dbQueue, id: id, coreDataDate: date)
+        }
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+        let page1 = try db.listMemos(limit: 2)
+        XCTAssertEqual(page1.map(\.id), ["a", "b"])
+        let anchor = VoiceMemosDB.pageAnchor(page1[1])
+
+        try insertMemo(db: dbQueue, id: "new", coreDataDate: 400)
+        let offsetPage2 = try db.listMemos(limit: 2, offset: 2)
+        XCTAssertEqual(offsetPage2.map(\.id), ["b", "c"], "offset paging repeats b")
+        let keysetPage2 = try db.listMemos(limit: 2, offset: 2, seekingAfter: anchor)
+        XCTAssertEqual(keysetPage2.map(\.id), ["c"])
+    }
+
+    func testListKeysetBreaksDateTiesById() throws {
+        let dbQueue = try makeTestDB()
+        for id in ["z", "m", "a"] {
+            try insertMemo(db: dbQueue, id: id, coreDataDate: 500)
+        }
+        let db = try VoiceMemosDB(dbQueue: dbQueue)
+        let page1 = try db.listMemos(limit: 1)
+        XCTAssertEqual(page1.map(\.id), ["a"])
+        let page2 = try db.listMemos(limit: 5, seekingAfter: VoiceMemosDB.pageAnchor(page1[0]))
+        XCTAssertEqual(page2.map(\.id), ["m", "z"])
+    }
+
     // MARK: - Schema version guard
 
     func testKnownSchemaVersionPasses() throws {

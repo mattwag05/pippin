@@ -234,7 +234,7 @@ final class NotesTests: XCTestCase {
     func testBuildListScriptInjectsOffsetAndStartsLoopThere() {
         let script = NotesBridge.buildListScript(folder: nil, limit: 25, offset: 50)
         XCTAssertTrue(script.contains("var offset = 50;"))
-        XCTAssertTrue(script.contains("for (var i = offset;"))
+        XCTAssertTrue(script.contains("for (var i = start;"))
     }
 
     func testBuildListScriptClampsNegativeOffsetToZero() {

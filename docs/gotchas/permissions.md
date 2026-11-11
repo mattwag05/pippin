@@ -82,7 +82,13 @@ across both install paths. `scripts/sign.sh` does this; `make install` /
   Development also can't be notarized for distribution: local dev loop only.
 - **Notarization is NOT needed for TCC.** It's a Gatekeeper/quarantine concern
   (binaries *downloaded* to other Macs). Set `PIPPIN_SIGN_HARDENED=1` to add
-  `--options runtime --timestamp` only when you'll notarize for distribution.
+  `--timestamp` only when you'll notarize for distribution.
+- **The hardened runtime is always on** (`--options runtime`), with
+  `scripts/pippin.entitlements` granting Apple Events, Calendars (EventKit,
+  which covers Reminders) and Contacts. Under the hardened runtime a missing
+  entitlement is refused before TCC is asked, so a new in-process framework
+  that reads protected data needs its entitlement added there. Entitlements
+  are not part of the Designated Requirement, so changing them keeps grants.
 - `pippin doctor` reports a **Code signing** row: `ok` for a stable identity,
   `skip` (with remediation) when ad-hoc/unsigned. Verify directly with
   `codesign -dvv "$(command -v pippin)"`.

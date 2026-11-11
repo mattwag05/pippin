@@ -24,15 +24,24 @@ enum NotesBridge {
     /// script skips the reads behind fields nobody asked for; a skipped field
     /// comes back as an empty string.
     static func listNotes(
-        folder: String? = nil, limit: Int = 50, offset: Int = 0, fields: Set<String>? = nil,
-        softTimeoutMs: Int = 22000
+        folder: String? = nil, limit: Int = 50, offset: Int = 0, seekingAfter anchor: Cursor.Anchor? = nil,
+        fields: Set<String>? = nil, softTimeoutMs: Int = 22000
     ) throws -> Outcome<[NoteInfo]> {
         let clampedLimit = max(1, min(limit, maxListLimit))
         let script = buildListScript(
-            folder: folder, limit: clampedLimit, offset: max(0, offset), fields: fields, softTimeoutMs: softTimeoutMs
+            folder: folder, limit: clampedLimit, offset: max(0, offset), seekingAfter: anchor,
+            fields: fields, softTimeoutMs: softTimeoutMs
         )
         let json = try runScript(script, idempotent: true)
         return try decode(Outcome<[NoteInfo]>.self, from: json)
+    }
+
+    /// Keyset position of a listed note (newest modification first, then id ascending).
+    static func pageAnchor(_ note: NoteInfo) -> Cursor.Anchor {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let ms = parser.date(from: note.modificationDate).map { Int64(($0.timeIntervalSince1970 * 1000).rounded()) } ?? 0
+        return Cursor.Anchor(epoch: ms, id: note.id)
     }
 
     static func showNote(id: String) throws -> NoteInfo {
@@ -244,20 +253,49 @@ enum NotesBridge {
     /// hard-delete / empty-trash exists — pippin-cxd). list/show/search/folders
     /// exclude it so a "deleted" note stops appearing; it still auto-purges from
     /// the trash after 30 days, exactly like the Notes UI.
-    /// ponytail: English folder name — a non-English Notes locale won't match;
-    /// upgrade path is to detect the trash folder by identity if it matters.
-    static let recentlyDeletedFolderName = "Recently Deleted"
+    /// Notes names the folder in the user's language and the scripting
+    /// dictionary has no "is deleted" flag, so every name it may carry is
+    /// matched: English, plus the name Notes itself shows (pippin-nrrx).
+    static let recentlyDeletedFolderNames = trashFolderNames(
+        localized: notesStringsTable().flatMap { trashFolderName(in: $0, preferences: Locale.preferredLanguages) }
+    )
+
+    /// Notes' own name for the folder, per language (`[language: name]`).
+    static func notesStringsTable() -> [String: [String: String]]? {
+        let path = "/System/Library/PrivateFrameworks/NotesShared.framework/Resources/Localizable.loctable"
+        guard let data = FileManager.default.contents(atPath: path) else { return nil }
+        let plist = try? PropertyListSerialization.propertyList(from: data, format: nil)
+        // Values mix strings and plural-rule dictionaries: keep only the one key.
+        return (plist as? [String: Any])?.compactMapValues { language in
+            ((language as? [String: Any])?["Recently Deleted"] as? String).map { ["Recently Deleted": $0] }
+        }
+    }
+
+    /// The folder name in the best match for `preferences` that the table has.
+    static func trashFolderName(in table: [String: [String: String]], preferences: [String]) -> String? {
+        let languages = table.filter { $0.value["Recently Deleted"] != nil }.map(\.key)
+        guard let best = Bundle.preferredLocalizations(from: languages, forPreferences: preferences).first else { return nil }
+        return table[best]?["Recently Deleted"]
+    }
+
+    static func trashFolderNames(localized: String?) -> [String] {
+        guard let localized, localized != "Recently Deleted" else { return ["Recently Deleted"] }
+        return ["Recently Deleted", localized]
+    }
+
+    /// JXA boolean: `expr` (a folder name) is one of `names`.
+    static func jsIsTrash(_ expr: String, names: [String] = recentlyDeletedFolderNames) -> String {
+        "(" + names.map { "\(expr) === '\(jsEscape($0))'" }.joined(separator: " || ") + ")"
+    }
 
     /// JXA fragment for the mutating scripts: refuse a `note` that already sits
     /// in Recently Deleted. A second `delete` there is how Notes purges a note
     /// permanently (RT-32), so the delete script passes `failClosed` and treats
     /// an unreadable folder as "might be trashed". Edit tolerates an unreadable
     /// folder, since Notes itself rejects writes to a trashed note.
-    /// ponytail: matches the English folder name like the read paths (see
-    /// `recentlyDeletedFolderName`); the Notes scripting dictionary exposes no
-    /// locale-independent "is deleted" property to check instead.
+    /// Matches every name in `recentlyDeletedFolderNames`, like the read paths.
     static func jsRefuseTrashedNote(_ safeId: String, failClosed: Bool) -> String {
-        let read = "note.container().name() === '\(recentlyDeletedFolderName)'"
+        let read = jsIsTrash("note.container().name()")
         return """
         var _trashed = false;
         \(failClosed ? "_trashed = \(read);" : "try { _trashed = \(read); } catch(e) {}")
@@ -268,7 +306,8 @@ enum NotesBridge {
     // MARK: - JXA Script Builders
 
     static func buildListScript(
-        folder: String?, limit: Int, offset: Int = 0, fields: Set<String>? = nil, softTimeoutMs: Int = 22000
+        folder: String?, limit: Int, offset: Int = 0, seekingAfter anchor: Cursor.Anchor? = nil,
+        fields: Set<String>? = nil, softTimeoutMs: Int = 22000
     ) -> String {
         let folderFilter = jsEscapeOptional(folder)
         let clampedTimeout = SoftTimeout.clamp(softTimeoutMs)
@@ -278,6 +317,8 @@ enum NotesBridge {
         var folderFilter = \(folderFilter);
         var limit = \(limit);
         var offset = \(max(0, offset));
+        var anchorId = \(jsEscapeOptional(anchor?.id));
+        var anchorMod = \(anchor?.epoch ?? 0);
         var softTimeoutMs = \(clampedTimeout);
         var _start = Date.now();
         var _meta = { timedOut: false };
@@ -293,16 +334,35 @@ enum NotesBridge {
         var rows = [];
         for (var j = 0; j < cols.id.length; j++) {
             var _in = _folderAt(cols, j);
-            if (_in && _in.name === '\(recentlyDeletedFolderName)') { continue; }
+            if (_in && \(jsIsTrash("_in.name"))) { continue; }
             var _d = cols.modificationDate[j] || null;
             rows.push({j: j, folder: _in, mod: _d ? _d.getTime() : 0, iso: _d ? _d.toISOString() : ''});
         }
-        // Newest first.
-        rows.sort(function(a, b) { return b.mod - a.mod; });
-        // Native offset: emit only the `limit` window. The HTML body is never
+        // Newest first; ties by id so the order is total and a keyset cursor can resume in it.
+        rows.sort(function(a, b) {
+            if (a.mod !== b.mod) { return b.mod - a.mod; }
+            var x = cols.id[a.j], y = cols.id[b.j];
+            return x < y ? -1 : (x > y ? 1 : 0);
+        });
+        // A keyset cursor resumes after the anchor note, or at the first row sorting
+        // after it when that note is gone; without one the offset applies.
+        var start = offset;
+        if (anchorId !== null) {
+            start = rows.length;
+            for (var k = 0; k < rows.length; k++) {
+                if (cols.id[rows[k].j] === anchorId) { start = k + 1; break; }
+            }
+            if (start === rows.length) {
+                for (var m = 0; m < rows.length; m++) {
+                    var _id = cols.id[rows[m].j];
+                    if (rows[m].mod < anchorMod || (rows[m].mod === anchorMod && _id > anchorId)) { start = m; break; }
+                }
+            }
+        }
+        // Emit only the `limit` window. The HTML body is never
         // fetched here (`notes show` does that).
         var results = [];
-        for (var i = offset; i < rows.length && results.length < limit; i++) {
+        for (var i = start; i < rows.length && results.length < limit; i++) {
             // Only the per-note reads below can be slow, so the soft cap is
             // checked here.
             if (Date.now() - _start > softTimeoutMs) { _meta.timedOut = true; break; }
@@ -310,7 +370,7 @@ enum NotesBridge {
             var noteId = cols.id[row.j];
             if (!row.folder) {
                 row.folder = _folderOfNote(noteId);
-                if (row.folder.name === '\(recentlyDeletedFolderName)') { continue; }
+                if (\(jsIsTrash("row.folder.name"))) { continue; }
             }
             // plainText is read only when asked for: from the bulk column, or
             // per note if Notes refused the bulk read.
@@ -371,7 +431,7 @@ enum NotesBridge {
             folderName = _c.name();
         } catch(e) {}
         // A soft-deleted note still resolves by id — treat it as gone (pippin-cxd).
-        if (folderName === '\(recentlyDeletedFolderName)') { throw new Error('NOTESBRIDGE_ERR_NOT_FOUND: \(safeId)'); }
+        if (\(jsIsTrash("folderName"))) { throw new Error('NOTESBRIDGE_ERR_NOT_FOUND: \(safeId)'); }
         var result = {
             id: note.id(),
             title: note.name(),
@@ -428,7 +488,7 @@ enum NotesBridge {
             if (title.toLowerCase().indexOf(query) === -1 && plain.toLowerCase().indexOf(query) === -1) { continue; }
             var _in = _folderAt(cols, j);
             // Skip soft-deleted notes (pippin-cxd).
-            if (_in && _in.name === '\(recentlyDeletedFolderName)') { continue; }
+            if (_in && \(jsIsTrash("_in.name"))) { continue; }
             var _d = cols.modificationDate[j] || null;
             rows.push({j: j, title: title, plain: plain, folder: _in, mod: _d ? _d.getTime() : 0, iso: _d ? _d.toISOString() : ''});
         }
@@ -440,7 +500,7 @@ enum NotesBridge {
             var row = rows[i];
             if (!row.folder) {
                 row.folder = _folderOfNote(cols.id[row.j]);
-                if (row.folder.name === '\(recentlyDeletedFolderName)') { continue; }
+                if (\(jsIsTrash("row.folder.name"))) { continue; }
             }
             var _created = needCreated ? cols.creationDate[row.j] : null;
             results.push({
@@ -473,7 +533,7 @@ enum NotesBridge {
         var results = [];
         for (var i = 0; i < _fi.id.length; i++) {
             // Hide the soft-delete trash folder from the live folder list (pippin-cxd).
-            if (_fi.name[i] === '\(recentlyDeletedFolderName)') { continue; }
+            if (\(jsIsTrash("_fi.name[i]"))) { continue; }
             results.push({
                 id: _fi.id[i],
                 name: _fi.name[i],

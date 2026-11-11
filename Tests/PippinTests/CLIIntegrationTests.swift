@@ -156,6 +156,15 @@ final class CLIIntegrationTests: XCTestCase {
         XCTAssertTrue(result.stdout.contains(PippinVersion.version), "Expected version string in output, got: \(result.stdout)")
     }
 
+    /// Bare `pippin` starts the REPL. `ShellCommand()` was built without being
+    /// parsed, so reading its `@Option` trapped: exit 1 with nothing on stdout.
+    func testBarePippinWithEmptyStdinExitsCleanly() {
+        guard let binary = CLIIntegrationTests.binaryURL else { return XCTFail("pippin binary not found") }
+        let result = Self.runProcess("/bin/sh", args: ["-c", "\"$0\" </dev/null", binary.path])
+        XCTAssertEqual(result.exitCode, 0, result.stderr)
+        XCTAssertFalse(result.stderr.contains("Can't read a value"), result.stderr)
+    }
+
     // MARK: - Help
 
     func testRootHelp() {

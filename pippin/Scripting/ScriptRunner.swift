@@ -148,7 +148,10 @@ public enum ScriptRunner {
         do {
             outcome = try Subprocess.run(
                 executable: URL(fileURLWithPath: "/usr/bin/osascript"),
-                arguments: ["-l", "JavaScript", "-e", script],
+                // The script goes in on stdin, not `-e`: it can hold mail or
+                // note text, and argv is readable by any local user via `ps`.
+                arguments: ["-l", "JavaScript"],
+                input: Data(script.utf8),
                 timeout: timeout
             )
         } catch {
@@ -169,9 +172,14 @@ public enum ScriptRunner {
             throw ScriptRunnerError.nonZeroExit(rawStderr)
         }
 
-        // osascript can exit 0 and still write errors to stderr (e.g. TCC denial).
-        // Filter benign framework log lines (timestamp-prefixed CoreData/NSDateFormatter noise)
-        // before treating stderr as a script failure.
+        // Exit status decides success; stderr on a zero exit is noise (JXA
+        // `console.log` writes there) and must not fail a script that ran, least
+        // of all a send that may then be repeated. The one exception is a zero
+        // exit with no output at all and real errors on stderr (e.g. TCC denial),
+        // where the stderr text is the only explanation of the empty result.
+        // Benign framework log lines (timestamp-prefixed CoreData noise) are
+        // filtered first.
+        guard stdoutStr.isEmpty else { return stdoutStr }
         let errorLines = rawStderr
             .components(separatedBy: .newlines)
             .filter { line in

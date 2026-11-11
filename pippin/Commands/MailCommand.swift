@@ -291,6 +291,18 @@ public struct MailCommand: AsyncParsableCommand {
             )
         }
 
+        /// A ranked list has no sort key, so the anchor is just the last id served: resume after
+        /// it, or at `offset` when that message is no longer in the ranked window.
+        static func semanticPage(
+            _ all: [MailMessage], pagination: PaginationOptions, offset: Int, pageSize: Int, filterHash: String
+        ) throws -> Page<MailMessage> {
+            let resumed = Pagination.anchor(of: pagination)?.id.flatMap { id in all.firstIndex { $0.id == id } }
+            return try Pagination.paginate(
+                all: all, offset: resumed.map { $0 + 1 } ?? offset, pageSize: pageSize, filterHash: filterHash,
+                anchor: { Cursor.Anchor(epoch: 0, id: $0.id) }
+            )
+        }
+
         private func runPaginated() async throws -> AgentResult {
             let hash = Pagination.filterHash([
                 "query": query,
@@ -329,8 +341,8 @@ public struct MailCommand: AsyncParsableCommand {
                         limit: searchLimit
                     )
                 }
-                page = try Pagination.paginate(
-                    all: all, offset: offset, pageSize: pageSize, filterHash: hash
+                page = try Self.semanticPage(
+                    all, pagination: pagination, offset: offset, pageSize: pageSize, filterHash: hash
                 )
             } else {
                 let query = self.query
@@ -343,6 +355,7 @@ public struct MailCommand: AsyncParsableCommand {
                 let from = self.from
                 let verbose = self.verbose
                 let preview = self.preview
+                let anchor = Pagination.anchor(of: pagination)
                 // searchMessages spawns a blocking osascript subprocess; hop off
                 // the cooperative pool so concurrent callers don't stall.
                 let outcome = try await detachBlocking {
@@ -359,7 +372,8 @@ public struct MailCommand: AsyncParsableCommand {
                         from: from,
                         verbose: verbose,
                         preview: preview,
-                        pageSentinel: true
+                        pageSentinel: true,
+                        seekingAfter: anchor
                     )
                 }
                 paginatedTimedOut = outcome.timedOut
@@ -374,7 +388,8 @@ public struct MailCommand: AsyncParsableCommand {
                     paginatedTimedOut = paginatedTimedOut || attached.timedOut
                 }
                 page = try Pagination.pageFromPushdown(
-                    fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+                    fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash,
+                    anchor: MailBridge.pageAnchor
                 )
             }
             try MailBridge.requireCompleteSearch(resultCount: page.items.count, timedOut: paginatedTimedOut)
@@ -495,7 +510,7 @@ public struct MailCommand: AsyncParsableCommand {
                 return .emit(withSummaries, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
             } else {
                 return try await emitMessages(
-                    messages, timedOut: outcome.timedOut, windowHint: outcome.windowHint,
+                    messages, timedOut: outcome.timedOut,
                     fastPathNote: outcome.fastPathNote,
                     capNote: MailBridge.rowCapNote(requested: limit, returned: messages.count)
                 )
@@ -506,22 +521,13 @@ public struct MailCommand: AsyncParsableCommand {
             "list exceeded soft timeout, returning partial results — narrow with --account, --mailbox, or a smaller --limit for complete results" + MailCommand.accountNamesSuffix()
         }
 
-        /// A soft-timeout warning takes precedence over a `--before` window-shortfall
-        /// hint (both surface through the same partial-results channel).
-        private func warning(timedOut: Bool, windowHint: String?) -> (warn: Bool, hint: String) {
-            if timedOut { return (true, Self.timedOutHint) }
-            if let windowHint { return (true, windowHint) }
-            return (false, Self.timedOutHint)
-        }
-
         private func emitMessages(
-            _ messages: [MailMessage], timedOut: Bool, windowHint: String? = nil, fastPathNote: String? = nil,
+            _ messages: [MailMessage], timedOut: Bool, fastPathNote: String? = nil,
             capNote: String? = nil
         ) async throws -> AgentResult {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
-            let (warn, hint) = warning(timedOut: timedOut, windowHint: windowHint)
             let state = MailCommand.incomplete(
-                timedOut: warn, timedOutHint: hint, notes: [capNote], advisories: [fastPathNote]
+                timedOut: timedOut, timedOutHint: Self.timedOutHint, notes: [capNote], advisories: [fastPathNote]
             )
             return AgentResult(
                 messages, warnings: state.warnings, fields: FieldProjection.parse(output.fields), partial: state.partial
@@ -554,9 +560,12 @@ public struct MailCommand: AsyncParsableCommand {
             // The bridge returns at most rowCap rows plus the has-more sentinel,
             // so a larger page would silently lose its next_cursor.
             let (pageSize, pageSizeNote) = MailCommand.cappedPageSize(requestedPageSize)
-            let outcome = try await fetchList(limit: pageSize + 1, offset: offset, pageSentinel: true)
+            let outcome = try await fetchList(
+                limit: pageSize + 1, offset: offset, pageSentinel: true, anchor: Pagination.anchor(of: pagination)
+            )
             let page = try Pagination.pageFromPushdown(
-                fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash
+                fetched: outcome.messages, offset: offset, pageSize: pageSize, filterHash: hash,
+                anchor: MailBridge.pageAnchor
             )
             return try await emitPage(
                 page, timedOut: outcome.timedOut, fastPathNote: outcome.fastPathNote, pageSizeNote: pageSizeNote
@@ -568,7 +577,9 @@ public struct MailCommand: AsyncParsableCommand {
         /// no-preview case through the untouched single-pass `listMessages`.
         /// Both spawn blocking osascript subprocesses (up to 60s cross-account),
         /// so hop off the cooperative pool.
-        private func fetchList(limit: Int, offset: Int, pageSentinel: Bool = false) async throws -> MailBridge.ListOutcome {
+        private func fetchList(
+            limit: Int, offset: Int, pageSentinel: Bool = false, anchor: Cursor.Anchor? = nil
+        ) async throws -> MailBridge.ListOutcome {
             let account = self.account
             let mailbox = self.mailbox
             let unread = self.unread
@@ -583,13 +594,13 @@ public struct MailCommand: AsyncParsableCommand {
                         limit: limit, offset: offset, preview: preview,
                         after: after, before: before,
                         cache: noCache ? nil : MailBodyCache.shared,
-                        pageSentinel: pageSentinel
+                        pageSentinel: pageSentinel, seekingAfter: anchor
                     )
                 }
                 return try MailBridge.listMessages(
                     account: account, mailbox: mailbox, unread: unread,
                     limit: limit, offset: offset, preview: preview,
-                    after: after, before: before, pageSentinel: pageSentinel
+                    after: after, before: before, pageSentinel: pageSentinel, seekingAfter: anchor
                 )
             }
         }

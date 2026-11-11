@@ -34,7 +34,8 @@ final class NextStepTests: XCTestCase {
         AIProviderError.timeout, AIProviderError.providerUnreachable("e"), AIProviderError.decodingFailed("e"),
         AIProviderError.missingAPIKey, AIProviderError.modelNotFound(model: "m", available: ["a"]),
         AIProviderError.remoteModelNotFound(model: "m", baseURL: "http://x"), AIProviderError.invalidProvider("p"),
-        AIProviderError.incompleteCompletion,
+        AIProviderError.incompleteCompletion, AIProviderError.modelUnavailable("r"), AIProviderError.guardrailRefusal,
+        AIProviderError.contextExceeded(limit: 8192, tokens: nil),
         // SchemaValidatorError
         SchemaValidatorError.missingRequired("f"), SchemaValidatorError.unexpectedArgument("f"),
         SchemaValidatorError.wrongType(field: "f", expected: "string", got: "int"),

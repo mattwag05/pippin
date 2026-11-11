@@ -35,6 +35,8 @@ enum Subprocess {
     /// buffer nobody is reading blocks forever. At `timeout` the child gets
     /// SIGTERM, and SIGKILL two seconds later if it is still alive.
     /// `discardStderr` sends stderr to /dev/null instead of capturing it.
+    /// `input` is fed to the child's stdin and then closed, so content that
+    /// must not show in `ps` (script bodies, secrets) stays out of argv.
     ///
     /// Throws only when the launch itself fails. A nonzero exit, a signal and
     /// a timeout are all reported in the `Outcome`.
@@ -42,6 +44,7 @@ enum Subprocess {
         executable: URL,
         arguments: [String],
         environment: [String: String]? = nil,
+        input: Data? = nil,
         timeout: TimeInterval,
         discardStderr: Bool = false
     ) throws -> Outcome {
@@ -57,7 +60,21 @@ enum Subprocess {
         process.standardOutput = stdoutPipe
         process.standardError = discardStderr ? FileHandle.nullDevice : stderrPipe
 
+        let stdinPipe = input == nil ? nil : Pipe()
+        if let stdinPipe { process.standardInput = stdinPipe }
+
         try process.run()
+
+        if let input, let stdinPipe {
+            // Written off-thread: a body over the 64 KB pipe buffer would block
+            // until the child reads it. A child that exits early closes the pipe;
+            // the write then fails and is ignored (SIGPIPE is turned off here).
+            signal(SIGPIPE, SIG_IGN)
+            DispatchQueue.global().async {
+                try? stdinPipe.fileHandleForWriting.write(contentsOf: input)
+                try? stdinPipe.fileHandleForWriting.close()
+            }
+        }
 
         // nonisolated(unsafe): each var is written once by one GCD block; group.wait() provides happens-before.
         nonisolated(unsafe) var stdoutData = Data()

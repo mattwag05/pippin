@@ -6,9 +6,7 @@ import Foundation
 /// recipients and targets. Shared by the action log and the Messages audit log.
 enum AppendOnlyFile {
     static func append(_ data: Data, to path: String) throws {
-        try FileManager.default.createDirectory(
-            atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true
-        )
+        try PrivateFile.ensureDirectory((path as NSString).deletingLastPathComponent)
         let fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o600)
         guard fd >= 0 else {
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: nil)
@@ -22,10 +20,22 @@ enum AppendOnlyFile {
 
 /// Replace `path` with `data` in one rename; the file is 0600 from creation.
 enum PrivateFile {
-    static func writeAtomically(_ data: Data, to path: String) throws {
+    /// Create `path` (and parents) and force it to 0700, also when it already
+    /// exists with looser bits from an earlier version.
+    static func ensureDirectory(_ path: String) throws {
         try FileManager.default.createDirectory(
-            atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true
+            atPath: path, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
         )
+        chmod(path, 0o700)
+    }
+
+    /// Force an existing file to 0600; a missing one is ignored.
+    static func restrict(_ path: String) {
+        chmod(path, 0o600)
+    }
+
+    static func writeAtomically(_ data: Data, to path: String) throws {
+        try ensureDirectory((path as NSString).deletingLastPathComponent)
         let tempPath = "\(path).tmp-\(UUID().uuidString)"
         let fd = open(tempPath, O_WRONLY | O_CREAT | O_EXCL, 0o600)
         guard fd >= 0 else {

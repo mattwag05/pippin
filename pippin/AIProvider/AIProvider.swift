@@ -10,10 +10,40 @@ public struct AICompletionOptions: Sendable {
     public var jsonMode: Bool
     /// Optional sampling temperature. Nil leaves each provider's default in place.
     public var temperature: Double?
+    /// The JSON shape a `jsonMode` caller expects. Only the `apple` provider
+    /// uses it (guided generation); the others keep prompt-based JSON.
+    public var schema: AIOutputSchema?
 
-    public init(jsonMode: Bool = false, temperature: Double? = nil) {
+    public init(jsonMode: Bool = false, temperature: Double? = nil, schema: AIOutputSchema? = nil) {
         self.jsonMode = jsonMode
         self.temperature = temperature
+        self.schema = schema
+    }
+}
+
+/// A provider-neutral description of the JSON a feature decodes. Kept to the
+/// shapes pippin's features use; `AppleFoundationModelsProvider` converts it
+/// to a `DynamicGenerationSchema` in one place.
+public indirect enum AIOutputSchema: Sendable, Equatable {
+    case string
+    case integer
+    case number
+    case boolean
+    /// A string limited to these values.
+    case choice([String])
+    case array(AIOutputSchema, minCount: Int? = nil, maxCount: Int? = nil)
+    case object([AIOutputField])
+}
+
+public struct AIOutputField: Sendable, Equatable {
+    public let name: String
+    public let schema: AIOutputSchema
+    public let optional: Bool
+
+    public init(_ name: String, _ schema: AIOutputSchema, optional: Bool = false) {
+        self.name = name
+        self.schema = schema
+        self.optional = optional
     }
 }
 
@@ -54,6 +84,13 @@ public enum AIProviderError: LocalizedError, Sendable {
     case invalidProvider(String)
     /// The provider returned no usable completed assistant answer.
     case incompleteCompletion
+    /// The on-device model cannot run here (`reason` says why: device not
+    /// eligible, Apple Intelligence off, model still downloading, macOS too old).
+    case modelUnavailable(String)
+    /// The model's safety guardrail refused the request or its content.
+    case guardrailRefusal
+    /// The prompt plus expected output does not fit the model's context window.
+    case contextExceeded(limit: Int, tokens: Int?)
 
     public var errorDescription: String? {
         switch self {
@@ -70,9 +107,16 @@ public enum AIProviderError: LocalizedError, Sendable {
         case let .remoteModelNotFound(model, baseURL):
             return "Model \"\(model)\" is not served by the OpenAI-compatible endpoint at \(baseURL) — set ai.openai.model in ~/.config/pippin/config.json (or pass --model) to a model the server actually serves"
         case let .invalidProvider(name):
-            return "Unknown provider '\(name)'. Use 'ollama', 'claude', or 'openai'."
+            return "Unknown provider '\(name)'. Use 'ollama', 'claude', 'openai', or 'apple'."
         case .incompleteCompletion:
             return "AI provider returned an incomplete completion."
+        case let .modelUnavailable(reason):
+            return "The Apple on-device model is not available: \(reason)."
+        case .guardrailRefusal:
+            return "The Apple on-device model's safety guardrail refused this request."
+        case let .contextExceeded(limit, tokens):
+            let used = tokens.map { " (request needed \($0))" } ?? ""
+            return "The request exceeds the model's \(limit)-token context window\(used)."
         }
     }
 }
@@ -95,6 +139,9 @@ extension AIProviderError: RemediableError {
         case .remoteModelNotFound: return "remote_model_not_found"
         case .invalidProvider: return "invalid_provider"
         case .incompleteCompletion: return "incomplete_completion"
+        case .modelUnavailable: return "not_available"
+        case .guardrailRefusal: return "guardrail_refusal"
+        case .contextExceeded: return "context_exceeded"
         }
     }
 
@@ -111,6 +158,12 @@ extension AIProviderError: RemediableError {
         case let .modelNotFound(model, _): return .human("Run `ollama pull \(model)`.")
         case let .remoteModelNotFound(model, baseURL):
             return .human("Set ai.openai.model in ~/.config/pippin/config.json to a model served by \(baseURL) instead of \(model).")
+        case .modelUnavailable:
+            return .human("Turn on Apple Intelligence in System Settings and wait for the model to download, or choose another ai.provider.")
+        case .guardrailRefusal:
+            return .human("Retry with another provider (--provider ollama, claude, or openai).")
+        case .contextExceeded:
+            return .human("Shorten the input, or use a provider with a larger context (--provider ollama, claude, or openai).")
         }
     }
 
@@ -141,6 +194,16 @@ extension AIProviderError: RemediableError {
                 """,
                 doctorCheck: "AI provider",
                 shellCommand: "curl -s \(baseURL)/models"
+            )
+        case let .modelUnavailable(reason):
+            return Remediation(
+                humanHint: """
+                The apple provider needs macOS 26 or later on Apple silicon with \
+                Apple Intelligence turned on and its model downloaded (\(reason)). \
+                Check System Settings > Apple Intelligence & Siri, or set ai.provider \
+                in ~/.config/pippin/config.json to another backend.
+                """,
+                doctorCheck: "AI provider"
             )
         default:
             return nil
@@ -180,7 +243,8 @@ func isTransientAIError(_ error: AIProviderError) -> Bool {
     case let .apiError(code, _): return code == 429 || (500 ... 599).contains(code)
     case .networkError, .rateLimited: return true
     case .timeout, .providerUnreachable, .decodingFailed, .missingAPIKey, .modelNotFound,
-         .remoteModelNotFound, .invalidProvider, .incompleteCompletion: return false
+         .remoteModelNotFound, .invalidProvider, .incompleteCompletion, .modelUnavailable,
+         .guardrailRefusal, .contextExceeded: return false
     }
 }
 

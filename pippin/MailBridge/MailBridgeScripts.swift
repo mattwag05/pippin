@@ -88,6 +88,7 @@ extension MailBridge {
         preview: Int? = nil,
         after: String? = nil,
         before: String? = nil,
+        seekingAfter anchor: Cursor.Anchor? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
@@ -110,15 +111,16 @@ extension MailBridge {
         var unreadOnly = \(unread ? "true" : "false");
         var limit = \(limit);
         var offset = \(offset);
+        var anchorId = \(jsEscapeOptional(anchor?.id));
+        var anchorSec = \(anchor?.epoch ?? 0);
+        var anchorRow = \(anchor?.rowid ?? 0);
         var previewChars = \(previewChars);
         var afterFilter = \(afterFilter);
         var beforeFilter = \(beforeFilter);
         var afterDate = afterFilter !== null ? new Date(afterFilter) : null;
         var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var softTimeoutMs = \(safeSoftTimeoutMs);
-        // A bulk read examines the whole mailbox, so reachedMailboxEnd is always true
-        // unless the scan was cut off (reported through timedOut).
-        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false, reachedMailboxEnd: true, oldestExaminedMs: null};
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
         // Soft timeout: return what we have before the ScriptRunner hard timeout
         // (and the MCP runChild 60s cap). The scan stops early enough to leave time
         // for the per-message reads of the rows that will be returned.
@@ -151,20 +153,40 @@ extension MailBridge {
                 var dates = bulkDates(b, i);
                 var operationalDate = dates.operationalDate;
                 if (operationalDate === null) continue;
-                var opMs = operationalDate.getTime();
-                if (_meta.oldestExaminedMs === null || opMs < _meta.oldestExaminedMs) _meta.oldestExaminedMs = opMs;
                 if (afterDate !== null && operationalDate < afterDate) continue;
                 if (beforeDate !== null && operationalDate > beforeDate) continue;
                 candidates.push({
                     mb: mb, b: b, i: i, acct: acctName, mbName: resolvedMbName, dates: dates,
-                    opIso: operationalDate.toISOString(), rowId: Number(b.ids[i])
+                    opIso: operationalDate.toISOString(), rowId: Number(b.ids[i]),
+                    sec: Math.floor(operationalDate.getTime() / 1000),
+                    key: acctName + '||' + resolvedMbName + '||' + b.ids[i]
                 });
             }
         }
 
         if (_unreadableMailbox) _meta.timedOut = true;
-        candidates.sort(newestFirstThenRowId);
-        candidates = candidates.slice(offset, offset + limit);
+        // Newest first, then row id, then the full id: a total order a keyset cursor can resume in.
+        candidates.sort(function(x, y) {
+            if (x.sec !== y.sec) return y.sec - x.sec;
+            if (x.rowId !== y.rowId) return x.rowId - y.rowId;
+            return x.key < y.key ? -1 : (x.key > y.key ? 1 : 0);
+        });
+        // Resume after the anchor message, or at the first row sorting after it when it is gone.
+        var start = offset;
+        if (anchorId !== null) {
+            start = candidates.length;
+            for (var k = 0; k < candidates.length; k++) {
+                if (candidates[k].key === anchorId) { start = k + 1; break; }
+            }
+            if (start === candidates.length) {
+                for (var m = 0; m < candidates.length; m++) {
+                    var _c = candidates[m];
+                    if (_c.sec < anchorSec || (_c.sec === anchorSec && (_c.rowId > anchorRow
+                        || (_c.rowId === anchorRow && _c.key > anchorId)))) { start = m; break; }
+                }
+            }
+        }
+        candidates = candidates.slice(start, start + limit);
         var results = [];
         for (var r = 0; r < candidates.length; r++) {
             var c = candidates[r];

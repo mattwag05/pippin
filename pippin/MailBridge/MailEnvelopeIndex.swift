@@ -106,11 +106,7 @@ enum MailAccountsCache {
     static func save(_ accounts: [MailAccountRecord], fetchedAt: Date, path: String = defaultPath()) {
         let file = CacheFile(fetchedAt: fetchedAt, accounts: accounts)
         guard let data = try? JSONEncoder.withISODates().encode(file) else { return }
-        try? FileManager.default.createDirectory(
-            atPath: (path as NSString).deletingLastPathComponent,
-            withIntermediateDirectories: true
-        )
-        try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        try? PrivateFile.writeAtomically(data, to: path)
     }
 
     /// Return a usable account map for a query, fetching via JXA only when
@@ -214,7 +210,7 @@ final class MailEnvelopeIndexMemo: @unchecked Sendable {
     func index(
         dbPath: String,
         accounts: [MailAccountRecord],
-        open: Opener = { try MailEnvelopeIndex(dbPath: $0, accounts: $1) }
+        open: Opener = { try MailEnvelopeIndex(dbPath: $0, accounts: $1, baselineStore: SenderBaselineStore.shared) }
     ) throws -> MailEnvelopeIndex {
         lock.lock()
         defer { lock.unlock() }
@@ -261,6 +257,7 @@ final class MailEnvelopeIndex: Sendable {
 
     private let dbQueue: DatabaseQueue
     private let accounts: [MailAccountRecord]
+    private let baselineStore: SenderBaselineStore?
     private let snapshotDir: String?
 
     // MARK: Paths
@@ -286,7 +283,8 @@ final class MailEnvelopeIndex: Sendable {
     /// temp dir, open the copy, and validate the schema version. The copy is
     /// what makes reads safe (no lock contention with Mail) and fresh (WAL
     /// included). FDA denial surfaces as a copy failure → `.accessDenied`.
-    init(dbPath: String, accounts: [MailAccountRecord]) throws {
+    init(dbPath: String, accounts: [MailAccountRecord], baselineStore: SenderBaselineStore? = nil) throws {
+        self.baselineStore = baselineStore
         let fm = FileManager.default
         guard fm.fileExists(atPath: dbPath) else {
             throw MailEnvelopeIndexError.databaseNotFound(dbPath)
@@ -340,7 +338,8 @@ final class MailEnvelopeIndex: Sendable {
     }
 
     /// Test seam: pre-built (in-memory) queue, no snapshot.
-    init(dbQueue: DatabaseQueue, accounts: [MailAccountRecord]) throws {
+    init(dbQueue: DatabaseQueue, accounts: [MailAccountRecord], baselineStore: SenderBaselineStore? = nil) throws {
+        self.baselineStore = baselineStore
         self.dbQueue = dbQueue
         self.accounts = accounts
         snapshotDir = nil
@@ -728,7 +727,7 @@ final class MailEnvelopeIndex: Sendable {
                 toByMessage[msg, default: []].append(addr)
             }
         }
-        return raws.compactMap { raw in
+        let messages = raws.compactMap { raw -> MailMessage? in
             guard let ref = refsByRowid[raw.mailboxRowid] else { return nil }
             return MailMessage(
                 id: "\(ref.accountName)||\(ref.leaf)||\(raw.rowid)",
@@ -746,6 +745,22 @@ final class MailEnvelopeIndex: Sendable {
                 messageIdHeader: raw.header.map(MailBridge.normalizeMessageId).flatMap { $0.isEmpty ? nil : $0 }
             )
         }
+        harvestMessageIdDomains(messages)
+        return messages
+    }
+
+    /// pippin-09ky: feed each scanned row's Message-ID domain to the sender
+    /// baseline (msgid_domain only, insert-or-ignore, one transaction). Runs
+    /// after the rows are built; a store failure never touches the result.
+    private func harvestMessageIdDomains(_ messages: [MailMessage]) {
+        guard let baselineStore else { return }
+        let entries = messages.compactMap { m -> (compoundId: String, sender: String, msgidDomain: String)? in
+            guard let header = m.messageIdHeader,
+                  let domain = HeaderAnomalies.emailDomain(in: header),
+                  let sender = HeaderAnomalies.emailAddress(in: m.from) else { return nil }
+            return (m.id, sender, domain)
+        }
+        baselineStore.recordScanFingerprints(entries)
     }
 
     /// Dedup mirroring the JXA scripts: Gmail lists the same message in both
@@ -781,12 +796,23 @@ final class MailEnvelopeIndex: Sendable {
         limit: Int,
         offset: Int,
         after: String?,
-        before: String?
+        before: String?,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> [MailMessage] {
         let targets = try MailboxTargets(resolveMailboxes(accountFilter: account, mailboxName: mailbox))
         var sql = Self.baseSelect(targets) + " WHERE m.deleted = 0 AND \(targets.membershipSQL)"
         if unread { sql += " AND m.read = 0" }
         sql += Self.dateFilterSQL(after: after, before: before)
+        var offset = offset
+        if let anchor {
+            // Seek past the last row served; rows that arrived since cannot shift the page.
+            sql += """
+             AND (COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) < \(anchor.epoch)
+                  OR (COALESCE(NULLIF(m.date_received, 0), NULLIF(m.date_sent, 0), 0) = \(anchor.epoch)
+                      AND m.ROWID > \(anchor.rowid)))
+            """
+            offset = 0
+        }
         sql += " ORDER BY operational_epoch DESC, m.ROWID ASC LIMIT \(max(1, limit)) OFFSET \(max(0, offset))"
         let raws = try dbQueue.read { db in try Row.fetchAll(db, sql: sql) }.map(Self.rawRow)
         return try buildMessages(
@@ -817,11 +843,12 @@ final class MailEnvelopeIndex: Sendable {
         after: String?,
         before: String?,
         to: String?,
-        from: String?
+        from: String?,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> [MailMessage] {
         try searchScan(
             query: query, account: account, mailbox: mailbox, limit: limit, offset: offset,
-            after: after, before: before, to: to, from: from
+            after: after, before: before, to: to, from: from, seekingAfter: anchor
         ).messages
     }
 
@@ -835,6 +862,7 @@ final class MailEnvelopeIndex: Sendable {
         before: String?,
         to: String?,
         from: String?,
+        seekingAfter anchor: Cursor.Anchor? = nil,
         candidateCap: Int = MailEnvelopeIndex.candidateCap
     ) throws -> Scan {
         let targets = try MailboxTargets(resolveMailboxes(accountFilter: account, mailboxName: mailbox))
@@ -869,9 +897,16 @@ final class MailEnvelopeIndex: Sendable {
         let fetched = try dbQueue.read { db in
             try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
         }.map(Self.rawRow)
-        // JXA applies offset AFTER dedup.
+        // JXA applies offset AFTER dedup, and so does the keyset anchor. A row id's zero-padded
+        // form is the tiebreak, so equal-second rows resume in ROWID order.
         let deduped = Self.dedup(fetched)
-        let window = Array(deduped.dropFirst(max(0, offset)).prefix(max(1, limit)))
+        let rowKey = { (rowid: Int64) in String(format: "%020lld", rowid) }
+        let start = Pagination.keysetStart(
+            in: deduped, offset: max(0, offset),
+            anchor: anchor.flatMap { $0.id == nil ? nil : Cursor.Anchor(epoch: $0.epoch, id: rowKey($0.rowid)) },
+            key: \.operationalEpoch, id: { rowKey($0.rowid) }, descending: true
+        )
+        let window = Array(deduped.dropFirst(start).prefix(max(1, limit)))
         return try Scan(
             messages: buildMessages(window, targets: targets, populateTo: true),
             hitCandidateCap: fetched.count >= candidateCap && window.count < max(1, limit)
