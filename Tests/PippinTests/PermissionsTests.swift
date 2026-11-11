@@ -83,6 +83,16 @@ final class PermissionsTests: XCTestCase {
         XCTAssertNotNil(r.remediation)
     }
 
+    func testAdapterAutomationFallbackRemediationUsesAutomationPane() throws {
+        let r = PermissionPrimer.report(
+            from: DiagnosticCheck(name: "Notes access", status: .fail, detail: "permission denied"),
+            integration: "Notes", mechanism: .automation, listCommand: "pippin notes folders"
+        )
+        let hint = try XCTUnwrap(r.remediation).humanHint
+        XCTAssertTrue(hint.contains("Privacy & Security > Automation"), hint)
+        XCTAssertFalse(hint.contains("Privacy & Security > Notes"), hint)
+    }
+
     func testAdapterFullDiskAccessFailIsManualRequired() {
         let r = PermissionPrimer.report(
             from: DiagnosticCheck(name: "Messages access", status: .fail, detail: "permission denied"),
