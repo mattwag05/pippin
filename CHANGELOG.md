@@ -9,6 +9,29 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- [fix] Running bare `pippin` starts the interactive shell again. It crashed with exit 1 and no output. Closes pippin-o190.
+- [fix] A command run through the MCP server returns once its child exits, even when a grandchild still holds the output pipe open. It used to wait for the grandchild. Closes pippin-oqq9.
+- [fix] JXA script bodies, which can contain mail and note text, go to `osascript` on stdin instead of argv, so they no longer show in process listings. pippin-xr89.
+- [fix] Config, session, cache databases (WAL files included), the account cache and job logs are created owner-only (directories 0700, files 0600), and looser existing ones are tightened when opened. pippin-xr89.
+- [fix] A script that exits 0 with output is no longer reported as failed because it also wrote to stderr. pippin-xr89.
+- [fix] `messages search --fields` and the MCP `messages_search` `fields` argument trim the match rows. They used to drop every match. pippin-xr89.
+- [fix] `mail list --cursor` no longer repeats or skips messages when new mail arrives between pages, on the Envelope Index path. Cursors issued by older versions still work. pippin-xr89.
+- [fix] A Reminders fetch that times out returns an empty partial result and no longer reads a value the late callback may still be writing. pippin-xr89.
+- [fix] The permissions report points a failed Mail or Notes Automation check at the Automation pane in System Settings. Closes pippin-qq4c.
+
+### Performance
+
+- [perf] The default MCP tool list is 3.5% smaller (22,617 to 21,829 harness tokens): the three safety arguments repeated on 34 tools have shorter descriptions. Closes pippin-hd99.
+
+### Changed
+
+- [build] `make install` and release binaries are signed with the hardened runtime and `scripts/pippin.entitlements` (Apple Events, Calendars, Contacts). Existing permission grants are kept. pippin-xr89.
+- [refactor] Removed the unreachable "scan window did not reach `--before`" hint from `mail list`. Closes pippin-p813.
+- [ci] The detach-blocking and paginated-emit lints and the fuzz and chaos suite script fail when they scan or run nothing, and `make ci-vm` runs the paginated-emit lint. pippin-xr89.
+- [test] `make e2e` requests `receivedAt` for its two receipt-time checks, and the batch `mail show` check no longer skips when a message id contains a space.
+
 ## [1.0.1] - 2026-11-10
 
 ### Changed
