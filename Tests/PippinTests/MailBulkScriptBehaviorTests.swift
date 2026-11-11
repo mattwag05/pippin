@@ -137,9 +137,13 @@ final class MailBulkScriptBehaviorTests: XCTestCase {
         "[fakeAccount('A', [fakeMailbox('INBOX', \(rows), \(opts))])]"
     }
 
-    private func listScript(limit: Int = 10, offset: Int = 0, preview: Int? = nil, unread: Bool = false, softTimeoutMs: Int = 10000) -> String {
+    private func listScript(
+        limit: Int = 10, offset: Int = 0, preview: Int? = nil, unread: Bool = false,
+        seekingAfter anchor: Cursor.Anchor? = nil, softTimeoutMs: Int = 10000
+    ) -> String {
         MailBridge.buildListScript(
-            account: nil, mailbox: "INBOX", unread: unread, limit: limit, offset: offset, preview: preview, softTimeoutMs: softTimeoutMs
+            account: nil, mailbox: "INBOX", unread: unread, limit: limit, offset: offset, preview: preview,
+            seekingAfter: anchor, softTimeoutMs: softTimeoutMs
         )
     }
 
@@ -346,6 +350,36 @@ final class MailBulkScriptBehaviorTests: XCTestCase {
         """
         let run = try execute(listScript(limit: 2, offset: 1), accounts: accounts)
         XCTAssertEqual(run.ids, ["B||INBOX||2", "A||INBOX||10"], "numeric rowId tie break puts 2 before 10")
+    }
+
+    private func daily(_ days: [Int]) -> String {
+        "[" + days.map { "{id: \($0), received: '2026-01-0\($0)T00:00:00Z'}" }.joined(separator: ", ") + "]"
+    }
+
+    private func anchor(day: Int) -> Cursor.Anchor {
+        Cursor.Anchor(epoch: Int64(Date(timeIntervalSince1970: 1_767_225_600).timeIntervalSince1970) + Int64(day - 1) * 86400,
+                      rowid: Int64(day), id: "A||INBOX||\(day)") // 1_767_225_600 = 2026-01-01T00:00:00Z
+    }
+
+    func testListResumesAfterTheAnchorWhenNewerMailArrives() throws {
+        let page1 = try execute(listScript(limit: 2), accounts: oneAccount(daily([1, 2, 3, 4])))
+        XCTAssertEqual(page1.ids, ["A||INBOX||4", "A||INBOX||3"])
+        let grown = oneAccount(daily([1, 2, 3, 4, 5])) // mail arrived after page 1
+        XCTAssertEqual(try execute(listScript(limit: 2, offset: 2), accounts: grown).ids,
+                       ["A||INBOX||3", "A||INBOX||2"], "offset paging repeats message 3")
+        let page2 = try execute(listScript(limit: 2, offset: 2, seekingAfter: anchor(day: 3)), accounts: grown)
+        XCTAssertEqual(page2.ids, ["A||INBOX||2", "A||INBOX||1"])
+    }
+
+    func testListResumesAtTheNextRowWhenTheAnchorMessageIsGone() throws {
+        let run = try execute(listScript(limit: 2, offset: 2, seekingAfter: anchor(day: 3)), accounts: oneAccount(daily([1, 2, 4])))
+        XCTAssertEqual(run.ids, ["A||INBOX||2", "A||INBOX||1"])
+    }
+
+    func testListAnchorIdIsEscapedAsAStringLiteral() throws {
+        let hostile = Cursor.Anchor(epoch: 0, rowid: 0, id: "x'); throw new Error('pwned'); ('")
+        let run = try execute(listScript(seekingAfter: hostile), accounts: oneAccount(daily([1, 2])))
+        XCTAssertEqual(run.ids, [])
     }
 
     func testListUnreadExcludesReadMessages() throws {

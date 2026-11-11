@@ -88,6 +88,7 @@ extension MailBridge {
         preview: Int? = nil,
         after: String? = nil,
         before: String? = nil,
+        seekingAfter anchor: Cursor.Anchor? = nil,
         softTimeoutMs: Int = SoftTimeout.defaultMs
     ) -> String {
         let acctFilter = jsEscapeOptional(account)
@@ -110,6 +111,9 @@ extension MailBridge {
         var unreadOnly = \(unread ? "true" : "false");
         var limit = \(limit);
         var offset = \(offset);
+        var anchorId = \(jsEscapeOptional(anchor?.id));
+        var anchorSec = \(anchor?.epoch ?? 0);
+        var anchorRow = \(anchor?.rowid ?? 0);
         var previewChars = \(previewChars);
         var afterFilter = \(afterFilter);
         var beforeFilter = \(beforeFilter);
@@ -153,14 +157,36 @@ extension MailBridge {
                 if (beforeDate !== null && operationalDate > beforeDate) continue;
                 candidates.push({
                     mb: mb, b: b, i: i, acct: acctName, mbName: resolvedMbName, dates: dates,
-                    opIso: operationalDate.toISOString(), rowId: Number(b.ids[i])
+                    opIso: operationalDate.toISOString(), rowId: Number(b.ids[i]),
+                    sec: Math.floor(operationalDate.getTime() / 1000),
+                    key: acctName + '||' + resolvedMbName + '||' + b.ids[i]
                 });
             }
         }
 
         if (_unreadableMailbox) _meta.timedOut = true;
-        candidates.sort(newestFirstThenRowId);
-        candidates = candidates.slice(offset, offset + limit);
+        // Newest first, then row id, then the full id: a total order a keyset cursor can resume in.
+        candidates.sort(function(x, y) {
+            if (x.sec !== y.sec) return y.sec - x.sec;
+            if (x.rowId !== y.rowId) return x.rowId - y.rowId;
+            return x.key < y.key ? -1 : (x.key > y.key ? 1 : 0);
+        });
+        // Resume after the anchor message, or at the first row sorting after it when it is gone.
+        var start = offset;
+        if (anchorId !== null) {
+            start = candidates.length;
+            for (var k = 0; k < candidates.length; k++) {
+                if (candidates[k].key === anchorId) { start = k + 1; break; }
+            }
+            if (start === candidates.length) {
+                for (var m = 0; m < candidates.length; m++) {
+                    var _c = candidates[m];
+                    if (_c.sec < anchorSec || (_c.sec === anchorSec && (_c.rowId > anchorRow
+                        || (_c.rowId === anchorRow && _c.key > anchorId)))) { start = m; break; }
+                }
+            }
+        }
+        candidates = candidates.slice(start, start + limit);
         var results = [];
         for (var r = 0; r < candidates.length; r++) {
             var c = candidates[r];

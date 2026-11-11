@@ -257,7 +257,7 @@ enum MailBridge {
         let script = buildListScript(
             account: account, mailbox: mailbox, unread: unread,
             limit: clampedLimit, offset: clampedOffset, preview: preview,
-            after: after, before: before,
+            after: after, before: before, seekingAfter: anchor,
             softTimeoutMs: softTimeoutMs
         )
         // The JXA loop self-bounds via softTimeoutMs (default 22s) when preview
