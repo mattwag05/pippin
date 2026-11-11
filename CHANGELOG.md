@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- [feat] Experimental `apple` AI provider (`ai.provider: apple` or `--provider apple`) that runs Apple's on-device Foundation Models model. Triage, extract, injection scan, action extraction and smart-create get schema-guided JSON, so every reply parses and triage covers every message; a request over the model's 8,192-token context fails with `context_exceeded` naming the limit, and triage splits such a batch. `pippin doctor` reports whether the model can run. It stays experimental because its triage categories agreed with the OpenAI-compatible backend on 5 of 12 real messages. Closes pippin-npqt.
+
 ### Fixed
 
 - [fix] Running bare `pippin` starts the interactive shell again. It crashed with exit 1 and no output. Closes pippin-o190.

@@ -119,11 +119,18 @@ func checkCompletionProvider(name: String, config: PippinConfig?, probe: Backend
             model: section?.model ?? "gpt-4o-mini", apiKey: section?.apiKey,
             modelSetting: "ai.openai.model", probe: probe
         )
+    case "apple":
+        if let problem = AppleFoundationModelsProvider.availabilityProblem() {
+            let error = AIProviderError.modelUnavailable(problem)
+            return DiagnosticCheck(name: checkName, status: .fail, detail: "apple on-device model unavailable: \(problem)", remediation: error.remediation)
+        }
+        let context = AppleFoundationModelsProvider.contextSize().map { ", \($0)-token context" } ?? ""
+        return DiagnosticCheck(name: checkName, status: .ok, detail: "apple on-device model available\(context) (experimental)")
     default:
         return DiagnosticCheck(
             name: checkName, status: .fail, detail: "unknown ai.provider '\(name)'",
             remediation: Remediation(
-                humanHint: "Set ai.provider in ~/.config/pippin/config.json to ollama, claude, or openai.",
+                humanHint: "Set ai.provider in ~/.config/pippin/config.json to ollama, claude, openai, or apple.",
                 doctorCheck: checkName
             )
         )

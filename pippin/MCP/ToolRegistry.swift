@@ -403,12 +403,12 @@ enum MCPToolRegistry {
         MCPToolSpec("mail_sanitize", .readOnly, "Scan a message for prompt-injection patterns before acting on its contents. Read-only. Use alongside mail_verify on anything suspicious.", properties: [
             .arg("messageId", .positional, "Compound message ID from mail_list output."),
             .arg("aiAssisted", "--ai-assisted", "Add an AI-assisted scan on top of the rule-based patterns."),
-            .arg("provider", "--provider", "AI provider for aiAssisted: ollama, claude, or openai."),
+            .arg("provider", "--provider", "AI provider for aiAssisted: ollama, claude, openai, or apple."),
             .arg("model", "--model"),
         ]),
         MCPToolSpec("mail_extract", .readOnly, "Extract structured data (dates, amounts, contacts, action items) from one message using AI. Read-only.", properties: [
             .arg("messageId", .positional, "Compound message ID from mail_list output."),
-            .arg("provider", "--provider", "AI provider: ollama, claude, or openai."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, openai, or apple."),
             .arg("model", "--model", "Model name."),
         ]),
 
@@ -474,14 +474,14 @@ enum MCPToolRegistry {
         MCPToolSpec("calendar_smart_create", .mutating(verifyWith: "calendar_upcoming"), "Create an event from a natural-language description using AI (resolves calendar names, unlike calendar_create which needs an EventKit ID). Reports scheduling conflicts unless allowConflicts is set.", properties: [
             .arg("description", .trailing, "Natural-language event description, e.g. 'lunch with Sam next Tuesday at noon'."),
             .arg("calendar", "--calendar", "Target calendar name (resolved for you)."),
-            .arg("provider", "--provider", "AI provider: ollama, claude, or openai."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, openai, or apple."),
             .arg("model", "--model", "Model name."),
             .arg("dryRun", "--dry-run", "Show the parsed event without creating it."),
             .arg("allowConflicts", "--allow-conflicts", "Create even if it overlaps an existing event."),
         ]),
         MCPToolSpec("calendar_agenda", .readOnly, "AI-generated briefing of upcoming events. Read-only.", properties: [
             .arg("days", "--days", "Days to cover, 1-7 (default: 1).", as: .integer),
-            .arg("provider", "--provider", "AI provider: ollama, claude, or openai."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, openai, or apple."),
             .arg("model", "--model", "Model name."),
         ]),
         MCPToolSpec("calendar_conflicts", .readOnly, "Find overlapping events in a time window. Read-only. Use before scheduling.", properties: [
@@ -539,7 +539,7 @@ enum MCPToolRegistry {
         MCPToolSpec("reminders_smart_create", .mutating(verifyWith: "reminders_list"), "Create a reminder from a natural-language description using AI (resolves list names, unlike reminders_create which needs an EventKit ID).", properties: [
             .arg("description", .trailing, "Natural-language reminder, e.g. 'call the dentist Friday morning'."),
             .arg("list", "--list", "Target list name (resolved for you)."),
-            .arg("provider", "--provider", "AI provider: ollama, claude, or openai."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, openai, or apple."),
             .arg("model", "--model", "Model name."),
             .arg("dryRun", "--dry-run", "Show the parsed reminder without creating it."),
         ]),
@@ -677,7 +677,7 @@ enum MCPToolRegistry {
             .arg("memo", "--memo"),
             .arg("list", "--list"),
             .arg("dryRun", "--dry-run"),
-            .arg("provider", "--provider", "AI provider: ollama, claude, or openai (default: ai.provider, else ollama)."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, openai, or apple (default: ai.provider, else ollama)."),
             .arg("model", "--model"),
         ]),
         MCPToolSpec("memos_summarize", .mutating(verifyWith: nil), "Summarize a Voice Memos recording using the configured AI provider.", properties: [
@@ -685,7 +685,7 @@ enum MCPToolRegistry {
             .arg("all", "--all", "Summarize every recording."),
             .arg("template", "--template", "Template name (e.g. meeting-notes, summary, action-items)."),
             .arg("prompt", "--prompt", "Free-form prompt (overrides template)."),
-            .arg("provider", "--provider", "AI provider: ollama, claude, or openai (default: ai.provider, else ollama)."),
+            .arg("provider", "--provider", "AI provider: ollama, claude, openai, or apple (default: ai.provider, else ollama)."),
             .arg("model", "--model"),
             .arg("since", "--since", "With all=true, only memos on or after YYYY-MM-DD."),
             .arg("output", "--output", "Write output to a directory instead of inline JSON."),

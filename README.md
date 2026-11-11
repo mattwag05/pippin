@@ -440,7 +440,7 @@ The 79 tools cover mail, calendar, reminders, contacts, notes, voice memos, Mess
 | `pippin/NotesBridge/` | JXA subprocess bridge for Notes.app |
 | `pippin/ContactsBridge/` | CNContactStore wrapper (read + write) |
 | `pippin/MessagesBridge/` | GRDB SQLite access to Apple Messages (read + gated send) |
-| `pippin/AIProvider/` | Ollama, Claude, and OpenAI-compatible backends; per-feature embedding and transcription factories |
+| `pippin/AIProvider/` | Ollama, Claude, OpenAI-compatible and Apple on-device (experimental) backends; per-feature embedding and transcription factories |
 | `pippin/Jobs/` | Filesystem-backed registry for detached `pippin job` subprocesses |
 | `pippin/Planner/` | LLM-driven plan-and-execute over the MCP tool registry (`pippin do`) |
 | `pippin/Pagination/` | Opaque-cursor tokens + filter-hash guards for list commands |
@@ -457,7 +457,8 @@ The whole codebase builds under Swift 6 strict concurrency. JXA bridges run `osa
 - **macOS 15 (Sequoia) or later**, on arm64 for pre-built binaries
 - **Swift 6.0 or later** for source builds
 - **mlx-audio** for the default memo transcription backend. You don't need it when `ai.transcription.provider` is `apple` or `openai`. The experimental `audio` command also uses it
-- **Ollama** for the default AI and embeddings backend. Claude and OpenAI-compatible endpoints work without it
+- **Ollama** for the default AI and embeddings backend. Claude, OpenAI-compatible endpoints and the on-device `apple` provider work without it
+- **Apple Intelligence** (macOS 26 or later, turned on, model downloaded) only for `ai.provider: apple` / `--provider apple`. That provider is **experimental**: its structured output is always valid JSON covering every message, but on real mail its `mail triage` categories agreed with the configured OpenAI-compatible backend on only 5 of 12 messages, and its 8,192-token context is too small for `pippin do`. `pippin doctor` reports whether it can run
 
 `audio` (speech through mlx-audio) and `browser` (Playwright WebKit) are hidden unless you set `PIPPIN_EXPERIMENTAL=1`. They'll be removed in the next major release unless someone files an issue asking to keep them. See `CHANGELOG.md`.
 

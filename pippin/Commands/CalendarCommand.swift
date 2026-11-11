@@ -481,7 +481,7 @@ public struct CalendarCommand: AsyncParsableCommand {
             let jsonStr = try await detachBlocking {
                 try aiProvider.complete(
                     prompt: descriptionLocal, system: systemPrompt,
-                    options: AICompletionOptions(jsonMode: true)
+                    options: AICompletionOptions(jsonMode: true, schema: SmartEventSpec.outputSchema)
                 )
             }
 
@@ -963,6 +963,15 @@ private struct SmartEventSpec: Codable {
     let location: String?
     let isAllDay: Bool?
     let notes: String?
+
+    static let outputSchema = AIOutputSchema.object([
+        AIOutputField("title", .string),
+        AIOutputField("start", .string),
+        AIOutputField("end", .string, optional: true),
+        AIOutputField("location", .string, optional: true),
+        AIOutputField("isAllDay", .boolean, optional: true),
+        AIOutputField("notes", .string, optional: true),
+    ])
 }
 
 /// Extract the first complete JSON object from a text response.

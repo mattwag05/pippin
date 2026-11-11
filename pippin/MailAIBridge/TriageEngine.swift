@@ -61,7 +61,46 @@ public enum TriageEngine {
         let actionItems: [String]
     }
 
+    /// Triage one batch. A batch too large for the model's context (the
+    /// on-device model has about 8k tokens) is split in half until each
+    /// request fits, and the halves are merged.
     private static func triageBatch(_ batch: [MailMessage], provider: any AIProvider) throws -> BatchResponse {
+        do {
+            return try triageRequest(batch, provider: provider)
+        } catch AIProviderError.contextExceeded where batch.count > 1 {
+            let mid = batch.count / 2
+            let first = try triageBatch(Array(batch[..<mid]), provider: provider)
+            let second = try triageBatch(Array(batch[mid...]), provider: provider)
+            return BatchResponse(
+                messages: first.messages + second.messages,
+                summary: [first.summary, second.summary].filter { !$0.isEmpty }.joined(separator: " "),
+                actionItems: first.actionItems + second.actionItems
+            )
+        }
+    }
+
+    /// The JSON shape `BatchResponse` decodes: one entry per message, each
+    /// naming one of this batch's IDs.
+    static func outputSchema(ids: [String]) -> AIOutputSchema {
+        var unique: [String] = []
+        for id in ids where !unique.contains(id) {
+            unique.append(id)
+        }
+        return .object([
+            AIOutputField("messages", .array(.object([
+                AIOutputField("compoundId", .choice(unique)),
+                AIOutputField("subject", .string),
+                AIOutputField("from", .string),
+                AIOutputField("category", .choice(TriageCategory.allCases.map(\.rawValue))),
+                AIOutputField("urgency", .integer),
+                AIOutputField("oneLiner", .string),
+            ]), minCount: unique.count, maxCount: unique.count)),
+            AIOutputField("summary", .string),
+            AIOutputField("actionItems", .array(.string)),
+        ])
+    }
+
+    private static func triageRequest(_ batch: [MailMessage], provider: any AIProvider) throws -> BatchResponse {
         var prompt = "Messages to triage:\n\n"
         for (i, msg) in batch.enumerated() {
             prompt += "\(i + 1). Subject: \(msg.subject)\n   From: \(msg.from)\n   Date: \(msg.date)\n   ID: \(msg.id)\n\n"
@@ -69,7 +108,7 @@ public enum TriageEngine {
         let response = try provider.complete(
             prompt: prompt,
             system: MailAIPrompts.triageSystemPrompt,
-            options: AICompletionOptions(jsonMode: true)
+            options: AICompletionOptions(jsonMode: true, schema: outputSchema(ids: batch.map(\.id)))
         )
         let stripped = stripAIResponseJSON(response)
         do {

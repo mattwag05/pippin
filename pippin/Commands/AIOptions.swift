@@ -4,7 +4,7 @@ import ArgumentParser
 /// once. Commands whose flags carry different help text (`do`, `mail triage`,
 /// `mail sanitize`, `mail list --summarize`) keep their own declarations.
 public struct AIOptions: ParsableArguments, Sendable {
-    @Option(name: .long, help: "AI provider: ollama, claude, or openai (default: ollama).")
+    @Option(name: .long, help: "AI provider: ollama, claude, openai, or apple (default: ollama).")
     public var provider: String?
 
     @Option(name: .long, help: "Model name (provider-specific default).")

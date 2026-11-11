@@ -63,7 +63,7 @@
       "type" : "boolean"
     },
     "provider" : {
-      "description" : "AI provider: ollama, claude, or openai (default: ollama).",
+      "description" : "AI provider: ollama, claude, openai, or apple (default: ollama).",
       "type" : "string"
     }
   },
