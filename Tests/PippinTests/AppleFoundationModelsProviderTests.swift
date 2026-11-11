@@ -60,6 +60,14 @@ final class AppleFoundationModelsProviderTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
+    /// The allowed values of a choice property. The macOS 27 SDK encodes a
+    /// choice as one `enum`; the macOS 26 SDK as `anyOf` single-value enums.
+    private func choiceValues(_ property: Any?) -> [String]? {
+        guard let property = property as? [String: Any] else { return nil }
+        if let values = property["enum"] as? [String] { return values }
+        return (property["anyOf"] as? [[String: Any]])?.flatMap { $0["enum"] as? [String] ?? [] }
+    }
+
     func testTriageSchemaPinsIDsCategoriesAndCount() throws {
         let json = try encoded(TriageEngine.outputSchema(ids: ["a", "b", "a"]))
         XCTAssertEqual(json["required"] as? [String], ["messages", "summary", "actionItems"])
@@ -71,9 +79,9 @@ final class AppleFoundationModelsProviderTests: XCTestCase {
         let defs = try XCTUnwrap(json["$defs"] as? [String: Any])
         let item = try XCTUnwrap(defs["Response_messagesItem"] as? [String: Any])
         let itemProperties = try XCTUnwrap(item["properties"] as? [String: Any])
-        XCTAssertEqual((itemProperties["compoundId"] as? [String: Any])?["enum"] as? [String], ["a", "b"])
+        XCTAssertEqual(choiceValues(itemProperties["compoundId"]), ["a", "b"])
         XCTAssertEqual(
-            (itemProperties["category"] as? [String: Any])?["enum"] as? [String],
+            choiceValues(itemProperties["category"]),
             TriageCategory.allCases.map(\.rawValue)
         )
         XCTAssertEqual((itemProperties["urgency"] as? [String: Any])?["type"] as? String, "integer")
