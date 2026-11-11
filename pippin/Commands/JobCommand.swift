@@ -402,8 +402,9 @@ enum JobLauncher {
 
     private static func openAppend(_ path: String) throws -> FileHandle {
         if !FileManager.default.fileExists(atPath: path) {
-            FileManager.default.createFile(atPath: path, contents: nil)
+            FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
         }
+        PrivateFile.restrict(path)
         do {
             let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
             try handle.seekToEnd()
@@ -498,9 +499,7 @@ public struct GcResult: Encodable, Sendable {
 // MARK: - Helpers
 
 private func ensureRoot(_ store: JobStore) throws {
-    try? FileManager.default.createDirectory(
-        atPath: store.root, withIntermediateDirectories: true
-    )
+    try? PrivateFile.ensureDirectory(store.root)
 }
 
 /// Parse "7d" / "12h" / "30m" / "2w" into seconds. Used by `job gc

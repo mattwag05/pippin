@@ -83,11 +83,7 @@ public final class SessionManager: @unchecked Sendable {
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(state) else { return }
 
-        let dir = (path as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-
-        // Atomic write
-        try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        try? PrivateFile.writeAtomically(data, to: path)
     }
 
     private static func load(from path: String) -> SessionState? {

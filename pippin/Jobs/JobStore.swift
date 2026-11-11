@@ -89,23 +89,21 @@ public final class JobStore: @unchecked Sendable {
     public func createDir(_ id: String) throws -> String {
         let dir = jobDir(id)
         do {
-            try FileManager.default.createDirectory(
-                atPath: dir, withIntermediateDirectories: true
-            )
+            try PrivateFile.ensureDirectory(root)
+            try PrivateFile.ensureDirectory(dir)
         } catch {
             throw JobStoreError.rootCreationFailed(dir)
         }
-        FileManager.default.createFile(atPath: stdoutPath(id), contents: nil)
-        FileManager.default.createFile(atPath: stderrPath(id), contents: nil)
+        // The logs tail mail and note text: owner-only.
+        for path in [stdoutPath(id), stderrPath(id)] {
+            FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600])
+            PrivateFile.restrict(path)
+        }
         return dir
     }
 
     public func write(_ job: Job) throws {
         let path = statusPath(job.id)
-        let dir = (path as NSString).deletingLastPathComponent
-        try? FileManager.default.createDirectory(
-            atPath: dir, withIntermediateDirectories: true
-        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -116,7 +114,7 @@ public final class JobStore: @unchecked Sendable {
             throw JobStoreError.statusWriteFailed(error.localizedDescription)
         }
         do {
-            try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            try PrivateFile.writeAtomically(data, to: path)
         } catch {
             throw JobStoreError.statusWriteFailed(error.localizedDescription)
         }

@@ -106,11 +106,7 @@ enum MailAccountsCache {
     static func save(_ accounts: [MailAccountRecord], fetchedAt: Date, path: String = defaultPath()) {
         let file = CacheFile(fetchedAt: fetchedAt, accounts: accounts)
         guard let data = try? JSONEncoder.withISODates().encode(file) else { return }
-        try? FileManager.default.createDirectory(
-            atPath: (path as NSString).deletingLastPathComponent,
-            withIntermediateDirectories: true
-        )
-        try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        try? PrivateFile.writeAtomically(data, to: path)
     }
 
     /// Return a usable account map for a query, fetching via JXA only when
