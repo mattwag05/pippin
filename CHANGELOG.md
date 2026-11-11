@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- [build] Release binaries are notarized by Apple, starting with v1.1.0 (notarized after publishing; the asset is unchanged). Closes pippin-zhv0.
+
 ## [1.1.0] - 2026-11-10
 
 ### Added

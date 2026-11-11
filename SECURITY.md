@@ -78,7 +78,7 @@ Paths are verified in the source; the file named in each row defines the locatio
 
 The caches hold private content. Pippin creates its directories mode 0700 and its config, session, cache database, account cache and job files mode 0600, and tightens looser ones from an older version when it opens them (`FileModeTests`). Saved attachments, templates and exported memos keep the default mode. Any process running as you can still read all of it.
 
-Release and `make install` binaries are signed with the hardened runtime, which blocks library injection and debugger attach. They are not notarized. The action log keeps recipients, subjects, titles and ids as plain text.
+Release and `make install` binaries are signed with the hardened runtime, which blocks library injection and debugger attach. Release binaries from v1.1.0 on are also notarized by Apple; a local `make install` build is not. The action log keeps recipients, subjects, titles and ids as plain text.
 
 ### What can leave the machine
 

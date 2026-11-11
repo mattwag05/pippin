@@ -77,6 +77,16 @@ gh release create vX.Y.Z --title "vX.Y.Z: pippin" --notes-file /tmp/notes.md --v
 
 Before `gh release create`, confirm the asset is Developer ID signed: `codesign -dvv .build/release-artifacts/pippin-X.Y.Z-arm64-macos 2>&1 | grep Authority` must print `Authority=Developer ID Application: …`. If it doesn't, stop; do not upload an ad-hoc asset.
 
+Then notarize the same binary (pippin-zhv0). Codesign gives a Developer ID signature a secure timestamp by default, and the hardened runtime is always on, so `make tarball` output is ready as built. Notarizing changes no bytes, so the asset and the formula `sha256` stay valid:
+
+```bash
+cd .build/release-artifacts
+ditto -c -k --keepParent pippin-X.Y.Z-arm64-macos pippin-X.Y.Z.zip
+xcrun notarytool submit pippin-X.Y.Z.zip --keychain-profile pippin-notary --wait
+```
+
+It must end with `status: Accepted`; on `Invalid`, read `xcrun notarytool log <id> --keychain-profile pippin-notary` and fix before uploading. A bare Mach-O cannot be stapled, so Gatekeeper checks the ticket online. The `pippin-notary` profile is an App Store Connect team API key (Developer role) in the login keychain, stored once with `xcrun notarytool store-credentials pippin-notary`; it is not on the Forgejo runner, so this step stays local.
+
 This reproduces exactly what the old `release.yml` produced (title, changelog body, arm64 asset, not a pre-release). Verify with `gh release view vX.Y.Z`.
 
 ### 7. Update the Homebrew tap formula

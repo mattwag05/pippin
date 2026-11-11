@@ -81,8 +81,10 @@ across both install paths. `scripts/sign.sh` does this; `make install` /
   expires (~1yr); Developer ID's DR is team-based and survives renewal. Apple
   Development also can't be notarized for distribution: local dev loop only.
 - **Notarization is NOT needed for TCC.** It's a Gatekeeper/quarantine concern
-  (binaries *downloaded* to other Macs). Set `PIPPIN_SIGN_HARDENED=1` to add
-  `--timestamp` only when you'll notarize for distribution.
+  (binaries *downloaded* to other Macs). Codesign already gives a Developer ID
+  signature a secure timestamp, so release builds notarize as built; the release
+  skill submits each one (`notarytool` profile `pippin-notary`).
+  `PIPPIN_SIGN_HARDENED=1` forces `--timestamp` for other identities.
 - **The hardened runtime is always on** (`--options runtime`), with
   `scripts/pippin.entitlements` granting Apple Events, Calendars (EventKit,
   which covers Reminders) and Contacts. Under the hardened runtime a missing
