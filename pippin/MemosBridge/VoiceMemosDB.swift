@@ -433,6 +433,17 @@ public final class VoiceMemosDB: Sendable {
 
         do {
             try writableQueue.write { db in
+                // The store's triggers keep derived columns (a folder's count)
+                // current themselves, then call functions only Core Data
+                // registers to refresh its in-memory objects. The app is not
+                // running, so those are no-ops here; without them the DELETE
+                // fails with "no such function".
+                let triggers = try String.fetchAll(db, sql: "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND sql IS NOT NULL")
+                    .joined(separator: " ")
+                let names = Set(triggers.matches(of: /\b(NSCoreData\w+)\s*\(/).map { String($0.1) })
+                for name in names {
+                    db.add(function: DatabaseFunction(name) { _ in nil })
+                }
                 try db.execute(
                     sql: "DELETE FROM ZCLOUDRECORDING WHERE ZUNIQUEID = ?",
                     arguments: [id]

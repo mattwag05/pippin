@@ -120,6 +120,29 @@ final class MemosDeleteTests: XCTestCase {
         XCTAssertTrue(exists(audioPath("two.m4a")), "the other recording is untouched")
     }
 
+    /// The real store's derived-attribute triggers call a function only Core
+    /// Data registers, so a plain DELETE of a recording in a folder failed with
+    /// "no such function" (seen on a live store, pippin-3ljg).
+    func testDeleteRunsTheStoresCoreDataTriggers() throws {
+        try DatabaseQueue(path: dbPath).write { db in
+            try db.execute(sql: """
+            CREATE TABLE ZFOLDER (Z_PK INTEGER PRIMARY KEY, Z_ENT INTEGER, ZCOUNTOFRECORDINGS INTEGER);
+            INSERT INTO ZFOLDER VALUES (1, 3, 2);
+            CREATE TRIGGER Z_DA_DELETE AFTER DELETE ON ZCLOUDRECORDING FOR EACH ROW BEGIN
+                UPDATE ZFOLDER SET ZCOUNTOFRECORDINGS = ZCOUNTOFRECORDINGS - 1 WHERE Z_PK = 1;
+                SELECT NSCoreDataDATriggerUpdatedAffectedObjectValue('ZFOLDER', Z_ENT, Z_PK, 'countOfRecordings', ZCOUNTOFRECORDINGS)
+                FROM ZFOLDER WHERE Z_PK = 1;
+            END;
+            """)
+        }
+        _ = try VoiceMemosDB.deleteMemo(id: memoId, dbPath: dbPath, isAppRunning: { false }, trash: fakeTrash)
+        XCTAssertEqual(try rowIds(), [otherId])
+        let count = try DatabaseQueue(path: dbPath).read { db in
+            try Int.fetchOne(db, sql: "SELECT ZCOUNTOFRECORDINGS FROM ZFOLDER")
+        }
+        XCTAssertEqual(count, 1, "the trigger's own bookkeeping still runs")
+    }
+
     func testDeleteRefusesWhileVoiceMemosIsRunning() throws {
         XCTAssertThrowsError(try VoiceMemosDB.deleteMemo(
             id: memoId, dbPath: dbPath, isAppRunning: { true },

@@ -19,6 +19,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - [fix] `messages search --fields` and the MCP `messages_search` `fields` argument trim the match rows. They used to drop every match. pippin-xr89.
 - [fix] `mail list --cursor` no longer repeats or skips messages when new mail arrives between pages, on the Envelope Index path. Cursors issued by older versions still work. pippin-xr89.
 - [fix] A Reminders fetch that times out returns an empty partial result and no longer reads a value the late callback may still be writing. pippin-xr89.
+- [fix] `memos delete` works on a recording that is in a folder. The store's Core Data triggers made the delete fail with "no such function" (nothing was lost: the audio was moved back). Closes pippin-3ljg.
 - [fix] The permissions report points a failed Mail or Notes Automation check at the Automation pane in System Settings. Closes pippin-qq4c.
 
 ### Performance
