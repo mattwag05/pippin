@@ -459,6 +459,8 @@ The whole codebase builds under Swift 6 strict concurrency. JXA bridges run `osa
 - **mlx-audio** for the default memo transcription backend. You don't need it when `ai.transcription.provider` is `apple` or `openai`. The experimental `audio` command also uses it
 - **Ollama** for the default AI and embeddings backend. Claude and OpenAI-compatible endpoints work without it
 
+Verified OpenAI-compatible local backends: oMLX 0.7.2 serving `Qwen3-Embedding-0.6B-4bit-DWQ` for `ai.embeddings` and `parakeet-tdt-0.6b-v3` for `ai.transcription` (live check, 2026-11-10: semantic search ranked the expected messages in the top five of 80, and a 338-second memo transcribed fully).
+
 `audio` (speech through mlx-audio) and `browser` (Playwright WebKit) are hidden unless you set `PIPPIN_EXPERIMENTAL=1`. They'll be removed in the next major release unless someone files an issue asking to keep them. See `CHANGELOG.md`.
 
 ## Development
