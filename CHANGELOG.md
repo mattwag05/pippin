@@ -12,6 +12,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - [feat] Mail scans on the Envelope Index path now record each sender's Message-ID domain in the sender baseline, so `mail list`/`search`/`activity` can flag a Message-ID domain change on a message you never opened. Existing baseline rows are never overwritten and a repeat scan writes nothing. Closes pippin-09ky.
+- [feat] `pippin job schedule --every <dur>|--cron "<m h dom mon dow>" -- <argv>`, `job schedules` and `job unschedule <id>` run a pippin command on a recurring schedule through one LaunchAgent per schedule. A fire that finds the previous one still running is recorded as a `skipped` job. `job run` gained `--wait` and `--schedule-id`. Closes pippin-jz1y.
 
 ### Fixed
 

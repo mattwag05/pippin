@@ -42,6 +42,8 @@ final class CLIMCPDriftTests: XCTestCase {
         "--no-notes": (["actions_extract"], "Not exposed yet."),
         "--latency": (["doctor"], "Adds up to 70 s, past the MCP call budget; run it from the CLI."),
         "--poll-ms": (["job_wait"], "Polling cadence is an implementation detail."),
+        "--wait": (["job_run"], "Holds the process open; job_run returns at once and job_wait blocks."),
+        "--schedule-id": (["job_run"], "Set by the LaunchAgent that `job schedule` writes; scheduling is CLI-only."),
         "--input": (["batch"], "Reads a file; the tool passes entries inline."),
         "--locate-by-message-id": (["mail_move"], "What `pippin undo` runs to move a message back; a client calls undo instead."),
         "--incomplete": (["reminders_complete"], "What `pippin undo` runs to un-complete; a client calls undo instead."),

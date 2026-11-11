@@ -92,6 +92,9 @@ Every command `pippin` exposes, with its own help text. Generated from the comma
 | `pippin mcp-server` | Run pippin as an MCP server over stdio. |
 | `pippin batch` | Execute multiple pippin commands concurrently from a JSON array. |
 | `pippin job run` | Fork a detached pippin sub-command; returns a job_id immediately. |
+| `pippin job schedule` | Run a pippin command on a recurring schedule (a LaunchAgent that starts `job run`). |
+| `pippin job schedules` | List recurring schedules with the status of their last run. |
+| `pippin job unschedule` | Remove a recurring schedule (unloads and deletes its LaunchAgent). |
 | `pippin job show` | Show a job's status + stdout/stderr tails. |
 | `pippin job list` | List recent jobs (default: 20 most recent). |
 | `pippin job wait` | Block until a job reaches a terminal state, then print its status. |

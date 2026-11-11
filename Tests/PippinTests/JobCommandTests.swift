@@ -10,7 +10,7 @@ final class JobCommandTests: XCTestCase {
 
     func testSubcommandsRegistered() {
         let names = JobCommand.configuration.subcommands.compactMap { $0.configuration.commandName }
-        XCTAssertEqual(names.sorted(), ["gc", "list", "logs", "run", "show", "wait"])
+        XCTAssertEqual(names.sorted(), ["gc", "list", "logs", "run", "schedule", "schedules", "show", "unschedule", "wait"])
     }
 
     func testRunnerInternalHidden() {

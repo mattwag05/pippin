@@ -14,7 +14,8 @@
         "running",
         "done",
         "error",
-        "killed"
+        "killed",
+        "skipped"
       ],
       "type" : "string"
     }
