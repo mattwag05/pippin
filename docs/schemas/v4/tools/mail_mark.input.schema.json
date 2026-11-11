@@ -4,7 +4,7 @@
   "description" : "Mark a message as read or unread. Reversible: call again with the opposite `read` value.",
   "properties" : {
     "confirmToken" : {
-      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "description" : "The confirmToken from a confirmation_required error, sent with the same arguments.",
       "type" : "string"
     },
     "dryRun" : {
@@ -17,7 +17,7 @@
       "type" : "string"
     },
     "idempotencyKey" : {
-      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "description" : "A repeat of this key and arguments within 24 hours replays the first result.",
       "type" : "string"
     },
     "messageId" : {

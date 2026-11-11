@@ -4,7 +4,7 @@
   "description" : "Create a reminder from a natural-language description using AI (resolves list names, unlike reminders_create which needs an EventKit ID).",
   "properties" : {
     "confirmToken" : {
-      "description" : "Only after a confirmation_required error: the confirmToken it returned, with the same arguments, to carry out the call.",
+      "description" : "The confirmToken from a confirmation_required error, sent with the same arguments.",
       "type" : "string"
     },
     "description" : {
@@ -17,7 +17,7 @@
       "type" : "boolean"
     },
     "idempotencyKey" : {
-      "description" : "Optional. A repeat of this key with the same arguments within 24 hours returns the first result with replayed=true and does nothing.",
+      "description" : "A repeat of this key and arguments within 24 hours replays the first result.",
       "type" : "string"
     },
     "list" : {
