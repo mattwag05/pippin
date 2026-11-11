@@ -250,7 +250,7 @@ enum MailBridge {
         // Pippin's own index: no Full Disk Access, verified by a live read.
         if fastPath, (preview ?? 0) == 0, let messages = listFromStore(
             account: account, mailbox: mailbox, unread: unread,
-            limit: clampedLimit, offset: clampedOffset, after: after, before: before
+            limit: clampedLimit, offset: clampedOffset, after: after, before: before, seekingAfter: anchor
         ) {
             return ListOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
         }
@@ -289,7 +289,7 @@ enum MailBridge {
         guard let rowid = message.id.components(separatedBy: "||").last.flatMap({ Int64($0) }),
               let date = iso.date(from: message.receivedAt ?? message.date)
         else { return nil }
-        return Cursor.Anchor(epoch: Int64(date.timeIntervalSince1970), rowid: rowid)
+        return Cursor.Anchor(epoch: Int64(date.timeIntervalSince1970), rowid: rowid, id: message.id)
     }
 
     /// `--after` and `--before` each name a whole calendar day in the user's

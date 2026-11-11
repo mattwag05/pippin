@@ -244,7 +244,7 @@ final class MailEnvelopeIndexTests: XCTestCase {
         )
         XCTAssertEqual(page1.map(\.id), ["Personal||INBOX||101"])
         let anchor = try XCTUnwrap(MailBridge.pageAnchor(page1[0]))
-        XCTAssertEqual(anchor, Cursor.Anchor(epoch: Int64(Self.jul10 + 3 * Self.hour + 10), rowid: 101))
+        XCTAssertEqual(anchor, Cursor.Anchor(epoch: Int64(Self.jul10 + 3 * Self.hour + 10), rowid: 101, id: "Personal||INBOX||101"))
 
         try q.write { db in // a newer message lands in the same mailbox
             try db.execute(sql: """

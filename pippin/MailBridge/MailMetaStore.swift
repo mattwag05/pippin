@@ -207,6 +207,7 @@ struct MailMetaReader {
         scope: [MailboxKey],
         limit: Int,
         offset: Int,
+        seekingAfter anchor: Cursor.Anchor? = nil,
         include: (MailMetaRow, Bool) -> Bool
     ) throws -> [MailMessage]? {
         var mustRefresh = Set<MailboxKey>()
@@ -245,7 +246,15 @@ struct MailMetaReader {
             }
 
             candidates.sort(by: Self.newestFirst)
-            let page = Array(Self.dedupe(candidates).dropFirst(offset).prefix(limit))
+            let deduped = Self.dedupe(candidates)
+            let isoParser = ISO8601DateFormatter()
+            isoParser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let start = Pagination.keysetStart(
+                in: deduped, offset: offset, anchor: anchor,
+                key: { Int64((($0.row.operationalDate.flatMap { isoParser.date(from: $0) }) ?? .distantPast).timeIntervalSince1970) },
+                id: { $0.row.compoundId }, descending: true
+            )
+            let page = Array(deduped.dropFirst(start).prefix(limit))
             let collided = page.filter { candidate in
                 candidate.row.operationalDate.map {
                     (dateCounts[Self.collisionKey(candidate.row.key, $0)] ?? 0) > 1

@@ -232,6 +232,20 @@ public enum Pagination {
         return Page(items: items, nextCursor: nextCursor)
     }
 
+    /// Index of the first row after `anchor` in a (key, id)-ordered list; `offset`
+    /// when the anchor carries no id. See `paginateKeyset`.
+    public static func keysetStart<T>(
+        in all: [T], offset: Int, anchor: Cursor.Anchor?,
+        key: (T) -> Int64, id: (T) -> String, descending: Bool = false
+    ) -> Int {
+        guard let anchor, let anchorId = anchor.id else { return offset }
+        return all.firstIndex { id($0) == anchorId }.map { $0 + 1 }
+            ?? all.firstIndex { row in
+                let k = key(row)
+                return (descending ? k < anchor.epoch : k > anchor.epoch) || (k == anchor.epoch && id(row) > anchorId)
+            } ?? all.count
+    }
+
     /// In-memory keyset page over a list ordered by `key` (ascending, or
     /// descending when `descending`), ties by `id` ascending. Resumes after the
     /// anchor row; when that row is gone, at the first row sorting after the
@@ -247,15 +261,7 @@ public enum Pagination {
         id: (T) -> String,
         descending: Bool = false
     ) throws -> Page<T> {
-        var start = offset
-        if let anchor, let anchorId = anchor.id {
-            start = all.firstIndex { id($0) == anchorId }.map { $0 + 1 }
-                ?? all.firstIndex { row in
-                    let k = key(row)
-                    return (descending ? k < anchor.epoch : k > anchor.epoch)
-                        || (k == anchor.epoch && id(row) > anchorId)
-                } ?? all.count
-        }
+        let start = keysetStart(in: all, offset: offset, anchor: anchor, key: key, id: id, descending: descending)
         return try paginate(
             all: all, offset: start, pageSize: pageSize, filterHash: filterHash,
             anchor: { Cursor.Anchor(epoch: key($0), id: id($0)) }
