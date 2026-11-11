@@ -217,7 +217,7 @@ extension MailBridge {
 
     static func searchFromStore(
         query: String, account: String?, mailbox: String?, limit: Int, offset: Int,
-        after: String?, before: String?, from: String?
+        after: String?, before: String?, from: String?, seekingAfter anchor: Cursor.Anchor? = nil
     ) -> [MailMessage]? {
         let lower = isoBound(after), upper = isoBound(before)
         guard lower.ok, upper.ok, let reader = metaReader(),
@@ -225,7 +225,7 @@ extension MailBridge {
         else { return nil }
         let needle = query.lowercased()
         let fromNeedle = from?.lowercased()
-        return (try? reader.answer(scope: scope, limit: limit, offset: offset) { row, _ in
+        return (try? reader.answer(scope: scope, limit: limit, offset: offset, seekingAfter: anchor) { row, _ in
             guard inRange(row, after: lower.value, before: upper.value) else { return false }
             let sender = row.sender.lowercased()
             if let fromNeedle, !sender.contains(fromNeedle) { return false }

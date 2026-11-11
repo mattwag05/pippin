@@ -446,7 +446,8 @@ enum MailBridge {
         softTimeoutMs: Int = SoftTimeout.defaultMs,
         fastPath: Bool = true,
         preview: Int? = nil,
-        pageSentinel: Bool = false
+        pageSentinel: Bool = false,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> SearchOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil) && (mailbox == nil)
@@ -462,7 +463,7 @@ enum MailBridge {
                 let scan = try makeFastPathIndex(accountName: account).searchScan(
                     query: query, account: account, mailbox: mailbox,
                     limit: limit, offset: clampedOffset, after: after, before: before,
-                    to: to, from: from
+                    to: to, from: from, seekingAfter: anchor
                 )
                 if verbose {
                     let line = "[search] fast path: envelope index (full-index scan, JXA bypassed)\n"
@@ -479,7 +480,7 @@ enum MailBridge {
         // Recipients and bodies are not in the store, so those searches read Mail.
         if fastPath, !searchBody, to == nil, let messages = searchFromStore(
             query: query, account: account, mailbox: mailbox,
-            limit: limit, offset: clampedOffset, after: after, before: before, from: from
+            limit: limit, offset: clampedOffset, after: after, before: before, from: from, seekingAfter: anchor
         ) {
             return SearchOutcome(messages: attachCachedAnomalies(messages), timedOut: false)
         }

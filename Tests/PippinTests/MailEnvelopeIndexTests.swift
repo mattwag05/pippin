@@ -521,6 +521,34 @@ final class MailEnvelopeIndexTests: XCTestCase {
         XCTAssertTrue(try scan(idx, limit: 2, offset: 1, cap: 2).hitCandidateCap, "a later page that runs off the cap")
     }
 
+    /// New mail matching the query arriving between two pages must not make page 2 repeat a row
+    /// (pippin-hzuw). The offset is applied after dedup, so the anchor is too.
+    func testSearchKeysetPageSurvivesNewMatchArrivingBetweenPages() throws {
+        let q = try makeFixtureDB()
+        let idx = try makeIndex(q)
+        func search(limit: Int, offset: Int, after anchor: PippinLib.Cursor.Anchor? = nil) throws -> [MailMessage] {
+            try idx.searchScan(
+                query: "e", account: nil, mailbox: nil, limit: limit, offset: offset,
+                after: nil, before: nil, to: nil, from: nil, seekingAfter: anchor
+            ).messages
+        }
+        let whole = try search(limit: 50, offset: 0).map(\.id)
+        XCTAssertGreaterThan(whole.count, 3, "fixture must hold several matches")
+        let page1 = try search(limit: 2, offset: 0)
+        XCTAssertEqual(page1.map(\.id), Array(whole.prefix(2)))
+        let anchor = try XCTUnwrap(MailBridge.pageAnchor(XCTUnwrap(page1.last)))
+
+        try q.write { db in // a newer match lands in the same mailbox
+            try db.execute(sql: """
+            INSERT INTO messages (ROWID, global_message_id, sender, subject, date_sent, date_received, mailbox, read, deleted, size)
+            VALUES (107, 0, 2, 2, \(Self.jul10 + 9 * Self.hour), \(Self.jul10 + 9 * Self.hour), 1, 0, 0, 100)
+            """)
+        }
+        XCTAssertEqual(try search(limit: 2, offset: 2).map(\.id).first, whole[1], "offset paging repeats the last row")
+        let page2 = try search(limit: 2, offset: 2, after: anchor).map(\.id)
+        XCTAssertEqual(page2, Array(whole.dropFirst(2).prefix(2)))
+    }
+
     func testActivityReportsWhenTheCandidateCapCutTheAnswerShort() throws {
         let idx = try makeIndex()
         let capped = try idx.activityScan(

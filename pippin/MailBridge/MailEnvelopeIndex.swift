@@ -824,11 +824,12 @@ final class MailEnvelopeIndex: Sendable {
         after: String?,
         before: String?,
         to: String?,
-        from: String?
+        from: String?,
+        seekingAfter anchor: Cursor.Anchor? = nil
     ) throws -> [MailMessage] {
         try searchScan(
             query: query, account: account, mailbox: mailbox, limit: limit, offset: offset,
-            after: after, before: before, to: to, from: from
+            after: after, before: before, to: to, from: from, seekingAfter: anchor
         ).messages
     }
 
@@ -842,6 +843,7 @@ final class MailEnvelopeIndex: Sendable {
         before: String?,
         to: String?,
         from: String?,
+        seekingAfter anchor: Cursor.Anchor? = nil,
         candidateCap: Int = MailEnvelopeIndex.candidateCap
     ) throws -> Scan {
         let targets = try MailboxTargets(resolveMailboxes(accountFilter: account, mailboxName: mailbox))
@@ -876,9 +878,16 @@ final class MailEnvelopeIndex: Sendable {
         let fetched = try dbQueue.read { db in
             try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
         }.map(Self.rawRow)
-        // JXA applies offset AFTER dedup.
+        // JXA applies offset AFTER dedup, and so does the keyset anchor. A row id's zero-padded
+        // form is the tiebreak, so equal-second rows resume in ROWID order.
         let deduped = Self.dedup(fetched)
-        let window = Array(deduped.dropFirst(max(0, offset)).prefix(max(1, limit)))
+        let rowKey = { (rowid: Int64) in String(format: "%020lld", rowid) }
+        let start = Pagination.keysetStart(
+            in: deduped, offset: max(0, offset),
+            anchor: anchor.flatMap { $0.id == nil ? nil : Cursor.Anchor(epoch: $0.epoch, id: rowKey($0.rowid)) },
+            key: \.operationalEpoch, id: { rowKey($0.rowid) }, descending: true
+        )
+        let window = Array(deduped.dropFirst(start).prefix(max(1, limit)))
         return try Scan(
             messages: buildMessages(window, targets: targets, populateTo: true),
             hitCandidateCap: fetched.count >= candidateCap && window.count < max(1, limit)

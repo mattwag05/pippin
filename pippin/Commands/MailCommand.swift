@@ -343,6 +343,7 @@ public struct MailCommand: AsyncParsableCommand {
                 let from = self.from
                 let verbose = self.verbose
                 let preview = self.preview
+                let anchor = Pagination.anchor(of: pagination)
                 // searchMessages spawns a blocking osascript subprocess; hop off
                 // the cooperative pool so concurrent callers don't stall.
                 let outcome = try await detachBlocking {
@@ -359,7 +360,8 @@ public struct MailCommand: AsyncParsableCommand {
                         from: from,
                         verbose: verbose,
                         preview: preview,
-                        pageSentinel: true
+                        pageSentinel: true,
+                        seekingAfter: anchor
                     )
                 }
                 paginatedTimedOut = outcome.timedOut
@@ -374,7 +376,8 @@ public struct MailCommand: AsyncParsableCommand {
                     paginatedTimedOut = paginatedTimedOut || attached.timedOut
                 }
                 page = try Pagination.pageFromPushdown(
-                    fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash
+                    fetched: fetched, offset: offset, pageSize: pageSize, filterHash: hash,
+                    anchor: MailBridge.pageAnchor
                 )
             }
             try MailBridge.requireCompleteSearch(resultCount: page.items.count, timedOut: paginatedTimedOut)

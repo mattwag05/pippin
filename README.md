@@ -416,7 +416,7 @@ pippin mail list --account icloud --cursor <token>
 pippin mail list --account icloud --page 2 --page-size 20
 ```
 
-A token is tied to its query, so changing a filter between calls returns `cursor_mismatch` instead of mixing pages. If you pass both `--cursor` and `--page`, the cursor wins. `next_cursor` is omitted on the last page. For `mail list`, `memos list`, `reminders list`, `calendar events`, `calendar upcoming`, `contacts search` and `notes list` the token remembers the last row served, so new or deleted rows between calls do not repeat or skip one. `mail search` pages by position.
+A token is tied to its query, so changing a filter between calls returns `cursor_mismatch` instead of mixing pages. If you pass both `--cursor` and `--page`, the cursor wins. `next_cursor` is omitted on the last page. For `mail list`, `memos list`, `reminders list`, `calendar events`, `calendar upcoming`, `contacts search`, `notes list` and `mail search` (Envelope Index and metadata store paths) the token remembers the last row served, so new or deleted rows between calls do not repeat or skip one. `mail search` on the JXA path and with `--semantic` pages by position.
 
 ### MCP Server Mode
 
