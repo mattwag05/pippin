@@ -97,7 +97,7 @@ final class NotesBridgeSoftTimeoutTests: XCTestCase {
     func testListScriptSortsInMemoryNotWithAnAppleEventComparator() {
         let script = NotesBridge.buildListScript(folder: nil, limit: 10)
         XCTAssertFalse(script.contains("b.modificationDate() - a.modificationDate()"))
-        XCTAssertTrue(script.contains("rows.sort(function(a, b) { return b.mod - a.mod; })"))
+        XCTAssertTrue(script.contains("if (a.mod !== b.mod) { return b.mod - a.mod; }"))
     }
 
     /// Regression for pippin-mo7: see the search counterpart.

@@ -392,9 +392,12 @@ final class NotesScriptBehaviorTests: XCTestCase {
     // MARK: - List and search behavior
 
     private func list(
-        folder: String? = nil, limit: Int = 50, offset: Int = 0, fields: Set<String>? = nil, in context: JSContext
+        folder: String? = nil, limit: Int = 50, offset: Int = 0, seekingAfter anchor: Cursor.Anchor? = nil,
+        fields: Set<String>? = nil, in context: JSContext
     ) throws -> NotesBridge.Outcome<[NoteInfo]> {
-        let script = NotesBridge.buildListScript(folder: folder, limit: limit, offset: offset, fields: fields)
+        let script = NotesBridge.buildListScript(
+            folder: folder, limit: limit, offset: offset, seekingAfter: anchor, fields: fields
+        )
         return try NotesBridge.decode(NotesBridge.Outcome<[NoteInfo]>.self, from: run(script, in: context))
     }
 
@@ -448,6 +451,40 @@ final class NotesScriptBehaviorTests: XCTestCase {
         XCTAssertEqual(try ids(list(limit: 2, in: context).results), [5, 3])
         XCTAssertEqual(try ids(list(limit: 2, offset: 2, in: context).results), [2, 1])
         XCTAssertEqual(try ids(list(limit: 2, offset: 4, in: context).results), [])
+    }
+
+    func testListResumesAfterTheAnchorNoteWhenANewerNoteArrives() throws {
+        let context = try makeContext()
+        let page1 = try list(limit: 2, in: context).results
+        XCTAssertEqual(ids(page1), [5, 3])
+        let anchor = try NotesBridge.pageAnchor(XCTUnwrap(page1.last))
+
+        context.evaluateScript("__rows.push(__mk(6, 'Notes'));") // newer than everything served
+        XCTAssertEqual(try ids(list(limit: 2, offset: 2, in: context).results), [3, 2], "offset paging repeats note 3")
+        let page2 = try list(limit: 2, offset: 2, seekingAfter: anchor, in: context).results
+        XCTAssertEqual(ids(page2), [2, 1])
+    }
+
+    func testListResumesAtTheNextRowWhenTheAnchorNoteWasDeleted() throws {
+        let context = try makeContext()
+        let anchor = try NotesBridge.pageAnchor(XCTUnwrap(list(limit: 2, in: context).results.last))
+        context.evaluateScript("__rows = __rows.filter(function(r) { return r.id !== '\(Self.noteId(3))'; });")
+        XCTAssertEqual(try ids(list(limit: 2, offset: 2, seekingAfter: anchor, in: context).results), [2, 1])
+    }
+
+    func testListBreaksModificationTimeTiesByIdSoPagesCannotSplitATie() throws {
+        let context = try makeContext(setup: "__rows[0].mod = __rows[2].mod; __rows[1].mod = __rows[2].mod;")
+        let all = try ids(list(in: context).results)
+        XCTAssertEqual(all, [5, 1, 2, 3], "notes 1, 2, 3 tie; ids ascend within the tie")
+        let anchor = try NotesBridge.pageAnchor(XCTUnwrap(list(limit: 2, in: context).results.last))
+        XCTAssertEqual(try ids(list(limit: 2, offset: 2, seekingAfter: anchor, in: context).results), [2, 3])
+    }
+
+    func testListAnchorIdIsEscapedAsAStringLiteral() throws {
+        let context = try makeContext()
+        let hostile = Cursor.Anchor(epoch: 0, id: "x'); __writes.push('pwned'); ('")
+        XCTAssertEqual(try ids(list(seekingAfter: hostile, in: context).results), [])
+        XCTAssertEqual(try writes(context), [])
     }
 
     func testListFolderFilterAndUnknownFolder() throws {
