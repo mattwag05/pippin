@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-10
+
 ### Added
 
 - [feat] Mail scans on the Envelope Index path now record each sender's Message-ID domain in the sender baseline, so `mail list`/`search`/`activity` can flag a Message-ID domain change on a message you never opened. Existing baseline rows are never overwritten and a repeat scan writes nothing. Closes pippin-09ky.
@@ -1138,7 +1140,8 @@ Initial beta release. Single arm64 binary, human-readable text output, guided se
      so this is a stable end state, not a backlog item. Don't "fix" it by
      inventing links: check `git tag -l` for both endpoints first. -->
 
-[Unreleased]: https://github.com/mattwag05/pippin/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/mattwag05/pippin/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/mattwag05/pippin/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/mattwag05/pippin/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/mattwag05/pippin/compare/v0.41.1...v1.0.0
 [0.41.1]: https://github.com/mattwag05/pippin/compare/v0.41.0...v0.41.1
