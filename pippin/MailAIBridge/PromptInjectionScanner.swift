@@ -16,13 +16,23 @@ public enum PromptInjectionScanner {
 
     // MARK: - Pass 2: AI-assisted (merge with rule-based results)
 
+    /// The JSON shape `AIThreatsResponse` decodes.
+    static let aiOutputSchema = AIOutputSchema.object([
+        AIOutputField("threats", .array(.object([
+            AIOutputField("category", .choice(ThreatCategory.allCases.map(\.rawValue))),
+            AIOutputField("confidence", .number),
+            AIOutputField("matchedText", .string),
+            AIOutputField("explanation", .string),
+        ]))),
+    ])
+
     public static func scanWithAI(text: String, provider: any AIProvider) throws -> ScanResult {
         let ruleResult = scan(text: text)
 
         let rawResponse = try provider.complete(
             prompt: text,
             system: MailAIPrompts.injectionDetectionSystemPrompt,
-            options: AICompletionOptions(jsonMode: true)
+            options: AICompletionOptions(jsonMode: true, schema: aiOutputSchema)
         )
 
         let stripped = stripAIResponseJSON(rawResponse)

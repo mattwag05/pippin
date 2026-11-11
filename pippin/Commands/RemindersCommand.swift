@@ -446,7 +446,7 @@ public struct RemindersCommand: AsyncParsableCommand {
             let jsonStr = try await detachBlocking {
                 try aiProvider.complete(
                     prompt: descriptionLocal, system: systemPrompt,
-                    options: AICompletionOptions(jsonMode: true)
+                    options: AICompletionOptions(jsonMode: true, schema: SmartReminderSpec.outputSchema)
                 )
             }
 
@@ -493,6 +493,14 @@ private struct SmartReminderSpec: Codable {
     let dueDate: String?
     let priority: Int?
     let listTitle: String?
+
+    static let outputSchema = AIOutputSchema.object([
+        AIOutputField("title", .string),
+        AIOutputField("notes", .string, optional: true),
+        AIOutputField("dueDate", .string, optional: true),
+        AIOutputField("priority", .integer, optional: true),
+        AIOutputField("listTitle", .string, optional: true),
+    ])
 }
 
 private struct SmartReminderError: LocalizedError {

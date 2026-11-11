@@ -13,7 +13,7 @@
       "type" : "string"
     },
     "provider" : {
-      "description" : "AI provider: ollama, claude, or openai.",
+      "description" : "AI provider: ollama, claude, openai, or apple.",
       "type" : "string"
     }
   },

@@ -90,6 +90,18 @@ public enum ActionExtractor {
 
     // MARK: - Private
 
+    /// The JSON shape `BatchResponse` decodes.
+    static let outputSchema = AIOutputSchema.object([
+        AIOutputField("actions", .array(.object([
+            AIOutputField("sourceIndex", .integer),
+            AIOutputField("snippet", .string),
+            AIOutputField("proposedTitle", .string),
+            AIOutputField("proposedDueDate", .string, optional: true),
+            AIOutputField("proposedPriority", .integer, optional: true),
+            AIOutputField("confidence", .number),
+        ]))),
+    ])
+
     private struct BatchResponse: Codable {
         let actions: [Entry]
     }
@@ -151,7 +163,7 @@ public enum ActionExtractor {
         let response = try provider.complete(
             prompt: promptJSON,
             system: systemPrompt,
-            options: AICompletionOptions(jsonMode: true)
+            options: AICompletionOptions(jsonMode: true, schema: outputSchema)
         )
         let stripped = stripAIResponseJSON(response)
         do {

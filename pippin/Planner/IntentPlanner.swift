@@ -41,6 +41,7 @@ enum IntentPlanner {
         }
         let system = buildSystemPrompt(tools: tools, maxSteps: maxSteps, excludedData: excludedData)
         let user = "Intent: \(intent)\n\nRespond with only the JSON object."
+        // No output schema: step args are free-form per tool, which a fixed schema cannot express.
         let raw = try provider.complete(
             prompt: user,
             system: system,
@@ -98,7 +99,10 @@ enum IntentPlanner {
         Use an empty array when nothing is excluded.
         """
         let user = "Request: \(intent)\n\nRespond with only the JSON object."
-        let options = AICompletionOptions(jsonMode: true, temperature: 0)
+        let schema = AIOutputSchema.object([
+            AIOutputField("excluded", .array(.choice(PersonalDataKind.allCases.map(\.rawValue)))),
+        ])
+        let options = AICompletionOptions(jsonMode: true, temperature: 0, schema: schema)
         let raw = try provider.complete(prompt: user, system: system, options: options)
         do {
             return try parseExclusions(raw)

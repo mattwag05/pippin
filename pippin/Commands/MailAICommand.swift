@@ -144,7 +144,7 @@ public struct MailSanitize: AgentCommand {
     @Flag(name: .long, help: "Include AI-assisted scan in addition to rule-based patterns.")
     public var aiAssisted: Bool = false
 
-    @Option(name: .long, help: "AI provider for --ai-assisted (ollama, claude, or openai).")
+    @Option(name: .long, help: "AI provider for --ai-assisted (ollama, claude, openai, or apple).")
     public var provider: String?
 
     @Option(name: .long, help: "Model name.")
@@ -199,7 +199,7 @@ public struct MailTriage: AgentCommand {
     @Option(name: .long, help: "Maximum messages to triage (default: 20, min: 1).")
     public var limit: Int = 20
 
-    @Option(name: .long, help: "AI provider: ollama, claude, or openai.")
+    @Option(name: .long, help: "AI provider: ollama, claude, openai, or apple.")
     public var provider: String?
 
     @Option(name: .long, help: "Model name.")

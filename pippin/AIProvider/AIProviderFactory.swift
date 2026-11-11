@@ -217,6 +217,10 @@ public enum AIProviderFactory {
                 structuredOutputs: config?.ai?.openai?.structuredOutputs ?? false
             )
 
+        case "apple":
+            // On-device model; --model and API keys do not apply.
+            return AppleFoundationModelsProvider()
+
         default:
             throw AIProviderError.invalidProvider(providerName)
         }

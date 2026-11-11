@@ -13,6 +13,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 - [feat] Mail scans on the Envelope Index path now record each sender's Message-ID domain in the sender baseline, so `mail list`/`search`/`activity` can flag a Message-ID domain change on a message you never opened. Existing baseline rows are never overwritten and a repeat scan writes nothing. Closes pippin-09ky.
 - [feat] `pippin job schedule --every <dur>|--cron "<m h dom mon dow>" -- <argv>`, `job schedules` and `job unschedule <id>` run a pippin command on a recurring schedule through one LaunchAgent per schedule. A fire that finds the previous one still running is recorded as a `skipped` job. `job run` gained `--wait` and `--schedule-id`. Closes pippin-jz1y.
+- [feat] Experimental `apple` AI provider (`ai.provider: apple` or `--provider apple`) that runs Apple's on-device Foundation Models model. Triage, extract, injection scan, action extraction and smart-create get schema-guided JSON, so every reply parses and triage covers every message; a request over the model's 8,192-token context fails with `context_exceeded` naming the limit, and triage splits such a batch. `pippin doctor` reports whether the model can run. It stays experimental because its triage categories agreed with the OpenAI-compatible backend on 5 of 12 real messages. Closes pippin-npqt.
 
 ### Fixed
 

@@ -24,7 +24,7 @@ public struct DoCommand: AgentCommand {
     @Argument(help: "Natural-language intent for the planner.")
     public var intent: String
 
-    @Option(name: .long, help: "AI provider: ollama, claude, or openai (overrides config).")
+    @Option(name: .long, help: "AI provider: ollama, claude, openai, or apple (overrides config).")
     public var provider: String?
 
     @Option(name: .long, help: "Model name (overrides config).")

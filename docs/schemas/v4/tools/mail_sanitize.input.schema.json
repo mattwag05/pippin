@@ -17,7 +17,7 @@
       "type" : "string"
     },
     "provider" : {
-      "description" : "AI provider for aiAssisted: ollama, claude, or openai.",
+      "description" : "AI provider for aiAssisted: ollama, claude, openai, or apple.",
       "type" : "string"
     }
   },
