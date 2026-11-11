@@ -116,9 +116,7 @@ extension MailBridge {
         var afterDate = afterFilter !== null ? new Date(afterFilter) : null;
         var beforeDate = beforeFilter !== null ? new Date(beforeFilter) : null;
         var softTimeoutMs = \(safeSoftTimeoutMs);
-        // A bulk read examines the whole mailbox, so reachedMailboxEnd is always true
-        // unless the scan was cut off (reported through timedOut).
-        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false, reachedMailboxEnd: true, oldestExaminedMs: null};
+        var _meta = {accountsScanned: 0, mailboxesScanned: 0, messagesExamined: 0, timedOut: false};
         // Soft timeout: return what we have before the ScriptRunner hard timeout
         // (and the MCP runChild 60s cap). The scan stops early enough to leave time
         // for the per-message reads of the rows that will be returned.
@@ -151,8 +149,6 @@ extension MailBridge {
                 var dates = bulkDates(b, i);
                 var operationalDate = dates.operationalDate;
                 if (operationalDate === null) continue;
-                var opMs = operationalDate.getTime();
-                if (_meta.oldestExaminedMs === null || opMs < _meta.oldestExaminedMs) _meta.oldestExaminedMs = opMs;
                 if (afterDate !== null && operationalDate < afterDate) continue;
                 if (beforeDate !== null && operationalDate > beforeDate) continue;
                 candidates.push({

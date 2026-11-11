@@ -12,11 +12,6 @@ enum MailBridge {
     struct ScanOutcome {
         let messages: [MailMessage]
         let timedOut: Bool
-        /// Non-nil only for `listMessages` with a `--before` cutoff that the
-        /// newest-N scan window never reached (empty result, mailbox not fully
-        /// scanned) — a ready-to-surface advisory distinguishing "no matches"
-        /// from "window too shallow". `nil` everywhere else.
-        var windowHint: String? = nil
         /// Non-nil when the Envelope Index fast path threw and the call fell
         /// back to the slow JXA scan — the single-line reason, ready to
         /// surface as a warning so callers can see *why* they paid seconds
@@ -226,7 +221,6 @@ enum MailBridge {
     ) throws -> ListOutcome {
         try validateAccount(account)
         let crossAccount = (account == nil)
-        let requestedBefore = before
         let (after, before) = dayFilterInstants(after: after, before: before)
         let clampedLimit = clampScanLimit(limit, pageSentinel: pageSentinel)
         let clampedOffset = max(0, offset)
@@ -237,8 +231,7 @@ enum MailBridge {
         // `mail list --preview` still gets a fast metadata pass). Any failure
         // falls back to JXA silently: no FDA, unknown schema, unresolvable
         // account/mailbox — the fast path is an accelerator, never a gate.
-        // A full-index scan can't under-reach a `--before` cutoff, so no
-        // windowHint. `doctor --latency` passes `fastPath: false` to measure
+        // `doctor --latency` passes `fastPath: false` to measure
         // the real JXA/Mail.app path.
         var fastPathNote: String?
         if fastPath, (preview ?? 0) == 0, fastPathEnabled() {
@@ -281,41 +274,8 @@ enum MailBridge {
         return ListOutcome(
             messages: attachCachedAnomalies(wrapper.results),
             timedOut: wrapper.meta.timedOut,
-            windowHint: beforeShortfallHint(
-                resultsEmpty: wrapper.results.isEmpty,
-                timedOut: wrapper.meta.timedOut,
-                before: requestedBefore,
-                reachedMailboxEnd: wrapper.meta.reachedMailboxEnd,
-                oldestExaminedMs: wrapper.meta.oldestExaminedMs
-            ),
             fastPathNote: fastPathNote
         )
-    }
-
-    /// Advisory when `mail list --before` returns empty because the newest-N
-    /// scan window never reached the cutoff (not because nothing matched).
-    /// Pure/static so it's unit-testable without Mail.app. Fires only when the
-    /// scan was truncated *and* the oldest message actually examined is still
-    /// newer than `--before` — i.e. deeper scanning could surface matches.
-    /// `--after` is exempt: newest-first scanning hits recent mail first, so an
-    /// empty `--after` result is a true "nothing that recent," not a shortfall.
-    static func beforeShortfallHint(
-        resultsEmpty: Bool,
-        timedOut: Bool,
-        before: String?,
-        reachedMailboxEnd: Bool,
-        oldestExaminedMs: Double?
-    ) -> String? {
-        guard resultsEmpty, !timedOut, !reachedMailboxEnd,
-              let before, let oldestMs = oldestExaminedMs,
-              let beforeDate = parseFilterDate(before)
-        else { return nil }
-        let oldest = Date(timeIntervalSince1970: oldestMs / 1000)
-        guard oldest > beforeDate else { return nil }
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone.current
-        return "scan window did not reach \(before): scanned the newest messages back to \(f.string(from: oldest)) but not as far as \(before) — increase --limit, or use `mail search --before` (which binary-searches the window) for older mail"
     }
 
     /// `--after` and `--before` each name a whole calendar day in the user's
@@ -1159,12 +1119,6 @@ enum MailBridge {
         let mailboxesScanned: Int
         let messagesExamined: Int
         let timedOut: Bool
-        /// `false` when any scanned mailbox's newest-N window stopped short of its
-        /// oldest message (list script only). Feeds the `--before` shortfall hint.
-        let reachedMailboxEnd: Bool
-        /// Oldest `dateSent` (epoch ms) examined across the scan, or `nil` if none
-        /// (list script only). Names the floor the window actually reached.
-        let oldestExaminedMs: Double?
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -1173,13 +1127,10 @@ enum MailBridge {
             messagesExamined = try container.decode(Int.self, forKey: .messagesExamined)
             // Backward-compatible: scripts that don't emit timedOut default to false.
             timedOut = try container.decodeIfPresent(Bool.self, forKey: .timedOut) ?? false
-            reachedMailboxEnd = try container.decodeIfPresent(Bool.self, forKey: .reachedMailboxEnd) ?? true
-            oldestExaminedMs = try container.decodeIfPresent(Double.self, forKey: .oldestExaminedMs)
         }
 
         private enum CodingKeys: String, CodingKey {
             case accountsScanned, mailboxesScanned, messagesExamined, timedOut
-            case reachedMailboxEnd, oldestExaminedMs
         }
     }
 

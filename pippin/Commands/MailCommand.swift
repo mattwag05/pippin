@@ -495,7 +495,7 @@ public struct MailCommand: AsyncParsableCommand {
                 return .emit(withSummaries, timedOut: outcome.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
             } else {
                 return try await emitMessages(
-                    messages, timedOut: outcome.timedOut, windowHint: outcome.windowHint,
+                    messages, timedOut: outcome.timedOut,
                     fastPathNote: outcome.fastPathNote,
                     capNote: MailBridge.rowCapNote(requested: limit, returned: messages.count)
                 )
@@ -506,22 +506,13 @@ public struct MailCommand: AsyncParsableCommand {
             "list exceeded soft timeout, returning partial results — narrow with --account, --mailbox, or a smaller --limit for complete results" + MailCommand.accountNamesSuffix()
         }
 
-        /// A soft-timeout warning takes precedence over a `--before` window-shortfall
-        /// hint (both surface through the same partial-results channel).
-        private func warning(timedOut: Bool, windowHint: String?) -> (warn: Bool, hint: String) {
-            if timedOut { return (true, Self.timedOutHint) }
-            if let windowHint { return (true, windowHint) }
-            return (false, Self.timedOutHint)
-        }
-
         private func emitMessages(
-            _ messages: [MailMessage], timedOut: Bool, windowHint: String? = nil, fastPathNote: String? = nil,
+            _ messages: [MailMessage], timedOut: Bool, fastPathNote: String? = nil,
             capNote: String? = nil
         ) async throws -> AgentResult {
             let messages = await MailCommand.enrichContacts(messages, options: contactResolution)
-            let (warn, hint) = warning(timedOut: timedOut, windowHint: windowHint)
             let state = MailCommand.incomplete(
-                timedOut: warn, timedOutHint: hint, notes: [capNote], advisories: [fastPathNote]
+                timedOut: timedOut, timedOutHint: Self.timedOutHint, notes: [capNote], advisories: [fastPathNote]
             )
             return AgentResult(
                 messages, warnings: state.warnings, fields: FieldProjection.parse(output.fields), partial: state.partial
