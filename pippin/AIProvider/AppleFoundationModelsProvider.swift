@@ -107,21 +107,25 @@ public struct AppleFoundationModelsProvider: AIProvider {
 
     @available(macOS 26, *)
     static func mapError(_ error: Error) -> Error {
-        if #available(macOS 27, *) {
-            if let error = error as? LanguageModelError {
-                switch error {
-                case let .contextSizeExceeded(info):
-                    return AIProviderError.contextExceeded(limit: info.contextSize, tokens: info.tokenCount)
-                case .guardrailViolation, .refusal: return AIProviderError.guardrailRefusal
-                case .rateLimited: return AIProviderError.rateLimited(retryAfterSeconds: nil, "on-device model busy")
-                case .timeout: return AIProviderError.timeout
-                default: return AIProviderError.decodingFailed(error.localizedDescription)
+        // LanguageModelError and SystemLanguageModel.Error exist only in the
+        // macOS 27 SDK (Swift 6.4); the Xcode 26 CI runner cannot see them.
+        #if compiler(>=6.4)
+            if #available(macOS 27, *) {
+                if let error = error as? LanguageModelError {
+                    switch error {
+                    case let .contextSizeExceeded(info):
+                        return AIProviderError.contextExceeded(limit: info.contextSize, tokens: info.tokenCount)
+                    case .guardrailViolation, .refusal: return AIProviderError.guardrailRefusal
+                    case .rateLimited: return AIProviderError.rateLimited(retryAfterSeconds: nil, "on-device model busy")
+                    case .timeout: return AIProviderError.timeout
+                    default: return AIProviderError.decodingFailed(error.localizedDescription)
+                    }
+                }
+                if case .assetsUnavailable = error as? SystemLanguageModel.Error {
+                    return AIProviderError.modelUnavailable("the model assets are not available")
                 }
             }
-            if case .assetsUnavailable = error as? SystemLanguageModel.Error {
-                return AIProviderError.modelUnavailable("the model assets are not available")
-            }
-        }
+        #endif
         // macOS 26 reports the same conditions through GenerationError.
         if let error = error as? LanguageModelSession.GenerationError {
             switch error {

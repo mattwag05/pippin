@@ -106,16 +106,20 @@ final class AppleFoundationModelsProviderTests: XCTestCase {
     // MARK: - Errors
 
     func testContextSizeErrorNamesTheLimit() throws {
-        guard #available(macOS 27, *) else { throw XCTSkip("LanguageModelError needs macOS 27") }
-        let source = LanguageModelError.contextSizeExceeded(
-            .init(contextSize: 8192, tokenCount: 9100, debugDescription: "too long")
-        )
-        let mapped = try XCTUnwrap(AppleFoundationModelsProvider.mapError(source) as? AIProviderError)
-        guard case .contextExceeded(limit: 8192, tokens: 9100) = mapped else {
-            return XCTFail("unexpected mapping: \(mapped)")
-        }
-        XCTAssertEqual(mapped.agentCode, "context_exceeded")
-        XCTAssertTrue(mapped.localizedDescription.contains("8192-token"))
+        #if compiler(>=6.4)
+            guard #available(macOS 27, *) else { throw XCTSkip("LanguageModelError needs macOS 27") }
+            let source = LanguageModelError.contextSizeExceeded(
+                .init(contextSize: 8192, tokenCount: 9100, debugDescription: "too long")
+            )
+            let mapped = try XCTUnwrap(AppleFoundationModelsProvider.mapError(source) as? AIProviderError)
+            guard case .contextExceeded(limit: 8192, tokens: 9100) = mapped else {
+                return XCTFail("unexpected mapping: \(mapped)")
+            }
+            XCTAssertEqual(mapped.agentCode, "context_exceeded")
+            XCTAssertTrue(mapped.localizedDescription.contains("8192-token"))
+        #else
+            throw XCTSkip("LanguageModelError needs the macOS 27 SDK")
+        #endif
     }
 
     func testUnavailableModelIsANotAvailableError() {
