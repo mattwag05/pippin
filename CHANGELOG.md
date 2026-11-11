@@ -17,6 +17,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- [fix] Notes reads and the delete guard recognise the Recently Deleted folder in the system language (for example "Zuletzt gelöscht"), using the name Notes itself shows. On a non-English Mac trashed notes appeared in lists and searches. Closes pippin-nrrx.
 - [fix] `calendar edit` and `calendar delete` on a recurring event without `--occurrence` now exit 2 (usage error) instead of 5. The `occurrence_required` error code is unchanged; only scripts that branch on exit 5 for it are affected. Closes pippin-4zv1.
 - [fix] Running bare `pippin` starts the interactive shell again. It crashed with exit 1 and no output. Closes pippin-o190.
 - [fix] A command run through the MCP server returns once its child exits, even when a grandchild still holds the output pipe open. It used to wait for the grandchild. Closes pippin-oqq9.

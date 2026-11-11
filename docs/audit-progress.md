@@ -58,7 +58,7 @@ Running log for the mission in [MISSION.md](MISSION.md). Branch: `claude/pippin-
   - Pippin 1.0.0, "Weekly Sync" (five weekly occurrences, one id). Edit with `--occurrence 2027-03-01T14:30:00Z --title` renamed only the third occurrence, which then carries its own id. Delete with `--occurrence 2027-02-22` removed only the second. Delete with `--span all` removed the rest, the detached third occurrence included.
   - `memos delete` on Pippin 1.0.0 failed on the fixture recording tried: `no such function: NSCoreDataDATriggerUpdatedAffectedObjectValue`. The store's delete trigger runs for a recording that is in a folder. The audio was moved back and the row kept, as designed. With the fix on this branch the audio is in `~/.Trash`, the row is gone and the other 11 recordings are listed.
   - The hardened Developer ID build ran there with Calendar, Reminders and Voice Memos access.
-  - Split out: `occurrence_required` still exits 5 (remapping an exit code is a breaking change under [contract.md](contract.md)), and the Notes "Recently Deleted" check is still English-only.
+  - Followed up the same day: `occurrence_required` exits 2, shipped as a bug fix by Matt's decision although [contract.md](contract.md) lists exit-code remaps as breaking (pippin-4zv1), and the Notes "Recently Deleted" check matches the name Notes shows in the system language as well as the English one (pippin-nrrx).
 
 ### In flight (as of the first entry, now finished)
 
