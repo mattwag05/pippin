@@ -128,9 +128,19 @@ def main(argv: list[str]) -> int:
     if "--self-test" in argv:
         return _self_test()
     paths = [a for a in argv[1:] if not a.startswith("-")] or DEFAULT_PATHS
+    # Fail closed: a missing path or an empty glob must not read as "clean".
+    missing = [p for p in paths if not Path(p).exists()]
+    if missing:
+        print(f"paginated-emit lint: path(s) not found: {', '.join(missing)}", file=sys.stderr)
+        return 2
     violations = []
+    scanned = 0
     for file in iter_swift_files(paths):
         violations += check_source(file.read_text(), str(file))
+        scanned += 1
+    if scanned == 0:
+        print(f"paginated-emit lint: no .swift files found under {', '.join(paths)}", file=sys.stderr)
+        return 2
     if violations:
         print("paginated-emit lint: violations found\n", file=sys.stderr)
         for v in violations:
@@ -140,7 +150,7 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 1
-    print("paginated-emit lint: clean.")
+    print(f"paginated-emit lint: clean ({scanned} files scanned).")
     return 0
 
 

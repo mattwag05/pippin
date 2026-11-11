@@ -250,21 +250,32 @@ def main(argv: list[str]) -> int:
         return _self_test()
 
     paths = [a for a in argv[1:] if not a.startswith("-")] or DEFAULT_PATHS
+    # Fail closed: a missing path or an empty glob must not read as "clean".
+    missing = [p for p in paths if not Path(p).exists()]
+    if missing:
+        print(f"detach-blocking lint: path(s) not found: {', '.join(missing)}", file=sys.stderr)
+        return 2
     total = 0
+    scanned = 0
     for f in _iter_swift_files(paths):
         try:
             src = f.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"detach-blocking lint: cannot read {f}: {exc}", file=sys.stderr)
+            return 2
+        scanned += 1
         for line_no, text in lint_source(src, str(f)):
             total += 1
             print(f"{f}:{line_no}: blocking call `{text}` in async code not "
                   f"inside detachBlocking {{ }} (wrap it, or add "
                   f"`{SUPPRESS_MARKER} <reason>`)")
+    if scanned == 0:
+        print(f"detach-blocking lint: no .swift files found under {', '.join(paths)}", file=sys.stderr)
+        return 2
     if total:
         print(f"\ndetach-blocking lint: {total} violation(s).", file=sys.stderr)
         return 1
-    print("detach-blocking lint: clean.")
+    print(f"detach-blocking lint: clean ({scanned} files scanned).")
     return 0
 
 

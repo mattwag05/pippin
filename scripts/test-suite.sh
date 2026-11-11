@@ -14,5 +14,16 @@ case "${1:-}" in
     chaos) filter=ChaosTests ;;
     *) echo "usage: $0 fuzz|chaos" >&2; exit 2 ;;
 esac
-# Same SDK routing as the Makefile's test target.
-exec xcrun --sdk macosx swift test --filter "PippinTests.$filter"
+# Same SDK routing as the Makefile's test target. `swift test --filter` exits 0
+# when the filter matches nothing, so a renamed suite would pass without
+# running; fail on that explicitly.
+out="$(mktemp)"
+trap 'rm -f "$out"' EXIT
+rc=0
+xcrun --sdk macosx swift test --filter "PippinTests.$filter" >"$out" 2>&1 || rc=$?
+cat "$out"
+[ "$rc" -eq 0 ] || exit "$rc"
+if grep -q "No matching test cases were run" "$out" || ! grep -Eq "Executed [1-9][0-9]* tests?" "$out"; then
+    echo "error: PippinTests.$filter matched no tests" >&2
+    exit 1
+fi
