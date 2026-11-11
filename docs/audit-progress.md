@@ -39,7 +39,7 @@ Running log for the mission in [MISSION.md](MISSION.md). Branch: `claude/pippin-
 - Wave 7 follow-up (2026-11-10): the MCP registry is generated from the CLI (pippin-kkik); Notes reads run in the server, which ties sweetrb/apple-notes-mcp warm (pippin-ai5s); doctor passes on the clean VM; a live test validates every read tool against the schemas; Operability is scored, Pippin 4 (pippin-0ifz); and with grader 2 the agent tasks are 9 of 9 for Pippin in both modes (pippin-o072). Mail and Voice Memos are measured under Amendment 4: Pippin scores 4 on every axis except Speed, where the primary run ties it at the top with 3 after losing three warm Mail reads. Mail reads then moved into the server and `mail accounts` reads names only (pippin-k177); the Mail re-run has no warm losses and Speed scores 4. See [results.md](competitive/results.md).
 - Wave 7: README, SECURITY.md (threat model), CONTRIBUTING.md, [architecture.md](architecture.md), [agent-integration.md](agent-integration.md), CHANGELOG and SKILL.md rewritten or updated. Every em and en dash removed from the Markdown docs.
 
-### Still open
+### Still open (as of 2026-11-10, now closed or split: see the next section)
 
 | Issue | Priority | Why it is deferred |
 | --- | --- | --- |
@@ -48,6 +48,17 @@ Running log for the mission in [MISSION.md](MISSION.md). Branch: `claude/pippin-
 | pippin-xr89 | P2 | Hardening bundle (notarization, file modes, argv secrets and others), each small and independent. |
 | pippin-ai5s, pippin-hd99, pippin-o072, pippin-0ifz | P2, P3 | Competitive follow-ups from the results page. |
 | pippin-oqq9 | P3 | A CLI-mode child can outlive its deadline when a grandchild holds its output; the MCP path is not affected. |
+
+### Follow-up sweep (2026-11-10, branch `claude/beads-sweep`)
+
+- pippin-o190, pippin-oqq9, pippin-qq4c, pippin-p813 and pippin-lb1i are closed. Two of the three o190 parts and all of lb1i were already fixed; bare `pippin` trapping was the remaining bug.
+- pippin-xr89: script bodies off argv, owner-only file modes, stderr no longer a failure signal, `fields` on `messages search`, a keyset cursor for `mail list` on the Envelope Index path, the Reminders timeout race, fail-closed lints, and hardened-runtime signing. The disclaim `waitpid` was already robust. Split out: notarization (needs credentials) and keyset cursors for the other paginated commands.
+- pippin-hd99: the default tool list went from 22,617 to 21,829 harness tokens. Most of the rest is JSON structure for 79 tools and about 420 parameters, so a larger cut needs a smaller default tool set, which is a contract decision and is filed separately.
+- pippin-3ljg live run, in the `pippin-bench` VM (macOS 26.6.2) on the fixture calendar and Voice Memos store, never on real data:
+  - Pippin 1.0.0, "Weekly Sync" (five weekly occurrences, one id). Edit with `--occurrence 2027-03-01T14:30:00Z --title` renamed only the third occurrence, which then carries its own id. Delete with `--occurrence 2027-02-22` removed only the second. Delete with `--span all` removed the rest, the detached third occurrence included.
+  - `memos delete` on Pippin 1.0.0 failed on the fixture recording tried: `no such function: NSCoreDataDATriggerUpdatedAffectedObjectValue`. The store's delete trigger runs for a recording that is in a folder. The audio was moved back and the row kept, as designed. With the fix on this branch the audio is in `~/.Trash`, the row is gone and the other 11 recordings are listed.
+  - The hardened Developer ID build ran there with Calendar, Reminders and Voice Memos access.
+  - Split out: `occurrence_required` still exits 5 (remapping an exit code is a breaking change under [contract.md](contract.md)), and the Notes "Recently Deleted" check is still English-only.
 
 ### In flight (as of the first entry, now finished)
 
