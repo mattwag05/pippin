@@ -97,6 +97,24 @@ public struct RemindersCommand: AsyncParsableCommand {
             }
         }
 
+        /// Sort key of the list order (dated reminders by due date, then undated by
+        /// creation date), so a page cursor can seek instead of counting rows.
+        static func pageKey(_ r: ReminderItem) -> Int64 {
+            if let due = r.dueDate.flatMap({ parseCalendarDate($0) }) { return Int64(due.timeIntervalSince1970) }
+            let created = r.creationDate.flatMap { parseCalendarDate($0) } ?? .distantPast
+            return (1 << 40) + Int64(created.timeIntervalSince1970)
+        }
+
+        static func keysetPage(
+            _ items: [ReminderItem], pagination: PaginationOptions, offset: Int, pageSize: Int, filterHash: String
+        ) throws -> Page<ReminderItem> {
+            let keyed = items.map { (pageKey($0), $0) }.sorted { ($0.0, $0.1.id) < ($1.0, $1.1.id) }.map(\.1)
+            return try Pagination.paginateKeyset(
+                all: keyed, offset: offset, pageSize: pageSize, filterHash: filterHash,
+                anchor: Pagination.anchor(of: pagination), key: pageKey, id: \.id
+            )
+        }
+
         public mutating func execute() async throws -> AgentResult {
             let bridge = RemindersBridge()
 
@@ -121,10 +139,10 @@ public struct RemindersCommand: AsyncParsableCommand {
                     createdAfter: createdAfter.flatMap { parseCalendarDate($0) },
                     modifiedAfter: modifiedAfter.flatMap { parseCalendarDate($0) },
                     priority: priority.flatMap { parseReminderPriority($0) },
-                    limit: offset + pageSize + 1
+                    limit: Int.max
                 )
-                let page = try Pagination.paginate(
-                    all: fetched.results, offset: offset, pageSize: pageSize, filterHash: hash
+                let page = try Self.keysetPage(
+                    fetched.results, pagination: pagination, offset: offset, pageSize: pageSize, filterHash: hash
                 )
                 return .emitPage(page, timedOut: fetched.timedOut, timedOutHint: Self.timedOutHint, fields: FieldProjection.parse(output.fields))
             }

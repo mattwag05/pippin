@@ -104,12 +104,26 @@ public struct LogCommand: AgentCommand {
     }
 
     public mutating func execute() async throws -> AgentResult {
-        let rows = Self.filter(
-            ActionLog(path: ActionLog.defaultPath()).entries(), since: since.flatMap { parseCalendarDate($0) }, tool: tool
-        )
+        let entries = ActionLog(path: ActionLog.defaultPath()).entries()
+        let rows = Self.filter(entries, since: since.flatMap { parseCalendarDate($0) }, tool: tool)
         let hash = Pagination.filterHash(["since": since, "tool": tool])
         let (offset, pageSize) = try Pagination.resolve(pagination, defaultPageSize: limit, filterHash: hash)
-        return try .page(Pagination.paginate(all: rows, offset: offset, pageSize: pageSize, filterHash: hash))
+        return try .page(Self.keysetPage(
+            rows, of: entries, pagination: pagination, offset: offset, pageSize: pageSize, filterHash: hash
+        ))
+    }
+
+    /// New actions land at the top of a newest-first list, so an offset cursor
+    /// repeats rows. The key is the entry's position in the whole log (oldest = 0).
+    static func keysetPage(
+        _ rows: [ActionEntry], of entries: [ActionEntry], pagination: PaginationOptions,
+        offset: Int, pageSize: Int, filterHash: String
+    ) throws -> Page<ActionEntry> {
+        let seq = Dictionary(entries.enumerated().map { ($1.id, Int64(entries.count - 1 - $0)) }) { _, last in last }
+        return try Pagination.paginateKeyset(
+            all: rows, offset: offset, pageSize: pageSize, filterHash: filterHash,
+            anchor: Pagination.anchor(of: pagination), key: { seq[$0.id] ?? 0 }, id: \.id, descending: true
+        )
     }
 
     static func filter(_ entries: [ActionEntry], since: Date?, tool: String?) -> [ActionEntry] {

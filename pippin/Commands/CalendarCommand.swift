@@ -156,8 +156,8 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let (offset, pageSize) = try Pagination.resolve(
                     pagination, defaultPageSize: limit, filterHash: hash
                 )
-                let page = try Pagination.paginate(
-                    all: events, offset: offset, pageSize: pageSize, filterHash: hash
+                let page = try CalendarCommand.keysetPage(
+                    events, pagination: pagination, offset: offset, pageSize: pageSize, filterHash: hash
                 )
                 return .page(page, warnings: CalendarCommand.timedOutWarnings(listOutcome.timedOut), fields: FieldProjection.parse(output.fields))
             }
@@ -866,8 +866,8 @@ public struct CalendarCommand: AsyncParsableCommand {
                 let (offset, pageSize) = try Pagination.resolve(
                     pagination, defaultPageSize: limit, filterHash: hash
                 )
-                let page = try Pagination.paginate(
-                    all: events, offset: offset, pageSize: pageSize, filterHash: hash
+                let page = try CalendarCommand.keysetPage(
+                    events, pagination: pagination, offset: offset, pageSize: pageSize, filterHash: hash
                 )
                 return .page(page, warnings: CalendarCommand.timedOutWarnings(outcome.timedOut), fields: fieldList)
             }
@@ -878,6 +878,22 @@ public struct CalendarCommand: AsyncParsableCommand {
 }
 
 // MARK: - Shared helpers
+
+extension CalendarCommand {
+    /// Keyset page over events ordered by start time. A recurring series shares
+    /// one `id` across occurrences, so the tiebreak is `id` plus start.
+    static func keysetPage(
+        _ events: [CalendarEvent], pagination: PaginationOptions, offset: Int, pageSize: Int, filterHash: String
+    ) throws -> Page<CalendarEvent> {
+        func key(_ e: CalendarEvent) -> Int64 { Int64((parseCalendarDate(e.startDate) ?? .distantPast).timeIntervalSince1970) }
+        func rowId(_ e: CalendarEvent) -> String { "\(e.id)|\(e.startDate)" }
+        let sorted = events.map { (key($0), $0) }.sorted { ($0.0, rowId($0.1)) < ($1.0, rowId($1.1)) }.map(\.1)
+        return try Pagination.paginateKeyset(
+            all: sorted, offset: offset, pageSize: pageSize, filterHash: filterHash,
+            anchor: Pagination.anchor(of: pagination), key: key, id: rowId
+        )
+    }
+}
 
 /// Ambiguous `--calendar-name` is a usage-class error: the derived agent code
 /// `invalid_calendar_name` routes to exit 2 via `PippinExitCode.classify`'s
