@@ -99,6 +99,23 @@ final class KeysetPaginationTests: XCTestCase {
         XCTAssertEqual(page2.items.map(\.id), ["e1"], "offset paging would repeat e2")
     }
 
+    // MARK: contacts
+
+    private func contact(_ id: String, _ name: String) -> ContactInfo {
+        ContactInfo(id: id, fullName: name, givenName: name, familyName: "", emails: [], phones: [])
+    }
+
+    func testContactsPageIsSortedAndSurvivesContactAddedBetweenPages() throws {
+        var rows = [contact("3", "carol"), contact("1", "Alice"), contact("2", "bob"), contact("4", "Dave")]
+        let page1 = try ContactsCommand.SearchContacts.keysetPage(rows, pagination: options(nil), offset: 0, pageSize: 2, filterHash: "h")
+        XCTAssertEqual(page1.items.map(\.id), ["1", "2"], "case-insensitive name order")
+        let cursor = try token(page1)
+
+        rows.append(contact("5", "Aaron")) // sorts before everything served
+        let page2 = try ContactsCommand.SearchContacts.keysetPage(rows, pagination: options(cursor), offset: 2, pageSize: 2, filterHash: "h")
+        XCTAssertEqual(page2.items.map(\.id), ["3", "4"], "offset paging would repeat bob")
+    }
+
     // MARK: cursor compatibility
 
     func testStringAnchorRoundTripsAndLegacyCursorDecodesWithoutIt() throws {

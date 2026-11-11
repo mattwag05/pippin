@@ -98,6 +98,22 @@ public struct ContactsCommand: AsyncParsableCommand {
             }
         }
 
+        static func keysetPage(
+            _ contacts: [ContactInfo], pagination: PaginationOptions, offset: Int, pageSize: Int, filterHash: String
+        ) throws -> Page<ContactInfo> {
+            let ordered = contacts.sorted { sortKey($0) < sortKey($1) }
+            return try Pagination.paginateKeyset(
+                all: ordered, offset: offset, pageSize: pageSize, filterHash: filterHash,
+                anchor: Pagination.anchor(of: pagination), key: { _ in 0 }, id: sortKey
+            )
+        }
+
+        /// Total order for paged results: name (case-insensitive), then identifier. The
+        /// string doubles as the keyset id, so the anchor resumes by position in that order.
+        static func sortKey(_ contact: ContactInfo) -> String {
+            contact.fullName.lowercased() + "\u{0}" + contact.id
+        }
+
         public mutating func execute() async throws -> AgentResult {
             let fieldList = ContactsCommand.bridgeFields(output.fields)
             let query = self.query ?? ""
@@ -130,8 +146,8 @@ public struct ContactsCommand: AsyncParsableCommand {
                 let (offset, pageSize) = try Pagination.resolve(
                     pagination, defaultPageSize: limit, filterHash: hash
                 )
-                let page = try Pagination.paginate(
-                    all: contacts, offset: offset, pageSize: pageSize, filterHash: hash
+                let page = try Self.keysetPage(
+                    contacts, pagination: pagination, offset: offset, pageSize: pageSize, filterHash: hash
                 )
                 return .emitPage(page, timedOut: timedOut, timedOutHint: ContactsCommand.timedOutHint)
             }
